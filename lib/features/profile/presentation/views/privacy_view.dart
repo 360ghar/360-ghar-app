@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
-
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/mixins/theme_mixin.dart';
+import 'package:ghar360/core/network/api_client.dart';
+import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/features/profile/presentation/views/policy_page_view.dart';
 
 class PrivacyView extends StatelessWidget with ThemeMixin {
   const PrivacyView({super.key});
+
+  static const String _supportEmail = 'info@360ghar.com';
+  static const String _deletionRequestSubject = 'Account Deletion Request';
 
   static final List<_PolicyItem> _policyItems = const [
     _PolicyItem(
@@ -194,6 +200,10 @@ class PrivacyView extends StatelessWidget with ThemeMixin {
   }
 
   void _showDeleteAccountDialog() {
+    final AuthController authController = Get.find<AuthController>();
+    final String registeredEmail =
+        authController.userEmail ?? authController.currentUser.value?.email ?? 'Not available';
+
     Get.dialog(
       AlertDialog(
         backgroundColor: AppDesign.surface,
@@ -207,22 +217,58 @@ class PrivacyView extends StatelessWidget with ThemeMixin {
         ),
         actions: [
           TextButton(
+            key: const ValueKey('qa.profile.privacy.delete_account.cancel'),
             onPressed: () => Get.back(),
             child: Text('cancel'.tr, style: TextStyle(color: AppDesign.textSecondary)),
           ),
           TextButton(
+            key: const ValueKey('qa.profile.privacy.delete_account.confirm'),
             onPressed: () {
               Get.back();
-              AppToast.info(
-                'account_deletion_snackbar_title'.tr,
-                'account_deletion_snackbar_message'.tr,
-              );
+              _sendDeletionEmail(registeredEmail);
             },
             child: Text('delete'.tr, style: const TextStyle(color: AppDesign.errorRed)),
           ),
         ],
       ),
+      barrierDismissible: false,
     );
+  }
+
+  Future<void> _sendDeletionEmail(String registeredEmail) async {
+    final String body = 'Hello 360 Ghar Support,\n\n'
+        'I would like to request the deletion of my account.\n\n'
+        'Registered email: $registeredEmail\n\n'
+        'Thank you.';
+
+    final Uri mailtoUri = Uri(
+      scheme: 'mailto',
+      path: _supportEmail,
+      queryParameters: <String, String>{
+        'subject': _deletionRequestSubject,
+        'body': body,
+      },
+    );
+
+    try {
+      final bool launched = await launchUrl(mailtoUri, mode: LaunchMode.externalApplication);
+      if (launched) {
+        AppToast.success(
+          'delete_account_request_initiated'.tr,
+          'delete_account_email_body'.tr,
+        );
+      } else {
+        AppToast.error(
+          'Could not open email',
+          'Please email $_supportEmail with subject "$_deletionRequestSubject"',
+        );
+      }
+    } catch (_) {
+      AppToast.error(
+        'Could not open email',
+        'Please email $_supportEmail with subject "$_deletionRequestSubject"',
+      );
+    }
   }
 
   void _openPolicy(String uniqueName, String title) {

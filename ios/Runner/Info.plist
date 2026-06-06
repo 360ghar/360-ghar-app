@@ -43,6 +43,16 @@
 	<string>This app needs location access to show nearby properties on the map.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs location access to show nearby properties on the map.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to capture property photos and your profile picture.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo library access to select property photos and your profile picture.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app needs permission to save photos to your library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access if you choose to record video tours.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>We use tracking to provide personalized property recommendations and improve your experience.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

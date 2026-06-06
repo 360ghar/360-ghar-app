@@ -43,6 +43,7 @@ class ApiPaths {
   static const String usersProfile = '/users/profile';
   static const String usersLocation = '/users/location';
   static const String usersPreferences = '/users/preferences';
+  static const String usersMe = '/users/me';
 
   // Swipes
   static const String swipes = '/swipes';

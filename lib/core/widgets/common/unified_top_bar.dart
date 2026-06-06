@@ -72,7 +72,7 @@ class UnifiedTopBar extends GetView<PageStateService> implements PreferredSizeWi
           if (supportsSearch) _buildSearchToggle(controller),
           _buildRefreshIndicator(controller),
           _buildFilterButton(context, controller),
-          if (additionalActions != null) ...additionalActions!,
+          ...?additionalActions,
         ],
       ),
       bottom: bottomWidget,

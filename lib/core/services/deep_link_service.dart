@@ -12,6 +12,8 @@ class DeepLinkService extends GetxService {
   StreamSubscription? _sub;
   final AppLinks _appLinks = AppLinks();
 
+  static const String _propertyBaseUrl = 'https://360ghar.com';
+
   @override
   void onInit() {
     super.onInit();
@@ -53,32 +55,51 @@ class DeepLinkService extends GetxService {
   void _handleDeepLink(Uri uri) {
     DebugLogger.info('🔗 Received Deep Link: $uri');
 
-    // Parse path segments to find property ID
-    // Supports:
-    // 1. https://ghar.sale/p/123 (short link from _redirects)
-    // 2. https://ghar.sale/property/123
+    final segments = uri.pathSegments;
 
-    String? propertyId;
-
-    if (uri.pathSegments.length >= 2) {
-      final firstSegment = uri.pathSegments[0];
-      if (firstSegment == 'p' || firstSegment == 'property') {
-        propertyId = uri.pathSegments[1];
-      }
+    if (segments.isEmpty) {
+      DebugLogger.warning('🔗 Deep link has no path segments: $uri');
+      return;
     }
 
-    if (propertyId != null && propertyId.isNotEmpty) {
-      DebugLogger.info('🔗 Navigating to Property ID: $propertyId');
-      _navigateToProperty(propertyId);
+    final firstSegment = segments[0];
+
+    if ((firstSegment == 'p' || firstSegment == 'property') && segments.length >= 2) {
+      final propertyId = segments[1];
+      if (propertyId.isNotEmpty) {
+        DebugLogger.info('🔗 Navigating to Property ID: $propertyId');
+        _navigateToProperty(propertyId);
+      }
+    } else if (firstSegment == 'tour' && segments.length >= 2) {
+      final tourId = segments[1];
+      if (tourId.isNotEmpty) {
+        DebugLogger.info('🔗 Navigating to Tour ID: $tourId');
+        _navigateToTour(tourId);
+      }
     } else {
-      DebugLogger.warning('🔗 Could not parse Property ID from: $uri');
+      DebugLogger.warning('🔗 Could not parse deep link: $uri');
     }
   }
 
   void _navigateToProperty(String propertyId) {
-    // Small delay to ensure UI is ready/transition has settled if coming from cold start
     Future.delayed(const Duration(milliseconds: 500), () {
-      Get.toNamed(AppRoutes.propertyDetails, arguments: propertyId);
+      Get.toNamed(AppRoutes.propertyShortLink, parameters: {'id': propertyId});
     });
   }
+
+  void _navigateToTour(String tourId) {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      final tourUrl = '$_propertyBaseUrl/view/$tourId';
+      Get.toNamed(AppRoutes.tour, arguments: tourUrl);
+    });
+  }
+
+  static String propertyUrl(String propertyId) =>
+      '$_propertyBaseUrl/property/$propertyId';
+
+  static String propertyShortUrl(String propertyId) =>
+      'https://ghar.sale/p/$propertyId';
+
+  static String tourUrl(String tourId) =>
+      '$_propertyBaseUrl/tour/$tourId';
 }

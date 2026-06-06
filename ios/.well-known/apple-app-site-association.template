@@ -3,20 +3,18 @@
     "apps": [],
     "details": [
       {
-        "appID": "TEAM_ID.com.example.ghar360",
+        "appID": "TEAM_ID.com.the360ghar.ghar360",
         "paths": [
+          "/p/*",
           "/property/*",
-          "/tour/*",
-          "/explore",
-          "/profile",
-          "/*"
+          "/tour/*"
         ]
       }
     ]
   },
   "webcredentials": {
     "apps": [
-      "TEAM_ID.com.example.ghar360"
+      "TEAM_ID.com.the360ghar.ghar360"
     ]
   }
 }

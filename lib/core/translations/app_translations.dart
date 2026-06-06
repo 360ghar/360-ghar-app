@@ -753,6 +753,10 @@ class AppTranslations extends Translations {
       'delete': 'Delete',
       'account_deletion_snackbar_title': 'Account Deletion',
       'account_deletion_snackbar_message': 'Account deletion process would be initiated here',
+      'delete_account_request_initiated': 'Request initiated',
+      'delete_account_email_body':
+          'Please check your email app to send the request to info@360ghar.com.',
+      'delete_account_error_message': 'Failed to delete account. Please try again.',
 
       // Profile support menu
       'report_a_bug': 'Report a Bug',
@@ -1797,6 +1801,10 @@ class AppTranslations extends Translations {
       'delete': 'हटाएं',
       'account_deletion_snackbar_title': 'खाता हटाना',
       'account_deletion_snackbar_message': 'खाता हटाने की प्रक्रिया यहां शुरू की जाएगी',
+      'delete_account_request_initiated': 'अनुरोध शुरू किया गया',
+      'delete_account_email_body':
+          'info@360ghar.com पर अनुरोध भेजने के लिए कृपया अपना ईमेल ऐप देखें।',
+      'delete_account_error_message': 'खाता हटाने में विफल। कृपया फिर से प्रयास करें।',
 
       // Profile support menu
       'report_a_bug': 'बग रिपोर्ट करें',

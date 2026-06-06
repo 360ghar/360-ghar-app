@@ -179,6 +179,14 @@ class AppPages {
       curve: _defaultCurve,
     ),
     GetPage(
+      name: AppRoutes.tourDeepLink, // /tour/:id
+      page: () => const TourView(),
+      binding: TourBinding(),
+      transition: Transition.rightToLeftWithFade,
+      transitionDuration: _defaultTransitionDuration,
+      curve: _defaultCurve,
+    ),
+    GetPage(
       name: AppRoutes.editProfile,
       page: () => const EditProfileView(),
       binding: ProfileBinding(),
