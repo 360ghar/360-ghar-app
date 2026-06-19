@@ -37,7 +37,7 @@ class UnifiedPropertyResponse {
 
   /// True when another page can be fetched. Requires both the backend
   /// `has_more` flag and a non-null [nextCursor] token to be present.
-  bool get hasMorePages => hasMore && nextCursor != null;
+  bool get hasMorePages => hasMore && (nextCursor?.isNotEmpty ?? false);
 
   bool get isEmpty => items.isEmpty;
   int get currentItemCount => items.length;

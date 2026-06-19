@@ -95,7 +95,7 @@ class _FullScreenPhotoViewerState extends State<FullScreenPhotoViewer> {
                   imageProvider: CachedNetworkImageProvider(url),
                   minScale: PhotoViewComputedScale.contained,
                   maxScale: PhotoViewComputedScale.covered * 2.5,
-                  heroAttributes: PhotoViewHeroAttributes(tag: url),
+                  heroAttributes: PhotoViewHeroAttributes(tag: '${identityHashCode(this)}_$index'),
                 );
               },
             ),

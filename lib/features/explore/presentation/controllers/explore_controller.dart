@@ -619,6 +619,9 @@ class ExploreController extends GetxController {
     }
 
     _searchDebouncer = Timer(const Duration(milliseconds: 300), () {
+      // Guard against stale queries: if the user has cleared or changed the
+      // search text since this debounce was scheduled, skip the callback.
+      if (query != searchQuery.value) return;
       DebugLogger.api('🔍 Searching properties: "$query"');
       _pageStateService.updatePageSearch(PageType.explore, query);
       // Record search activity for locally-aggregated dashboard stats

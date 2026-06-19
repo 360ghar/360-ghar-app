@@ -14,7 +14,7 @@ const kPaginatedLoadMoreThreshold = 200.0;
 /// centralizes that behavior so the two widgets only differ in their
 /// `ListView`/`GridView` builder.
 mixin PaginatedScrollMixin<W extends StatefulWidget> on State<W> {
-  late final ScrollController scrollController;
+  ScrollController? scrollController;
 
   /// Registers the scroll listener that triggers [onLoadMore] once the user
   /// scrolls within [kPaginatedLoadMoreThreshold] of the bottom. The load is
@@ -26,9 +26,9 @@ mixin PaginatedScrollMixin<W extends StatefulWidget> on State<W> {
     required bool Function() isLoadingMore,
   }) {
     scrollController = ScrollController();
-    scrollController.addListener(() {
-      if (scrollController.position.pixels >=
-          scrollController.position.maxScrollExtent - kPaginatedLoadMoreThreshold) {
+    scrollController!.addListener(() {
+      if (scrollController!.position.pixels >=
+          scrollController!.position.maxScrollExtent - kPaginatedLoadMoreThreshold) {
         if (hasMore() && !isLoadingMore()) {
           onLoadMore();
         }
@@ -85,7 +85,7 @@ mixin PaginatedScrollMixin<W extends StatefulWidget> on State<W> {
 
   @override
   void dispose() {
-    scrollController.dispose();
+    scrollController?.dispose();
     super.dispose();
   }
 }

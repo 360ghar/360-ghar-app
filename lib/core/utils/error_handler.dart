@@ -33,7 +33,7 @@ class ErrorHandler {
       final m = msg.toLowerCase();
       bool containsAny(List<String> phrases) => phrases.any(m.contains);
 
-      if (code == 'otp_expired' || containsAny(['token has expired', 'is invalid'])) {
+      if (code == 'otp_expired' || containsAny(['token has expired', 'token is invalid'])) {
         message = 'otp_expired_request_new'.tr;
         backgroundColor = AppDesign.warningAmber;
       } else if (containsAny([
@@ -72,7 +72,7 @@ class ErrorHandler {
         try {
           FirebaseCrashlytics.instance.recordError(
             error,
-            StackTrace.current,
+            stackTrace ?? StackTrace.current,
             reason: 'Unrecognized AuthException message: "$msg"',
             fatal: false,
           );

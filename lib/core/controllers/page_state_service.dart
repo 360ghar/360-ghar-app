@@ -636,14 +636,12 @@ class PageStateService extends GetxController {
 
     // Snapshot the outgoing segment's data before switching
     final ps = likesState.value;
-    if (ps.properties.isNotEmpty) {
-      _likesSegmentCache[previousSegment] = _LikesSegmentCache(
-        properties: List.of(ps.properties),
-        lastFetched: ps.lastFetched ?? DateTime.now(),
-        hasMore: ps.hasMore,
-        nextCursor: ps.nextCursor,
-      );
-    }
+    _likesSegmentCache[previousSegment] = _LikesSegmentCache(
+      properties: List.of(ps.properties),
+      lastFetched: ps.lastFetched,
+      hasMore: ps.hasMore,
+      nextCursor: ps.nextCursor,
+    );
 
     // Switch the segment marker
     likesState.value = likesState.value.updateAdditionalData('currentSegment', segment);
@@ -659,6 +657,8 @@ class PageStateService extends GetxController {
         nextCursor: cached.nextCursor,
         error: null,
         isLoading: false,
+        isLoadingMore: false,
+        isRefreshing: false,
       );
       return;
     }
@@ -767,7 +767,7 @@ class PageStateService extends GetxController {
 /// avoid re-fetching when the user switches tabs back and forth.
 class _LikesSegmentCache {
   final List<PropertyModel> properties;
-  final DateTime lastFetched;
+  final DateTime? lastFetched;
   final bool hasMore;
   final String? nextCursor;
 
@@ -781,6 +781,8 @@ class _LikesSegmentCache {
   static const Duration _staleThreshold = Duration(minutes: 5);
 
   bool get isStale {
-    return DateTime.now().difference(lastFetched) > _staleThreshold;
+    final fetched = lastFetched;
+    if (fetched == null) return true;
+    return DateTime.now().difference(fetched) > _staleThreshold;
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:ghar360/core/widgets/common/paginated_scroll_mixin.dart';
+
 class PaginatedListView<T> extends StatefulWidget {
   final List<T> items;
   final Widget Function(BuildContext context, T item, int index) itemBuilder;
@@ -32,30 +34,16 @@ class PaginatedListView<T> extends StatefulWidget {
   State<PaginatedListView<T>> createState() => _PaginatedListViewState<T>();
 }
 
-class _PaginatedListViewState<T> extends State<PaginatedListView<T>> {
-  late ScrollController _scrollController;
-
+class _PaginatedListViewState<T> extends State<PaginatedListView<T>>
+    with PaginatedScrollMixin<PaginatedListView<T>> {
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
-      // Load more when user scrolls within 200 pixels of the bottom
-      if (widget.hasMore && !widget.isLoadingMore) {
-        widget.onLoadMore();
-      }
-    }
+    initPaginatedScroll(
+      onLoadMore: widget.onLoadMore,
+      hasMore: () => widget.hasMore,
+      isLoadingMore: () => widget.isLoadingMore,
+    );
   }
 
   @override
@@ -64,25 +52,14 @@ class _PaginatedListViewState<T> extends State<PaginatedListView<T>> {
     final colorScheme = theme.colorScheme;
 
     if (widget.isLoading) {
-      return Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-        ),
-      );
+      return buildFullScreenLoader(colorScheme);
     }
 
     if (widget.items.isEmpty && widget.emptyWidget != null) {
-      return RefreshIndicator(
-        color: colorScheme.primary,
-        backgroundColor: colorScheme.surface,
+      return buildEmptyRefresh(
+        colorScheme: colorScheme,
         onRefresh: widget.onRefresh,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.7,
-            child: widget.emptyWidget,
-          ),
-        ),
+        emptyWidget: widget.emptyWidget,
       );
     }
 
@@ -91,7 +68,7 @@ class _PaginatedListViewState<T> extends State<PaginatedListView<T>> {
       backgroundColor: colorScheme.surface,
       onRefresh: widget.onRefresh,
       child: ListView.separated(
-        controller: _scrollController,
+        controller: scrollController,
         padding: widget.padding,
         physics: widget.physics ?? const AlwaysScrollableScrollPhysics(),
         itemCount: widget.items.length + (widget.hasMore ? 1 : 0),
@@ -100,19 +77,11 @@ class _PaginatedListViewState<T> extends State<PaginatedListView<T>> {
         },
         itemBuilder: (context, index) {
           if (index == widget.items.length) {
-            // Loading indicator at the bottom
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: widget.isLoadingMore
-                    ? CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-                      )
-                    : const SizedBox.shrink(),
-              ),
+            return buildLoadMoreIndicator(
+              colorScheme: colorScheme,
+              isLoadingMore: widget.isLoadingMore,
             );
           }
-
           return widget.itemBuilder(context, widget.items[index], index);
         },
       ),

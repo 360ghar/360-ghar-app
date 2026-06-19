@@ -234,8 +234,6 @@ class LocationController extends GetxController {
         'High-accuracy GPS timed out after ${_currentPositionTimeout.inSeconds}s, '
         'retrying at medium accuracy…',
       );
-      // Non-blocking heads-up so the user knows we're still working
-      AppToast.info('locating_you'.tr, 'using_approximate_location'.tr);
     } catch (e, stackTrace) {
       DebugLogger.error('Failed to get high-accuracy GPS position', e, stackTrace);
       return null;
