@@ -50,7 +50,7 @@ class _PaginatedGridViewState<T> extends State<PaginatedGridView<T>>
   void initState() {
     super.initState();
     initPaginatedScroll(
-      onLoadMore: widget.onLoadMore,
+      onLoadMore: () => widget.onLoadMore(),
       hasMore: () => widget.hasMore,
       isLoadingMore: () => widget.isLoadingMore,
     );

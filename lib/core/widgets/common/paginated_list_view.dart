@@ -40,7 +40,7 @@ class _PaginatedListViewState<T> extends State<PaginatedListView<T>>
   void initState() {
     super.initState();
     initPaginatedScroll(
-      onLoadMore: widget.onLoadMore,
+      onLoadMore: () => widget.onLoadMore(),
       hasMore: () => widget.hasMore,
       isLoadingMore: () => widget.isLoadingMore,
     );
