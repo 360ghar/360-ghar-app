@@ -19,17 +19,19 @@ import 'package:ghar360/features/profile/data/profile_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthController extends GetxController {
-  // Dependencies — ProfileRepository is registered before AuthController
-  // in InitialBinding, so Get.find() is safe here.
-  final AuthRepository _authRepository = Get.find();
-  final ProfileRepository _profileRepository = Get.find();
-  final NotificationsRemoteDatasource _notificationsDatasource = Get.find();
+  // Dependencies are resolved lazily in onInit() (not via field initializers)
+  // so that registration order in InitialBinding can change without throwing
+  // a cryptic "X not found" error. onInit() runs after the binding completes.
+  late final AuthRepository _authRepository;
+  late final ProfileRepository _profileRepository;
+  late final NotificationsRemoteDatasource _notificationsDatasource;
 
   // --- Reactive State ---
   final Rx<AuthStatus> authStatus = AuthStatus.initial.obs;
   final Rxn<UserModel> currentUser = Rxn<UserModel>();
   final RxnString authErrorMessage = RxnString();
   final RxBool isLoading = false.obs;
+  final RxBool isDeleting = false.obs;
   final RxBool isAuthResolving = false.obs;
   final Rxn<RouteSettings> redirectRoute = Rxn<RouteSettings>();
 
@@ -85,9 +87,30 @@ class AuthController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _resolveDependencies();
     _setupCrashlyticsWorker();
     _setupUnauthorizedHandler();
     _initialize();
+  }
+
+  /// Resolves dependencies with a clear error message identifying which
+  /// dependency is missing, so registration-order issues are easy to debug.
+  void _resolveDependencies() {
+    _authRepository = _findOrThrow<AuthRepository>('AuthRepository');
+    _profileRepository = _findOrThrow<ProfileRepository>('ProfileRepository');
+    _notificationsDatasource = _findOrThrow<NotificationsRemoteDatasource>(
+      'NotificationsRemoteDatasource',
+    );
+  }
+
+  T _findOrThrow<T>(String name) {
+    if (!Get.isRegistered<T>()) {
+      throw StateError(
+        'AuthController: $name is not registered. Ensure InitialBinding registers '
+        'it before AuthController.onInit().',
+      );
+    }
+    return Get.find<T>();
   }
 
   /// Initialize the controller and listen to auth state changes.
@@ -419,24 +442,49 @@ class AuthController extends GetxController {
     DebugLogger.warning('👤 [AUTH_BOOT] Profile load failure surfaced to user: $userMessage');
   }
 
+  /// Unregisters the push-notification device token (best-effort). Shared by
+  /// [signOut] and [deleteAccount] so the device stops receiving notifications
+  /// once the session ends.
+  Future<void> _unregisterPushToken() async {
+    final token = PushNotificationsService.currentToken;
+    if (token != null && token.isNotEmpty) {
+      try {
+        await _notificationsDatasource.unregisterDeviceToken(token);
+      } catch (e, st) {
+        DebugLogger.warning('🔔 Failed to unregister device token during sign-out', e, st);
+      }
+    }
+  }
+
   /// Signs out the user from Supabase. The `_onAuthStateChanged` listener will handle the rest.
   Future<void> signOut() async {
     try {
       isLoading.value = true;
-      final token = PushNotificationsService.currentToken;
-      if (token != null && token.isNotEmpty) {
-        try {
-          await _notificationsDatasource.unregisterDeviceToken(token);
-        } catch (e, st) {
-          DebugLogger.warning('🔔 Failed to unregister device token during sign-out', e, st);
-        }
-      }
+      await _unregisterPushToken();
       await _authRepository.signOut();
       // The listener will automatically set the state to unauthenticated and navigation worker will handle routing
     } catch (e) {
       ErrorHandler.handleAuthError(e);
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Permanently deletes the user's account. Unregisters the push token,
+  /// submits the deletion request to the backend, then clears the local
+  /// session; the auth-state listener routes to login.
+  Future<void> deleteAccount() async {
+    isDeleting.value = true;
+    try {
+      await _unregisterPushToken();
+      await _authRepository.deleteAccount();
+      await _authRepository.signOut(); // clears session; listener routes to login
+      AppToast.success('success'.tr, 'account_deleted_success'.tr);
+    } catch (e, st) {
+      ErrorHandler.handleAuthError(e, stackTrace: st);
+      DebugLogger.error('Account deletion failed', e, st);
+    } finally {
+      isDeleting.value = false;
     }
   }
 

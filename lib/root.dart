@@ -31,12 +31,31 @@ class Root extends StatelessWidget {
         case AuthStatus.requiresPasswordSetup:
         case AuthStatus.requiresProfileCompletion:
         case AuthStatus.authenticated:
-          // AuthNavigationService handles navigation for these states
-          // Return empty scaffold while navigation is in progress
+          // AuthNavigationService handles navigation for these states.
+          // Show a loading indicator (never a blank SizedBox) so that if
+          // AuthNavigationService navigation fails or is delayed, the user
+          // still sees actionable feedback instead of a white screen.
           DebugLogger.debug(
             '📱 Root: Auth state resolved to $currentStatus, navigation handled by AuthNavigationService',
           );
-          return const Scaffold(body: SizedBox.shrink());
+          return Scaffold(
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    'loading'.tr,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
 
         case AuthStatus.error:
           DebugLogger.debug('📱 Root: Showing error state');

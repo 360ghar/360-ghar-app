@@ -17,6 +17,14 @@ class AssistantController extends GetxController {
   final conversationId = Rxn<int>();
   final conversations = <ConversationModel>[].obs;
 
+  // Pagination state for [loadConversations] / [loadMoreConversations].
+  // The repository returns a uniform cursor envelope; we mirror its fields
+  // here so the UI (or a follow-up) can drive an infinite-scroll list.
+  final RxBool isLoadingConversations = false.obs;
+  final RxBool isLoadingMoreConversations = false.obs;
+  final RxBool conversationsHasMore = true.obs;
+  final Rxn<String> conversationsNextCursor = Rxn<String>();
+
   StreamSubscription<SseEvent>? _streamSubscription;
   int _messageIdCounter = 0;
 
@@ -150,8 +158,58 @@ class AssistantController extends GetxController {
 
   // ── Conversation History ───────────────────────────────────────
 
+  /// Loads the first page of conversations and resets the pagination cursor.
+  ///
+  /// Replaces [conversations] in place. After this call, [loadMoreConversations]
+  /// can fetch additional pages by passing [conversationsNextCursor] back to
+  /// the repository.
   Future<void> loadConversations() async {
-    conversations.value = await _repository.getConversations();
+    if (isLoadingConversations.value || isLoadingMoreConversations.value) return;
+
+    isLoadingConversations.value = true;
+    try {
+      final page = await _repository.getConversations();
+      conversations.assignAll(page.items);
+      conversationsNextCursor.value = page.nextCursor;
+      conversationsHasMore.value = page.hasMore;
+    } catch (e) {
+      DebugLogger.error('Failed to load conversations page', e);
+    } finally {
+      isLoadingConversations.value = false;
+    }
+  }
+
+  /// Loads the next page of conversations using [conversationsNextCursor].
+  ///
+  /// No-op when already loading, when [conversationsHasMore] is false, or
+  /// when the cursor is null/empty (backend signalled terminal page).
+  /// Appends the freshly fetched items to [conversations] and updates the
+  /// cursor so a follow-up call can fetch the page after this one.
+  Future<void> loadMoreConversations() async {
+    if (isLoadingConversations.value || isLoadingMoreConversations.value) return;
+    if (!conversationsHasMore.value) return;
+
+    final cursor = conversationsNextCursor.value;
+    if (cursor == null || cursor.isEmpty) {
+      conversationsHasMore.value = false;
+      return;
+    }
+
+    isLoadingMoreConversations.value = true;
+    try {
+      final page = await _repository.getConversations(cursor: cursor);
+      // Dedupe by id so cursor rewinds or backend overlaps never produce
+      // duplicate rows in the reactive list.
+      final existingIds = conversations.map((c) => c.id).toSet();
+      final fresh = page.items.where((c) => !existingIds.contains(c.id)).toList();
+      conversations.addAll(fresh);
+      conversationsNextCursor.value = page.nextCursor;
+      conversationsHasMore.value = page.hasMore;
+    } catch (e) {
+      DebugLogger.error('Failed to load more conversations', e);
+    } finally {
+      isLoadingMoreConversations.value = false;
+    }
   }
 
   Future<void> selectConversation(int id) async {

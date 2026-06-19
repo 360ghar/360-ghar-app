@@ -6,10 +6,11 @@ import 'package:ghar360/core/network/response_parser.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
 class VisitsPayload {
-  final int total;
   final List<VisitModel> visits;
+  final bool hasMore;
+  final String? nextCursor;
 
-  const VisitsPayload({required this.total, required this.visits});
+  const VisitsPayload({required this.visits, required this.hasMore, this.nextCursor});
 }
 
 /// Remote datasource for visit operations.
@@ -18,37 +19,17 @@ class VisitsRemoteDatasource {
 
   VisitsRemoteDatasource(this._apiClient);
 
-  /// Fetches all visits for the current user.
-  Future<List<VisitModel>> fetchVisits({int page = 1, int limit = 50}) async {
-    DebugLogger.debug('📅 Fetching visits: page=$page');
-    final response = await _apiClient.get(
-      ApiPaths.visits,
-      queryParams: {'page': page.toString(), 'limit': limit.toString()},
-      useCache: false,
-    );
-
-    return _parseVisitsResponse(response.body);
-  }
-
   /// Fetches visits summary payload.
-  Future<VisitsPayload> fetchVisitsSummary({int page = 1, int limit = 50}) async {
+  Future<VisitsPayload> fetchVisitsSummary({String? cursor, int limit = 50}) async {
+    final queryParams = <String, dynamic>{'limit': limit.toString()};
+    if (cursor != null && cursor.isNotEmpty) {
+      queryParams['cursor'] = cursor;
+    }
     final response = await _apiClient.get(
       ApiPaths.visits,
-      queryParams: {'page': page.toString(), 'limit': limit.toString()},
+      queryParams: queryParams,
       useCache: false,
     );
-    return _parseVisitsPayload(response.body);
-  }
-
-  /// Fetches upcoming visits list.
-  Future<VisitsPayload> fetchUpcomingVisits() async {
-    final response = await _apiClient.get(ApiPaths.visitsUpcoming, useCache: false);
-    return _parseVisitsPayload(response.body);
-  }
-
-  /// Fetches past visits list.
-  Future<VisitsPayload> fetchPastVisits() async {
-    final response = await _apiClient.get(ApiPaths.visitsPast, useCache: false);
     return _parseVisitsPayload(response.body);
   }
 
@@ -127,7 +108,8 @@ class VisitsRemoteDatasource {
 
   VisitsPayload _parseVisitsPayload(dynamic body) {
     final visits = _parseVisitsResponse(body);
-    final total = ResponseParser.extractTotal(body, listLength: visits.length);
-    return VisitsPayload(total: total, visits: visits);
+    final hasMore = ResponseParser.extractHasMore(body);
+    final nextCursor = ResponseParser.extractNextCursor(body);
+    return VisitsPayload(visits: visits, hasMore: hasMore, nextCursor: nextCursor);
   }
 }

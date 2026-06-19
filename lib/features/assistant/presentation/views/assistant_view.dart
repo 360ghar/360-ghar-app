@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/widgets/common/max_content_width.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
 import 'package:ghar360/features/assistant/presentation/widgets/chat_input_bar.dart';
@@ -32,24 +33,29 @@ class AssistantView extends GetView<AssistantController> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(child: _buildMessageList(palette)),
-          // Tool call indicator
-          Obx(() {
-            final tool = controller.activeToolCall.value;
-            if (tool == null) return const SizedBox.shrink();
-            return ToolCallIndicator(toolName: tool);
-          }),
-          // Input bar
-          Obx(
-            () => ChatInputBar(
-              onSend: controller.sendMessage,
-              isStreaming: controller.isStreaming.value,
-              onCancel: controller.cancelStream,
+      body: MaxContentWidth(
+        // Cap the chat column so messages and the input bar stay centered and
+        // readable on tablet/desktop widths. No-op on compact (phone) widths.
+        maxWidth: 720,
+        child: Column(
+          children: [
+            Expanded(child: _buildMessageList(palette)),
+            // Tool call indicator
+            Obx(() {
+              final tool = controller.activeToolCall.value;
+              if (tool == null) return const SizedBox.shrink();
+              return ToolCallIndicator(toolName: tool);
+            }),
+            // Input bar
+            Obx(
+              () => ChatInputBar(
+                onSend: controller.sendMessage,
+                isStreaming: controller.isStreaming.value,
+                onCancel: controller.cancelStream,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

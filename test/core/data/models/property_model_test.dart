@@ -1,8 +1,20 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
+import 'package:ghar360/core/translations/app_translations.dart';
 
 void main() {
+  setUpAll(() {
+    // Provide translations so `.tr` getters resolve to localized strings
+    // during tests.
+    Get.testMode = true;
+    Get.addTranslations(AppTranslations().keys);
+    Get.locale = const Locale('en', 'US');
+  });
+
   group('PropertyModel.fromJson', () {
     test('parses minimal valid JSON with defaults', () {
       final json = <String, dynamic>{
@@ -253,14 +265,29 @@ void main() {
     test('propertyTypeString maps all enum values', () {
       expect(
         PropertyModel.fromJson({'property_type': 'apartment'}).propertyTypeString,
-        'Apartment',
+        'property_type_apartment'.tr,
       );
-      expect(PropertyModel.fromJson({'property_type': 'villa'}).propertyTypeString, 'Villa');
-      expect(PropertyModel.fromJson({'property_type': 'condo'}).propertyTypeString, 'Condo');
-      expect(PropertyModel.fromJson({'property_type': 'studio'}).propertyTypeString, 'Studio');
-      expect(PropertyModel.fromJson({'property_type': 'pg'}).propertyTypeString, 'PG');
-      expect(PropertyModel.fromJson({'property_type': 'office'}).propertyTypeString, 'Office');
-      expect(PropertyModel.fromJson({}).propertyTypeString, 'Property');
+      expect(
+        PropertyModel.fromJson({'property_type': 'villa'}).propertyTypeString,
+        'property_type_villa'.tr,
+      );
+      expect(
+        PropertyModel.fromJson({'property_type': 'condo'}).propertyTypeString,
+        'property_type_condo'.tr,
+      );
+      expect(
+        PropertyModel.fromJson({'property_type': 'studio'}).propertyTypeString,
+        'property_type_studio'.tr,
+      );
+      expect(
+        PropertyModel.fromJson({'property_type': 'pg'}).propertyTypeString,
+        'property_type_pg'.tr,
+      );
+      expect(
+        PropertyModel.fromJson({'property_type': 'office'}).propertyTypeString,
+        'property_type_office'.tr,
+      );
+      expect(PropertyModel.fromJson({}).propertyTypeString, 'property_type_default'.tr);
     });
 
     test('listingTranslationKey prioritizes pg and flatmate labels', () {

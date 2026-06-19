@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
@@ -8,6 +9,15 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
+import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
+
+/// GetStorage keys for persisted, locally-aggregated dashboard stats.
+/// These are incremented as the user interacts with the app and survive
+/// across sessions until the backend exposes a real stats endpoint.
+const String kDashPropertiesViewedKey = 'dash_properties_viewed';
+const String kDashPropertiesLikedKey = 'dash_properties_liked';
+const String kDashSearchesMadeKey = 'dash_searches_made';
+const String kDashRecentActivityKey = 'dash_recent_activity';
 
 class DashboardController extends GetxController {
   late final AuthController _authController;
@@ -23,6 +33,8 @@ class DashboardController extends GetxController {
   // Bottom navigation state
   final RxInt currentIndex = 2.obs; // Default to Discover tab (index 2)
   Worker? _authStatusWorker;
+
+  final GetStorage _storage = GetStorage();
 
   @override
   void onInit() {
@@ -114,14 +126,29 @@ class DashboardController extends GetxController {
 
   Future<Map<String, dynamic>> _loadUserStats() async {
     try {
-      // Analytics removed - return basic stats or empty data
+      // Aggregate real stats from existing controllers and persisted counters.
+      // Backend analytics endpoint is not available, so we derive values that
+      // already exist in the app rather than fabricating fake data.
+      final propertiesLiked = _storage.read<int>(kDashPropertiesLikedKey) ?? 0;
+      final searchesMade = _storage.read<int>(kDashSearchesMadeKey) ?? 0;
+      final propertiesViewed = _storage.read<int>(kDashPropertiesViewedKey) ?? 0;
+
+      int visitsScheduled = 0;
+      try {
+        if (Get.isRegistered<VisitsController>()) {
+          visitsScheduled = Get.find<VisitsController>().upcomingVisitsList.length;
+        }
+      } catch (e) {
+        DebugLogger.warning('Could not read visits count for stats: $e');
+      }
+
       return {
-        'properties_viewed': 0,
-        'properties_liked': 0,
-        'visits_scheduled': 0,
-        'searches_made': 0,
-        'time_spent_minutes': 0,
-        'favorite_location': 'N/A',
+        'properties_viewed': propertiesViewed,
+        'properties_liked': propertiesLiked,
+        'visits_scheduled': visitsScheduled,
+        'searches_made': searchesMade,
+        'time_spent_minutes': 0, // Not tracked locally; left as 0 (no fake data)
+        'favorite_location': _resolveFavoriteLocation(),
       };
     } catch (e, stackTrace) {
       DebugLogger.error('Error loading user stats', e, stackTrace);
@@ -129,33 +156,90 @@ class DashboardController extends GetxController {
     }
   }
 
+  String _resolveFavoriteLocation() {
+    try {
+      final location = _pageStateService.discoverState.value.selectedLocation;
+      if (location != null && location.name.trim().isNotEmpty) {
+        return location.name.trim();
+      }
+    } catch (_) {}
+    return 'N/A';
+  }
+
   Future<List<Map<String, dynamic>>> _loadRecentActivity() async {
     try {
-      // This would typically be a separate API call
-      // For now, we'll simulate recent activity based on available data
-      return [
-        {
-          'type': 'property_view',
-          'title': 'Viewed luxury apartment',
-          'timestamp': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
-          'icon': 'visibility',
-        },
-        {
-          'type': 'search',
-          'title': 'Searched for 2BHK apartments',
-          'timestamp': DateTime.now().subtract(const Duration(hours: 5)).toIso8601String(),
-          'icon': 'search',
-        },
-        {
-          'type': 'like',
-          'title': 'Liked villa in Bandra',
-          'timestamp': DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
-          'icon': 'favorite',
-        },
-      ];
+      // Recent activity is persisted locally as the user interacts with the
+      // app (see recordActivity). We never fabricate entries; if the list is
+      // empty, the UI shows an empty state.
+      final raw = _storage.read(kDashRecentActivityKey);
+      if (raw is List) {
+        final items = <Map<String, dynamic>>[];
+        for (final entry in raw) {
+          if (entry is Map) {
+            items.add(Map<String, dynamic>.from(entry));
+          }
+        }
+        // Keep only the 10 most recent entries
+        if (items.length > 10) {
+          items.removeRange(10, items.length);
+        }
+        return items;
+      }
+      return [];
     } catch (e, stackTrace) {
       DebugLogger.error('Error loading recent activity', e, stackTrace);
       return [];
+    }
+  }
+
+  /// Records a user activity locally so it can surface on the dashboard
+  /// without requiring a backend analytics endpoint. Keeps the 10 most
+  /// recent entries.
+  void recordActivity({required String type, required String title, String icon = 'visibility'}) {
+    try {
+      final entry = {
+        'type': type,
+        'title': title,
+        'timestamp': DateTime.now().toIso8601String(),
+        'icon': icon,
+      };
+
+      final raw = _storage.read(kDashRecentActivityKey);
+      final List<Map<String, dynamic>> items = [];
+      if (raw is List) {
+        for (final e in raw) {
+          if (e is Map) items.add(Map<String, dynamic>.from(e));
+        }
+      }
+      items.insert(0, entry);
+      if (items.length > 10) items.removeRange(10, items.length);
+      _storage.write(kDashRecentActivityKey, items);
+
+      // Update in-memory list so any open dashboard reflects it
+      recentActivity.assignAll(items);
+    } catch (e) {
+      DebugLogger.warning('Failed to record activity: $e');
+    }
+  }
+
+  /// Increments a persisted counter (used by feature controllers/hooks).
+  void incrementStat(String key, {int by = 1}) {
+    try {
+      final current = _storage.read<int>(key) ?? 0;
+      _storage.write(key, current + by);
+    } catch (e) {
+      DebugLogger.warning('Failed to increment stat $key: $e');
+    }
+  }
+
+  /// Decrements a persisted counter, never going below zero. Used to reverse
+  /// a previously recorded stat (e.g. swipe undo).
+  void decrementStat(String key, {int by = 1}) {
+    try {
+      final current = _storage.read<int>(key) ?? 0;
+      _storage.write(key, (current - by).clamp(0, 1 << 31));
+    } catch (e) {
+      DebugLogger.warning('Failed to decrement stat $key: $e');
     }
   }
 

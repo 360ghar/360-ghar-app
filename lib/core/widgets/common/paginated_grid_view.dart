@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:ghar360/core/utils/responsive.dart';
+
 class PaginatedGridView<T> extends StatefulWidget {
   final List<T> items;
   final Widget Function(BuildContext context, T item, int index) itemBuilder;
@@ -7,8 +9,17 @@ class PaginatedGridView<T> extends StatefulWidget {
   final bool hasMore;
   final bool isLoadingMore;
   final Future<void> Function() onRefresh;
-  final int crossAxisCount;
-  final double childAspectRatio;
+
+  /// Number of grid columns. When `null` (the default), the count is derived
+  /// from the current [WindowSizeClass]: compact→2, medium→3, expanded→4,
+  /// large→5. Pass an explicit value to lock it (backward compatible).
+  final int? crossAxisCount;
+
+  /// Ratio of item width to item height. When `null` (the default), the value
+  /// is derived from the [WindowSizeClass]: compact→0.75, medium→0.80,
+  /// expanded→0.82, large→0.85. Pass an explicit value to lock it.
+  final double? childAspectRatio;
+
   final EdgeInsets padding;
   final Widget? emptyWidget;
   final bool isLoading;
@@ -21,8 +32,8 @@ class PaginatedGridView<T> extends StatefulWidget {
     required this.hasMore,
     required this.isLoadingMore,
     required this.onRefresh,
-    this.crossAxisCount = 2,
-    this.childAspectRatio = 0.75,
+    this.crossAxisCount,
+    this.childAspectRatio,
     this.padding = const EdgeInsets.all(16),
     this.emptyWidget,
     this.isLoading = false,
@@ -86,6 +97,25 @@ class _PaginatedGridViewState<T> extends State<PaginatedGridView<T>> {
       );
     }
 
+    // Resolve responsive defaults when the caller omits an explicit value.
+    final sizeClass = context.windowSizeClass;
+    final crossAxisCount =
+        widget.crossAxisCount ??
+        switch (sizeClass) {
+          WindowSizeClass.compact => 2,
+          WindowSizeClass.medium => 3,
+          WindowSizeClass.expanded => 4,
+          WindowSizeClass.large => 5,
+        };
+    final childAspectRatio =
+        widget.childAspectRatio ??
+        switch (sizeClass) {
+          WindowSizeClass.compact => 0.75,
+          WindowSizeClass.medium => 0.80,
+          WindowSizeClass.expanded => 0.82,
+          WindowSizeClass.large => 0.85,
+        };
+
     return RefreshIndicator(
       color: colorScheme.primary,
       backgroundColor: colorScheme.surface,
@@ -94,10 +124,10 @@ class _PaginatedGridViewState<T> extends State<PaginatedGridView<T>> {
         controller: _scrollController,
         padding: widget.padding,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: widget.crossAxisCount,
+          crossAxisCount: crossAxisCount,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: widget.childAspectRatio,
+          childAspectRatio: childAspectRatio,
         ),
         itemCount: widget.items.length + (widget.hasMore ? 1 : 0),
         itemBuilder: (context, index) {

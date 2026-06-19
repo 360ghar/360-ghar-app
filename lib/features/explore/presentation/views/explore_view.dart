@@ -7,6 +7,7 @@ import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/utils/responsive.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
@@ -17,6 +18,9 @@ import 'package:ghar360/features/explore/presentation/widgets/property_horizonta
 
 class ExploreView extends GetView<ExploreController> {
   const ExploreView({super.key});
+
+  // Side panel width for the two-pane (expanded/large) layout.
+  static const double _sidePanelWidth = 360.0;
 
   @override
   Widget build(BuildContext context) {
@@ -113,17 +117,8 @@ class ExploreView extends GetView<ExploreController> {
           child: Center(child: Icon(Icons.map, size: 100, color: AppDesign.divider)),
         ),
 
-        // Loading overlay with progress
-        Obx(() {
-          if (controller.loadingProgress.value > 0) {
-            return LoadingStates.progressiveLoadingIndicator(
-              current: controller.loadingProgress.value,
-              total: controller.totalPages.value,
-              message: 'loading_properties'.tr,
-            );
-          }
-          return LoadingStates.mapLoadingOverlay(context);
-        }),
+        // Loading overlay
+        LoadingStates.mapLoadingOverlay(context),
       ],
     );
   }
@@ -147,7 +142,22 @@ class ExploreView extends GetView<ExploreController> {
     );
   }
 
+  /// Branches between the single-pane phone layout (compact/medium) and the
+  /// two-pane tablet layout (expanded/large).
   Widget _buildMapInterface(BuildContext context) {
+    final sizeClass = context.windowSizeClass;
+    final isTwoPane = sizeClass == WindowSizeClass.expanded || sizeClass == WindowSizeClass.large;
+
+    if (isTwoPane) {
+      return _buildTwoPaneMapInterface(context);
+    }
+    return _buildSinglePaneMapInterface(context);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Single-pane layout (compact / medium) — phone, visually unchanged.
+  // ---------------------------------------------------------------------------
+  Widget _buildSinglePaneMapInterface(BuildContext context) {
     return Stack(
       children: [
         // Main map (MapLibre + OpenFreeMap Liberty vector tiles)
@@ -310,6 +320,155 @@ class ExploreView extends GetView<ExploreController> {
           );
         }),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Two-pane layout (expanded / large) — iPad / tablet.
+  // ---------------------------------------------------------------------------
+  Widget _buildTwoPaneMapInterface(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Row(
+        children: [
+          // Left: map fills the remaining width with re-anchored overlays.
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Semantics(
+                        label: 'qa.explore.map',
+                        identifier: 'qa.explore.map',
+                        child: ExploreMap(controller: controller),
+                      ),
+                    ),
+                    // Map controls — anchored to the top-right of the *map pane*
+                    // (not the screen), so they never float over the side panel.
+                    Positioned(
+                      top: AppSpacing.sm + 4,
+                      right: AppSpacing.md,
+                      child: _buildMapControls(context),
+                    ),
+                    // Info panel — top-left of the map pane.
+                    Positioned(
+                      top: AppSpacing.sm + 4,
+                      left: AppSpacing.md,
+                      child: _buildInfoPanel(context),
+                    ),
+                    // Loading-more indicator — sits just above the panel's bottom.
+                    if (controller.state.value == ExploreState.loadingMore)
+                      Positioned(
+                        bottom: AppSpacing.md,
+                        left: AppSpacing.md,
+                        right: AppSpacing.md,
+                        child: _buildLoadingMoreChip(context),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+          // Right: fixed-width vertical property list panel.
+          _buildSidePanel(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidePanel(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final panelBg = isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream;
+    final borderColor = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
+    final textPrimary = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
+    final textSecondary = isDark ? AppDesignTokens.darkTextSecondary : AppDesignTokens.neutral500;
+    final dividerColor = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
+
+    return Container(
+      width: _sidePanelWidth,
+      decoration: BoxDecoration(
+        color: panelBg,
+        border: Border(left: BorderSide(color: borderColor, width: 1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Panel header — count + area summary (mirrors the info panel text).
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.sm,
+            ),
+            child: Obx(() {
+              final count = controller.properties.length;
+              return Row(
+                children: [
+                  Text(
+                    '$count',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: textPrimary),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      count == 1 ? 'property'.tr : 'properties'.tr,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: textSecondary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    controller.currentAreaText,
+                    style: TextStyle(fontSize: 12, color: textSecondary),
+                  ),
+                ],
+              );
+            }),
+          ),
+          Divider(height: 1, thickness: 1, color: dividerColor),
+          // Vertical property list.
+          Expanded(
+            child: PropertyHorizontalList(controller: controller, direction: Axis.vertical),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingMoreChip(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chipBg = (isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream).withValues(
+      alpha: 0.95,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: chipBg,
+        borderRadius: BorderRadius.circular(AppBorderRadius.sm),
+        border: Border.all(color: AppDesignTokens.neutral300, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              valueColor: AlwaysStoppedAnimation<Color>(AppDesignTokens.brandGold),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'loading_more_properties'.tr,
+            style: const TextStyle(fontSize: 12, color: AppDesignTokens.neutral500),
+          ),
+        ],
+      ),
     );
   }
 

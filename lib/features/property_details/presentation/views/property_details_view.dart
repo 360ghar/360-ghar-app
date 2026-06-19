@@ -7,6 +7,7 @@ import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/map/mini_map_view.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:ghar360/core/utils/responsive.dart';
 import 'package:ghar360/core/utils/share_utils.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/scroll_reveal_widget.dart';
@@ -78,6 +79,12 @@ class _PropertyContentViewState extends State<_PropertyContentView> {
     final controller = Get.find<LikesController>();
     final visitsController = Get.find<VisitsController>();
     final PropertyModel safeProperty = widget.property;
+    final sizeClass = context.windowSizeClass;
+    final useTwoPane = sizeClass == WindowSizeClass.expanded || sizeClass == WindowSizeClass.large;
+
+    final body = useTwoPane
+        ? _buildTwoPaneBody(context, safeProperty, controller, visitsController)
+        : _buildSingleColumnBody(context, safeProperty, controller, visitsController);
 
     return Semantics(
       label: 'qa.property_details.screen',
@@ -85,146 +92,258 @@ class _PropertyContentViewState extends State<_PropertyContentView> {
       child: Scaffold(
         key: const ValueKey('qa.property_details.screen'),
         backgroundColor: AppDesign.scaffoldBackground,
-        body: CustomScrollView(
-          slivers: [
-            // App Bar with Image
-            SliverAppBar(
-              expandedHeight: 380,
-              pinned: true,
-              backgroundColor: AppDesign.appBarBackground,
-              leading: _buildEditorialAppBarButton(
-                icon: Icon(Icons.arrow_back, color: AppDesign.textPrimary),
-                onPressed: Get.back,
-              ),
-              actions: [
-                Obx(
-                  () => _buildEditorialAppBarButton(
-                    icon: Icon(
-                      controller.isFavourite(safeProperty.id)
-                          ? Icons.favorite
-                          : Icons.favorite_border,
-                      color: controller.isFavourite(safeProperty.id)
-                          ? AppDesign.favoriteActive
-                          : AppDesign.textPrimary,
-                    ),
-                    onPressed: () {
-                      if (controller.isFavourite(safeProperty.id)) {
-                        controller.removeFromFavourites(safeProperty.id);
-                      } else {
-                        controller.addToFavourites(safeProperty.id);
-                      }
-                    },
-                  ),
-                ),
-                _buildEditorialAppBarButton(
-                  icon: Icon(Icons.share, color: AppDesign.textPrimary),
-                  onPressed: () => ShareUtils.shareProperty(safeProperty, context: context),
-                ),
-              ],
-              flexibleSpace: FlexibleSpaceBar(
-                background: PropertyDetailsImageGallery(property: safeProperty),
-              ),
-            ),
-
-            // Property Details Content
-            SliverToBoxAdapter(
-              child: Container(
-                color: AppDesign.scaffoldBackground,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Price and Title
-                      ScrollRevealWidget(
-                        index: 0,
-                        child: _buildPriceTitleSection(context, safeProperty),
-                      ),
-                      const SizedBox(height: 24),
-
-                      if (safeProperty.hasAnyMedia) ...[
-                        ScrollRevealWidget(
-                          index: 1,
-                          child: PropertyMediaBadges(property: safeProperty),
-                        ),
-                        const SizedBox(height: 12),
-                        ScrollRevealWidget(
-                          index: 2,
-                          child: PropertyMediaHub(
-                            property: safeProperty,
-                            googleMapsApiKey: dotenv.env['GOOGLE_PLACES_API_KEY'],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-
-                      // Property Features
-                      ScrollRevealWidget(
-                        index: 3,
-                        child: PropertyDetailsFeatures(property: safeProperty),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Description
-                      ScrollRevealWidget(
-                        index: 4,
-                        child: _buildDescriptionSection(context, safeProperty),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Highlights
-                      if ((safeProperty.features?.isNotEmpty ?? false))
-                        ..._buildHighlightsSection(context, safeProperty),
-                      const SizedBox(height: 24),
-
-                      // Property Information
-                      ScrollRevealWidget(
-                        index: 5,
-                        child: PropertyDetailsInfoSection(property: safeProperty),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Pricing Details
-                      ScrollRevealWidget(
-                        index: 6,
-                        child: PropertyDetailsPricingSection(property: safeProperty),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Builder Information
-                      if (safeProperty.builderName?.isNotEmpty == true) ...[
-                        ScrollRevealWidget(
-                          index: 7,
-                          child: PropertyDetailsContactSection(property: safeProperty),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-
-                      // Amenities
-                      ScrollRevealWidget(
-                        index: 8,
-                        child: _buildAmenitiesSection(context, safeProperty),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Location + Directions
-                      if (safeProperty.hasLocation) ..._buildLocationSection(context, safeProperty),
-
-                      const SizedBox(height: 100),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-
+        body: body,
         // Bottom Action Buttons
         bottomNavigationBar: SafeArea(
           top: false,
           child: _buildBottomBar(context, safeProperty, visitsController),
         ),
       ),
+    );
+  }
+
+  /// Phone / small-tablet layout: a single scrolling column with the gallery
+  /// in a pinned [SliverAppBar]. Pixel-identical to the pre-iPad layout on
+  /// [WindowSizeClass.compact]; the only change is the adaptive header height
+  /// cap on [WindowSizeClass.medium] so it does not dominate small tablets.
+  Widget _buildSingleColumnBody(
+    BuildContext context,
+    PropertyModel safeProperty,
+    LikesController controller,
+    VisitsController visitsController,
+  ) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    // Cap the header on medium widths so it does not swallow the viewport on
+    // small tablets / large phones in landscape. 380px on compact is unchanged.
+    final expandedHeight = responsiveValue<double>(
+      context,
+      compact: 380,
+      medium: 380 < screenHeight * 0.4 ? 380 : screenHeight * 0.4,
+      fallback: 380,
+    );
+
+    return CustomScrollView(
+      slivers: [
+        // App Bar with Image
+        SliverAppBar(
+          expandedHeight: expandedHeight,
+          pinned: true,
+          backgroundColor: AppDesign.appBarBackground,
+          leading: _buildEditorialAppBarButton(
+            icon: Icon(Icons.arrow_back, color: AppDesign.textPrimary),
+            onPressed: Get.back,
+          ),
+          actions: [
+            Obx(
+              () => _buildEditorialAppBarButton(
+                icon: Icon(
+                  controller.isFavourite(safeProperty.id) ? Icons.favorite : Icons.favorite_border,
+                  color: controller.isFavourite(safeProperty.id)
+                      ? AppDesign.favoriteActive
+                      : AppDesign.textPrimary,
+                ),
+                onPressed: () {
+                  if (controller.isFavourite(safeProperty.id)) {
+                    controller.removeFromFavourites(safeProperty.id);
+                  } else {
+                    controller.addToFavourites(safeProperty.id);
+                  }
+                },
+              ),
+            ),
+            _buildEditorialAppBarButton(
+              icon: Icon(Icons.share, color: AppDesign.textPrimary),
+              onPressed: () => ShareUtils.shareProperty(safeProperty, context: context),
+            ),
+          ],
+          flexibleSpace: FlexibleSpaceBar(
+            background: PropertyDetailsImageGallery(property: safeProperty),
+          ),
+        ),
+
+        // Property Details Content
+        SliverToBoxAdapter(
+          child: Container(
+            color: AppDesign.scaffoldBackground,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: _buildDetailSections(context, safeProperty),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// iPad / tablet layout ([WindowSizeClass.expanded] and [large]): a
+  /// master-detail split. The left pane is a sticky media column (image
+  /// gallery + action buttons), the right pane scrolls through all detail
+  /// sections. Both panes reuse the exact same section builders as the phone
+  /// layout, so content and behavior stay identical.
+  Widget _buildTwoPaneBody(
+    BuildContext context,
+    PropertyModel safeProperty,
+    LikesController controller,
+    VisitsController visitsController,
+  ) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    // Cap gallery height so the left pane does not stretch absurdly tall on
+    // large iPads. Keeps the media anchored near the top.
+    final galleryHeight = (screenHeight * 0.7) < 520.0 ? screenHeight * 0.7 : 520.0;
+    // Left media pane width: ~42% of the viewport, capped to keep it from
+    // growing too wide on desktop-class widths.
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final leftPaneWidth = screenWidth * 0.42 < 460.0 ? screenWidth * 0.42 : 460.0;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ---- Left: sticky media pane ----
+            SizedBox(
+              width: leftPaneWidth,
+              child: Column(
+                children: [
+                  // Action row (back / favourite / share) — mirrors the phone
+                  // SliverAppBar actions so all taps + QA semantics are kept.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 4, 4, 8),
+                    child: Row(
+                      children: [
+                        _buildEditorialAppBarButton(
+                          icon: Icon(Icons.arrow_back, color: AppDesign.textPrimary),
+                          onPressed: Get.back,
+                        ),
+                        const Spacer(),
+                        Obx(
+                          () => _buildEditorialAppBarButton(
+                            icon: Icon(
+                              controller.isFavourite(safeProperty.id)
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              color: controller.isFavourite(safeProperty.id)
+                                  ? AppDesign.favoriteActive
+                                  : AppDesign.textPrimary,
+                            ),
+                            onPressed: () {
+                              if (controller.isFavourite(safeProperty.id)) {
+                                controller.removeFromFavourites(safeProperty.id);
+                              } else {
+                                controller.addToFavourites(safeProperty.id);
+                              }
+                            },
+                          ),
+                        ),
+                        _buildEditorialAppBarButton(
+                          icon: Icon(Icons.share, color: AppDesign.textPrimary),
+                          onPressed: () => ShareUtils.shareProperty(safeProperty, context: context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Gallery card, rounded to read as a panel on tablet.
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: PropertyDetailsImageGallery(
+                        property: safeProperty,
+                        maxHeight: galleryHeight,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // ---- Right: scrollable details pane ----
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppDesign.scaffoldBackground,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Center(
+                    child: ConstrainedBox(
+                      // Keep detail text readable on wide panes.
+                      constraints: const BoxConstraints(maxWidth: 640),
+                      child: _buildDetailSections(context, safeProperty),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Shared detail-sections column used by both the single-column and
+  /// two-pane layouts. Identical order and spacing as the original phone view.
+  Widget _buildDetailSections(BuildContext context, PropertyModel safeProperty) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Price and Title
+        ScrollRevealWidget(index: 0, child: _buildPriceTitleSection(context, safeProperty)),
+        const SizedBox(height: 24),
+
+        if (safeProperty.hasAnyMedia) ...[
+          ScrollRevealWidget(index: 1, child: PropertyMediaBadges(property: safeProperty)),
+          const SizedBox(height: 12),
+          ScrollRevealWidget(
+            index: 2,
+            child: PropertyMediaHub(
+              property: safeProperty,
+              googleMapsApiKey: dotenv.env['GOOGLE_PLACES_API_KEY'],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+
+        // Property Features
+        ScrollRevealWidget(index: 3, child: PropertyDetailsFeatures(property: safeProperty)),
+        const SizedBox(height: 24),
+
+        // Description
+        ScrollRevealWidget(index: 4, child: _buildDescriptionSection(context, safeProperty)),
+        const SizedBox(height: 16),
+
+        // Highlights
+        if ((safeProperty.features?.isNotEmpty ?? false))
+          ..._buildHighlightsSection(context, safeProperty),
+        const SizedBox(height: 24),
+
+        // Property Information
+        ScrollRevealWidget(index: 5, child: PropertyDetailsInfoSection(property: safeProperty)),
+        const SizedBox(height: 24),
+
+        // Pricing Details
+        ScrollRevealWidget(index: 6, child: PropertyDetailsPricingSection(property: safeProperty)),
+        const SizedBox(height: 24),
+
+        // Builder Information
+        if (safeProperty.builderName?.isNotEmpty == true) ...[
+          ScrollRevealWidget(
+            index: 7,
+            child: PropertyDetailsContactSection(property: safeProperty),
+          ),
+          const SizedBox(height: 24),
+        ],
+
+        // Amenities
+        ScrollRevealWidget(index: 8, child: _buildAmenitiesSection(context, safeProperty)),
+        const SizedBox(height: 24),
+
+        // Location + Directions
+        if (safeProperty.hasLocation) ..._buildLocationSection(context, safeProperty),
+
+        const SizedBox(height: 100),
+      ],
     );
   }
 

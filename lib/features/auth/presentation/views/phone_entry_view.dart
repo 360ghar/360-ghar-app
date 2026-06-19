@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -100,49 +102,53 @@ class PhoneEntryView extends GetView<PhoneEntryController> {
   }
 
   Widget _buildSocialButtons() {
-    return Obx(() {
-      final showGoogle = controller.isGoogleAvailable;
-      final showApple = controller.isAppleAvailable;
-      if (!showGoogle && !showApple) {
-        return const SizedBox.shrink();
-      }
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 18),
-        child: Column(
-          children: [
-            // Apple first on iOS, at least as prominent as Google (HIG).
-            if (showApple) ...[
-              Semantics(
-                label: 'qa.auth.apple_signin',
-                identifier: 'qa.auth.apple_signin',
-                child: SizedBox(
-                  height: 54,
-                  child: SignInWithAppleButton(
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      controller.signInWithApple();
-                    },
-                    style: SignInWithAppleButtonStyle.white,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+    // Platform availability never changes at runtime, so it stays plain
+    // (non-reactive) code. Only the Google loading spinner needs an Obx —
+    // wrapping the whole tree caused GetX "improper use" on iOS, where the
+    // Google button (the only reactive read) is hidden (see RELEASE_IOS.md).
+    final showGoogle = controller.isGoogleAvailable && !Platform.isIOS;
+    final showApple = controller.isAppleAvailable;
+    if (!showGoogle && !showApple) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        children: [
+          // Apple first on iOS, at least as prominent as Google (HIG).
+          if (showApple) ...[
+            Semantics(
+              label: 'qa.auth.apple_signin',
+              identifier: 'qa.auth.apple_signin',
+              child: SizedBox(
+                height: 54,
+                child: SignInWithAppleButton(
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    controller.signInWithApple();
+                  },
+                  style: SignInWithAppleButtonStyle.white,
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              const SizedBox(height: 12),
-            ],
-            if (showGoogle)
-              GoogleSignInButton(
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (showGoogle)
+            Obx(
+              () => GoogleSignInButton(
                 isLoading: controller.isGoogleLoading.value,
                 onPressed: () {
                   HapticFeedback.selectionClick();
                   controller.signInWithGoogle();
                 },
               ),
-            const SizedBox(height: 18),
-            _buildDivider(),
-          ],
-        ),
-      );
-    });
+            ),
+          const SizedBox(height: 18),
+          _buildDivider(),
+        ],
+      ),
+    );
   }
 
   Widget _buildDivider() {

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/utils/responsive.dart';
+import 'package:ghar360/core/widgets/common/max_content_width.dart';
 
 class AuthPremiumShell extends StatelessWidget {
   const AuthPremiumShell({
@@ -28,6 +30,10 @@ class AuthPremiumShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    // On tablet/desktop widths the whole centered column (wordmark, title,
+    // glass card, chips, footer) is capped so it doesn't stretch edge-to-edge.
+    // `null` on compact → MaxContentWidth is a full-bleed no-op (phone unchanged).
+    final contentWidthCap = context.isTabletWidth ? 520.0 : null;
 
     return Scaffold(
       backgroundColor: AppDesign.overlayDark,
@@ -45,23 +51,26 @@ class AuthPremiumShell extends StatelessWidget {
                       return SingleChildScrollView(
                         child: ConstrainedBox(
                           constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(height: 24),
-                              _buildWordmark(),
-                              const SizedBox(height: 20),
-                              _buildTitle(theme),
-                              const SizedBox(height: 40),
-                              _buildGlassCard(theme),
-                              const SizedBox(height: 24),
-                              if (chips.isNotEmpty) ...[
-                                _buildChips(theme),
-                                const SizedBox(height: 16),
+                          child: MaxContentWidth(
+                            maxWidth: contentWidthCap,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(height: 24),
+                                _buildWordmark(),
+                                const SizedBox(height: 20),
+                                _buildTitle(theme),
+                                const SizedBox(height: 40),
+                                _buildGlassCard(theme),
+                                const SizedBox(height: 24),
+                                if (chips.isNotEmpty) ...[
+                                  _buildChips(theme),
+                                  const SizedBox(height: 16),
+                                ],
+                                if (footer != null) _buildFooter(theme),
+                                SizedBox(height: bottomPadding + 16),
                               ],
-                              if (footer != null) _buildFooter(theme),
-                              SizedBox(height: bottomPadding + 16),
-                            ],
+                            ),
                           ),
                         ),
                       );

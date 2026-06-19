@@ -11,6 +11,7 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
+import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 
 // Controllers should never talk to repositories directly
 
@@ -179,6 +180,12 @@ class DiscoverController extends GetxController {
   Future<void> swipeRight(PropertyModel property) async {
     if (!await _handleSwipe(property, true)) return;
     _recordSwipeStats(true);
+    _recordDashboardActivity(
+      type: 'like',
+      title: 'Liked ${property.title}',
+      icon: 'favorite',
+      liked: true,
+    );
     await _safeAnalytics(
       'property_like',
       () => AnalyticsService.likeProperty(property.id.toString()),
@@ -188,10 +195,35 @@ class DiscoverController extends GetxController {
   Future<void> swipeLeft(PropertyModel property) async {
     if (!await _handleSwipe(property, false)) return;
     _recordSwipeStats(false);
+    _recordDashboardActivity(
+      type: 'pass',
+      title: 'Passed ${property.title}',
+      icon: 'close',
+      liked: false,
+    );
     await _safeAnalytics(
       'property_pass',
       () => AnalyticsService.logVital('property_pass', params: {'id': property.id.toString()}),
     );
+  }
+
+  /// Records swipe activity to the locally-persisted dashboard stats so the
+  /// dashboard reflects real usage instead of fabricated data.
+  void _recordDashboardActivity({
+    required String type,
+    required String title,
+    required String icon,
+    required bool liked,
+  }) {
+    try {
+      if (!Get.isRegistered<DashboardController>()) return;
+      final dash = Get.find<DashboardController>();
+      dash.incrementStat(kDashPropertiesViewedKey);
+      if (liked) dash.incrementStat(kDashPropertiesLikedKey);
+      dash.recordActivity(type: type, title: title, icon: icon);
+    } catch (e) {
+      DebugLogger.warning('Failed to record dashboard activity: $e');
+    }
   }
 
   /// Returns false when the swipe was ignored as a duplicate gesture.
@@ -219,6 +251,9 @@ class DiscoverController extends GetxController {
           .catchError(
             (e) => DebugLogger.error('❌ Failed to record swipe for property ${property.id}: $e'),
           );
+
+      // Track for undo
+      _lastSwipe = (property: property, isLiked: isLiked);
 
       // After optimistic removal, check deck state
       if (deck.isEmpty) {
@@ -293,11 +328,67 @@ class DiscoverController extends GetxController {
 
   // ── Undo ──
 
+  /// Tracks the last swiped property so it can be restored by [undoLastSwipe].
+  /// Cleared after a successful undo or overwritten by the next swipe.
+  ({PropertyModel property, bool isLiked})? _lastSwipe;
+
+  bool get canUndo => _lastSwipe != null;
+
   Future<void> undoLastSwipe() async {
-    // Undo requires API support and tracking of last swiped property.
-    // Currently a placeholder.
-    DebugLogger.api('⏪ Undo not yet implemented');
-    AppToast.info('undo_success'.tr, 'undo_previous_property'.tr);
+    final last = _lastSwipe;
+    if (last == null) {
+      AppToast.info('undo_unavailable'.tr, 'undo_no_previous_property'.tr);
+      return;
+    }
+
+    try {
+      // Restore the property to the front of the discover deck so the user
+      // sees it again as the top card.
+      _pageStateService.reinsertPropertyToDiscover(last.property);
+
+      // Reverse the server-side swipe state and adjust likes list.
+      // Uses undoSwipe (not recordSwipe) so the property is NOT removed from
+      // the discover deck again.
+      unawaited(
+        _pageStateService
+            .undoSwipe(propertyId: last.property.id, originalIsLiked: last.isLiked)
+            .catchError((e) => DebugLogger.error('❌ Undo reverse-swipe failed: $e')),
+      );
+
+      // Update session stats
+      totalSwipesInSession.value = (totalSwipesInSession.value - 1).clamp(0, 1 << 31);
+      if (last.isLiked) {
+        likesInSession.value = (likesInSession.value - 1).clamp(0, 1 << 31);
+      } else {
+        passesInSession.value = (passesInSession.value - 1).clamp(0, 1 << 31);
+      }
+
+      // Reverse the persisted dashboard stats that the original swipe recorded
+      // via [_recordDashboardActivity]. Keeps persisted counters in sync so
+      // undo does not leave dashboard stats permanently inflated.
+      try {
+        if (Get.isRegistered<DashboardController>()) {
+          final dash = Get.find<DashboardController>();
+          dash.decrementStat(kDashPropertiesViewedKey);
+          if (last.isLiked) dash.decrementStat(kDashPropertiesLikedKey);
+        }
+      } catch (e) {
+        DebugLogger.warning('Failed to reverse dashboard stats on undo: $e');
+      }
+
+      // Clear so a second undo does nothing
+      _lastSwipe = null;
+
+      // Ensure the controller reflects the restored deck
+      if (state.value != DiscoverState.loaded && state.value != DiscoverState.prefetching) {
+        state.value = DiscoverState.loaded;
+      }
+
+      AppToast.success('undo_success'.tr, 'undo_previous_property'.tr);
+    } catch (e) {
+      DebugLogger.error('❌ Failed to undo last swipe: $e');
+      AppToast.error('action_failed'.tr, 'undo_failed'.tr);
+    }
   }
 
   // ── Computed getters ──

@@ -6,16 +6,6 @@ part of 'api_response_models.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-PaginationParams _$PaginationParamsFromJson(Map<String, dynamic> json) => PaginationParams(
-  page: (json['page'] as num?)?.toInt() ?? 1,
-  limit: (json['limit'] as num?)?.toInt() ?? 20,
-);
-
-Map<String, dynamic> _$PaginationParamsToJson(PaginationParams instance) => <String, dynamic>{
-  'page': instance.page,
-  'limit': instance.limit,
-};
-
 MessageResponse _$MessageResponseFromJson(Map<String, dynamic> json) =>
     MessageResponse(message: json['message'] as String, success: json['success'] as bool? ?? true);
 
@@ -34,24 +24,6 @@ Map<String, dynamic> _$ErrorResponseToJson(ErrorResponse instance) => <String, d
   'message': instance.message,
   'error_code': instance.errorCode,
   'details': instance.details,
-};
-
-SearchParams _$SearchParamsFromJson(Map<String, dynamic> json) => SearchParams(
-  query: json['query'] as String?,
-  latitude: (json['latitude'] as num?)?.toDouble(),
-  longitude: (json['longitude'] as num?)?.toDouble(),
-  radiusKm: (json['radius_km'] as num?)?.toInt() ?? 10,
-  page: (json['page'] as num?)?.toInt() ?? 1,
-  limit: (json['limit'] as num?)?.toInt() ?? 20,
-);
-
-Map<String, dynamic> _$SearchParamsToJson(SearchParams instance) => <String, dynamic>{
-  'query': instance.query,
-  'latitude': instance.latitude,
-  'longitude': instance.longitude,
-  'radius_km': instance.radiusKm,
-  'page': instance.page,
-  'limit': instance.limit,
 };
 
 NotificationSettings _$NotificationSettingsFromJson(Map<String, dynamic> json) =>

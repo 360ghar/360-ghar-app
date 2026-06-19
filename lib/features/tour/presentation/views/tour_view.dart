@@ -4,6 +4,7 @@ import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/webview_helper.dart';
+import 'package:ghar360/core/widgets/common/max_content_width.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class TourView extends StatefulWidget {
@@ -29,6 +30,11 @@ class _TourViewState extends State<TourView> {
     }
 
     final tourUrl = _tourUrl!;
+    // Respect the app theme for the WebView background so the tour doesn't
+    // show a jarring black backdrop in light mode (Improvement 8).
+    final isDark = Get.theme.brightness == Brightness.dark;
+    final bodyBackground = isDark ? '#000' : '#fff';
+    final webviewBackgroundColor = isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF);
     const consoleSilencer = '''
       if (window && window.console) {
         window.console.log = function() {};
@@ -41,7 +47,7 @@ class _TourViewState extends State<TourView> {
 
     controller = WebViewHelper.createBaseController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
+      ..setBackgroundColor(webviewBackgroundColor)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
@@ -58,6 +64,7 @@ class _TourViewState extends State<TourView> {
             controller?.runJavaScript('''
               document.body.style.margin = '0';
               document.body.style.padding = '0';
+              document.body.style.background = '$bodyBackground';
               var iframes = document.getElementsByTagName('iframe');
               for (var i = 0; i < iframes.length; i++) {
                 iframes[i].style.width = '100%';
@@ -83,7 +90,7 @@ class _TourViewState extends State<TourView> {
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
-            body { margin: 0; padding: 0; background: #000; }
+            body { margin: 0; padding: 0; background: $bodyBackground; }
             iframe { width: 100vw; height: 100vh; border: none; }
           </style>
           <script type="text/javascript">
@@ -103,6 +110,19 @@ class _TourViewState extends State<TourView> {
     } else {
       controller?.loadRequest(Uri.parse(tourUrl));
     }
+  }
+
+  @override
+  void dispose() {
+    // Release the WebViewController reference so it can be garbage-collected.
+    // webview_flutter 4.x does not expose a public dispose() on
+    // WebViewController; the underlying platform WebView is torn down when
+    // the WebViewWidget leaves the tree (its StatefulWidget disposes).
+    // Clearing the field avoids retaining a dangling controller across
+    // repeated tour navigations, which previously accumulated WebView
+    // instances in memory.
+    controller = null;
+    super.dispose();
   }
 
   String? _extractTourUrl(dynamic args) {
@@ -209,21 +229,28 @@ class _TourViewState extends State<TourView> {
         color: AppDesign.scaffoldBackground,
         child: Stack(
           children: [
-            // WebView with enhanced iframe support
-            Container(
-              margin: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: AppDesign.getCardShadow(),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Semantics(
-                  label: 'qa.tour.webview',
-                  identifier: 'qa.tour.webview',
-                  child: WebViewWidget(
-                    controller: controller!,
-                    gestureRecognizers: WebViewHelper.createInteractiveGestureRecognizers(),
+            // WebView with enhanced iframe support. On tablet/desktop widths the
+            // tour is capped + centered so the 360° viewport stays usable
+            // rather than stretching absurdly wide; on compact it is full-bleed
+            // (MaxContentWidth is a no-op there).
+            MaxContentWidth(
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: AppDesign.getCardShadow(),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Semantics(
+                      label: 'qa.tour.webview',
+                      identifier: 'qa.tour.webview',
+                      child: WebViewWidget(
+                        controller: controller!,
+                        gestureRecognizers: WebViewHelper.createInteractiveGestureRecognizers(),
+                      ),
+                    ),
                   ),
                 ),
               ),

@@ -399,6 +399,16 @@ class AuthRepository extends GetxService {
     await _supabase.auth.signOut();
   }
 
+  /// Submits an account-deletion request to the backend via
+  /// `POST /api/v1/auth/delete-account` (auth Bearer). The backend schedules the
+  /// erasure of the user's profile and personal data. Call [signOut] afterwards
+  /// to clear the local session; the auth-state listener routes to login.
+  Future<void> deleteAccount() async {
+    DebugLogger.auth('Deleting user account.');
+    await _api.post('/auth/delete-account');
+    DebugLogger.success('Account deletion acknowledged by backend.');
+  }
+
   // --- NONCE HELPERS (available for providers that require a hashed nonce) ---
 
   /// Generates a cryptographically-random raw nonce.

@@ -7,6 +7,8 @@ import 'package:get/get.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/utils/responsive.dart';
+import 'package:ghar360/core/widgets/common/max_content_width.dart';
 import 'package:ghar360/core/widgets/frosted_glass_container.dart';
 import 'package:ghar360/features/splash/presentation/controllers/splash_controller.dart';
 
@@ -16,12 +18,19 @@ class SplashView extends GetView<SplashController> {
   @override
   Widget build(BuildContext context) {
     final slides = _onboardingSlides;
+    // Width cap for the centered content column on tablet/desktop so the
+    // skip button, slide text and bottom dock don't stretch full-bleed.
+    // `null` on compact → MaxContentWidth is a full-bleed no-op (phone unchanged).
+    final dockWidthCap = context.isTabletWidth ? 560.0 : null;
+    final topPadding = MediaQuery.of(context).padding.top;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       key: const ValueKey('qa.splash.screen'),
       backgroundColor: AppDesign.overlayDark,
       body: Stack(
         children: [
+          // Full-bleed paged background (image + gradient stay edge-to-edge).
           PageView.builder(
             controller: controller.pageController,
             itemCount: slides.length,
@@ -32,35 +41,54 @@ class SplashView extends GetView<SplashController> {
               slideAnimation: controller.slideAnimation,
             ),
           ),
+          // Skip button anchored to the top-right of the centered content area,
+          // not the raw screen edge — so it tracks the capped column on tablets.
           Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            right: 20,
-            child: Semantics(
-              label: 'qa.splash.skip',
-              identifier: 'qa.splash.skip',
-              child: TextButton(
-                key: const ValueKey('qa.splash.skip'),
-                onPressed: controller.skipToHome,
-                style: TextButton.styleFrom(
-                  backgroundColor: AppDesign.overlayDark.withValues(alpha: 0.3),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                ),
-                child: Text(
-                  'skip'.tr,
-                  style: const TextStyle(
-                    color: AppDesign.overlayLight,
-                    fontWeight: FontWeight.w500,
+            top: topPadding + 16,
+            left: 0,
+            right: 0,
+            child: MaxContentWidth(
+              maxWidth: dockWidthCap,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 20),
+                  child: Semantics(
+                    label: 'qa.splash.skip',
+                    identifier: 'qa.splash.skip',
+                    child: TextButton(
+                      key: const ValueKey('qa.splash.skip'),
+                      onPressed: controller.skipToHome,
+                      style: TextButton.styleFrom(
+                        backgroundColor: AppDesign.overlayDark.withValues(alpha: 0.3),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      child: Text(
+                        'skip'.tr,
+                        style: const TextStyle(
+                          color: AppDesign.overlayLight,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
+          // Bottom dock centered + capped so it doesn't span the full iPad width.
           Positioned(
-            bottom: MediaQuery.of(context).padding.bottom + 20,
-            left: 20,
-            right: 20,
-            child: _FrostedBottomDock(slides: slides, controller: controller),
+            bottom: bottomInset + 20,
+            left: 0,
+            right: 0,
+            child: MaxContentWidth(
+              maxWidth: dockWidthCap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _FrostedBottomDock(slides: slides, controller: controller),
+              ),
+            ),
           ),
         ],
       ),
@@ -186,20 +214,22 @@ class _OnboardingSlideCard extends StatelessWidget {
       bottom: 0,
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildChip(context),
-              const SizedBox(height: 16),
-              _buildTitle(context),
-              const SizedBox(height: 12),
-              _buildDescription(context),
-              const SizedBox(height: 24),
-              _buildBulletPoints(context),
-            ],
+        child: MaxContentWidth(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildChip(context),
+                const SizedBox(height: 16),
+                _buildTitle(context),
+                const SizedBox(height: 12),
+                _buildDescription(context),
+                const SizedBox(height: 24),
+                _buildBulletPoints(context),
+              ],
+            ),
           ),
         ),
       ),

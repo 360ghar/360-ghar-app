@@ -1,3 +1,4 @@
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
@@ -26,58 +27,57 @@ class ErrorHandler {
         // ignore: invalid_use_of_visible_for_testing_member
         code = (error as dynamic).code ?? '';
       } catch (_) {}
-      switch (msg) {
-        case 'Invalid login credentials':
-          message = 'invalid_phone_password'.tr;
-          break;
-        case 'Email not confirmed':
-        case 'Phone not confirmed':
-        case 'User not confirmed':
-          message = 'verify_phone_first'.tr;
-          backgroundColor = AppDesign.warningAmber;
-          break;
-        case 'User already registered':
-          message = 'account_exists_signin'.tr;
-          break;
-        case 'Password should be at least 6 characters':
-          message = 'password_min_chars'.tr;
-          break;
-        case 'Invalid email':
-          message = 'enter_valid_email_error'.tr;
-          break;
-        case 'Invalid phone':
-        case 'Invalid phone number':
-          message = 'enter_valid_phone_error'.tr;
-          break;
-        case 'Signup disabled':
-          message = 'registration_disabled'.tr;
-          break;
-        case 'User not found':
-          message = 'no_account_found_error'.tr;
-          break;
-        case 'Wrong password':
-        case 'Incorrect password':
-          message = 'incorrect_password'.tr;
-          break;
-        case 'Email rate limit exceeded':
-        case 'SMS rate limit exceeded':
-          message = 'too_many_attempts'.tr;
-          backgroundColor = AppDesign.warningAmber;
-          break;
-        case 'Token has expired or is invalid':
-          message = 'otp_expired_request_new'.tr;
-          backgroundColor = AppDesign.warningAmber;
-          break;
-        case 'Session not found':
-          message = 'session_expired_signin'.tr;
-          break;
-        default:
-          if (code == 'otp_expired') {
-            message = 'otp_expired_request_new'.tr;
-            backgroundColor = AppDesign.warningAmber;
-          } else {
-            message = msg;
-          }
+      // Use normalized (lowercased) contains-matching so minor wording tweaks
+      // by Supabase don't silently break classification. Exact-string switch
+      // was previously brittle.
+      final m = msg.toLowerCase();
+      bool containsAny(List<String> phrases) => phrases.any(m.contains);
+
+      if (code == 'otp_expired' || containsAny(['token has expired', 'is invalid'])) {
+        message = 'otp_expired_request_new'.tr;
+        backgroundColor = AppDesign.warningAmber;
+      } else if (containsAny([
+        'invalid login credentials',
+        'wrong password',
+        'incorrect password',
+      ])) {
+        message = 'invalid_phone_password'.tr;
+      } else if (containsAny([
+        'email not confirmed',
+        'phone not confirmed',
+        'user not confirmed',
+      ])) {
+        message = 'verify_phone_first'.tr;
+        backgroundColor = AppDesign.warningAmber;
+      } else if (containsAny(['already registered', 'user already registered'])) {
+        message = 'account_exists_signin'.tr;
+      } else if (containsAny(['password should be at least', 'password must be at least'])) {
+        message = 'password_min_chars'.tr;
+      } else if (containsAny(['invalid email'])) {
+        message = 'enter_valid_email_error'.tr;
+      } else if (containsAny(['invalid phone', 'invalid phone number'])) {
+        message = 'enter_valid_phone_error'.tr;
+      } else if (containsAny(['signup disabled'])) {
+        message = 'registration_disabled'.tr;
+      } else if (containsAny(['user not found'])) {
+        message = 'no_account_found_error'.tr;
+      } else if (containsAny(['rate limit exceeded'])) {
+        message = 'too_many_attempts'.tr;
+        backgroundColor = AppDesign.warningAmber;
+      } else if (containsAny(['session not found'])) {
+        message = 'session_expired_signin'.tr;
+      } else {
+        // Unknown auth error: surface the raw message but log to Crashlytics
+        // so backend/auth changes are observable rather than silently broken.
+        try {
+          FirebaseCrashlytics.instance.recordError(
+            error,
+            StackTrace.current,
+            reason: 'Unrecognized AuthException message: "$msg"',
+            fatal: false,
+          );
+        } catch (_) {}
+        message = msg;
       }
     } else if (error is Exception) {
       message = error.toString().replaceAll('Exception: ', '');

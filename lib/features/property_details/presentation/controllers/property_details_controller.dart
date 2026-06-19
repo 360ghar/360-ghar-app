@@ -13,20 +13,25 @@ class PropertyDetailsController extends GetxController {
   final RxnString errorDetail = RxnString();
 
   late final PropertiesRepository _propertiesRepository;
-  late final VisitsController _visitsController;
 
   @override
   void onInit() {
     super.onInit();
     _propertiesRepository = Get.find<PropertiesRepository>();
-    _visitsController = Get.find<VisitsController>();
-    _ensureVisitsLoaded();
+    // VisitsController may not be registered when deep-linking directly to a
+    // property (it is registered by the dashboard binding). Guard against its
+    // absence so the property details screen still loads.
+    if (Get.isRegistered<VisitsController>()) {
+      _ensureVisitsLoaded();
+    }
     _resolveProperty();
   }
 
   void _ensureVisitsLoaded() {
-    if (!_visitsController.hasLoadedVisits.value && !_visitsController.isLoading.value) {
-      _visitsController.loadVisitsLazy();
+    if (!Get.isRegistered<VisitsController>()) return;
+    final visits = Get.find<VisitsController>();
+    if (!visits.hasLoadedVisits.value && !visits.isLoading.value) {
+      visits.loadVisitsLazy();
     }
   }
 

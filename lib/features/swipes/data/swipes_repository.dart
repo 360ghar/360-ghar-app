@@ -47,16 +47,21 @@ class SwipesRepository extends GetxService {
     required UnifiedFilterModel filters,
     double? latitude,
     double? longitude,
-    int page = 1,
+    String? cursor,
     int limit = 50,
     bool? isLiked,
   }) async {
     try {
       DebugLogger.api(
-        '📜 Fetching swipe history properties: page=$page, limit=$limit, liked=$isLiked, filters=${filters.activeFilterCount} active',
+        '📜 Fetching swipe history properties: cursor=${cursor == null ? "first" : "next"}, '
+        'limit=$limit, liked=$isLiked, filters=${filters.activeFilterCount} active',
       );
 
-      final queryParams = <String, dynamic>{'page': page.toString(), 'limit': limit.toString()};
+      final queryParams = <String, dynamic>{'limit': limit.toString()};
+      // Omit `cursor` on the first page; backend treats absence/null as page 1.
+      if (cursor != null && cursor.isNotEmpty) {
+        queryParams['cursor'] = cursor;
+      }
 
       if (latitude != null) queryParams['lat'] = latitude.toString();
       if (longitude != null) queryParams['lng'] = longitude.toString();
@@ -90,19 +95,16 @@ class SwipesRepository extends GetxService {
       final rawBody = apiResponse.body;
       final responseJson = rawBody is Map<String, dynamic>
           ? rawBody
-          : <String, dynamic>{'properties': const <dynamic>[]};
+          : <String, dynamic>{'items': const <dynamic>[]};
       final payload = ResponseParser.unwrapObject(responseJson);
 
       // Log raw API response for debugging
       DebugLogger.api('📊 [SWIPES_REPO] RAW API RESPONSE: $responseJson');
 
-      // Parse properties from the new response format
-      final List<dynamic> propertiesJson =
-          payload['properties'] as List<dynamic>? ??
-          payload['data'] as List<dynamic>? ??
-          const <dynamic>[];
+      // Parse properties from the uniform cursor envelope (`items`).
+      final List<dynamic> propertiesJson = payload['items'] as List<dynamic>? ?? const <dynamic>[];
       DebugLogger.api(
-        '📦 [SWIPES_REPO] New API format: Found ${propertiesJson.length} properties in response',
+        '📦 [SWIPES_REPO] Cursor envelope: Found ${propertiesJson.length} properties in response',
       );
 
       final properties = <PropertyModel>[];
@@ -123,36 +125,42 @@ class SwipesRepository extends GetxService {
         }
       }
 
-      // Create UnifiedPropertyResponse with the new format
-      final unifiedResponse = UnifiedPropertyResponse(
-        properties: properties,
-        total: payload['total'] ?? 0,
-        page: payload['page'] ?? 1,
-        totalPages: payload['total_pages'] ?? 1,
-        limit: payload['limit'] ?? limit,
-        filtersApplied: payload['filters_applied'] ?? filters.toJson(),
-        searchCenter: () {
-          try {
-            final searchCenterData = payload['search_center'];
-            if (searchCenterData != null) {
-              final lat = searchCenterData['latitude'] ?? searchCenterData['lat'];
-              final lng = searchCenterData['longitude'] ?? searchCenterData['lng'];
-              num? toNum(dynamic v) => v is num ? v : (v is String ? num.tryParse(v) : null);
-              final nLat = toNum(lat), nLng = toNum(lng);
-              if (nLat != null && nLng != null) {
-                return SearchCenter(latitude: nLat.toDouble(), longitude: nLng.toDouble());
-              }
+      // Build the uniform cursor-paginated response from backend signals.
+      final hasMore = ResponseParser.extractHasMore(payload);
+      final nextCursor = ResponseParser.extractNextCursor(payload);
+      final searchCenter = () {
+        try {
+          final searchCenterData = payload['search_center'];
+          if (searchCenterData != null) {
+            final lat = searchCenterData['latitude'] ?? searchCenterData['lat'];
+            final lng = searchCenterData['longitude'] ?? searchCenterData['lng'];
+            num? toNum(dynamic v) => v is num ? v : (v is String ? num.tryParse(v) : null);
+            final nLat = toNum(lat), nLng = toNum(lng);
+            if (nLat != null && nLng != null) {
+              return SearchCenter(latitude: nLat.toDouble(), longitude: nLng.toDouble());
             }
-            return null;
-          } catch (e) {
-            DebugLogger.error('❌ [SWIPES_REPO] Error creating SearchCenter: $e');
-            return null;
           }
-        }(),
+          return null;
+        } catch (e) {
+          DebugLogger.error('❌ [SWIPES_REPO] Error creating SearchCenter: $e');
+          return null;
+        }
+      }();
+
+      final unifiedResponse = UnifiedPropertyResponse(
+        items: properties,
+        limit: (payload['limit'] is num ? (payload['limit'] as num).toInt() : limit),
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+        filtersApplied: payload['filters_applied'] is Map
+            ? Map<String, dynamic>.from(payload['filters_applied'] as Map)
+            : filters.toJson(),
+        searchCenter: searchCenter,
       );
 
       DebugLogger.success(
-        '✅ Loaded ${unifiedResponse.properties.length} properties from swipe history (page ${unifiedResponse.page}/${unifiedResponse.totalPages})',
+        '✅ Loaded ${unifiedResponse.items.length} properties from swipe history '
+        '(hasMore=${unifiedResponse.hasMore}, nextCursor=${unifiedResponse.nextCursor != null})',
       );
       return unifiedResponse;
     } on AppException catch (e) {
@@ -166,20 +174,20 @@ class SwipesRepository extends GetxService {
     required UnifiedFilterModel filters,
     double? latitude,
     double? longitude,
-    int page = 1,
+    String? cursor,
     int limit = 50,
   }) async {
     try {
-      DebugLogger.api('❤️ Fetching liked properties (server-side): page=$page, limit=$limit');
+      DebugLogger.api('❤️ Fetching liked properties (server-side): cursor=$cursor, limit=$limit');
       final response = await getSwipeHistoryProperties(
         filters: filters,
         latitude: latitude,
         longitude: longitude,
-        page: page,
+        cursor: cursor,
         limit: limit,
         isLiked: true,
       );
-      return response.properties;
+      return response.items;
     } on AppException catch (e) {
       DebugLogger.error('❌ Failed to fetch liked properties: ${e.message}');
       rethrow;
@@ -191,20 +199,20 @@ class SwipesRepository extends GetxService {
     required UnifiedFilterModel filters,
     double? latitude,
     double? longitude,
-    int page = 1,
+    String? cursor,
     int limit = 50,
   }) async {
     try {
-      DebugLogger.api('👎 Fetching passed properties (server-side): page=$page, limit=$limit');
+      DebugLogger.api('👎 Fetching passed properties (server-side): cursor=$cursor, limit=$limit');
       final response = await getSwipeHistoryProperties(
         filters: filters,
         latitude: latitude,
         longitude: longitude,
-        page: page,
+        cursor: cursor,
         limit: limit,
         isLiked: false,
       );
-      return response.properties;
+      return response.items;
     } on AppException catch (e) {
       DebugLogger.error('❌ Failed to fetch passed properties: ${e.message}');
       rethrow;
@@ -216,23 +224,23 @@ class SwipesRepository extends GetxService {
     required UnifiedFilterModel filters,
     double? latitude,
     double? longitude,
-    int page = 1,
+    String? cursor,
     int limit = 50,
   }) async {
     try {
-      DebugLogger.api('❤️ Fetching liked properties: page=$page, limit=$limit');
+      DebugLogger.api('❤️ Fetching liked properties: cursor=$cursor, limit=$limit');
 
       final response = await getSwipeHistoryProperties(
         filters: filters,
         latitude: latitude,
         longitude: longitude,
-        page: page,
+        cursor: cursor,
         limit: limit,
         isLiked: true,
       );
 
-      DebugLogger.success('✅ Loaded ${response.properties.length} liked properties');
-      return response.properties;
+      DebugLogger.success('✅ Loaded ${response.items.length} liked properties');
+      return response.items;
     } on AppException catch (e) {
       DebugLogger.error('❌ Failed to fetch liked properties: ${e.message}');
       rethrow;
@@ -242,12 +250,12 @@ class SwipesRepository extends GetxService {
   // Get all swiped properties (both liked and disliked) with comprehensive filtering
   Future<UnifiedPropertyResponse> getAllSwipedProperties({
     required UnifiedFilterModel filters,
-    int page = 1,
+    String? cursor,
     int limit = 50,
   }) async {
     return await getSwipeHistoryProperties(
       filters: filters,
-      page: page,
+      cursor: cursor,
       limit: limit,
       isLiked: null, // Get both liked and disliked
     );

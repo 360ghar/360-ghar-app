@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
@@ -14,6 +15,7 @@ import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
+import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
@@ -56,10 +58,6 @@ class ExploreController extends GetxController {
   final RxString searchQuery = ''.obs;
   Timer? _searchDebouncer;
   Timer? _mapMoveDebouncer;
-
-  // Loading progress for sequential page loading
-  final RxInt loadingProgress = 0.obs;
-  final RxInt totalPages = 1.obs;
 
   // Selected property for bottom sheet
   final Rx<PropertyModel?> selectedProperty = Rx<PropertyModel?>(null);
@@ -263,6 +261,7 @@ class ExploreController extends GetxController {
 
           // Filter out properties with broken getters to avoid null check errors in UI
           final safeProperties = <PropertyModel>[];
+          var brokenCount = 0;
           for (int i = 0; i < pageState.properties.length; i++) {
             try {
               final property = pageState.properties[i];
@@ -274,11 +273,31 @@ class ExploreController extends GetxController {
 
               safeProperties.add(property);
             } catch (e, stackTrace) {
+              brokenCount++;
               DebugLogger.error(
                 '🚨 [EXPLORE_CONTROLLER] FOUND THE PROBLEMATIC PROPERTY at index $i: $e',
               );
               DebugLogger.debug('🚨 Stack trace: $stackTrace');
+              // Record to Crashlytics so backend data issues are observable
+              // rather than silently swallowed.
+              try {
+                FirebaseCrashlytics.instance.recordError(
+                  e,
+                  stackTrace,
+                  reason: 'Malformed property at index $i in explore debounce worker',
+                  fatal: false,
+                );
+              } catch (_) {}
             }
+          }
+
+          if (brokenCount > 0) {
+            // Surface to the user (once per batch) so broken data is visible
+            // instead of silently skipped.
+            AppToast.warning(
+              'partial_data_warning'.tr,
+              'partial_data_warning_message'.trParams({'count': '$brokenCount'}),
+            );
           }
 
           DebugLogger.debug(
@@ -602,6 +621,17 @@ class ExploreController extends GetxController {
     _searchDebouncer = Timer(const Duration(milliseconds: 300), () {
       DebugLogger.api('🔍 Searching properties: "$query"');
       _pageStateService.updatePageSearch(PageType.explore, query);
+      // Record search activity for locally-aggregated dashboard stats
+      try {
+        if (Get.isRegistered<DashboardController>()) {
+          Get.find<DashboardController>().incrementStat(kDashSearchesMadeKey);
+          Get.find<DashboardController>().recordActivity(
+            type: 'search',
+            title: 'Searched "$query"',
+            icon: 'search',
+          );
+        }
+      } catch (_) {}
     });
   }
 

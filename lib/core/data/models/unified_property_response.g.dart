@@ -8,14 +8,15 @@ part of 'unified_property_response.dart';
 
 UnifiedPropertyResponse _$UnifiedPropertyResponseFromJson(Map<String, dynamic> json) =>
     UnifiedPropertyResponse(
-      properties: (json['properties'] as List<dynamic>)
-          .map((e) => PropertyModel.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      total: (json['total'] as num).toInt(),
-      page: (json['page'] as num).toInt(),
-      limit: (json['limit'] as num).toInt(),
-      totalPages: (json['total_pages'] as num).toInt(),
-      filtersApplied: json['filters_applied'] as Map<String, dynamic>,
+      items:
+          (json['items'] as List<dynamic>?)
+              ?.map((e) => PropertyModel.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      limit: (json['limit'] as num?)?.toInt() ?? 20,
+      nextCursor: json['next_cursor'] as String?,
+      hasMore: json['has_more'] as bool? ?? false,
+      filtersApplied: json['filters_applied'] as Map<String, dynamic>? ?? const <String, dynamic>{},
       searchCenter: json['search_center'] == null
           ? null
           : SearchCenter.fromJson(json['search_center'] as Map<String, dynamic>),
@@ -23,11 +24,10 @@ UnifiedPropertyResponse _$UnifiedPropertyResponseFromJson(Map<String, dynamic> j
 
 Map<String, dynamic> _$UnifiedPropertyResponseToJson(UnifiedPropertyResponse instance) =>
     <String, dynamic>{
-      'properties': instance.properties.map((e) => e.toJson()).toList(),
-      'total': instance.total,
-      'page': instance.page,
+      'items': instance.items.map((e) => e.toJson()).toList(),
       'limit': instance.limit,
-      'total_pages': instance.totalPages,
+      'next_cursor': instance.nextCursor,
+      'has_more': instance.hasMore,
       'filters_applied': instance.filtersApplied,
       'search_center': instance.searchCenter?.toJson(),
     };

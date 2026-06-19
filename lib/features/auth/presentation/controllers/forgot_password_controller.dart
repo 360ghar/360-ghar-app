@@ -29,6 +29,13 @@ class ForgotPasswordController extends GetxController with OtpResendTimer {
 
   bool get isEmail => looksLikeEmail.value;
 
+  /// Masked form of the reset target (email/phone), for display on the
+  /// set-new-password step so the user can confirm which account is being reset.
+  String get maskedIdentifier {
+    final id = identifierController.text.trim();
+    return id.isEmpty ? '' : IdentifierUtils.mask(id);
+  }
+
   void togglePasswordVisibility() {
     isPasswordVisible.value = !isPasswordVisible.value;
   }

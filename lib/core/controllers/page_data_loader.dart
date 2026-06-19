@@ -70,7 +70,7 @@ class PageDataLoader {
         _activeLoads.add(pageType);
         activeLoadRegistered = true;
         _pageState.updatePageState(pageType, state.copyWith(isLoading: true, error: null));
-        await _fetchAndUpdatePage(pageType, page: 1);
+        await _fetchAndUpdatePage(pageType);
       } else {
         // We have cached data: return immediately and revalidate in
         // background when asked or stale
@@ -81,7 +81,7 @@ class PageDataLoader {
           _pageState.notifyPageRefreshing(pageType, true);
           _pageState.updatePageState(pageType, state.copyWith(isRefreshing: true, error: null));
           unawaited(
-            _fetchAndUpdatePage(pageType, page: 1)
+            _fetchAndUpdatePage(pageType)
                 .catchError((e, stackTrace) {
                   DebugLogger.error('❌ Background refresh failed for ${pageType.name}', e);
                   final current = _pageState.getStateForPage(pageType);
@@ -157,6 +157,18 @@ class PageDataLoader {
         return;
       }
 
+      // Cursor must be present to load the next page; if it's missing the
+      // backend has signalled the terminal page and there's nothing to fetch.
+      final cursor = state.nextCursor;
+      if (cursor == null || cursor.isEmpty) {
+        DebugLogger.warning(
+          '⚠️ No next cursor for ${pageType.name} while loading more. '
+          'Marking page terminal.',
+        );
+        _pageState.updatePageState(pageType, state.copyWith(isLoadingMore: false, hasMore: false));
+        return;
+      }
+
       if (pageType == PageType.likes) {
         final isLikedSegment =
             (state.getAdditionalData<String>('currentSegment') ?? 'liked') == 'liked';
@@ -164,18 +176,17 @@ class PageDataLoader {
           filters: state.filters.copyWith(searchQuery: state.searchQuery),
           latitude: loc.latitude,
           longitude: loc.longitude,
-          page: state.currentPage + 1,
+          cursor: cursor,
           limit: 50,
           isLiked: isLikedSegment,
         );
-        final newProperties = [...state.properties, ...response.properties];
+        final newProperties = [...state.properties, ...response.items];
         _pageState.updatePageState(
           pageType,
           state.copyWith(
             properties: newProperties,
-            currentPage: state.currentPage + 1,
-            totalPages: response.totalPages,
-            hasMore: response.hasMore,
+            nextCursor: response.nextCursor,
+            hasMore: response.hasMorePages,
             isLoadingMore: false,
           ),
         );
@@ -185,20 +196,19 @@ class PageDataLoader {
           latitude: loc.latitude,
           longitude: loc.longitude,
           radiusKm: (state.filters.radiusKm ?? 10.0).clamp(5.0, 50.0),
-          page: state.currentPage + 1,
+          cursor: cursor,
           limit: pageType == PageType.discover ? 20 : 50,
           excludeSwiped: pageType == PageType.discover,
           useCache: true,
         );
 
-        final newProperties = [...state.properties, ...response.properties];
+        final newProperties = [...state.properties, ...response.items];
         _pageState.updatePageState(
           pageType,
           state.copyWith(
             properties: newProperties,
-            currentPage: state.currentPage + 1,
-            totalPages: response.totalPages,
-            hasMore: response.hasMore,
+            nextCursor: response.nextCursor,
+            hasMore: response.hasMorePages,
             isLoadingMore: false,
           ),
         );
@@ -245,10 +255,10 @@ class PageDataLoader {
     loadPageData(PageType.likes, forceRefresh: true);
   }
 
-  // Internal: fetch page data and update state
-  Future<void> _fetchAndUpdatePage(PageType pageType, {required int page}) async {
+  // Internal: fetch first page of data and update state (cursor reset to null).
+  Future<void> _fetchAndUpdatePage(PageType pageType) async {
     // Track latency for first property load analytics
-    if (!_firstPropertyLoadedFired && page == 1) {
+    if (!_firstPropertyLoadedFired) {
       _firstLoadStartedAt ??= DateTime.now();
     }
     final state = _pageState.getStateForPage(pageType);
@@ -256,7 +266,7 @@ class PageDataLoader {
     loc ??= await _locationController.getInitialLocation();
 
     DebugLogger.debug(
-      '📡 [DATA_LOADER] _fetchAndUpdatePage ${pageType.name} page=$page '
+      '📡 [DATA_LOADER] _fetchAndUpdatePage ${pageType.name} '
       'loc=${loc.latitude},${loc.longitude} '
       'filters=${state.filters.activeFilterCount}',
     );
@@ -268,7 +278,7 @@ class PageDataLoader {
         filters: state.filters.copyWith(searchQuery: state.searchQuery),
         latitude: loc.latitude,
         longitude: loc.longitude,
-        page: page,
+        cursor: null,
         limit: 50,
         isLiked: isLikedSegment,
       );
@@ -276,11 +286,10 @@ class PageDataLoader {
       _pageState.updatePageState(
         pageType,
         state.copyWith(
-          properties: resp.properties,
+          properties: resp.items,
           selectedLocation: loc,
-          currentPage: page,
-          totalPages: resp.totalPages,
-          hasMore: resp.hasMore,
+          nextCursor: resp.nextCursor,
+          hasMore: resp.hasMorePages,
           isLoading: false,
           isRefreshing: false,
           lastFetched: DateTime.now(),
@@ -296,23 +305,23 @@ class PageDataLoader {
       latitude: loc.latitude,
       longitude: loc.longitude,
       radiusKm: (state.filters.radiusKm ?? 10.0).clamp(5.0, 50.0),
-      page: page,
+      cursor: null,
       limit: pageType == PageType.discover ? 20 : 50,
       excludeSwiped: pageType == PageType.discover,
       useCache: true,
     );
     DebugLogger.debug(
-      '📡 [DATA_LOADER] Received ${resp.properties.length} properties for '
-      '${pageType.name} (page=$page, hasMore=${resp.hasMore})',
+      '📡 [DATA_LOADER] Received ${resp.items.length} properties for '
+      '${pageType.name} (hasMore=${resp.hasMorePages}, '
+      'nextCursor=${resp.nextCursor != null})',
     );
     _pageState.updatePageState(
       pageType,
       state.copyWith(
-        properties: resp.properties,
+        properties: resp.items,
         selectedLocation: loc,
-        currentPage: page,
-        totalPages: resp.totalPages,
-        hasMore: resp.hasMore,
+        nextCursor: resp.nextCursor,
+        hasMore: resp.hasMorePages,
         isLoading: false,
         isRefreshing: false,
         lastFetched: DateTime.now(),
@@ -321,10 +330,7 @@ class PageDataLoader {
     );
 
     // Fire first_property_loaded analytics once per session
-    if (!_firstPropertyLoadedFired &&
-        page == 1 &&
-        resp.properties.isNotEmpty &&
-        _firstLoadStartedAt != null) {
+    if (!_firstPropertyLoadedFired && resp.items.isNotEmpty && _firstLoadStartedAt != null) {
       _firstPropertyLoadedFired = true;
       final latency = DateTime.now().difference(_firstLoadStartedAt!);
       AnalyticsService.firstPropertyLoaded(latencyMs: latency.inMilliseconds);

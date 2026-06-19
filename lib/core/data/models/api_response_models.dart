@@ -18,70 +18,10 @@ enum SortBy {
   relevance,
 }
 
-@JsonSerializable()
-class PaginationParams {
-  final int page;
-  final int limit;
-
-  const PaginationParams({this.page = 1, this.limit = 20})
-    : assert(page > 0, 'page must be > 0'),
-      assert(limit > 0, 'limit must be > 0');
-
-  factory PaginationParams.fromJson(Map<String, dynamic> json) => _$PaginationParamsFromJson(json);
-
-  Map<String, dynamic> toJson() => _$PaginationParamsToJson(this);
-
-  int getOffset() => (page - 1) * limit;
-}
-
-// Note: Using manual fromJson/toJson for generic type support
-class PaginatedResponse<T> {
-  final List<T> items;
-  final int total;
-  final int page;
-  final int limit;
-  @JsonKey(name: 'total_pages')
-  final int totalPages;
-  @JsonKey(name: 'has_next')
-  final bool hasNext;
-  @JsonKey(name: 'has_prev')
-  final bool hasPrev;
-
-  const PaginatedResponse({
-    required this.items,
-    required this.total,
-    required this.page,
-    required this.limit,
-    required this.totalPages,
-    required this.hasNext,
-    required this.hasPrev,
-  });
-
-  factory PaginatedResponse.fromJson(
-    Map<String, dynamic> json,
-    T Function(Object? json) fromJsonT,
-  ) {
-    return PaginatedResponse<T>(
-      items: (json['items'] as List<dynamic>).map((e) => fromJsonT(e)).toList(),
-      total: json['total'] as int,
-      page: json['page'] as int,
-      limit: json['limit'] as int,
-      totalPages: json['total_pages'] as int,
-      hasNext: json['has_next'] as bool,
-      hasPrev: json['has_prev'] as bool,
-    );
-  }
-
-  Map<String, dynamic> toJson(Object Function(T value) toJsonT) => {
-    'items': items.map((e) => toJsonT(e)).toList(),
-    'total': total,
-    'page': page,
-    'limit': limit,
-    'total_pages': totalPages,
-    'has_next': hasNext,
-    'has_prev': hasPrev,
-  };
-}
+// Note: legacy page/offset-based PaginationParams, PaginatedResponse<T>, and
+// SearchParams were removed during the cursor-pagination migration. All list
+// endpoints now use the uniform `{items, next_cursor, has_more, limit}`
+// envelope consumed by [UnifiedPropertyResponse].
 
 @JsonSerializable()
 class MessageResponse {
@@ -107,30 +47,6 @@ class ErrorResponse {
   factory ErrorResponse.fromJson(Map<String, dynamic> json) => _$ErrorResponseFromJson(json);
 
   Map<String, dynamic> toJson() => _$ErrorResponseToJson(this);
-}
-
-@JsonSerializable()
-class SearchParams {
-  final String? query;
-  final double? latitude;
-  final double? longitude;
-  @JsonKey(name: 'radius_km')
-  final int radiusKm;
-  final int page;
-  final int limit;
-
-  const SearchParams({
-    this.query,
-    this.latitude,
-    this.longitude,
-    this.radiusKm = 10,
-    this.page = 1,
-    this.limit = 20,
-  });
-
-  factory SearchParams.fromJson(Map<String, dynamic> json) => _$SearchParamsFromJson(json);
-
-  Map<String, dynamic> toJson() => _$SearchParamsToJson(this);
 }
 
 @JsonSerializable()

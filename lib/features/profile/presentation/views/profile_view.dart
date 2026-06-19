@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 
 import 'package:get/get.dart';
 
-import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/mixins/theme_mixin.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/widgets/common/max_content_width.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
+import 'package:ghar360/features/profile/presentation/controllers/profile_controller.dart';
 
-class ProfileView extends GetView<AuthController> with ThemeMixin {
+class ProfileView extends GetView<ProfileController> with ThemeMixin {
   const ProfileView({super.key});
 
   @override
@@ -26,7 +27,7 @@ class ProfileView extends GetView<AuthController> with ThemeMixin {
             final Widget child;
             final Key key;
 
-            if (controller.isLoading.value) {
+            if (controller.isLoading) {
               key = const ValueKey('loading');
               child = Center(child: CircularProgressIndicator(color: AppDesign.loadingIndicator));
             } else {
@@ -41,111 +42,118 @@ class ProfileView extends GetView<AuthController> with ThemeMixin {
                 );
               } else {
                 key = const ValueKey('content');
-                child = SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildProfileHeader(context, user),
-                      const SizedBox(height: 32),
+                child = MaxContentWidth(
+                  // Cap the settings list so it stays centered and readable on
+                  // tablet/desktop widths. On compact (phone) widths
+                  // MaxContentWidth is a no-op (full-bleed) so the phone layout
+                  // is visually unchanged.
+                  maxWidth: 720,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildProfileHeader(context, user),
+                        const SizedBox(height: 32),
 
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildSectionHeader(context, 'account_section'.tr),
-                            const SizedBox(height: 8),
-                            Column(
-                              children: [
-                                _buildMenuItem(
-                                  context: context,
-                                  icon: Icons.favorite_outline,
-                                  title: 'my_preferences'.tr,
-                                  subtitle: 'property_preferences_filters'.tr,
-                                  qaKey: 'qa.profile.menu.preferences',
-                                  onTap: () => Get.toNamed(AppRoutes.preferences),
-                                  showDivider: true,
-                                ),
-                                _buildMenuItem(
-                                  context: context,
-                                  icon: Icons.calculate_outlined,
-                                  title: 'tools_calculators'.tr,
-                                  subtitle: 'tools_calculators_subtitle'.tr,
-                                  qaKey: 'qa.profile.menu.tools',
-                                  onTap: () => Get.toNamed(AppRoutes.tools),
-                                  showDivider: false,
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 32),
-
-                            _buildSectionHeader(context, 'support_section'.tr),
-                            const SizedBox(height: 8),
-                            Column(
-                              children: [
-                                _buildMenuItem(
-                                  context: context,
-                                  icon: Icons.security,
-                                  title: 'privacy_security'.tr,
-                                  subtitle: 'account_security_settings'.tr,
-                                  qaKey: 'qa.profile.menu.privacy',
-                                  onTap: () => Get.toNamed(AppRoutes.privacy),
-                                  showDivider: true,
-                                ),
-                                _buildMenuItem(
-                                  context: context,
-                                  icon: Icons.help_outline,
-                                  title: 'help'.tr,
-                                  subtitle: 'get_help_contact_support'.tr,
-                                  qaKey: 'qa.profile.menu.help',
-                                  onTap: () => Get.toNamed(AppRoutes.help),
-                                  showDivider: true,
-                                ),
-                                _buildMenuItem(
-                                  context: context,
-                                  icon: Icons.bug_report_outlined,
-                                  title: 'report_a_bug'.tr,
-                                  subtitle: 'report_a_bug_subtitle'.tr,
-                                  qaKey: 'qa.profile.menu.report_bug',
-                                  onTap: () => Get.toNamed(
-                                    AppRoutes.feedback,
-                                    arguments: {'initialBugType': BugType.uiBug},
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSectionHeader(context, 'account_section'.tr),
+                              const SizedBox(height: 8),
+                              Column(
+                                children: [
+                                  _buildMenuItem(
+                                    context: context,
+                                    icon: Icons.favorite_outline,
+                                    title: 'my_preferences'.tr,
+                                    subtitle: 'property_preferences_filters'.tr,
+                                    qaKey: 'qa.profile.menu.preferences',
+                                    onTap: () => Get.toNamed(AppRoutes.preferences),
+                                    showDivider: true,
                                   ),
-                                  showDivider: true,
-                                ),
-                                _buildMenuItem(
-                                  context: context,
-                                  icon: Icons.lightbulb_outline,
-                                  title: 'request_a_feature'.tr,
-                                  subtitle: 'request_a_feature_subtitle'.tr,
-                                  qaKey: 'qa.profile.menu.request_feature',
-                                  onTap: () => Get.toNamed(
-                                    AppRoutes.feedback,
-                                    arguments: {'initialBugType': BugType.featureRequest},
+                                  _buildMenuItem(
+                                    context: context,
+                                    icon: Icons.calculate_outlined,
+                                    title: 'tools_calculators'.tr,
+                                    subtitle: 'tools_calculators_subtitle'.tr,
+                                    qaKey: 'qa.profile.menu.tools',
+                                    onTap: () => Get.toNamed(AppRoutes.tools),
+                                    showDivider: false,
                                   ),
-                                  showDivider: true,
-                                ),
-                                _buildMenuItem(
-                                  context: context,
-                                  icon: Icons.info_outline,
-                                  title: 'about'.tr,
-                                  subtitle: 'app_version_information'.tr,
-                                  qaKey: 'qa.profile.menu.about',
-                                  onTap: () => Get.toNamed(AppRoutes.about),
-                                  showDivider: false,
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
 
-                            const SizedBox(height: 48),
+                              const SizedBox(height: 32),
 
-                            _buildLogoutButton(context),
-                            const SizedBox(height: 48),
-                          ],
+                              _buildSectionHeader(context, 'support_section'.tr),
+                              const SizedBox(height: 8),
+                              Column(
+                                children: [
+                                  _buildMenuItem(
+                                    context: context,
+                                    icon: Icons.security,
+                                    title: 'privacy_security'.tr,
+                                    subtitle: 'account_security_settings'.tr,
+                                    qaKey: 'qa.profile.menu.privacy',
+                                    onTap: () => Get.toNamed(AppRoutes.privacy),
+                                    showDivider: true,
+                                  ),
+                                  _buildMenuItem(
+                                    context: context,
+                                    icon: Icons.help_outline,
+                                    title: 'help'.tr,
+                                    subtitle: 'get_help_contact_support'.tr,
+                                    qaKey: 'qa.profile.menu.help',
+                                    onTap: () => Get.toNamed(AppRoutes.help),
+                                    showDivider: true,
+                                  ),
+                                  _buildMenuItem(
+                                    context: context,
+                                    icon: Icons.bug_report_outlined,
+                                    title: 'report_a_bug'.tr,
+                                    subtitle: 'report_a_bug_subtitle'.tr,
+                                    qaKey: 'qa.profile.menu.report_bug',
+                                    onTap: () => Get.toNamed(
+                                      AppRoutes.feedback,
+                                      arguments: {'initialBugType': BugType.uiBug},
+                                    ),
+                                    showDivider: true,
+                                  ),
+                                  _buildMenuItem(
+                                    context: context,
+                                    icon: Icons.lightbulb_outline,
+                                    title: 'request_a_feature'.tr,
+                                    subtitle: 'request_a_feature_subtitle'.tr,
+                                    qaKey: 'qa.profile.menu.request_feature',
+                                    onTap: () => Get.toNamed(
+                                      AppRoutes.feedback,
+                                      arguments: {'initialBugType': BugType.featureRequest},
+                                    ),
+                                    showDivider: true,
+                                  ),
+                                  _buildMenuItem(
+                                    context: context,
+                                    icon: Icons.info_outline,
+                                    title: 'about'.tr,
+                                    subtitle: 'app_version_information'.tr,
+                                    qaKey: 'qa.profile.menu.about',
+                                    onTap: () => Get.toNamed(AppRoutes.about),
+                                    showDivider: false,
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 48),
+
+                              _buildLogoutButton(context),
+                              const SizedBox(height: 48),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 );
               }
@@ -267,6 +275,20 @@ class ProfileView extends GetView<AuthController> with ThemeMixin {
                   textAlign: TextAlign.center,
                 ),
               ],
+
+              // Profile completion progress bar (Improvement 10).
+              // Surfaces UserModel.profileCompletionPercentage which was
+              // previously computed but never shown.
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: _ProfileCompletionBar(
+                  percentage: user.profileCompletionPercentage,
+                  onImprove: user.profileCompletionPercentage < 100
+                      ? () => Get.toNamed(AppRoutes.editProfile)
+                      : null,
+                ),
+              ),
             ],
           ),
         ),
@@ -400,6 +422,67 @@ class ProfileView extends GetView<AuthController> with ThemeMixin {
               controller.signOut();
             },
             child: Text('logout'.tr, style: TextStyle(color: theme.colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Displays the profile completion percentage as a progress bar with a label.
+/// Tapping it (when incomplete) navigates to edit-profile.
+class _ProfileCompletionBar extends StatelessWidget {
+  final int percentage;
+  final VoidCallback? onImprove;
+
+  const _ProfileCompletionBar({required this.percentage, this.onImprove});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isComplete = percentage >= 100;
+    final progress = (percentage / 100).clamp(0.0, 1.0);
+
+    return GestureDetector(
+      onTap: onImprove,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                isComplete
+                    ? 'profile_complete'.tr
+                    : 'profile_complete_percent'.trParams({'percent': '$percentage'}),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              if (!isComplete) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.chevron_right,
+                  size: 16,
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: colorScheme.onSurface.withValues(alpha: 0.1),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                isComplete ? AppDesign.successGreen : AppDesign.primaryYellow,
+              ),
+            ),
           ),
         ],
       ),

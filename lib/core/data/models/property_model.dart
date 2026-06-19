@@ -1,3 +1,4 @@
+import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/property_image_model.dart';
 import 'package:json_annotation/json_annotation.dart';
 
@@ -397,37 +398,37 @@ class PropertyModel {
   String get propertyTypeString {
     switch (propertyType) {
       case PropertyType.house:
-        return 'House';
+        return 'property_type_house'.tr;
       case PropertyType.apartment:
-        return 'Apartment';
+        return 'property_type_apartment'.tr;
       case PropertyType.builderFloor:
-        return 'Builder Floor';
+        return 'property_type_builder_floor'.tr;
       case PropertyType.room:
-        return 'Room';
+        return 'property_type_room'.tr;
       case PropertyType.villa:
-        return 'Villa';
+        return 'property_type_villa'.tr;
       case PropertyType.plot:
-        return 'Plot';
+        return 'property_type_plot'.tr;
       case PropertyType.condo:
-        return 'Condo';
+        return 'property_type_condo'.tr;
       case PropertyType.penthouse:
-        return 'Penthouse';
+        return 'property_type_penthouse'.tr;
       case PropertyType.studio:
-        return 'Studio';
+        return 'property_type_studio'.tr;
       case PropertyType.loft:
-        return 'Loft';
+        return 'property_type_loft'.tr;
       case PropertyType.pg:
-        return 'PG';
+        return 'property_type_pg'.tr;
       case PropertyType.flatmate:
-        return 'Flatmate';
+        return 'property_type_flatmate'.tr;
       case PropertyType.office:
-        return 'Office';
+        return 'property_type_office'.tr;
       case PropertyType.shop:
-        return 'Shop';
+        return 'property_type_shop'.tr;
       case PropertyType.warehouse:
-        return 'Warehouse';
+        return 'property_type_warehouse'.tr;
       default:
-        return 'Property';
+        return 'property_type_default'.tr;
     }
   }
 

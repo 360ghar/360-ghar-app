@@ -5,6 +5,8 @@ import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:ghar360/core/utils/responsive.dart';
+import 'package:ghar360/core/widgets/common/max_content_width.dart';
 import 'package:ghar360/core/widgets/common/segmented_control.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 import 'package:ghar360/features/visits/presentation/widgets/agent_card.dart';
@@ -12,21 +14,38 @@ import 'package:ghar360/features/visits/presentation/widgets/visit_card.dart';
 import 'package:ghar360/features/visits/presentation/widgets/visits_skeleton_loaders.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+/// Formats a phone number for dialing/WhatsApp.
+///
+/// Indian-number handling: a bare 10-digit number (no country code) is
+/// assumed to be Indian and prefixed with `91`. Any number that already
+/// carries a country code (starts with `+`, or is 11+ digits with a leading
+/// `91`/`0`) is passed through unchanged so international users and numbers
+/// with extensions are not misformatted.
 String _formatIndianNumber(String? raw) {
   if (raw == null || raw.trim().isEmpty) return '';
   final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
   if (digits.isEmpty) return '';
+
+  // Already has an explicit `+` country code — keep the original (preserves
+  // extensions and international formatting).
+  if (raw.trim().startsWith('+')) {
+    return digits;
+  }
+
   String d = digits.replaceFirst(RegExp(r'^0+'), '');
+
+  // Leading 91 with 12 digits total: already an Indian international form.
   if (d.startsWith('91') && d.length == 12) {
     return d;
   }
+
+  // Exactly 10 digits with no country code: assume Indian, prefix 91.
   if (d.length == 10) {
     return '91$d';
   }
-  if (d.length > 10) {
-    final last10 = d.substring(d.length - 10);
-    return '91$last10';
-  }
+
+  // Anything longer than 10 digits that isn't a recognised Indian form is
+  // treated as international — pass through unchanged so we don't mangle it.
   return d;
 }
 
@@ -152,9 +171,49 @@ class _VisitsContent extends StatefulWidget {
 class _VisitsContentState extends State<_VisitsContent> {
   TabController? _tabController;
 
+  // Scroll controllers for the two paginated tabs. Each tab's SingleChildScrollView
+  // is driven by its own controller so the bottom-of-list detection can call
+  // [VisitsController.loadMoreVisits] without interfering with the other tab.
+  final ScrollController _upcomingScrollController = ScrollController();
+  final ScrollController _pastScrollController = ScrollController();
+
+  /// Threshold (pixels) from the bottom at which we trigger the next page.
+  /// Keep small enough to feel "infinite" but generous enough to mask the
+  /// network round-trip on slow connections.
+  static const double _loadMoreThresholdPx = 240;
+
+  // Listener attachment is guarded by [_upcomingListenerAttached] /
+  // [_pastListenerAttached] so rebuilds of the tab body never re-register
+  // the same callback on the [ScrollController] (which would fire twice
+  // per scroll event). [ScrollController.hasListeners] is a protected
+  // ChangeNotifier member, so we cannot rely on it from outside the
+  // subclass.
+  bool _upcomingListenerAttached = false;
+  bool _pastListenerAttached = false;
+
+  void _onUpcomingScroll() => _onScrollForPagination(_upcomingScrollController);
+  void _onPastScroll() => _onScrollForPagination(_pastScrollController);
+
   void _onTabChanged() {
     if (_tabController != null && !_tabController!.indexIsChanging) {
       setState(() {});
+    }
+  }
+
+  void _onScrollForPagination(ScrollController controller) {
+    if (!controller.hasClients) return;
+    final position = controller.position;
+    // Near-bottom detection: remaining pixels below the viewport are within
+    // [_loadMoreThresholdPx]. Skip when the controller is already loading the
+    // next page or when the server signalled the terminal page.
+    final remaining = position.maxScrollExtent - position.pixels;
+    if (remaining <= _loadMoreThresholdPx) {
+      final ctrl = widget.controller;
+      if (!ctrl.isLoadingMore.value && ctrl.hasMore.value) {
+        // Fire-and-forget: loadMoreVisits owns its own error/isLoadingMore
+        // lifecycle so the UI never gets stuck mid-pagination.
+        ctrl.loadMoreVisits();
+      }
     }
   }
 
@@ -172,6 +231,10 @@ class _VisitsContentState extends State<_VisitsContent> {
   @override
   void dispose() {
     _tabController?.removeListener(_onTabChanged);
+    _upcomingScrollController.removeListener(_onUpcomingScroll);
+    _pastScrollController.removeListener(_onPastScroll);
+    _upcomingScrollController.dispose();
+    _pastScrollController.dispose();
     super.dispose();
   }
 
@@ -179,64 +242,74 @@ class _VisitsContentState extends State<_VisitsContent> {
   Widget build(BuildContext context) {
     final selectedIndex = _tabController?.index ?? 0;
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenPadding,
-            AppSpacing.sm,
-            AppSpacing.screenPadding,
-            0,
+    return MaxContentWidth(
+      // Center the visits content and cap width on tablet/desktop. On compact
+      // (phone) widths MaxContentWidth is full-bleed (no-op).
+      maxWidth: 840,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding,
+              AppSpacing.sm,
+              AppSpacing.screenPadding,
+              0,
+            ),
+            child: SegmentedControl(
+              selectedIndex: selectedIndex,
+              segments: [
+                SegmentItem(
+                  label: 'scheduled_visits'.tr,
+                  badge: widget.controller.upcomingVisits.length,
+                  semanticsLabel: 'qa.visits.tab.scheduled',
+                  semanticsIdentifier: 'qa.visits.tab.scheduled',
+                ),
+                SegmentItem(
+                  label: 'past_visits'.tr,
+                  badge: widget.controller.pastVisits.length,
+                  semanticsLabel: 'qa.visits.tab.past',
+                  semanticsIdentifier: 'qa.visits.tab.past',
+                ),
+              ],
+              onSegmentChanged: (index) => _tabController?.animateTo(index),
+            ),
           ),
-          child: SegmentedControl(
-            selectedIndex: selectedIndex,
-            segments: [
-              SegmentItem(
-                label: 'scheduled_visits'.tr,
-                badge: widget.controller.upcomingVisits.length,
-                semanticsLabel: 'qa.visits.tab.scheduled',
-                semanticsIdentifier: 'qa.visits.tab.scheduled',
-              ),
-              SegmentItem(
-                label: 'past_visits'.tr,
-                badge: widget.controller.pastVisits.length,
-                semanticsLabel: 'qa.visits.tab.past',
-                semanticsIdentifier: 'qa.visits.tab.past',
-              ),
-            ],
-            onSegmentChanged: (index) => _tabController?.animateTo(index),
+          Obx(
+            () => widget.controller.isBackgroundRefreshing.value
+                ? const LinearProgressIndicator(
+                    minHeight: 2,
+                    backgroundColor: AppDesign.transparent,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
+                  )
+                : const SizedBox.shrink(),
           ),
-        ),
-        Obx(
-          () => widget.controller.isBackgroundRefreshing.value
-              ? const LinearProgressIndicator(
-                  minHeight: 2,
-                  backgroundColor: AppDesign.transparent,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
-                )
-              : const SizedBox.shrink(),
-        ),
-        Container(
-          color: AppDesign.scaffoldBackground,
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.screenPadding),
-            child: _buildRelationshipManagerCard(),
+          Container(
+            color: AppDesign.scaffoldBackground,
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.screenPadding),
+              child: _buildRelationshipManagerCard(),
+            ),
           ),
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController!,
-            children: [_buildUpcomingVisitsTab(), _buildPastVisitsTab()],
+          Expanded(
+            child: TabBarView(
+              controller: _tabController!,
+              children: [_buildUpcomingVisitsTab(), _buildPastVisitsTab()],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildUpcomingVisitsTab() {
+    if (!_upcomingListenerAttached) {
+      _upcomingScrollController.addListener(_onUpcomingScroll);
+      _upcomingListenerAttached = true;
+    }
     return RefreshIndicator(
       onRefresh: widget.controller.refreshVisits,
       child: SingleChildScrollView(
+        controller: _upcomingScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         child: Column(
@@ -247,22 +320,10 @@ class _VisitsContentState extends State<_VisitsContent> {
                 return _buildEmptyState('no_visits'.tr, 'no_upcoming_visits_subtitle'.tr);
               }
 
-              return Column(
-                children: widget.controller.upcomingVisits
-                    .map(
-                      (visit) => VisitCard(
-                        visit: visit,
-                        isUpcoming: true,
-                        onTap: () {
-                          if (visit.property != null) {
-                            Get.toNamed(AppRoutes.propertyDetails, arguments: visit.property);
-                          }
-                        },
-                        onReschedule: () => _showRescheduleDialog(visit),
-                        onCancel: () => _showCancelDialog(visit),
-                      ),
-                    )
-                    .toList(),
+              return _buildResponsiveVisitGrid(
+                context,
+                widget.controller.upcomingVisits,
+                isUpcoming: true,
               );
             }),
           ],
@@ -272,9 +333,14 @@ class _VisitsContentState extends State<_VisitsContent> {
   }
 
   Widget _buildPastVisitsTab() {
+    if (!_pastListenerAttached) {
+      _pastScrollController.addListener(_onPastScroll);
+      _pastListenerAttached = true;
+    }
     return RefreshIndicator(
       onRefresh: widget.controller.refreshVisits,
       child: SingleChildScrollView(
+        controller: _pastScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         child: Column(
@@ -285,28 +351,96 @@ class _VisitsContentState extends State<_VisitsContent> {
                 return _buildEmptyState('no_visits'.tr, 'no_past_visits_subtitle'.tr);
               }
 
-              return Column(
-                children: widget.controller.pastVisits
-                    .map(
-                      (visit) => VisitCard(
-                        visit: visit,
-                        isUpcoming: false,
-                        onTap: () {
-                          if (visit.property != null) {
-                            Get.toNamed(AppRoutes.propertyDetails, arguments: visit.property);
-                          }
-                        },
-                        onReschedule: () {},
-                        onCancel: () {},
-                      ),
-                    )
-                    .toList(),
+              return _buildResponsiveVisitGrid(
+                context,
+                widget.controller.pastVisits,
+                isUpcoming: false,
               );
             }),
           ],
         ),
       ),
     );
+  }
+
+  /// Lays out visit cards responsively. On compact (phone) widths cards stack
+  /// in a single column exactly as before. On tablet/desktop widths they
+  /// reflow into a multi-column grid (2 columns on medium, 3 on expanded+)
+  /// using a [Wrap] so each card keeps its natural height — visit cards have
+  /// variable content (special-requirements notes, action buttons) that does
+  /// not fit a fixed aspect-ratio grid cell.
+  Widget _buildResponsiveVisitGrid(
+    BuildContext context,
+    List<VisitModel> visits, {
+    required bool isUpcoming,
+  }) {
+    final columns = _visitColumnCount(context);
+
+    // Single column → original stacked layout (unchanged on phones).
+    if (columns <= 1) {
+      return Column(
+        children: visits
+            .map(
+              (visit) => VisitCard(
+                visit: visit,
+                isUpcoming: isUpcoming,
+                onTap: () => _openPropertyDetails(visit),
+                onReschedule: isUpcoming ? () => _showRescheduleDialog(visit) : () {},
+                onCancel: isUpcoming ? () => _showCancelDialog(visit) : () {},
+              ),
+            )
+            .toList(),
+      );
+    }
+
+    // Multi-column grid via Wrap. Each card is constrained to an equal fraction
+    // of the available width; the card's own internal layout (fixed 72px thumb
+    // + flexible text) adapts to the narrower cell.
+    const spacing = AppSpacing.listItemSpacing;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: visits
+              .map(
+                (visit) => SizedBox(
+                  width: cardWidth,
+                  child: VisitCard(
+                    visit: visit,
+                    isUpcoming: isUpcoming,
+                    onTap: () => _openPropertyDetails(visit),
+                    onReschedule: isUpcoming ? () => _showRescheduleDialog(visit) : () {},
+                    onCancel: isUpcoming ? () => _showCancelDialog(visit) : () {},
+                  ),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+
+  /// Visit-card column count by window-size class. Compact stays single-column
+  /// (phone layout unchanged); medium+ reflows into a grid.
+  static int _visitColumnCount(BuildContext context) {
+    switch (context.windowSizeClass) {
+      case WindowSizeClass.compact:
+        return 1;
+      case WindowSizeClass.medium:
+        return 2;
+      case WindowSizeClass.expanded:
+        return 3;
+      case WindowSizeClass.large:
+        return 3;
+    }
+  }
+
+  void _openPropertyDetails(VisitModel visit) {
+    if (visit.property != null) {
+      Get.toNamed(AppRoutes.propertyDetails, arguments: visit.property);
+    }
   }
 
   Widget _buildRelationshipManagerCard() {

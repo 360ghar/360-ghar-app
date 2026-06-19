@@ -15,6 +15,8 @@ import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_co
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
 
 class VisitsController extends GetxController {
+  static const int _visitPageSize = 25;
+
   late final VisitsRemoteDatasource _visitsRemoteDatasource;
   late final AuthController _authController;
 
@@ -22,10 +24,13 @@ class VisitsController extends GetxController {
   final RxList<VisitModel> upcomingVisitsList = <VisitModel>[].obs;
   final RxList<VisitModel> pastVisitsList = <VisitModel>[].obs;
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final RxBool isLoadingAgent = false.obs;
   final RxBool isBookingVisit = false.obs;
   final Rxn<AppException> error = Rxn<AppException>(); // Changed from RxString to Rxn<AppException>
   final Rxn<AgentModel> relationshipManager = Rxn<AgentModel>();
+  final Rxn<String> nextCursor = Rxn<String>();
+  final RxBool hasMore = true.obs;
   bool _backgroundRefreshInFlight = false;
   final RxBool isBackgroundRefreshing = false.obs;
   Worker? _authStatusWorker;
@@ -156,70 +161,46 @@ class VisitsController extends GetxController {
       }
       error.value = null;
 
-      // Get all visits and compute groups to match product requirements
-      DebugLogger.info('🔄 Fetching visits summary...');
-      final summary = await _visitsRemoteDatasource.fetchVisitsSummary(page: 1, limit: 100);
-      var allVisits = summary.visits;
+      // Reset pagination cursor on initial load / explicit refresh so the
+      // cursor loop restarts at page 1.
+      nextCursor.value = null;
+      hasMore.value = true;
+
+      // Fetch the first page only. Subsequent pages are fetched lazily by
+      // [loadMoreVisits] (driven by the scroll listener in VisitsView).
+      DebugLogger.info('🔄 Fetching visits page (cursor=first, limit=$_visitPageSize)...');
+      final page = await _visitsRemoteDatasource.fetchVisitsSummary(
+        cursor: null,
+        limit: _visitPageSize,
+      );
+      nextCursor.value = page.nextCursor;
+      hasMore.value = page.hasMore;
+
+      final fetched = page.visits;
       DebugLogger.info(
-        '📥 Visits fetched: total=${allVisits.length} | example=${allVisits.isNotEmpty ? '{id: ${allVisits.first.id}, status: ${allVisits.first.status}, date: ${allVisits.first.scheduledDate.toIso8601String()}}' : 'none'}',
+        '📥 Visits fetched: total=${fetched.length} | '
+        'hasMore=${page.hasMore} | nextCursor=${page.nextCursor != null} | '
+        'example=${fetched.isNotEmpty ? '{id: ${fetched.first.id}, status: ${fetched.first.status}, date: ${fetched.first.scheduledDate.toIso8601String()}}' : 'none'}',
       );
 
-      // Fallback: some backends may return counts without visits payload on summary
-      if (allVisits.isEmpty && summary.total > 0) {
-        DebugLogger.warning(
-          '⚠️ Summary returned no visits list but total=${summary.total}. Falling back to upcoming + past endpoints',
-        );
-        final results = await Future.wait([
-          _visitsRemoteDatasource.fetchUpcomingVisits(),
-          _visitsRemoteDatasource.fetchPastVisits(),
-        ]);
-        allVisits = [...results[0].visits, ...results[1].visits];
-        DebugLogger.info('📥 Fallback combined visits: ${allVisits.length}');
-      }
-
-      final now = DateTime.now();
-      final upcomingVisits = allVisits
-          .where(
-            (v) =>
-                now.isBefore(v.scheduledDate) &&
-                v.status != VisitStatus.completed &&
-                v.status != VisitStatus.cancelled,
-          )
-          .toList();
-      final pastVisits = allVisits
-          .where(
-            (v) =>
-                !now.isBefore(v.scheduledDate) ||
-                v.status == VisitStatus.completed ||
-                v.status == VisitStatus.cancelled,
-          )
-          .toList();
-
-      // Sort per spec
-      upcomingVisits.sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
-      pastVisits.sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate));
-
-      // Update reactive variables
-      upcomingVisitsList.assignAll(upcomingVisits);
-      pastVisitsList.assignAll(pastVisits);
-      visits.assignAll([...upcomingVisits, ...pastVisits]);
+      _replaceWithPageVisits(fetched);
 
       // Detailed per-item logs for diagnostics
-      if (upcomingVisits.isEmpty) {
+      if (upcomingVisitsList.isEmpty) {
         DebugLogger.warning('🟡 No upcoming visits after compute');
       } else {
-        DebugLogger.info('🟢 Upcoming visits (${upcomingVisits.length}):');
-        for (final v in upcomingVisits) {
+        DebugLogger.info('🟢 Upcoming visits (${upcomingVisitsList.length}):');
+        for (final v in upcomingVisitsList) {
           DebugLogger.info(
             '  • id=${v.id} status=${v.status} date=${v.scheduledDate.toIso8601String()}',
           );
         }
       }
-      if (pastVisits.isEmpty) {
+      if (pastVisitsList.isEmpty) {
         DebugLogger.warning('🟠 No past visits after compute');
       } else {
-        DebugLogger.info('🔵 Past visits (${pastVisits.length}):');
-        for (final v in pastVisits) {
+        DebugLogger.info('🔵 Past visits (${pastVisitsList.length}):');
+        for (final v in pastVisitsList) {
           DebugLogger.info(
             '  • id=${v.id} status=${v.status} date=${v.scheduledDate.toIso8601String()}',
           );
@@ -230,7 +211,9 @@ class VisitsController extends GetxController {
       _sortVisits();
 
       DebugLogger.success(
-        '✅ Visits loaded successfully: ${allVisits.length} total, ${upcomingVisits.length} upcoming, ${pastVisits.length} past',
+        '✅ Visits loaded: ${fetched.length} on first page '
+        '(${upcomingVisitsList.length} upcoming, ${pastVisitsList.length} past, '
+        'hasMore=${page.hasMore})',
       );
     } catch (e, stackTrace) {
       final appException = e is AppException
@@ -247,6 +230,138 @@ class VisitsController extends GetxController {
         isLoading.value = false;
       }
     }
+  }
+
+  /// Loads the next page of visits using the stored [nextCursor].
+  ///
+  /// Driven by the scroll listener in [VisitsView]. Idempotent: returns
+  /// immediately when a load is already in flight, when there are no more
+  /// pages, or when the backend has signalled the terminal page
+  /// (`nextCursor == null`).
+  Future<void> loadMoreVisits() async {
+    if (!_authController.isAuthenticated) return;
+
+    if (isLoading.value || isLoadingMore.value) {
+      DebugLogger.info('🔁 Visit load already in flight, skipping loadMoreVisits');
+      return;
+    }
+
+    if (!hasMore.value) {
+      DebugLogger.info('🔚 No more visits pages (hasMore=false)');
+      return;
+    }
+
+    final cursor = nextCursor.value;
+    if (cursor == null || cursor.isEmpty) {
+      // Backend signalled terminal page; mark hasMore=false so subsequent
+      // scroll events short-circuit without making a network call.
+      hasMore.value = false;
+      DebugLogger.info('🔚 nextCursor is null while hasMore=true; marking terminal page');
+      return;
+    }
+
+    try {
+      isLoadingMore.value = true;
+      error.value = null;
+
+      DebugLogger.info('🔄 Fetching next visits page (cursor=set, limit=$_visitPageSize)...');
+      final page = await _visitsRemoteDatasource.fetchVisitsSummary(
+        cursor: cursor,
+        limit: _visitPageSize,
+      );
+      nextCursor.value = page.nextCursor;
+      hasMore.value = page.hasMore;
+
+      final fetched = page.visits;
+      DebugLogger.info(
+        '📥 Visits fetched (loadMore): total=${fetched.length} | '
+        'hasMore=${page.hasMore} | nextCursor=${page.nextCursor != null}',
+      );
+
+      _mergePageVisits(fetched);
+      _sortVisits();
+
+      DebugLogger.success(
+        '✅ Loaded more visits: +${fetched.length} '
+        '(${upcomingVisitsList.length} upcoming, ${pastVisitsList.length} past, '
+        'hasMore=${page.hasMore})',
+      );
+    } catch (e, stackTrace) {
+      final appException = e is AppException
+          ? e
+          : ServerException('Failed to load more visits: ${e.toString()}', code: 'LOAD_MORE_ERROR');
+      error.value = appException;
+      DebugLogger.error('❌ Error loading more visits: $e', e, stackTrace);
+    } finally {
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Replaces the entire visit list with the supplied page. Used by the
+  /// initial / refresh path which always starts from the first cursor.
+  void _replaceWithPageVisits(List<VisitModel> pageVisits) {
+    final now = DateTime.now();
+    final upcoming =
+        pageVisits
+            .where(
+              (v) =>
+                  now.isBefore(v.scheduledDate) &&
+                  v.status != VisitStatus.completed &&
+                  v.status != VisitStatus.cancelled,
+            )
+            .toList()
+          ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
+    final past =
+        pageVisits
+            .where(
+              (v) =>
+                  !now.isBefore(v.scheduledDate) ||
+                  v.status == VisitStatus.completed ||
+                  v.status == VisitStatus.cancelled,
+            )
+            .toList()
+          ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate));
+
+    upcomingVisitsList.assignAll(upcoming);
+    pastVisitsList.assignAll(past);
+    visits.assignAll([...upcoming, ...past]);
+  }
+
+  /// Merges a paginated page into the existing visit lists, deduplicating by
+  /// visit id so cursor rewinds or backend overlaps never produce duplicates.
+  void _mergePageVisits(List<VisitModel> pageVisits) {
+    if (pageVisits.isEmpty) return;
+
+    final existingIds = visits.map((v) => v.id).toSet();
+    final fresh = pageVisits.where((v) => !existingIds.contains(v.id)).toList();
+    if (fresh.isEmpty) return;
+
+    visits.addAll(fresh);
+
+    final now = DateTime.now();
+    final upcoming =
+        visits
+            .where(
+              (v) =>
+                  now.isBefore(v.scheduledDate) &&
+                  v.status != VisitStatus.completed &&
+                  v.status != VisitStatus.cancelled,
+            )
+            .toList()
+          ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
+    final past =
+        visits
+            .where(
+              (v) =>
+                  !now.isBefore(v.scheduledDate) ||
+                  v.status == VisitStatus.completed ||
+                  v.status == VisitStatus.cancelled,
+            )
+            .toList()
+          ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate));
+
+    upcomingVisitsList.assignAll(upcoming);
+    pastVisitsList.assignAll(past);
   }
 
   // Pull-to-refresh method
@@ -372,34 +487,11 @@ class VisitsController extends GetxController {
     }
   }
 
-  // Fallback method for non-authenticated users
-  void bookVisitLocal(dynamic property, DateTime visitDateTime) {
-    final int propertyId = property is PropertyModel
-        ? int.tryParse(property.id.toString()) ?? 0
-        : property.id as int;
-    final String propertyTitle = property is PropertyModel
-        ? property.title
-        : property.title?.toString() ?? 'Property';
-
-    final visit = VisitModel(
-      id: DateTime.now().millisecondsSinceEpoch,
-      userId: 1, // Default user ID
-      propertyId: propertyId,
-      scheduledDate: visitDateTime,
-      status: VisitStatus.scheduled,
-      visitNotes: 'Property visit scheduled through 360ghar app',
-      createdAt: DateTime.now(),
-    );
-
-    visits.insert(0, visit);
-    upcomingVisitsList.insert(0, visit);
-    _sortVisits();
-
-    AppToast.success(
-      'visit_scheduled'.tr,
-      '${'visit_scheduled_message_prefix'.tr} $propertyTitle ${'visit_scheduled_message_infix'.tr} ${formatVisitDate(visitDateTime)} at ${formatVisitTime(visitDateTime)}',
-    );
-  }
+  // Fallback method for non-authenticated users removed.
+  // Previously this fabricated a local VisitModel with userId: 1 and showed
+  // a success toast with no server backing, which was lost on refresh.
+  // Unauthenticated users are now routed to the real bookVisit() flow,
+  // which surfaces an "auth required" toast if not signed in.
 
   Future<bool> cancelVisit(dynamic visitId, {required String reason}) async {
     final visitIdInt = visitId is int ? visitId : int.tryParse(visitId.toString()) ?? 0;

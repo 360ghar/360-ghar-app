@@ -8,6 +8,19 @@ import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/data/models/conversation_model.dart';
 
+/// A single page of conversations returned by [AssistantRepository.getConversations].
+///
+/// Mirrors the uniform cursor envelope (`{items, next_cursor, has_more}`)
+/// documented on the endpoint so callers can drive [loadMoreConversations]
+/// without re-parsing the response.
+class ConversationsPage {
+  final List<ConversationModel> items;
+  final String? nextCursor;
+  final bool hasMore;
+
+  const ConversationsPage({required this.items, required this.hasMore, this.nextCursor});
+}
+
 class AssistantRepository {
   final SseClient _sseClient = Get.find<SseClient>();
   final ApiClient _apiClient = Get.find<ApiClient>();
@@ -22,18 +35,54 @@ class AssistantRepository {
   }
 
   /// List the user's conversations.
-  Future<List<ConversationModel>> getConversations({int limit = 50, int offset = 0}) async {
+  ///
+  /// Uses the uniform cursor envelope `{items, next_cursor, has_more, limit}`.
+  /// Pass [cursor] (from a previous response's `next_cursor`) to fetch the
+  /// next page; omit/null on the first page. Returns a [ConversationsPage]
+  /// so callers can drive pagination from [nextCursor] and [hasMore].
+  Future<ConversationsPage> getConversations({String? cursor, int limit = 50}) async {
     try {
-      final response = await _apiClient.get('/agent/conversations?limit=$limit&offset=$offset');
-      if (response.body is List) {
-        return (response.body as List)
+      final response = await _apiClient.get(
+        '/agent/conversations',
+        queryParams: <String, dynamic>{
+          'limit': limit.toString(),
+          if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+        },
+      );
+      final body = response.body;
+
+      // Tolerate bare-list responses too (older deployments that pre-date the
+      // cursor envelope): treat a bare list as a single terminal page.
+      if (body is List) {
+        final items = body
             .map((e) => ConversationModel.fromJson(e as Map<String, dynamic>))
             .toList();
+        return ConversationsPage(items: items, hasMore: false, nextCursor: null);
       }
-      return [];
+
+      if (body is Map<String, dynamic>) {
+        final dynamic rawItems = body['items'] ?? body['data'];
+        final items = rawItems is List
+            ? rawItems.whereType<Map<String, dynamic>>().map(ConversationModel.fromJson).toList()
+            : const <ConversationModel>[];
+
+        // Envelope-driven pagination: honour has_more / next_cursor when the
+        // server provides them. Default to a terminal page otherwise so the
+        // caller short-circuits on subsequent [loadMoreConversations] calls.
+        final dynamic rawHasMore = body['has_more'];
+        final dynamic rawNextCursor = body['next_cursor'];
+        final bool hasMore = rawHasMore is bool ? rawHasMore : false;
+        final String? nextCursor = rawNextCursor is String && rawNextCursor.isNotEmpty
+            ? rawNextCursor
+            : null;
+
+        return ConversationsPage(items: items, hasMore: hasMore, nextCursor: nextCursor);
+      }
+
+      return const ConversationsPage(items: <ConversationModel>[], hasMore: false);
     } catch (e) {
       DebugLogger.error('Failed to load conversations', e);
-      return [];
+      return const ConversationsPage(items: <ConversationModel>[], hasMore: false);
     }
   }
 

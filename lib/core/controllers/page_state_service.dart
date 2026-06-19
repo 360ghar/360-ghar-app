@@ -356,8 +356,7 @@ class PageStateService extends GetxController {
   static PageStateModel normalizeLegacyStateForRuntime(PageStateModel legacyState) {
     return legacyState.copyWith(
       properties: const [],
-      currentPage: 1,
-      totalPages: 1,
+      nextCursor: null,
       hasMore: true,
       isLoading: false,
       isLoadingMore: false,
@@ -559,6 +558,41 @@ class PageStateService extends GetxController {
     updatePageState(PageType.discover, state.copyWith(properties: updatedList));
   }
 
+  /// Re-inserts a property at the front of the discover deck. Used by the
+  /// undo-swipe flow to restore the previously-swiped property so the user
+  /// sees it again as the top card.
+  void reinsertPropertyToDiscover(PropertyModel property) {
+    final state = discoverState.value;
+    final exists = state.properties.any((p) => p.id == property.id);
+    if (exists) return;
+    final updatedList = [property, ...state.properties];
+    updatePageState(PageType.discover, state.copyWith(properties: updatedList));
+  }
+
+  /// Reverses a previously-recorded swipe for the undo flow. Unlike
+  /// [recordSwipe], this does NOT remove the property from the discover deck
+  /// (it was just reinserted by [reinsertPropertyToDiscover]). It only
+  /// reverses the likes list mutation from the original swipe and fires the
+  /// background network sync with the opposite action.
+  Future<void> undoSwipe({required int propertyId, required bool originalIsLiked}) async {
+    try {
+      // Reverse ONLY the likes list mutation that the original swipe made:
+      // - Original LIKE added the property to likes → undo removes it.
+      // - Original PASS did not touch likes (the property was in discover,
+      //   not likes) → undo leaves likes unchanged. We do NOT add to likes
+      //   because the user's intent is to re-swipe, not auto-like.
+      if (originalIsLiked) {
+        removePropertyFromLikes(propertyId);
+      }
+
+      // Background network sync with the REVERSED action. Without a delete-
+      // swipe API, recording the opposite is the best reversal we can do.
+      unawaited(_swipesRepository.recordSwipe(propertyId: propertyId, isLiked: !originalIsLiked));
+    } catch (e) {
+      DebugLogger.error('Failed to undo swipe: $e');
+    }
+  }
+
   void removePropertyFromLikes(int propertyId) {
     final state = likesState.value;
     final updatedList = state.properties.where((p) => p.id != propertyId).toList();
@@ -589,8 +623,48 @@ class PageStateService extends GetxController {
   // Likes segment management
   // ──────────────────────────────────────────────────────────────────
 
+  /// In-memory per-segment cache so switching between Liked and Passed tabs
+  /// reuses recently-fetched data instead of always hitting the API.
+  /// Not persisted (avoids disk bloat); rebuilt on cold start.
+  final Map<String, _LikesSegmentCache> _likesSegmentCache = {};
+
+  /// Switches the likes segment (liked/passed). Reuses cached data when fresh;
+  /// only fetches from the network when the segment's cache is empty or stale.
   void updateLikesSegment(String segment) {
-    likesState.value = likesState.value.updateAdditionalData('currentSegment', segment).resetData();
+    final previousSegment = currentLikesSegment;
+    if (previousSegment == segment) return;
+
+    // Snapshot the outgoing segment's data before switching
+    final ps = likesState.value;
+    if (ps.properties.isNotEmpty) {
+      _likesSegmentCache[previousSegment] = _LikesSegmentCache(
+        properties: List.of(ps.properties),
+        lastFetched: ps.lastFetched ?? DateTime.now(),
+        hasMore: ps.hasMore,
+        nextCursor: ps.nextCursor,
+      );
+    }
+
+    // Switch the segment marker
+    likesState.value = likesState.value.updateAdditionalData('currentSegment', segment);
+
+    // Restore cached data for the target segment if fresh
+    final cached = _likesSegmentCache[segment];
+    final fresh = cached != null && !cached.isStale;
+    if (fresh) {
+      likesState.value = likesState.value.copyWith(
+        properties: List.of(cached.properties),
+        lastFetched: cached.lastFetched,
+        hasMore: cached.hasMore,
+        nextCursor: cached.nextCursor,
+        error: null,
+        isLoading: false,
+      );
+      return;
+    }
+
+    // No fresh cache — fetch
+    likesState.value = likesState.value.resetData();
     loadPageData(PageType.likes, forceRefresh: true);
   }
 
@@ -686,5 +760,27 @@ class PageStateService extends GetxController {
       case PageType.likes:
         return _likesRefreshing.value;
     }
+  }
+}
+
+/// In-memory cache for a single likes segment (liked or passed), used to
+/// avoid re-fetching when the user switches tabs back and forth.
+class _LikesSegmentCache {
+  final List<PropertyModel> properties;
+  final DateTime lastFetched;
+  final bool hasMore;
+  final String? nextCursor;
+
+  _LikesSegmentCache({
+    required this.properties,
+    required this.lastFetched,
+    required this.hasMore,
+    this.nextCursor,
+  });
+
+  static const Duration _staleThreshold = Duration(minutes: 5);
+
+  bool get isStale {
+    return DateTime.now().difference(lastFetched) > _staleThreshold;
   }
 }

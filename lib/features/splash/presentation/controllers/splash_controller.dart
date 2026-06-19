@@ -91,16 +91,20 @@ class SplashController extends GetxController with GetTickerProviderStateMixin {
       _storage.write('has_seen_onboarding', true);
     } catch (_) {}
 
-    // Route based on auth status
+    // AuthNavigationService is the single source of truth for navigation
+    // based on authStatus. Manually calling Get.offAllNamed here would race
+    // with AuthNavigationService's ever() worker (which also reacts to
+    // authStatus changes), causing double navigation. Persist the onboarding
+    // flag (done above) and trigger a re-evaluation of the current auth
+    // status so AuthNavigationService routes the user to the right screen.
     try {
       final auth = Get.find<AuthController>();
-      if (auth.isAuthenticated) {
-        Get.offAllNamed(AppRoutes.dashboard);
-      } else {
-        Get.offAllNamed(AppRoutes.phoneEntry);
-      }
+      // Re-fire the navigation worker for the current status. This is safe
+      // because AuthNavigationService's _handleAuthNavigation no-ops when
+      // already on the target route.
+      auth.authStatus.refresh();
     } catch (_) {
-      // Fallback to phone entry
+      // If AuthController isn't registered, fall back to phone entry.
       Get.offAllNamed(AppRoutes.phoneEntry);
     }
   }

@@ -224,6 +224,7 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
   }
 
   Widget _buildPasswordStep(ThemeData theme) {
+    final masked = controller.maskedIdentifier;
     return AutofillGroup(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -233,6 +234,37 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
             style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14),
             textAlign: TextAlign.center,
           ),
+          if (masked.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppDesign.overlayLight.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppDesign.overlayLight.withValues(alpha: 0.15)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.account_circle_outlined,
+                    color: AppDesign.primaryYellow,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'set_password_for_account'.trParams({'identifier': masked}),
+                      style: TextStyle(
+                        color: AppDesign.overlayLight.withValues(alpha: 0.85),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           Obx(
             () => Semantics(

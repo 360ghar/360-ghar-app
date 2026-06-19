@@ -60,8 +60,7 @@ class PageStateModel {
 
   // Properties data
   final List<PropertyModel> properties;
-  final int currentPage;
-  final int totalPages;
+  final String? nextCursor;
   final bool hasMore;
   final bool isLoading;
   final bool isLoadingMore;
@@ -80,8 +79,7 @@ class PageStateModel {
     required this.filters,
     this.searchQuery,
     required this.properties,
-    this.currentPage = 1,
-    this.totalPages = 1,
+    this.nextCursor,
     this.hasMore = true,
     this.isLoading = false,
     this.isLoadingMore = false,
@@ -111,8 +109,7 @@ class PageStateModel {
     UnifiedFilterModel? filters,
     Object? searchQuery = _unset,
     List<PropertyModel>? properties,
-    int? currentPage,
-    int? totalPages,
+    Object? nextCursor = _unset,
     bool? hasMore,
     bool? isLoading,
     bool? isLoadingMore,
@@ -132,8 +129,7 @@ class PageStateModel {
       filters: filters ?? this.filters,
       searchQuery: identical(searchQuery, _unset) ? this.searchQuery : searchQuery as String?,
       properties: properties ?? this.properties,
-      currentPage: currentPage ?? this.currentPage,
-      totalPages: totalPages ?? this.totalPages,
+      nextCursor: identical(nextCursor, _unset) ? this.nextCursor : nextCursor as String?,
       hasMore: hasMore ?? this.hasMore,
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
@@ -216,8 +212,7 @@ class PageStateModel {
   PageStateModel resetData() {
     return copyWith(
       properties: [],
-      currentPage: 1,
-      totalPages: 1,
+      nextCursor: null,
       hasMore: true,
       isLoading: false,
       isLoadingMore: false,

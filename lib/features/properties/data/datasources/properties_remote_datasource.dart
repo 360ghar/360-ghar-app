@@ -14,12 +14,12 @@ class PropertiesRemoteDatasource {
   PropertiesRemoteDatasource(this._apiClient);
 
   /// Fetches properties from the API.
-  Future<List<PropertyModel>> fetchProperties({
+  Future<UnifiedPropertyResponse> fetchProperties({
     required double latitude,
     required double longitude,
     required double radiusKm,
     required UnifiedFilterModel filters,
-    int page = 1,
+    String? cursor,
     int limit = 20,
     bool excludeSwiped = false,
     bool useCache = true,
@@ -33,7 +33,7 @@ class PropertiesRemoteDatasource {
       longitude: longitude,
       radiusKm: radiusKm,
       filters: filters,
-      page: page,
+      cursor: cursor,
       limit: limit,
       excludeSwiped: excludeSwiped,
     );
@@ -71,17 +71,17 @@ class PropertiesRemoteDatasource {
       queryParams: {'ids': ids},
       useCache: true,
     );
-    return _parsePropertiesResponse(response.body);
+    return _parsePropertiesResponse(response.body).items;
   }
 
   /// Searches properties by query.
-  Future<List<PropertyModel>> searchProperties({
+  Future<UnifiedPropertyResponse> searchProperties({
     required String query,
     double? latitude,
     double? longitude,
     double? radiusKm,
     UnifiedFilterModel? filters,
-    int page = 1,
+    String? cursor,
     int limit = 20,
     bool excludeSwiped = false,
     bool useCache = true,
@@ -91,7 +91,7 @@ class PropertiesRemoteDatasource {
       longitude: longitude,
       radiusKm: radiusKm,
       filters: filters,
-      page: page,
+      cursor: cursor,
       limit: limit,
       searchQuery: query,
       excludeSwiped: excludeSwiped,
@@ -106,7 +106,7 @@ class PropertiesRemoteDatasource {
   }
 
   Map<String, dynamic> _buildQueryParams({
-    required int page,
+    required String? cursor,
     required int limit,
     UnifiedFilterModel? filters,
     double? latitude,
@@ -115,7 +115,11 @@ class PropertiesRemoteDatasource {
     String? searchQuery,
     bool excludeSwiped = false,
   }) {
-    final queryParams = <String, dynamic>{'page': page.toString(), 'limit': limit.toString()};
+    final queryParams = <String, dynamic>{'limit': limit.toString()};
+    // Omit `cursor` on the first page; backend treats absence/null as page 1.
+    if (cursor != null && cursor.isNotEmpty) {
+      queryParams['cursor'] = cursor;
+    }
 
     if (latitude != null && longitude != null) {
       queryParams['lat'] = latitude.toStringAsFixed(6);
@@ -158,22 +162,24 @@ class PropertiesRemoteDatasource {
     return queryParams;
   }
 
-  List<PropertyModel> _parsePropertiesResponse(dynamic body) {
+  UnifiedPropertyResponse _parsePropertiesResponse(dynamic body) {
     try {
       DebugLogger.debug('📊 Response type: ${body?.runtimeType}');
 
       if (body is Map<String, dynamic>) {
         final unifiedResponse = UnifiedPropertyResponse.fromJson(body);
-        DebugLogger.debug('📦 Parsed ${unifiedResponse.properties.length} properties');
-        return unifiedResponse.properties;
+        DebugLogger.debug(
+          '📦 Parsed ${unifiedResponse.items.length} properties '
+          '(hasMore=${unifiedResponse.hasMore}, nextCursor=${unifiedResponse.nextCursor != null})',
+        );
+        return unifiedResponse;
       } else if (body is List) {
-        final normalizedData = {'data': body};
-        final unifiedResponse = UnifiedPropertyResponse.fromJson(normalizedData);
-        return unifiedResponse.properties;
+        // Tolerate bare-array responses by wrapping them in the uniform envelope.
+        final normalizedData = {'items': body};
+        return UnifiedPropertyResponse.fromJson(normalizedData);
       } else {
-        final normalizedData = {'data': body};
-        final unifiedResponse = UnifiedPropertyResponse.fromJson(normalizedData);
-        return unifiedResponse.properties;
+        final normalizedData = {'items': body};
+        return UnifiedPropertyResponse.fromJson(normalizedData);
       }
     } catch (e, stackTrace) {
       DebugLogger.error('Failed to parse properties response: $e', e, stackTrace);

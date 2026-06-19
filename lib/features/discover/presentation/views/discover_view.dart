@@ -6,6 +6,7 @@ import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
+import 'package:ghar360/core/utils/responsive.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
@@ -84,6 +85,38 @@ class DiscoverView extends GetView<DiscoverController> {
   Widget _buildLoadingState() {
     return Column(
       children: [
+        // Contextual loading message so users know what's happening when
+        // location acquisition takes time (previously a bare skeleton with
+        // no explanation, which could look like the app was stuck).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Column(
+            children: [
+              Icon(
+                Icons.travel_explore_rounded,
+                size: 28,
+                color: AppDesign.primaryYellow.withValues(alpha: 0.8),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'discovering_properties_message'.tr,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: AppDesign.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'finding_nearby_properties_hint'.tr,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: AppDesign.textSecondary),
+              ),
+            ],
+          ),
+        ),
+
         // Show loading progress if available
         Obx(() {
           if (controller.isPrefetching.value) {
@@ -145,25 +178,46 @@ class DiscoverView extends GetView<DiscoverController> {
   }
 
   Widget _buildSwipeInterface(BuildContext context) {
+    // Phone: cardMaxWidth is double.infinity → no cap, identical to before.
+    // Medium+ (tablet/iPad): cap and center so cards stay a comfortable width.
+    final cardMaxWidth = responsiveValue<double>(
+      context,
+      compact: double.infinity,
+      medium: 520,
+      expanded: 520,
+      large: 520,
+      fallback: 520,
+    );
+
     return Column(
       children: [
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Obx(
-              () => Semantics(
-                label: 'qa.discover.swipe_stack',
-                identifier: 'qa.discover.swipe_stack',
-                child: PropertySwipeStack(
-                  key: const ValueKey('qa.discover.swipe_stack'),
-                  properties: controller.deck.skip(controller.currentIndex.value).take(3).toList(),
-                  onSwipeLeft: controller.swipeLeft,
-                  onSwipeRight: controller.swipeRight,
-                  onSwipeUp: (property) => controller.viewPropertyDetails(property),
-                  onRefresh: controller.refreshDeck,
-                  onChangeFilters: () =>
-                      showPropertyFilterBottomSheet(Get.context ?? context, pageType: 'discover'),
-                  showSwipeInstructions: controller.totalSwipesInSession.value < 3,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: cardMaxWidth),
+                child: Obx(
+                  () => Semantics(
+                    label: 'qa.discover.swipe_stack',
+                    identifier: 'qa.discover.swipe_stack',
+                    child: PropertySwipeStack(
+                      key: const ValueKey('qa.discover.swipe_stack'),
+                      properties: controller.deck
+                          .skip(controller.currentIndex.value)
+                          .take(3)
+                          .toList(),
+                      onSwipeLeft: controller.swipeLeft,
+                      onSwipeRight: controller.swipeRight,
+                      onSwipeUp: (property) => controller.viewPropertyDetails(property),
+                      onRefresh: controller.refreshDeck,
+                      onChangeFilters: () => showPropertyFilterBottomSheet(
+                        Get.context ?? context,
+                        pageType: 'discover',
+                      ),
+                      showSwipeInstructions: controller.totalSwipesInSession.value < 3,
+                    ),
+                  ),
                 ),
               ),
             ),

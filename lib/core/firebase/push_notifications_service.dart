@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
+import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
 /// Callback type for when a notification is tapped
@@ -110,16 +111,20 @@ class PushNotificationsService {
 
   /// Navigate based on notification data
   static void _navigateByPayload(Map<String, dynamic> data) {
-    // Example navigation logic - customize based on your app's needs
+    // Supports both an explicit `route` and a `property_id` (deep link to the
+    // property details screen). Uses the canonical AppRoutes constant so the
+    // deep-link path stays in sync with the route table.
     final route = data['route'] as String?;
-    final propertyId = data['property_id'] as String?;
+    final propertyId = data['property_id'] as String? ?? data['propertyId'] as String?;
 
     if (route != null && route.isNotEmpty) {
       DebugLogger.info('🔔 Navigating to route: $route');
       Get.toNamed(route, arguments: data);
-    } else if (propertyId != null) {
+    } else if (propertyId != null && propertyId.isNotEmpty) {
       DebugLogger.info('🔔 Navigating to property: $propertyId');
-      Get.toNamed('/property/$propertyId');
+      // Auth-protected details route; falls back to public deep-link routes
+      // (AppRoutes.propertyDeepLink = '/property/:id') when unauthenticated.
+      Get.toNamed(AppRoutes.propertyDeepLink.replaceAll(':id', propertyId));
     }
   }
 

@@ -33,8 +33,9 @@ class LocationController extends GetxController {
 
   static const Duration _currentPositionStaleThreshold = Duration(minutes: 2);
   static const Duration _lastKnownMaxAge = Duration(minutes: 10);
-  static const Duration _currentPositionTimeout = Duration(seconds: 25);
-  static const Duration _currentPositionFallbackTimeout = Duration(seconds: 10);
+  static const Duration _currentPositionTimeout = Duration(seconds: 8);
+  static const Duration _currentPositionFallbackTimeout = Duration(seconds: 5);
+  static const Duration _currentPositionLowTimeout = Duration(seconds: 3);
   static const Duration _backendSyncMinInterval = Duration(minutes: 2);
   static const double _backendSyncMinDistanceMeters = 250;
   static const Duration _geocodeMinInterval = Duration(minutes: 2);
@@ -220,7 +221,7 @@ class LocationController extends GetxController {
   }
 
   Future<Position?> _getCurrentPositionWithTimeout() async {
-    // Primary attempt: high accuracy
+    // Primary attempt: high accuracy (8s timeout, previously 25s)
     try {
       return await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -233,12 +234,14 @@ class LocationController extends GetxController {
         'High-accuracy GPS timed out after ${_currentPositionTimeout.inSeconds}s, '
         'retrying at medium accuracy…',
       );
+      // Non-blocking heads-up so the user knows we're still working
+      AppToast.info('locating_you'.tr, 'using_approximate_location'.tr);
     } catch (e, stackTrace) {
       DebugLogger.error('Failed to get high-accuracy GPS position', e, stackTrace);
       return null;
     }
 
-    // Fallback: medium accuracy with shorter timeout
+    // Fallback 1: medium accuracy (5s timeout, previously 10s)
     try {
       return await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -251,9 +254,31 @@ class LocationController extends GetxController {
         'Medium-accuracy GPS also timed out after ${_currentPositionFallbackTimeout.inSeconds}s',
         e,
       );
-      return null;
     } catch (e, stackTrace) {
       DebugLogger.error('Failed to get medium-accuracy GPS position', e, stackTrace);
+      return null;
+    }
+
+    // Fallback 2: low accuracy (3s timeout) — coarse but fast, better than
+    // leaving the user staring at a spinner. Worst-case total is now ~16s
+    // instead of the previous 35s.
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          distanceFilter: 100,
+        ),
+      ).timeout(_currentPositionLowTimeout);
+      AppToast.info('locating_you'.tr, 'using_approximate_location'.tr);
+      return pos;
+    } on TimeoutException catch (e) {
+      DebugLogger.warning(
+        'Low-accuracy GPS also timed out after ${_currentPositionLowTimeout.inSeconds}s',
+        e,
+      );
+      return null;
+    } catch (e, stackTrace) {
+      DebugLogger.error('Failed to get low-accuracy GPS position', e, stackTrace);
       return null;
     }
   }

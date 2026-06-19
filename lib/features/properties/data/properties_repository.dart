@@ -18,7 +18,7 @@ class PropertiesRepository extends GetxService {
 
   Future<UnifiedPropertyResponse> getProperties({
     required UnifiedFilterModel filters,
-    required int page,
+    required String? cursor,
     required int limit,
     required double latitude,
     required double longitude,
@@ -28,35 +28,25 @@ class PropertiesRepository extends GetxService {
   }) async {
     try {
       DebugLogger.api(
-        'Fetching properties page=$page limit=$limit filters=${filters.activeFilterCount}',
+        'Fetching properties cursor=${cursor == null ? "first" : "next"} '
+        'limit=$limit filters=${filters.activeFilterCount}',
       );
 
-      final properties = await _remoteDatasource.fetchProperties(
+      final response = await _remoteDatasource.fetchProperties(
         filters: filters,
         latitude: latitude,
         longitude: longitude,
         radiusKm: (filters.radiusKm ?? radiusKm ?? 10.0),
-        page: page,
+        cursor: cursor,
         limit: limit,
         excludeSwiped: excludeSwiped,
         useCache: useCache,
       );
-      // When the page is full, assume there may be more pages.
-      // When it's not full, this is the last page.
-      // Note: if the last page has exactly `limit` items, one extra
-      // (empty) request will be made — acceptable trade-off without
-      // server-provided total.
-      final hasMore = properties.length >= limit;
-      final response = UnifiedPropertyResponse(
-        properties: properties,
-        total: properties.length,
-        page: page,
-        limit: limit,
-        totalPages: hasMore ? page + 1 : page,
-        filtersApplied: filters.toJson(),
-      );
 
-      DebugLogger.success('Fetched ${response.properties.length} properties on page $page');
+      DebugLogger.success(
+        'Fetched ${response.items.length} properties '
+        '(hasMore=${response.hasMore}, nextCursor=${response.nextCursor != null})',
+      );
       return response;
     } on AppException catch (e) {
       DebugLogger.error('Failed to fetch properties: ${e.message}');
@@ -117,7 +107,7 @@ class PropertiesRepository extends GetxService {
 
   Future<UnifiedPropertyResponse> searchProperties({
     required UnifiedFilterModel filters,
-    required int page,
+    required String? cursor,
     required int limit,
     required double latitude,
     required double longitude,
@@ -127,7 +117,7 @@ class PropertiesRepository extends GetxService {
   }) async {
     return getProperties(
       filters: filters,
-      page: page,
+      cursor: cursor,
       limit: limit,
       latitude: latitude,
       longitude: longitude,
@@ -135,48 +125,6 @@ class PropertiesRepository extends GetxService {
       excludeSwiped: excludeSwiped,
       useCache: useCache,
     );
-  }
-
-  Future<List<PropertyModel>> loadAllPropertiesForMap({
-    required UnifiedFilterModel filters,
-    required double latitude,
-    required double longitude,
-    double? radiusKm,
-    int limit = 100,
-    Function(int current, int total)? onProgress,
-  }) async {
-    try {
-      DebugLogger.api('Loading all properties for map view');
-
-      final List<PropertyModel> allProperties = [];
-      int currentPage = 1;
-      int totalPages = 1;
-
-      do {
-        final response = await getProperties(
-          filters: filters,
-          page: currentPage,
-          limit: limit,
-          latitude: latitude,
-          longitude: longitude,
-          radiusKm: radiusKm,
-          useCache: true,
-        );
-
-        allProperties.addAll(response.properties);
-        totalPages = response.totalPages;
-        onProgress?.call(currentPage, totalPages);
-        currentPage++;
-      } while (currentPage <= totalPages);
-
-      DebugLogger.success('Loaded ${allProperties.length} properties for map');
-
-      return allProperties;
-    } on AppException catch (e, stackTrace) {
-      DebugLogger.error('Failed to load properties for map: ${e.message}');
-      DebugLogger.error('Stack trace: $stackTrace');
-      rethrow;
-    }
   }
 
   Future<PropertyModel> createProperty({

@@ -8,10 +8,20 @@ import 'package:photo_view/photo_view_gallery.dart';
 
 /// Image gallery shown in the SliverAppBar of the property details page.
 /// Supports page swiping, prefetching, and a full-screen PhotoView overlay.
+///
+/// On tablet widths the gallery is also reused as the sticky left pane of the
+/// master-detail layout; in that case a bounded [maxHeight] is supplied so the
+/// pane does not stretch to fill the viewport. When [maxHeight] is null (the
+/// phone [SliverAppBar] case) the gallery is height-agnostic — the parent
+/// decides its height.
 class PropertyDetailsImageGallery extends StatefulWidget {
   final PropertyModel property;
 
-  const PropertyDetailsImageGallery({super.key, required this.property});
+  /// Optional hard cap for the gallery height. Used by the two-pane tablet
+  /// layout. Null on phones (the [SliverAppBar.expandedHeight] governs).
+  final double? maxHeight;
+
+  const PropertyDetailsImageGallery({super.key, required this.property, this.maxHeight});
 
   @override
   State<PropertyDetailsImageGallery> createState() => _PropertyDetailsImageGalleryState();
@@ -95,7 +105,7 @@ class _PropertyDetailsImageGalleryState extends State<PropertyDetailsImageGaller
     final images = _images;
     final itemCount = images.isNotEmpty ? images.length : 1;
 
-    return Stack(
+    final gallery = Stack(
       children: [
         GestureDetector(
           onTap: () => _openGallery(_current),
@@ -138,5 +148,12 @@ class _PropertyDetailsImageGalleryState extends State<PropertyDetailsImageGaller
           ),
       ],
     );
+
+    // Phone SliverAppBar path: gallery is height-agnostic (the app bar decides).
+    // Tablet master pane: bound to [maxHeight] so the pane stays anchored and
+    // does not fill the viewport.
+    final cap = widget.maxHeight;
+    if (cap == null) return gallery;
+    return SizedBox(height: cap, child: gallery);
   }
 }

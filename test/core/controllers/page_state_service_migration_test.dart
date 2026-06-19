@@ -19,8 +19,6 @@ void main() {
         filters: UnifiedFilterModel.initial(),
         searchQuery: '2bhk',
         properties: const [],
-        currentPage: 3,
-        totalPages: 9,
         hasMore: false,
         isLoading: true,
         isLoadingMore: true,
@@ -31,8 +29,7 @@ void main() {
 
       final normalized = PageStateService.normalizeLegacyStateForRuntime(legacy);
 
-      expect(normalized.currentPage, 1);
-      expect(normalized.totalPages, 1);
+      expect(normalized.nextCursor, isNull);
       expect(normalized.hasMore, isTrue);
       expect(normalized.isLoading, isFalse);
       expect(normalized.isLoadingMore, isFalse);
