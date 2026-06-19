@@ -84,7 +84,7 @@ void main() {
       Get.delete<ProfileCompletionController>();
     });
 
-    test('nextStep advances currentStep from 0 to 1 when the form is valid', () {
+    test('nextStep does not advance currentStep when form validation is unavailable', () {
       final controller = Get.put<ProfileCompletionController>(
         ProfileCompletionController(),
         permanent: true,

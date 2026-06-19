@@ -74,6 +74,13 @@ void main() {
 
   group('ResponsiveContext extension', () {
     testWidgets('exposes windowSizeClass and contentMaxWidth', (tester) async {
+      // Pin the test viewport so the assertions don't drift if the default
+      // surface size changes between Flutter versions / CI environments.
+      tester.view.physicalSize = const Size(800, 600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       double? reportedClass;
       double? maxWidth;
 
@@ -88,7 +95,7 @@ void main() {
         ),
       );
 
-      // Default test surface is ~800x600 -> width 800 => medium.
+      // 800 logical px wide => medium.
       expect(reportedClass, WindowSizeClass.medium.index);
       expect(maxWidth, kContentMaxWidths[WindowSizeClass.medium]);
     });

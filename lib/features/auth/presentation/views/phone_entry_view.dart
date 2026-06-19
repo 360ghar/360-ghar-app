@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -106,7 +107,7 @@ class PhoneEntryView extends GetView<PhoneEntryController> {
     // (non-reactive) code. Only the Google loading spinner needs an Obx —
     // wrapping the whole tree caused GetX "improper use" on iOS, where the
     // Google button (the only reactive read) is hidden (see RELEASE_IOS.md).
-    final showGoogle = controller.isGoogleAvailable && !Platform.isIOS;
+    final showGoogle = controller.isGoogleAvailable && !(kIsWeb || Platform.isIOS);
     final showApple = controller.isAppleAvailable;
     if (!showGoogle && !showApple) {
       return const SizedBox.shrink();

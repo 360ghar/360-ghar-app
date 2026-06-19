@@ -51,12 +51,14 @@ class _TourViewState extends State<TourView> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
+            if (!mounted) return;
             setState(() {
               isLoading = true;
             });
             controller?.runJavaScript(consoleSilencer);
           },
           onPageFinished: (String url) {
+            if (!mounted) return;
             setState(() {
               isLoading = false;
             });
@@ -74,6 +76,7 @@ class _TourViewState extends State<TourView> {
             ''');
           },
           onWebResourceError: (WebResourceError error) {
+            if (!mounted) return;
             setState(() {
               isLoading = false;
             });

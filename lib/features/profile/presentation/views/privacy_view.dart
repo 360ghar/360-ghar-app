@@ -409,7 +409,8 @@ class PrivacyView extends StatelessWidget with ThemeMixin {
                       labelText: confirmWord,
                       prefixIcon: Icon(Icons.warning_amber_rounded),
                     ),
-                    onChanged: (value) => canDelete.value = value.trim() == confirmWord,
+                    onChanged: (value) =>
+                        canDelete.value = value.trim().toUpperCase() == confirmWord,
                   ),
                 ],
               ),
@@ -424,8 +425,8 @@ class PrivacyView extends StatelessWidget with ThemeMixin {
               onPressed: (authController.isDeleting.value || !canDelete.value)
                   ? null
                   : () async {
-                      await authController.deleteAccount();
-                      if (Get.isDialogOpen ?? false) Get.back();
+                      final deleted = await authController.deleteAccount();
+                      if (deleted && (Get.isDialogOpen ?? false)) Get.back();
                     },
               child: authController.isDeleting.value
                   ? const SizedBox(

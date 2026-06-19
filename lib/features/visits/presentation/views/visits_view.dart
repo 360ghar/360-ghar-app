@@ -27,9 +27,11 @@ String _formatIndianNumber(String? raw) {
   if (digits.isEmpty) return '';
 
   // Already has an explicit `+` country code — keep the original (preserves
-  // extensions and international formatting).
+  // extensions and international formatting). Strip extension digits (ext/x/#)
+  // so they don't corrupt the dial/WhatsApp target.
   if (raw.trim().startsWith('+')) {
-    return digits;
+    final baseNumber = raw.trim().split(RegExp(r'(?:ext\.?|x|#)\s*', caseSensitive: false)).first;
+    return baseNumber.replaceAll(RegExp(r'[^0-9]'), '');
   }
 
   String d = digits.replaceFirst(RegExp(r'^0+'), '');

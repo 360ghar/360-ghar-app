@@ -630,7 +630,7 @@ class ExploreController extends GetxController {
           Get.find<DashboardController>().incrementStat(kDashSearchesMadeKey);
           Get.find<DashboardController>().recordActivity(
             type: 'search',
-            title: 'Searched "$query"',
+            title: 'dashboard_activity_search'.trParams({'query': query}),
             icon: 'search',
           );
         }

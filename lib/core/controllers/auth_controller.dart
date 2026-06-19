@@ -473,16 +473,22 @@ class AuthController extends GetxController {
   /// Permanently deletes the user's account. Unregisters the push token,
   /// submits the deletion request to the backend, then clears the local
   /// session; the auth-state listener routes to login.
-  Future<void> deleteAccount() async {
+  ///
+  /// Returns `true` on success, `false` on failure so callers (e.g.
+  /// `PrivacyView`) can branch on the outcome instead of always closing
+  /// the confirmation dialog.
+  Future<bool> deleteAccount() async {
     isDeleting.value = true;
     try {
       await _unregisterPushToken();
       await _authRepository.deleteAccount();
       await _authRepository.signOut(); // clears session; listener routes to login
       AppToast.success('success'.tr, 'account_deleted_success'.tr);
+      return true;
     } catch (e, st) {
       ErrorHandler.handleAuthError(e, stackTrace: st);
       DebugLogger.error('Account deletion failed', e, st);
+      return false;
     } finally {
       isDeleting.value = false;
     }

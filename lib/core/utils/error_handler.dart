@@ -73,7 +73,7 @@ class ErrorHandler {
           FirebaseCrashlytics.instance.recordError(
             error,
             stackTrace ?? StackTrace.current,
-            reason: 'Unrecognized AuthException message: "$msg"',
+            reason: 'Unrecognized AuthException message',
             fatal: false,
           );
         } catch (_) {}

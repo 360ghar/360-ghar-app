@@ -166,8 +166,28 @@ class PropertiesRemoteDatasource {
     try {
       DebugLogger.debug('📊 Response type: ${body?.runtimeType}');
 
-      if (body is Map<String, dynamic>) {
-        final unifiedResponse = UnifiedPropertyResponse.fromJson(body);
+      if (body is Map) {
+        // Normalize to a typed map and unwrap common nested envelopes (`data`
+        // as a list or as a `{items,...}` map) so the cursor envelope parser
+        // always sees the final shape. Without this, a wrapped response
+        // silently drops results or throws at runtime when `items` is absent.
+        final mapBody = Map<String, dynamic>.from(body);
+        if (!mapBody.containsKey('items')) {
+          final nestedData = mapBody['data'];
+          if (nestedData is List) {
+            mapBody['items'] = nestedData;
+          } else if (nestedData is Map) {
+            final nestedMap = Map<String, dynamic>.from(nestedData);
+            final nestedItems = nestedMap['items'];
+            if (nestedItems is List) mapBody['items'] = nestedItems;
+            mapBody.putIfAbsent('has_more', () => nestedMap['has_more']);
+            mapBody.putIfAbsent('next_cursor', () => nestedMap['next_cursor']);
+            mapBody.putIfAbsent('limit', () => nestedMap['limit']);
+          }
+        }
+        // Guarantee `items` is a List so fromJson never throws on scalar payloads.
+        mapBody['items'] = (mapBody['items'] is List) ? mapBody['items'] : const <Object>[];
+        final unifiedResponse = UnifiedPropertyResponse.fromJson(mapBody);
         DebugLogger.debug(
           '📦 Parsed ${unifiedResponse.items.length} properties '
           '(hasMore=${unifiedResponse.hasMore}, nextCursor=${unifiedResponse.nextCursor != null})',
@@ -178,8 +198,9 @@ class PropertiesRemoteDatasource {
         final normalizedData = {'items': body};
         return UnifiedPropertyResponse.fromJson(normalizedData);
       } else {
-        final normalizedData = {'items': body};
-        return UnifiedPropertyResponse.fromJson(normalizedData);
+        // Unknown/scalar payload: return an empty terminal page instead of a
+        // runtime type error.
+        return const UnifiedPropertyResponse();
       }
     } catch (e, stackTrace) {
       DebugLogger.error('Failed to parse properties response: $e', e, stackTrace);

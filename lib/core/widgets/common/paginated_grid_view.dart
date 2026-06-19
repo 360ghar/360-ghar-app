@@ -98,6 +98,7 @@ class _PaginatedGridViewState<T> extends State<PaginatedGridView<T>>
       onRefresh: widget.onRefresh,
       child: GridView.builder(
         controller: scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: widget.padding,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,

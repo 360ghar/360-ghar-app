@@ -244,7 +244,10 @@ class _PropertyContentViewState extends State<_PropertyContentView> {
                     ),
                   ),
                   // Gallery card, rounded to read as a panel on tablet.
-                  Expanded(
+                  // Fixed SizedBox (not Expanded) so the gallery honors
+                  // `maxHeight` and does not stretch absurdly tall on iPads.
+                  SizedBox(
+                    height: galleryHeight,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(20),
                       child: PropertyDetailsImageGallery(

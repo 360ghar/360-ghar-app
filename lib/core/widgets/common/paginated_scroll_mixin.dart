@@ -15,10 +15,17 @@ const kPaginatedLoadMoreThreshold = 200.0;
 /// `ListView`/`GridView` builder.
 mixin PaginatedScrollMixin<W extends StatefulWidget> on State<W> {
   ScrollController? scrollController;
+  bool _loadMoreInFlight = false;
 
   /// Registers the scroll listener that triggers [onLoadMore] once the user
   /// scrolls within [kPaginatedLoadMoreThreshold] of the bottom. The load is
   /// only fired while [hasMore] is true and [isLoadingMore] is false.
+  ///
+  /// A local [_loadMoreInFlight] guard prevents re-entrant triggers: once
+  /// [onLoadMore] is invoked, the listener is silent until the returned
+  /// future completes, so a scroll position lingering near the bottom cannot
+  /// fire duplicate requests before the parent's `isLoadingMore` state
+  /// propagates back.
   @protected
   void initPaginatedScroll({
     required Future<void> Function() onLoadMore,
@@ -27,11 +34,14 @@ mixin PaginatedScrollMixin<W extends StatefulWidget> on State<W> {
   }) {
     scrollController = ScrollController();
     scrollController!.addListener(() {
-      if (scrollController!.position.pixels >=
-          scrollController!.position.maxScrollExtent - kPaginatedLoadMoreThreshold) {
-        if (hasMore() && !isLoadingMore()) {
-          onLoadMore();
-        }
+      final controller = scrollController;
+      if (controller == null || !controller.hasClients) return;
+      if (_loadMoreInFlight || !hasMore() || isLoadingMore()) return;
+
+      final triggerAt = controller.position.maxScrollExtent - kPaginatedLoadMoreThreshold;
+      if (controller.position.pixels >= triggerAt) {
+        _loadMoreInFlight = true;
+        onLoadMore().whenComplete(() => _loadMoreInFlight = false);
       }
     });
   }

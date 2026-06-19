@@ -182,7 +182,7 @@ class DiscoverController extends GetxController {
     _recordSwipeStats(true);
     _recordDashboardActivity(
       type: 'like',
-      title: 'Liked ${property.title}',
+      title: 'dashboard_activity_liked'.trParams({'property': property.title}),
       icon: 'favorite',
       liked: true,
     );
@@ -197,7 +197,7 @@ class DiscoverController extends GetxController {
     _recordSwipeStats(false);
     _recordDashboardActivity(
       type: 'pass',
-      title: 'Passed ${property.title}',
+      title: 'dashboard_activity_passed'.trParams({'property': property.title}),
       icon: 'close',
       liked: false,
     );
