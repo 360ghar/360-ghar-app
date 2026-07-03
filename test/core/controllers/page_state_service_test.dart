@@ -9,6 +9,8 @@
 // - removePropertyFromDiscover / reinsertPropertyToDiscover
 // - addPropertyToLikes / removePropertyFromLikes
 
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -30,13 +32,15 @@ void main() {
   // Mock path_provider platform channel so GetStorage can initialise in tests.
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('plugins.flutter.io/path_provider');
+  late Directory storageDir;
 
-  setUpAll(() {
+  setUpAll(() async {
+    storageDir = await Directory.systemTemp.createTemp('page_state_service_test_');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       channel,
       (MethodCall methodCall) async {
         if (methodCall.method == 'getApplicationDocumentsDirectory') {
-          return '.';
+          return storageDir.path;
         }
         return null;
       },
@@ -47,6 +51,15 @@ void main() {
     registerFallbackValue(testPropertyResponse());
   });
 
+  tearDownAll(() async {
+    // Keep the path_provider mock installed for the test process lifetime.
+    // GetStorage can schedule delayed flush/backup work after erase()/writes,
+    // and a late flush may still resolve getApplicationDocumentsDirectory.
+    try {
+      await storageDir.delete(recursive: true);
+    } catch (_) {}
+  });
+
   late MockLocationController locationController;
   late MockAuthController authController;
   late MockSwipesRepository swipesRepo;
@@ -55,7 +68,7 @@ void main() {
   setUp(() async {
     GetxTestBinding.init();
     await GetStorage.init();
-    GetStorage().erase();
+    await GetStorage().erase();
 
     locationController = MockLocationController();
     authController = MockAuthController();
