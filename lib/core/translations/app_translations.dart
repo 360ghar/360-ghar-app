@@ -455,6 +455,8 @@ class AppTranslations extends Translations {
       'failed_to_send_otp': 'Failed to send OTP',
       'password_updated_successfully': 'Password updated successfully',
       'failed_to_update_password': 'Failed to update password',
+      'password_verification_unavailable':
+          'We could not verify the current password for this account',
 
       // Onboarding
       'onboarding_slide_1_title': 'Tour Homes In 360° Before You Visit',
@@ -1565,6 +1567,7 @@ class AppTranslations extends Translations {
       'failed_to_send_otp': 'OTP भेजने में विफल',
       'password_updated_successfully': 'पासवर्ड सफलतापूर्वक अपडेट हो गया',
       'failed_to_update_password': 'पासवर्ड अपडेट करने में विफल',
+      'password_verification_unavailable': 'हम इस खाते के वर्तमान पासवर्ड को सत्यापित नहीं कर सके',
 
       // Onboarding
       'onboarding_slide_1_title': 'देखने से पहले 360° में घर घूमें',

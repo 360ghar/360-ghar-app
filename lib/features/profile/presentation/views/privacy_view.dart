@@ -200,178 +200,7 @@ class PrivacyView extends StatelessWidget with ThemeMixin {
   }
 
   void _changePassword() {
-    final currentPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    final currentVisible = false.obs;
-    final newVisible = false.obs;
-    final confirmVisible = false.obs;
-    final isLoading = false.obs;
-    final errorMessage = ''.obs;
-    final formKey = GlobalKey<FormState>();
-
-    Get.dialog<void>(
-      Obx(
-        () => AlertDialog(
-          backgroundColor: AppDesign.surface,
-          title: Text('change_password'.tr),
-          content: SingleChildScrollView(
-            child: SizedBox(
-              width: (MediaQuery.of(Get.context!).size.width - 80).clamp(0.0, 420.0),
-              child: Form(
-                key: formKey,
-                child: AutofillGroup(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Obx(
-                        () => TextFormField(
-                          controller: currentPasswordController,
-                          obscureText: !currentVisible.value,
-                          autofillHints: const [AutofillHints.password],
-                          decoration: InputDecoration(
-                            labelText: 'current_password'.tr,
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(
-                              onPressed: () => currentVisible.value = !currentVisible.value,
-                              icon: Icon(
-                                currentVisible.value ? Icons.visibility_off : Icons.visibility,
-                              ),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'password_required'.tr;
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Obx(
-                        () => TextFormField(
-                          controller: newPasswordController,
-                          obscureText: !newVisible.value,
-                          autofillHints: const [AutofillHints.newPassword],
-                          decoration: InputDecoration(
-                            labelText: 'new_password'.tr,
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(
-                              onPressed: () => newVisible.value = !newVisible.value,
-                              icon: Icon(
-                                newVisible.value ? Icons.visibility_off : Icons.visibility,
-                              ),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'password_required'.tr;
-                            }
-                            if (value.length < 8) {
-                              return 'password_min_length_8'.tr;
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Obx(
-                        () => TextFormField(
-                          controller: confirmPasswordController,
-                          obscureText: !confirmVisible.value,
-                          autofillHints: const [AutofillHints.newPassword],
-                          decoration: InputDecoration(
-                            labelText: 'confirm_password'.tr,
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(
-                              onPressed: () => confirmVisible.value = !confirmVisible.value,
-                              icon: Icon(
-                                confirmVisible.value ? Icons.visibility_off : Icons.visibility,
-                              ),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'confirm_password_required'.tr;
-                            }
-                            if (value != newPasswordController.text) {
-                              return 'passwords_dont_match'.tr;
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                      Obx(() {
-                        final error = errorMessage.value;
-                        if (error.isEmpty) return const SizedBox.shrink();
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Text(
-                            error,
-                            style: const TextStyle(color: AppDesign.errorRed, fontSize: 13),
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isLoading.value ? null : () => Get.back(),
-              child: Text('cancel'.tr, style: TextStyle(color: AppDesign.textSecondary)),
-            ),
-            TextButton(
-              onPressed: isLoading.value
-                  ? null
-                  : () async {
-                      if (!formKey.currentState!.validate()) return;
-
-                      isLoading.value = true;
-                      errorMessage.value = '';
-
-                      try {
-                        final authRepository = Get.find<AuthRepository>();
-                        // TODO: The current password is collected above but never verified.
-                        // Supabase's updateUser only requires a valid session, not the old
-                        // password. Ideally the backend should verify currentPassword before
-                        // allowing a change, but that requires a backend API change.
-                        await authRepository.updateUserPassword(newPasswordController.text);
-                        Get.back();
-                        AppToast.success('success'.tr, 'password_updated_successfully'.tr);
-                        DebugLogger.success('Password changed from profile');
-                      } catch (e) {
-                        errorMessage.value = 'failed_to_update_password'.tr;
-                        ErrorHandler.handleAuthError(e);
-                        DebugLogger.error('Failed to change password from profile', e);
-                      } finally {
-                        isLoading.value = false;
-                      }
-                    },
-              child: isLoading.value
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      'update_password'.tr,
-                      style: const TextStyle(
-                        color: AppDesign.primaryYellow,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-            ),
-          ],
-        ),
-      ),
-    ).then((_) {
-      currentPasswordController.dispose();
-      newPasswordController.dispose();
-      confirmPasswordController.dispose();
-    });
+    Get.dialog<void>(const _ChangePasswordDialog());
   }
 
   void _showDeleteAccountDialog() {
@@ -459,6 +288,220 @@ class PrivacyView extends StatelessWidget with ThemeMixin {
   }
 }
 
+class _ChangePasswordDialog extends StatefulWidget {
+  const _ChangePasswordDialog();
+
+  @override
+  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
+  final TextEditingController currentPasswordController = TextEditingController();
+  final TextEditingController newPasswordController = TextEditingController();
+  final TextEditingController confirmPasswordController = TextEditingController();
+  final RxBool currentVisible = false.obs;
+  final RxBool newVisible = false.obs;
+  final RxBool confirmVisible = false.obs;
+  final RxBool isLoading = false.obs;
+  final RxString errorMessage = ''.obs;
+  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    currentPasswordController.dispose();
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!formKey.currentState!.validate()) return;
+
+    isLoading.value = true;
+    errorMessage.value = '';
+
+    try {
+      final authRepository = Get.find<AuthRepository>();
+
+      try {
+        await _verifyCurrentPassword(authRepository, currentPasswordController.text);
+      } on _PasswordVerificationUnavailable catch (e, st) {
+        errorMessage.value = 'password_verification_unavailable'.tr;
+        DebugLogger.warning('Password verification unavailable', e, st);
+        return;
+      } catch (e, st) {
+        errorMessage.value = 'incorrect_password'.tr;
+        DebugLogger.warning('Current password verification failed', e, st);
+        return;
+      }
+
+      await authRepository.updateUserPassword(newPasswordController.text);
+      Get.back();
+      AppToast.success('success'.tr, 'password_updated_successfully'.tr);
+      DebugLogger.success('Password changed from profile');
+    } catch (e) {
+      errorMessage.value = 'failed_to_update_password'.tr;
+      ErrorHandler.handleAuthError(e);
+      DebugLogger.error('Failed to change password from profile', e);
+    } finally {
+      if (mounted) {
+        isLoading.value = false;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () => AlertDialog(
+        backgroundColor: AppDesign.surface,
+        title: Text('change_password'.tr),
+        content: SingleChildScrollView(
+          child: SizedBox(
+            width: (MediaQuery.of(context).size.width - 80).clamp(0.0, 420.0),
+            child: Form(
+              key: formKey,
+              child: AutofillGroup(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Obx(
+                      () => TextFormField(
+                        controller: currentPasswordController,
+                        obscureText: !currentVisible.value,
+                        autofillHints: const [AutofillHints.password],
+                        decoration: InputDecoration(
+                          labelText: 'current_password'.tr,
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            onPressed: () => currentVisible.value = !currentVisible.value,
+                            icon: Icon(
+                              currentVisible.value ? Icons.visibility_off : Icons.visibility,
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'password_required'.tr;
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Obx(
+                      () => TextFormField(
+                        controller: newPasswordController,
+                        obscureText: !newVisible.value,
+                        autofillHints: const [AutofillHints.newPassword],
+                        decoration: InputDecoration(
+                          labelText: 'new_password'.tr,
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            onPressed: () => newVisible.value = !newVisible.value,
+                            icon: Icon(newVisible.value ? Icons.visibility_off : Icons.visibility),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'password_required'.tr;
+                          }
+                          if (value.length < 8) {
+                            return 'password_min_length_8'.tr;
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Obx(
+                      () => TextFormField(
+                        controller: confirmPasswordController,
+                        obscureText: !confirmVisible.value,
+                        autofillHints: const [AutofillHints.newPassword],
+                        decoration: InputDecoration(
+                          labelText: 'confirm_password'.tr,
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            onPressed: () => confirmVisible.value = !confirmVisible.value,
+                            icon: Icon(
+                              confirmVisible.value ? Icons.visibility_off : Icons.visibility,
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'confirm_password_required'.tr;
+                          }
+                          if (value != newPasswordController.text) {
+                            return 'passwords_dont_match'.tr;
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    Obx(() {
+                      final error = errorMessage.value;
+                      if (error.isEmpty) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          error,
+                          style: const TextStyle(color: AppDesign.errorRed, fontSize: 13),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: isLoading.value ? null : () => Get.back(),
+            child: Text('cancel'.tr, style: TextStyle(color: AppDesign.textSecondary)),
+          ),
+          TextButton(
+            onPressed: isLoading.value ? null : _submit,
+            child: isLoading.value
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(
+                    'update_password'.tr,
+                    style: const TextStyle(
+                      color: AppDesign.primaryYellow,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _verifyCurrentPassword(AuthRepository authRepository, String currentPassword) async {
+  final authUser = authRepository.currentUser;
+  final email = authUser?.email?.trim();
+  final phone = authUser?.phone?.trim();
+
+  if (email != null && email.isNotEmpty) {
+    await authRepository.signInWithEmailPassword(email, currentPassword);
+    return;
+  }
+
+  if (phone != null && phone.isNotEmpty) {
+    await authRepository.signInWithPhonePassword(phone, currentPassword);
+    return;
+  }
+
+  throw const _PasswordVerificationUnavailable();
+}
+
 class _PolicyItem {
   final String titleKey;
   final String subtitleKey;
@@ -471,4 +514,8 @@ class _PolicyItem {
     required this.uniqueName,
     required this.icon,
   });
+}
+
+class _PasswordVerificationUnavailable implements Exception {
+  const _PasswordVerificationUnavailable();
 }

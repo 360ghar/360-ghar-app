@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 
 class PropertyFilterWidget extends StatelessWidget {
-  final String pageType; // 'home', 'explore', 'favourites'
+  final String pageType; // 'discover', 'explore', 'likes'
   final VoidCallback? onFiltersApplied;
 
   const PropertyFilterWidget({super.key, required this.pageType, this.onFiltersApplied});
@@ -45,6 +46,7 @@ class _FilterBottomSheet extends StatefulWidget {
 
 class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   late final PageStateService pageStateService;
+  late final PageType _targetPageType;
 
   late String _selectedPurpose;
   late double _minPrice;
@@ -95,6 +97,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   @override
   void initState() {
     super.initState();
+    _targetPageType = _resolvePageType(widget.pageType);
     // Guard PageStateService lookup to prevent runtime exceptions
     if (Get.isRegistered<PageStateService>()) {
       pageStateService = Get.find<PageStateService>();
@@ -106,7 +109,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   }
 
   void _initializeFilters() {
-    final currentFilter = pageStateService.getCurrentPageState().filters;
+    final currentFilter = pageStateService.getStateForPage(_targetPageType).filters;
     _selectedPurpose = _mapPurpose(currentFilter.purpose ?? 'buy');
     // Clamp values to ensure they're within the slider range
     final maxRange = _getPriceMax(currentFilter.purpose ?? 'buy');
@@ -131,6 +134,21 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
     if (!_hasPgOrFlatmateSelection) {
       _selectedGenderPreference = '';
       _selectedSharingType = '';
+    }
+  }
+
+  PageType _resolvePageType(String value) {
+    switch (value.trim().toLowerCase()) {
+      case 'discover':
+      case 'home':
+        return PageType.discover;
+      case 'likes':
+      case 'favourites':
+      case 'favorites':
+        return PageType.likes;
+      case 'explore':
+      default:
+        return PageType.explore;
     }
   }
 
@@ -701,7 +719,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   void _clearFilters() {
     setState(() {
       final p = Get.isRegistered<PageStateService>()
-          ? _mapPurpose(pageStateService.getCurrentPageState().filters.purpose ?? 'buy')
+          ? _mapPurpose(pageStateService.getStateForPage(_targetPageType).filters.purpose ?? 'buy')
           : 'buy';
       _selectedPurpose = p;
       _minPrice = _getPriceMin(p);
@@ -718,8 +736,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   void _applyFilters() {
     // Apply filters only if PageStateService is available
     if (Get.isRegistered<PageStateService>()) {
-      final currentPageType = pageStateService.currentPageType.value;
-      final currentFilters = pageStateService.getCurrentPageState().filters;
+      final currentFilters = pageStateService.getStateForPage(_targetPageType).filters;
 
       final updatedFilters = currentFilters.copyWith(
         purpose: _mapPurposeToApi(_selectedPurpose),
@@ -733,7 +750,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
         sharingType: _hasPgOrFlatmateSelection ? _selectedSharingType : '',
       );
 
-      pageStateService.updatePageFilters(currentPageType, updatedFilters);
+      pageStateService.updatePageFilters(_targetPageType, updatedFilters);
     }
 
     Navigator.pop(context);

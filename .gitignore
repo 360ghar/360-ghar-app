@@ -57,6 +57,9 @@ app.*.map.json
 
 digest.txt
 
+# Local tool / generated output artifacts
+outputs/
+
 # Environment variables - sensitive files (not committed)
 .env.development
 .env.production
