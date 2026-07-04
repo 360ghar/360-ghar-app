@@ -64,6 +64,12 @@ class ForgotPasswordController extends GetxController with OtpResendTimer {
 
     try {
       final id = IdentifierUtils.normalize(identifierController.text.trim());
+      final status = await _authRepository.checkIdentifierStatus(id);
+      if (!status.exists) {
+        errorMessage.value = 'no_account_found_error'.tr;
+        return;
+      }
+
       if (isEmail) {
         await _authRepository.sendEmailOtp(id);
       } else {

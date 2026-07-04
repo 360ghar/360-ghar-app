@@ -36,17 +36,29 @@ class ErrorHandler {
       if (code == 'otp_expired' || containsAny(['token has expired', 'token is invalid'])) {
         message = 'otp_expired_request_new'.tr;
         backgroundColor = AppDesign.warningAmber;
+      } else if (code == 'otp_disabled') {
+        message = 'invalid_otp'.tr;
+      } else if (code == 'over_request_rate_limit' ||
+          code == 'over_email_send_rate_limit' ||
+          code == 'over_sms_send_rate_limit' ||
+          containsAny(['rate limit exceeded', 'too many requests'])) {
+        message = 'too_many_attempts'.tr;
+        backgroundColor = AppDesign.warningAmber;
+      } else if (code == 'sms_send_failed') {
+        message = 'failed_to_send_otp'.tr;
+      } else if (code == 'bad_jwt') {
+        message = 'session_expired_signin'.tr;
+      } else if (code == 'email_address_not_authorized') {
+        message = 'registration_disabled'.tr;
       } else if (containsAny([
         'invalid login credentials',
         'wrong password',
         'incorrect password',
       ])) {
         message = 'invalid_phone_password'.tr;
-      } else if (containsAny([
-        'email not confirmed',
-        'phone not confirmed',
-        'user not confirmed',
-      ])) {
+      } else if (code == 'email_not_confirmed' ||
+          code == 'phone_not_confirmed' ||
+          containsAny(['email not confirmed', 'phone not confirmed', 'user not confirmed'])) {
         message = 'verify_phone_first'.tr;
         backgroundColor = AppDesign.warningAmber;
       } else if (containsAny(['already registered', 'user already registered'])) {

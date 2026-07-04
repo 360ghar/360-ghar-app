@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+> **Canonical guide: [CLAUDE.md](./CLAUDE.md).** Read it first for stack, structure, commands, and conventions.
+
 ## Project Structure & Module Organization
 - `lib/`: Flutter source using feature-first GetX layers with clean architecture.
   - Features: `lib/features/<feature>/{views,controllers,bindings}` (e.g., `discover`, `profile`).

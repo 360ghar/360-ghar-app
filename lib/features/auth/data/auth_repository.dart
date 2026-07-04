@@ -405,7 +405,7 @@ class AuthRepository extends GetxService {
   /// to clear the local session; the auth-state listener routes to login.
   Future<void> deleteAccount() async {
     DebugLogger.auth('Deleting user account.');
-    await _api.post('/auth/delete-account');
+    await _api.post('/auth/delete-account', body: {'confirm': true});
     DebugLogger.success('Account deletion acknowledged by backend.');
   }
 
