@@ -30,6 +30,38 @@ class GooglePlacesService extends GetxService {
   final RxList<PlaceSuggestion> placeSuggestions = <PlaceSuggestion>[].obs;
   final RxBool isSearchingPlaces = false.obs;
 
+  /// User-facing error key or message for the last failed Places call.
+  /// Empty string means no active error (success or real zero results).
+  final RxString placesError = ''.obs;
+
+  void _setError(String message) {
+    placesError.value = message;
+  }
+
+  void _clearError() {
+    placesError.value = '';
+  }
+
+  void _logApiFailure(String action, String? status, String? errorMessage) {
+    final detail = errorMessage != null && errorMessage.isNotEmpty
+        ? ' — $errorMessage'
+        : '';
+    DebugLogger.error('Google Places $action status=$status$detail');
+  }
+
+  String _userMessageForStatus(String? status) {
+    switch (status) {
+      case 'REQUEST_DENIED':
+        return 'places_api_request_denied'.tr;
+      case 'OVER_QUERY_LIMIT':
+        return 'places_api_quota_exceeded'.tr;
+      case 'INVALID_REQUEST':
+        return 'places_api_invalid_request'.tr;
+      default:
+        return 'failed_to_search_locations'.tr;
+    }
+  }
+
   /// Fetches place autocomplete suggestions for [query].
   /// Optionally biases results toward [currentPosition].
   Future<List<PlaceSuggestion>> getPlaceSuggestions(
@@ -38,17 +70,29 @@ class GooglePlacesService extends GetxService {
   }) async {
     if (query.trim().isEmpty || query.length < 2) {
       placeSuggestions.clear();
+      _clearError();
       return [];
     }
 
     try {
       isSearchingPlaces.value = true;
+      _clearError();
 
       final apiKey = dotenv.env['GOOGLE_PLACES_API_KEY'] ?? '';
       if (apiKey.isEmpty) {
-        DebugLogger.warning('Google Places API key not found');
+        DebugLogger.warning(
+          'Google Places API key not found '
+          '(GOOGLE_PLACES_API_KEY missing from env)',
+        );
         placeSuggestions.clear();
+        _setError('places_api_key_missing'.tr);
         return [];
+      }
+
+      if (kDebugMode) {
+        DebugLogger.info(
+          'Google Places autocomplete key present (length=${apiKey.length})',
+        );
       }
 
       final countryCode = dotenv.env['DEFAULT_COUNTRY'] ?? 'in';
@@ -82,11 +126,14 @@ class GooglePlacesService extends GetxService {
         if (kDebugMode) {
           DebugLogger.error('Response body: ${response.body}');
         }
+        placeSuggestions.clear();
+        _setError('failed_to_search_locations'.tr);
         return [];
       }
 
-      final data = json.decode(response.body);
-      final status = data['status'];
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final status = data['status'] as String?;
+      final errorMessage = data['error_message'] as String?;
 
       switch (status) {
         case 'OK':
@@ -101,40 +148,38 @@ class GooglePlacesService extends GetxService {
           }).toList();
 
           placeSuggestions.value = suggestions;
+          _clearError();
           return suggestions;
 
         case 'ZERO_RESULTS':
           DebugLogger.info('Google Places API returned no results for query: $query');
           placeSuggestions.clear();
+          _clearError();
           return [];
 
         case 'OVER_QUERY_LIMIT':
-          DebugLogger.error('Google Places API quota exceeded for query: $query');
-          placeSuggestions.clear();
-          return [];
-
         case 'REQUEST_DENIED':
-          DebugLogger.error('Google Places API request denied for query: $query');
-          placeSuggestions.clear();
-          return [];
-
         case 'INVALID_REQUEST':
-          DebugLogger.error('Invalid Google Places API request for query: $query');
+          _logApiFailure('autocomplete', status, errorMessage);
           placeSuggestions.clear();
+          _setError(_userMessageForStatus(status));
           return [];
 
         default:
-          DebugLogger.warning('Unknown Google Places API status: $status for query: $query');
+          _logApiFailure('autocomplete', status, errorMessage);
           placeSuggestions.clear();
+          _setError(_userMessageForStatus(status));
           return [];
       }
     } on TimeoutException catch (e) {
       DebugLogger.error('Google Places API request timed out for query: $query', e);
       placeSuggestions.clear();
+      _setError('places_api_timeout'.tr);
       return [];
     } catch (e, stackTrace) {
       DebugLogger.error('Error getting place suggestions for query: $query', e, stackTrace);
       placeSuggestions.clear();
+      _setError('failed_to_search_locations'.tr);
       return [];
     } finally {
       isSearchingPlaces.value = false;
@@ -147,7 +192,11 @@ class GooglePlacesService extends GetxService {
     try {
       final apiKey = dotenv.env['GOOGLE_PLACES_API_KEY'] ?? '';
       if (apiKey.isEmpty) {
-        DebugLogger.warning('Google Places API key not found');
+        DebugLogger.warning(
+          'Google Places API key not found '
+          '(GOOGLE_PLACES_API_KEY missing from env)',
+        );
+        _setError('places_api_key_missing'.tr);
         return null;
       }
 
@@ -164,11 +213,13 @@ class GooglePlacesService extends GetxService {
         if (kDebugMode) {
           DebugLogger.error('Response body: ${response.body}');
         }
+        _setError('location_details_failed'.tr);
         return null;
       }
 
-      final data = json.decode(response.body);
-      final status = data['status'];
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final status = data['status'] as String?;
+      final errorMessage = data['error_message'] as String?;
 
       switch (status) {
         case 'OK':
@@ -204,6 +255,7 @@ class GooglePlacesService extends GetxService {
               }
             }
 
+            _clearError();
             return LocationData(
               name: displayName,
               latitude: location['lat'].toDouble(),
@@ -214,45 +266,25 @@ class GooglePlacesService extends GetxService {
             'Google Places Details API returned null result '
             'for placeId: $placeId',
           );
+          _setError('location_details_failed'.tr);
           return null;
 
         case 'ZERO_RESULTS':
-          DebugLogger.info(
-            'Google Places Details API returned no results '
-            'for placeId: $placeId',
-          );
+        case 'NOT_FOUND':
+          _logApiFailure('details', status, errorMessage);
+          _setError('location_details_failed'.tr);
           return null;
 
         case 'OVER_QUERY_LIMIT':
-          DebugLogger.error(
-            'Google Places Details API quota exceeded '
-            'for placeId: $placeId',
-          );
-          return null;
-
         case 'REQUEST_DENIED':
-          DebugLogger.error(
-            'Google Places Details API request denied '
-            'for placeId: $placeId',
-          );
-          return null;
-
         case 'INVALID_REQUEST':
-          DebugLogger.error(
-            'Invalid Google Places Details API request '
-            'for placeId: $placeId',
-          );
-          return null;
-
-        case 'NOT_FOUND':
-          DebugLogger.warning('Place not found for placeId: $placeId');
+          _logApiFailure('details', status, errorMessage);
+          _setError(_userMessageForStatus(status));
           return null;
 
         default:
-          DebugLogger.warning(
-            'Unknown Google Places Details API status: $status '
-            'for placeId: $placeId',
-          );
+          _logApiFailure('details', status, errorMessage);
+          _setError('location_details_failed'.tr);
           return null;
       }
     } on TimeoutException catch (e) {
@@ -261,9 +293,11 @@ class GooglePlacesService extends GetxService {
         'for placeId: $placeId',
         e,
       );
+      _setError('places_api_timeout'.tr);
       return null;
     } catch (e, stackTrace) {
       DebugLogger.error('Error getting place details for placeId: $placeId', e, stackTrace);
+      _setError('location_details_failed'.tr);
       return null;
     }
   }
@@ -292,5 +326,6 @@ class GooglePlacesService extends GetxService {
 
   void clearPlaceSuggestions() {
     placeSuggestions.clear();
+    _clearError();
   }
 }

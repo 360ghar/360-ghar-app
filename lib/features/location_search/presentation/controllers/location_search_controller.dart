@@ -47,8 +47,12 @@ class LocationSearchController extends GetxController {
     try {
       searchError.value = '';
       await locationController.getPlaceSuggestions(searchQuery.value);
+      final placesError = locationController.placesError.value;
+      if (placesError.isNotEmpty) {
+        searchError.value = placesError;
+      }
     } catch (_) {
-      searchError.value = 'search_error'.tr;
+      searchError.value = 'failed_to_search_locations'.tr;
     }
   }
 

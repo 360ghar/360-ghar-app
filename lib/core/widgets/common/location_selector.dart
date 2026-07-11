@@ -293,8 +293,39 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
             Expanded(
               child: Obx(() {
                 final suggestions = locationController.placeSuggestions;
+                final placesError = locationController.placesError.value;
+                final isSearching = locationController.isSearchingPlaces.value;
+                final hasQuery = _searchController.text.trim().isNotEmpty;
 
-                if (suggestions.isEmpty && _searchController.text.isNotEmpty) {
+                if (isSearching && suggestions.isEmpty) {
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
+                    ),
+                  );
+                }
+
+                if (placesError.isNotEmpty && suggestions.isEmpty && hasQuery) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48, color: AppDesign.errorRed),
+                          const SizedBox(height: 16),
+                          Text(
+                            placesError,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 16, color: AppDesign.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                if (suggestions.isEmpty && hasQuery) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -467,26 +498,39 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
     // Capture any theme-derived colors up-front to avoid using context across awaits
     final onErrorColor = Theme.of(context).colorScheme.onError;
     try {
-      Navigator.of(context).pop();
-
-      // Get place details with preferred name from autocomplete selection
+      // Resolve details before closing so failures stay visible in the sheet.
       final locationData = await locationController.getPlaceDetails(
         suggestion.placeId,
         preferredName: suggestion.mainText,
       );
-      if (locationData != null) {
-        await pageStateService.updateLocationForPage(
-          widget.pageType,
-          locationData,
-          source: 'manual',
-        );
-
+      if (locationData == null) {
+        final detailError = locationController.placesError.value;
         _showSnackbarSafe(
-          title: 'location_selected'.tr,
-          message: suggestion.mainText,
-          duration: const Duration(seconds: 2),
+          title: 'error'.tr,
+          message: detailError.isNotEmpty
+              ? detailError
+              : 'unable_to_select_location'.tr,
+          backgroundColor: AppDesign.errorRed,
+          textColor: onErrorColor,
         );
+        return;
       }
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      await pageStateService.updateLocationForPage(
+        widget.pageType,
+        locationData,
+        source: 'manual',
+      );
+
+      _showSnackbarSafe(
+        title: 'location_selected'.tr,
+        message: suggestion.mainText,
+        duration: const Duration(seconds: 2),
+      );
     } catch (e) {
       _showSnackbarSafe(
         title: 'error'.tr,
