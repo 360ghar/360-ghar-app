@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:get/get.dart';
@@ -99,6 +101,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
   final LocationController locationController = Get.find<LocationController>();
   final PageStateService pageStateService = Get.find<PageStateService>();
   double? _radiusKm;
+  Timer? _searchDebounce;
 
   bool _hasOverlay() {
     final overlayContext = Get.overlayContext;
@@ -155,8 +158,21 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    if (query.trim().isEmpty) {
+      locationController.clearPlaceSuggestions();
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      locationController.getPlaceSuggestions(query.trim());
+    });
   }
 
   @override
@@ -165,14 +181,14 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
     return Semantics(
       label: modalId,
       identifier: modalId,
-      child: Container(
+      child: Material(
         key: ValueKey(modalId),
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: BoxDecoration(
-          color: AppDesign.scaffoldBackground,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
+        color: AppDesign.scaffoldBackground,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
           children: [
             // Handle bar
             Container(
@@ -225,13 +241,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                   key: ValueKey('qa.location.selector.search_input.${widget.pageType.name}'),
                   controller: _searchController,
                   style: TextStyle(color: AppDesign.textPrimary),
-                  onChanged: (query) {
-                    if (query.isNotEmpty) {
-                      locationController.getPlaceSuggestions(query);
-                    } else {
-                      locationController.clearPlaceSuggestions();
-                    }
-                  },
+                  onChanged: _onSearchChanged,
                   decoration: InputDecoration(
                     hintText: 'search_location_hint'.tr,
                     hintStyle: TextStyle(color: AppDesign.textSecondary),
@@ -356,6 +366,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -421,27 +432,34 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
     return Semantics(
       label: qaKey,
       identifier: qaKey,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: ListTile(
-          key: qaKey != null ? ValueKey(qaKey) : null,
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        // Material so ListTile ink/tileColor are not blocked by parent DecoratedBox.
+        child: Material(
+          color: AppDesign.surface,
+          borderRadius: BorderRadius.circular(12),
+          child: ListTile(
+            key: qaKey != null ? ValueKey(qaKey) : null,
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
             ),
-            child: Icon(icon, color: iconColor, size: 20),
+            title: Text(
+              title,
+              style: TextStyle(fontWeight: FontWeight.w500, color: AppDesign.textPrimary),
+            ),
+            subtitle: Text(
+              subtitle,
+              style: TextStyle(color: AppDesign.textSecondary, fontSize: 12),
+            ),
+            trailing: Icon(Icons.arrow_forward_ios, size: 16, color: AppDesign.textSecondary),
+            onTap: onTap,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          title: Text(
-            title,
-            style: TextStyle(fontWeight: FontWeight.w500, color: AppDesign.textPrimary),
-          ),
-          subtitle: Text(subtitle, style: TextStyle(color: AppDesign.textSecondary, fontSize: 12)),
-          trailing: Icon(Icons.arrow_forward_ios, size: 16, color: AppDesign.textSecondary),
-          onTap: onTap,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          tileColor: AppDesign.surface,
         ),
       ),
     );
@@ -452,23 +470,26 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: AppDesign.accentBlue.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
+    return Material(
+      color: AppDesign.transparent,
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppDesign.accentBlue.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.location_on, color: AppDesign.accentBlue, size: 20),
         ),
-        child: const Icon(Icons.location_on, color: AppDesign.accentBlue, size: 20),
+        title: Text(
+          title,
+          style: TextStyle(fontWeight: FontWeight.w500, color: AppDesign.textPrimary),
+        ),
+        subtitle: subtitle.isNotEmpty
+            ? Text(subtitle, style: TextStyle(color: AppDesign.textSecondary, fontSize: 12))
+            : null,
+        onTap: onTap,
       ),
-      title: Text(
-        title,
-        style: TextStyle(fontWeight: FontWeight.w500, color: AppDesign.textPrimary),
-      ),
-      subtitle: subtitle.isNotEmpty
-          ? Text(subtitle, style: TextStyle(color: AppDesign.textSecondary, fontSize: 12))
-          : null,
-      onTap: onTap,
     );
   }
 
