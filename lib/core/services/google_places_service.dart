@@ -136,6 +136,7 @@ class GooglePlacesService extends GetxService {
     if (query.trim().isEmpty || query.length < 2) {
       if (!_isLatestSuggestions(requestId)) return [];
       placeSuggestions.clear();
+      isSearchingPlaces.value = false;
       _clearError();
       return [];
     }
@@ -258,9 +259,12 @@ class GooglePlacesService extends GetxService {
 
         case 'OVER_QUERY_LIMIT':
         case 'REQUEST_DENIED':
-        case 'INVALID_REQUEST':
           _logApiFailure('autocomplete', status, errorMessage);
           _disableGoogleTemporarily();
+          return null;
+
+        case 'INVALID_REQUEST':
+          _logApiFailure('autocomplete', status, errorMessage);
           return null;
 
         default:
@@ -524,9 +528,13 @@ class GooglePlacesService extends GetxService {
 
         case 'OVER_QUERY_LIMIT':
         case 'REQUEST_DENIED':
-        case 'INVALID_REQUEST':
           _logApiFailure('details', status, errorMessage);
           _disableGoogleTemporarily();
+          _setError('location_details_failed'.tr);
+          return null;
+
+        case 'INVALID_REQUEST':
+          _logApiFailure('details', status, errorMessage);
           _setError('location_details_failed'.tr);
           return null;
 
@@ -571,6 +579,8 @@ class GooglePlacesService extends GetxService {
   }
 
   void clearPlaceSuggestions() {
+    _suggestionsRequestId++;
+    isSearchingPlaces.value = false;
     placeSuggestions.clear();
     _clearError();
   }

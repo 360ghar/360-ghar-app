@@ -444,6 +444,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
         child: Material(
           color: AppDesign.surface,
           borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
           child: ListTile(
             key: qaKey != null ? ValueKey(qaKey) : null,
             leading: Container(

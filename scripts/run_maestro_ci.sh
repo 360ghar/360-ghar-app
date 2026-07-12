@@ -47,13 +47,14 @@ DEVICE_ID=""
 
 ensure_ios_google_service_plist() {
   local plist="${APP_DIR}/ios/Runner/GoogleService-Info.plist"
-  if [[ -f "${plist}" ]]; then
-    return 0
-  fi
 
   if [[ -n "${IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]]; then
     printf '%s' "${IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64}" | base64 --decode > "${plist}"
     echo "Wrote GoogleService-Info.plist from IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64"
+    return 0
+  fi
+
+  if [[ -f "${plist}" ]]; then
     return 0
   fi
 
@@ -153,16 +154,9 @@ cd "${APP_DIR}"
 
 echo "Running Maestro suite: ${FLOW_FILE}"
 # Global options must precede the subcommand (Maestro 1.39+ rejects `test --device`).
-if [[ -n "${DEVICE_ID}" ]]; then
-  maestro --device "${DEVICE_ID}" test "${FLOW_FILE}" \
-    --format junit \
-    --output "${JUNIT_OUT}" \
-    -e API_BASE_URL="${API_BASE_URL}"
-else
-  maestro test "${FLOW_FILE}" \
-    --format junit \
-    --output "${JUNIT_OUT}" \
-    -e API_BASE_URL="${API_BASE_URL}"
-fi
+maestro --device "${DEVICE_ID}" test "${FLOW_FILE}" \
+  --format junit \
+  --output "${JUNIT_OUT}" \
+  -e API_BASE_URL="${API_BASE_URL}"
 
 echo "Maestro run complete. JUnit: ${JUNIT_OUT}"

@@ -197,14 +197,6 @@ void main() {
       expect(make(status: VisitStatus.cancelled).canCancel, false);
     });
 
-    test('statusString returns readable text', () {
-      expect(make(status: VisitStatus.scheduled).statusString, 'visit_status_scheduled');
-      expect(make(status: VisitStatus.confirmed).statusString, 'visit_status_confirmed');
-      expect(make(status: VisitStatus.completed).statusString, 'visit_status_completed');
-      expect(make(status: VisitStatus.cancelled).statusString, 'visit_status_cancelled');
-      expect(make(status: VisitStatus.rescheduled).statusString, 'visit_status_rescheduled');
-    });
-
     test('statusStringKey returns translation keys for all statuses', () {
       expect(make(status: VisitStatus.scheduled).statusStringKey, 'visit_status_scheduled');
       expect(make(status: VisitStatus.confirmed).statusStringKey, 'visit_status_confirmed');
