@@ -102,6 +102,8 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
   final PageStateService pageStateService = Get.find<PageStateService>();
   double? _radiusKm;
   Timer? _searchDebounce;
+  bool _isSelectingPlace = false;
+  bool _isUsingCurrentLocation = false;
 
   bool _hasOverlay() {
     final overlayContext = Get.overlayContext;
@@ -170,9 +172,16 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
       return;
     }
     _searchDebounce = Timer(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
+      // Skip if the field was cleared/changed while the timer was pending.
+      if (!mounted || _searchController.text.trim() != query.trim()) return;
       locationController.getPlaceSuggestions(query.trim());
     });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    locationController.clearPlaceSuggestions();
   }
 
   @override
@@ -189,183 +198,180 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
         child: SizedBox(
           height: MediaQuery.of(context).size.height * 0.7,
           child: Column(
-          children: [
-            // Handle bar
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppDesign.divider,
-                borderRadius: BorderRadius.circular(2),
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppDesign.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
 
-            // Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  const Icon(Icons.location_on, color: AppDesign.primaryYellow),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'select_location'.tr,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppDesign.textPrimary,
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on, color: AppDesign.primaryYellow),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'select_location'.tr,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppDesign.textPrimary,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: AppDesign.textSecondary),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
+                    IconButton(
+                      icon: Icon(Icons.close, color: AppDesign.textSecondary),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // Search bar
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: AppDesign.inputBackground,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppDesign.divider, width: 0.5),
-              ),
-              child: Semantics(
-                label: 'qa.location.selector.search_input.${widget.pageType.name}',
-                identifier: 'qa.location.selector.search_input.${widget.pageType.name}',
-                child: TextField(
-                  key: ValueKey('qa.location.selector.search_input.${widget.pageType.name}'),
-                  controller: _searchController,
-                  style: TextStyle(color: AppDesign.textPrimary),
-                  onChanged: _onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: 'search_location_hint'.tr,
-                    hintStyle: TextStyle(color: AppDesign.textSecondary),
-                    prefixIcon: Icon(Icons.search, color: AppDesign.iconColor),
-                    suffixIcon: Obx(() {
-                      if (locationController.isSearchingPlaces.value) {
-                        return Container(
-                          width: 20,
-                          height: 20,
-                          margin: const EdgeInsets.all(12),
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
-                          ),
-                        );
-                      } else if (_searchController.text.isNotEmpty) {
-                        return IconButton(
-                          icon: Icon(Icons.clear, color: AppDesign.iconColor),
-                          onPressed: () {
-                            _searchController.clear();
-                            locationController.clearPlaceSuggestions();
-                          },
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    }),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              // Search bar
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: AppDesign.inputBackground,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppDesign.divider, width: 0.5),
+                ),
+                child: Semantics(
+                  label: 'qa.location.selector.search_input.${widget.pageType.name}',
+                  identifier: 'qa.location.selector.search_input.${widget.pageType.name}',
+                  child: TextField(
+                    key: ValueKey('qa.location.selector.search_input.${widget.pageType.name}'),
+                    controller: _searchController,
+                    style: TextStyle(color: AppDesign.textPrimary),
+                    onChanged: _onSearchChanged,
+                    decoration: InputDecoration(
+                      hintText: 'search_location_hint'.tr,
+                      hintStyle: TextStyle(color: AppDesign.textSecondary),
+                      prefixIcon: Icon(Icons.search, color: AppDesign.iconColor),
+                      suffixIcon: Obx(() {
+                        if (locationController.isSearchingPlaces.value) {
+                          return Container(
+                            width: 20,
+                            height: 20,
+                            margin: const EdgeInsets.all(12),
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
+                            ),
+                          );
+                        } else if (_searchController.text.isNotEmpty) {
+                          return IconButton(
+                            icon: Icon(Icons.clear, color: AppDesign.iconColor),
+                            onPressed: _clearSearch,
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      }),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Radius selector
-            _buildRadiusSelector(),
+              // Radius selector
+              _buildRadiusSelector(),
 
-            // Quick actions
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  _buildQuickActionTile(
-                    qaKey: 'qa.location.selector.use_current_location.${widget.pageType.name}',
-                    icon: Icons.my_location,
-                    title: 'use_current_location'.tr,
-                    subtitle: 'get_location_from_gps'.tr,
-                    iconColor: AppDesign.primaryYellow,
-                    onTap: () => _useCurrentLocation(),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Search results
-            Expanded(
-              child: Obx(() {
-                final suggestions = locationController.placeSuggestions;
-                final placesError = locationController.placesError.value;
-                final isSearching = locationController.isSearchingPlaces.value;
-                final hasQuery = _searchController.text.trim().isNotEmpty;
-
-                if (isSearching && suggestions.isEmpty) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
+              // Quick actions
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    _buildQuickActionTile(
+                      qaKey: 'qa.location.selector.use_current_location.${widget.pageType.name}',
+                      icon: Icons.my_location,
+                      title: 'use_current_location'.tr,
+                      subtitle: 'get_location_from_gps'.tr,
+                      iconColor: AppDesign.primaryYellow,
+                      onTap: () => _useCurrentLocation(),
                     ),
-                  );
-                }
+                  ],
+                ),
+              ),
 
-                if (placesError.isNotEmpty && suggestions.isEmpty && hasQuery) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+              const SizedBox(height: 8),
+
+              // Search results
+              Expanded(
+                child: Obx(() {
+                  final suggestions = locationController.placeSuggestions;
+                  final placesError = locationController.placesError.value;
+                  final isSearching = locationController.isSearchingPlaces.value;
+                  final hasQuery = _searchController.text.trim().isNotEmpty;
+
+                  if (isSearching && suggestions.isEmpty) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
+                      ),
+                    );
+                  }
+
+                  if (placesError.isNotEmpty && suggestions.isEmpty && hasQuery) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline, size: 48, color: AppDesign.errorRed),
+                            const SizedBox(height: 16),
+                            Text(
+                              placesError,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 16, color: AppDesign.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  if (suggestions.isEmpty && hasQuery) {
+                    return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error_outline, size: 48, color: AppDesign.errorRed),
+                          Icon(Icons.location_off, size: 48, color: AppDesign.textSecondary),
                           const SizedBox(height: 16),
                           Text(
-                            placesError,
-                            textAlign: TextAlign.center,
+                            'no_locations_found'.tr,
                             style: TextStyle(fontSize: 16, color: AppDesign.textSecondary),
                           ),
                         ],
                       ),
-                    ),
-                  );
-                }
-
-                if (suggestions.isEmpty && hasQuery) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.location_off, size: 48, color: AppDesign.textSecondary),
-                        const SizedBox(height: 16),
-                        Text(
-                          'no_locations_found'.tr,
-                          style: TextStyle(fontSize: 16, color: AppDesign.textSecondary),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  itemCount: suggestions.length,
-                  itemBuilder: (context, index) {
-                    final suggestion = suggestions[index];
-                    return _buildLocationTile(
-                      title: suggestion.mainText,
-                      subtitle: suggestion.secondaryText,
-                      onTap: () => _selectPlaceSuggestion(suggestion),
                     );
-                  },
-                );
-              }),
-            ),
-          ],
-        ),
+                  }
+
+                  return ListView.builder(
+                    itemCount: suggestions.length,
+                    itemBuilder: (context, index) {
+                      final suggestion = suggestions[index];
+                      return _buildLocationTile(
+                        title: suggestion.mainText,
+                        subtitle: suggestion.secondaryText,
+                        onTap: () => _selectPlaceSuggestion(suggestion),
+                      );
+                    },
+                  );
+                }),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -494,11 +500,18 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
   }
 
   void _useCurrentLocation() async {
+    if (_isUsingCurrentLocation || _isSelectingPlace) return;
+    _isUsingCurrentLocation = true;
     // Capture any theme-derived colors up-front to avoid using context across awaits
     final onErrorColor = Theme.of(context).colorScheme.onError;
     try {
-      Navigator.of(context).pop();
+      // Persist first; only dismiss the sheet after success (matches
+      // LocationSearchController.useCurrentLocation).
       await pageStateService.useCurrentLocationForPage(widget.pageType);
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
 
       _showSnackbarSafe(
         title: 'location_updated'.tr,
@@ -512,10 +525,14 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
         backgroundColor: AppDesign.errorRed,
         textColor: onErrorColor,
       );
+    } finally {
+      _isUsingCurrentLocation = false;
     }
   }
 
   void _selectPlaceSuggestion(PlaceSuggestion suggestion) async {
+    if (_isSelectingPlace || _isUsingCurrentLocation) return;
+    _isSelectingPlace = true;
     // Capture any theme-derived colors up-front to avoid using context across awaits
     final onErrorColor = Theme.of(context).colorScheme.onError;
     try {
@@ -528,24 +545,20 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
         final detailError = locationController.placesError.value;
         _showSnackbarSafe(
           title: 'error'.tr,
-          message: detailError.isNotEmpty
-              ? detailError
-              : 'unable_to_select_location'.tr,
+          message: detailError.isNotEmpty ? detailError : 'unable_to_select_location'.tr,
           backgroundColor: AppDesign.errorRed,
           textColor: onErrorColor,
         );
         return;
       }
 
+      // Persist first; only dismiss the sheet after success (matches
+      // LocationSearchController.selectPlace).
+      await pageStateService.updateLocationForPage(widget.pageType, locationData, source: 'manual');
+
       if (mounted) {
         Navigator.of(context).pop();
       }
-
-      await pageStateService.updateLocationForPage(
-        widget.pageType,
-        locationData,
-        source: 'manual',
-      );
 
       _showSnackbarSafe(
         title: 'location_selected'.tr,
@@ -559,6 +572,8 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
         backgroundColor: AppDesign.errorRed,
         textColor: onErrorColor,
       );
+    } finally {
+      _isSelectingPlace = false;
     }
   }
 }
