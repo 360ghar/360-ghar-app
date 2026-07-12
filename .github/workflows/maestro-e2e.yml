@@ -3,9 +3,9 @@ name: Maestro E2E
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   maestro-android:
@@ -21,13 +21,13 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.35.2'
+          flutter-version: "3.35.2"
           cache: true
 
       - name: Create environment files
@@ -55,6 +55,12 @@ jobs:
           echo "$HOME/.maestro/bin" >> $GITHUB_PATH
           $HOME/.maestro/bin/maestro --version
 
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Run Android emulator + Maestro tests
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -62,10 +68,15 @@ jobs:
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
         with:
-          api-level: 34
+          # API 30 + default target is more reliably cached on ubuntu runners than
+          # API 34 google_apis (which failed with a corrupt system-image zip).
+          api-level: 30
           arch: x86_64
           profile: pixel_6
-          target: google_apis
+          target: default
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
           script: |
             ./scripts/run_maestro_ci.sh android full
 
@@ -92,7 +103,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.35.2'
+          flutter-version: "3.35.2"
           cache: true
 
       - name: Create environment files
@@ -122,14 +133,24 @@ jobs:
 
       - name: Boot iOS simulator
         run: |
-          UDID=$(xcrun simctl list devices available | grep -m1 "iPhone" | sed -E 's/.*\(([0-9A-F-]+)\) \(.*\)$/\1/')
-          if [ -z "$UDID" ]; then
-            echo "No available iOS simulator found" >&2
+          set -euo pipefail
+          # Extract UDID only (previous sed left the whole device line when it
+          # failed to match, which produces "Invalid device or device pair").
+          UDID="$(
+            xcrun simctl list devices available \
+              | grep -i 'iphone' \
+              | grep -vi 'unavailable' \
+              | grep -m1 -Eo '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
+            || true
+          )"
+          if [ -z "${UDID}" ]; then
+            echo "No available iOS simulator found. Devices:" >&2
+            xcrun simctl list devices available >&2 || true
             exit 1
           fi
-          xcrun simctl boot "$UDID" || true
-          xcrun simctl bootstatus "$UDID" -b
-          echo "Booted simulator: $UDID"
+          xcrun simctl boot "${UDID}" || true
+          xcrun simctl bootstatus "${UDID}" -b
+          echo "Booted simulator: ${UDID}"
 
       - name: Run Maestro iOS full suite
         env:

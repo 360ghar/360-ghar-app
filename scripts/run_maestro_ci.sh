@@ -51,7 +51,7 @@ build_and_install_ios() {
   fi
 
   local device_id
-  device_id="$(xcrun simctl list devices booted | grep -m1 -Eo '[A-F0-9-]{8}-[A-F0-9-]{4}-[A-F0-9-]{4}-[A-F0-9-]{4}-[A-F0-9-]{12}' || true)"
+  device_id="$(xcrun simctl list devices booted | grep -m1 -Eo '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' || true)"
   if [[ -z "${device_id}" ]]; then
     echo "No booted iOS simulator found. Boot one and re-run." >&2
     exit 1
