@@ -42,7 +42,57 @@ OUTPUT_DIR="${MAESTRO_OUTPUT_DIR:-${APP_DIR}/build/maestro/${SUITE}-${PLATFORM}}
 mkdir -p "${OUTPUT_DIR}"
 JUNIT_OUT="${OUTPUT_DIR}/junit.xml"
 
-DEVICE_ARG=()
+# Maestro 1.39+: --device is a global flag (before subcommand), not a `test` option.
+DEVICE_ID=""
+
+ensure_ios_google_service_plist() {
+  local plist="${APP_DIR}/ios/Runner/GoogleService-Info.plist"
+  if [[ -f "${plist}" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]]; then
+    printf '%s' "${IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64}" | base64 --decode > "${plist}"
+    echo "Wrote GoogleService-Info.plist from IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64"
+    return 0
+  fi
+
+  # Minimal stub so CI can compile when secrets are unavailable (Firebase features
+  # won't work, but the app binary still builds for Maestro UI flows).
+  cat > "${plist}" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>ci-dummy-api-key</string>
+	<key>GCM_SENDER_ID</key>
+	<string>000000000000</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.the360ghar.ghar360</string>
+	<key>PROJECT_ID</key>
+	<string>ghar-ci-dummy</string>
+	<key>STORAGE_BUCKET</key>
+	<string>ghar-ci-dummy.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<false></false>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<false></false>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:000000000000:ios:0000000000000000000000</string>
+</dict>
+</plist>
+PLIST
+  echo "Wrote stub GoogleService-Info.plist for CI build"
+}
 
 build_and_install_ios() {
   if ! command -v xcrun >/dev/null 2>&1; then
@@ -58,10 +108,11 @@ build_and_install_ios() {
   fi
 
   echo "Using iOS simulator: ${device_id}"
+  ensure_ios_google_service_plist
   (cd "${APP_DIR}" && flutter build ios --debug --simulator --no-codesign)
   xcrun simctl install "${device_id}" "${APP_DIR}/build/ios/iphonesimulator/Runner.app"
 
-  DEVICE_ARG=(--device "${device_id}")
+  DEVICE_ID="${device_id}"
 }
 
 build_and_install_android() {
@@ -78,10 +129,11 @@ build_and_install_android() {
   fi
 
   echo "Using Android device: ${serial}"
+  export ANDROID_SERIAL="${serial}"
   (cd "${APP_DIR}" && flutter build apk --debug)
   adb -s "${serial}" install -r "${APP_DIR}/build/app/outputs/flutter-apk/app-debug.apk"
 
-  DEVICE_ARG=(--device "${serial}")
+  DEVICE_ID="${serial}"
 }
 
 case "${PLATFORM}" in
@@ -100,10 +152,17 @@ esac
 cd "${APP_DIR}"
 
 echo "Running Maestro suite: ${FLOW_FILE}"
-maestro test "${FLOW_FILE}" \
-  "${DEVICE_ARG[@]}" \
-  --format junit \
-  --output "${JUNIT_OUT}" \
-  -e API_BASE_URL="${API_BASE_URL}"
+# Global options must precede the subcommand (Maestro 1.39+ rejects `test --device`).
+if [[ -n "${DEVICE_ID}" ]]; then
+  maestro --device "${DEVICE_ID}" test "${FLOW_FILE}" \
+    --format junit \
+    --output "${JUNIT_OUT}" \
+    -e API_BASE_URL="${API_BASE_URL}"
+else
+  maestro test "${FLOW_FILE}" \
+    --format junit \
+    --output "${JUNIT_OUT}" \
+    -e API_BASE_URL="${API_BASE_URL}"
+fi
 
 echo "Maestro run complete. JUnit: ${JUNIT_OUT}"
