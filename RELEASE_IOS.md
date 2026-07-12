@@ -98,10 +98,9 @@ Recommended shots: Discover swipe deck, Explore map, Property details + 360° to
 ## 6. Build & upload **[you — on a Mac with Xcode]**
 
 ```bash
-# 1. Resolve deps
+# 1. Resolve deps (iOS plugins use Swift Package Manager; no CocoaPods)
 flutter clean
 flutter pub get
-cd ios && pod install && cd ..
 
 # 2. Build the release (Dart + native compile check)
 flutter build ios --release

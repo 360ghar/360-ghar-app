@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/map/map_controller.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
@@ -59,8 +60,15 @@ class _ExploreMapState extends State<ExploreMap> {
   // Last center/radius pushed to the radius GeoJSON source.
   LatLng? _radiusCenter;
   double? _radiusKm;
+  bool _radiusSourceReady = false;
+
   // Last geojson signature pushed to the properties source.
   String _propertiesSignature = '';
+  bool _propertiesSourceReady = false;
+
+  // Serialise all style mutations so concurrent ever()/style-loaded/post-frame
+  // callers cannot interleave remove+add (sourceAlreadyExists / sourceNotFound).
+  Future<void> _styleMutationChain = Future<void>.value();
 
   final List<Worker> _workers = [];
 
@@ -123,7 +131,12 @@ class _ExploreMapState extends State<ExploreMap> {
             trackCameraPosition: true,
             rotateGesturesEnabled: false,
             tiltGesturesEnabled: false,
-            attributionButtonPosition: AttributionButtonPosition.bottomRight,
+            // We manage GeoJSON layers ourselves; empty annotationOrder skips
+            // package AnnotationManager init (avoids styleNotFound zone errors).
+            annotationOrder: const [],
+            annotationConsumeTapEvents: const [AnnotationType.symbol],
+            // Keep attribution clear of the bottom property list sheet.
+            attributionButtonPosition: AttributionButtonPosition.topLeft,
             onMapCreated: _onMapCreated,
             onStyleLoadedCallback: _onStyleLoaded,
             onCameraIdle: _onCameraIdle,
@@ -201,11 +214,13 @@ class _ExploreMapState extends State<ExploreMap> {
 
   Future<void> _onStyleLoaded() async {
     // Sources/layers must be (re)added here; this can fire again on a style
-    // reload, so every sync routine is idempotent (remove-then-add).
+    // reload, so ready flags are reset and sync routines recreate sources.
     _styleLoaded = true;
     _radiusCenter = null;
     _radiusKm = null;
+    _radiusSourceReady = false;
     _propertiesSignature = '';
+    _propertiesSourceReady = false;
     await _syncRadiusCircle();
     await _syncPropertiesSource();
     // Let the controller move the camera to the resolved location.
@@ -318,21 +333,65 @@ class _ExploreMapState extends State<ExploreMap> {
     return 18;
   }
 
-  Future<void> _syncRadiusCircle() async {
+  /// Enqueues [work] so style mutations never run concurrently.
+  Future<void> _enqueueStyleMutation(Future<void> Function() work) {
+    final run = _styleMutationChain.then((_) => work());
+    // Keep the chain alive even if one mutation fails.
+    _styleMutationChain = run.catchError((Object e, StackTrace st) {
+      DebugLogger.warning('Explore map style mutation failed: $e');
+    });
+    return run;
+  }
+
+  Future<void> _syncRadiusCircle() {
+    return _enqueueStyleMutation(_syncRadiusCircleImpl);
+  }
+
+  Future<void> _syncRadiusCircleImpl() async {
     final controller = _mapController;
-    if (controller == null || !_styleLoaded) return;
+    if (!mounted || controller == null || !_styleLoaded) return;
     final center = _controller.currentCenter.value;
     final radiusKm = _controller.currentRadius.value;
-    if (_radiusCenter?.latitude == center.latitude &&
+    if (_radiusSourceReady &&
+        _radiusCenter?.latitude == center.latitude &&
         _radiusCenter?.longitude == center.longitude &&
         _radiusKm == radiusKm) {
       return;
     }
-    _radiusCenter = center;
-    _radiusKm = radiusKm;
 
     final geojson = circlePolygon(center, radiusKm);
 
+    try {
+      if (_radiusSourceReady) {
+        await controller.setGeoJsonSource(_radiusSourceId, geojson);
+      } else {
+        await _ensureRadiusLayers(controller, geojson);
+      }
+      if (!mounted || !_styleLoaded) return;
+      _radiusCenter = center;
+      _radiusKm = radiusKm;
+      _radiusSourceReady = true;
+    } on PlatformException catch (e, st) {
+      DebugLogger.warning('Explore radius sync failed: ${e.code} ${e.message}');
+      DebugLogger.debug('$st');
+      // Recover by forcing a full recreate on the next attempt.
+      _radiusSourceReady = false;
+      try {
+        await _ensureRadiusLayers(controller, geojson);
+        if (!mounted || !_styleLoaded) return;
+        _radiusCenter = center;
+        _radiusKm = radiusKm;
+        _radiusSourceReady = true;
+      } on PlatformException catch (e2) {
+        DebugLogger.warning('Explore radius recreate failed: ${e2.code} ${e2.message}');
+      }
+    }
+  }
+
+  Future<void> _ensureRadiusLayers(
+    MapLibreMapController controller,
+    Map<String, dynamic> geojson,
+  ) async {
     try {
       await controller.removeLayer(_radiusFillLayerId);
     } catch (_) {}
@@ -356,9 +415,13 @@ class _ExploreMapState extends State<ExploreMap> {
     );
   }
 
-  Future<void> _syncPropertiesSource() async {
+  Future<void> _syncPropertiesSource() {
+    return _enqueueStyleMutation(_syncPropertiesSourceImpl);
+  }
+
+  Future<void> _syncPropertiesSourceImpl() async {
     final controller = _mapController;
-    if (controller == null || !_styleLoaded) return;
+    if (!mounted || controller == null || !_styleLoaded) return;
 
     final markers = _controller.propertyMarkers;
     final features = <Map<String, dynamic>>[
@@ -375,15 +438,43 @@ class _ExploreMapState extends State<ExploreMap> {
     ];
     final geojson = <String, dynamic>{'type': 'FeatureCollection', 'features': features};
 
-    final signature = features.length.toString();
-    if (_propertiesSignature == signature && features.isNotEmpty) {
-      // Same count: just update the data (cheap, keeps layers intact).
-      await controller.setGeoJsonSource(_propertiesSourceId, geojson);
+    // Content-aware signature (sorted ids) so set vs recreate is correct.
+    final ids = markers.map((m) => m.property.id).toList()..sort();
+    final signature = ids.join(',');
+    if (_propertiesSourceReady && _propertiesSignature == signature) {
       return;
     }
-    _propertiesSignature = signature;
 
-    // (Re)create source + cluster layers idempotently.
+    try {
+      if (_propertiesSourceReady) {
+        await controller.setGeoJsonSource(_propertiesSourceId, geojson);
+      } else {
+        await _ensurePropertiesLayers(controller, geojson);
+      }
+      if (!mounted || !_styleLoaded) return;
+      _propertiesSignature = signature;
+      _propertiesSourceReady = true;
+      await _updateOverlays();
+    } on PlatformException catch (e, st) {
+      DebugLogger.warning('Explore properties sync failed: ${e.code} ${e.message}');
+      DebugLogger.debug('$st');
+      _propertiesSourceReady = false;
+      try {
+        await _ensurePropertiesLayers(controller, geojson);
+        if (!mounted || !_styleLoaded) return;
+        _propertiesSignature = signature;
+        _propertiesSourceReady = true;
+        await _updateOverlays();
+      } on PlatformException catch (e2) {
+        DebugLogger.warning('Explore properties recreate failed: ${e2.code} ${e2.message}');
+      }
+    }
+  }
+
+  Future<void> _ensurePropertiesLayers(
+    MapLibreMapController controller,
+    Map<String, dynamic> geojson,
+  ) async {
     try {
       await controller.removeLayer(_clusterCountLayerId);
     } catch (_) {}
@@ -431,7 +522,6 @@ class _ExploreMapState extends State<ExploreMap> {
       ),
       filter: ['has', 'point_count'],
     );
-    await _updateOverlays();
   }
 
   static bool _positionsEqual(Map<int, Offset> a, Map<int, Offset> b) {

@@ -212,42 +212,34 @@ class VisitCard extends StatelessWidget {
                 const Spacer(),
                 if (isUpcoming && (visit.canCancel || visit.canReschedule)) ...[
                   if (visit.canReschedule)
-                    GestureDetector(
-                      onTap: onReschedule,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppDesign.primaryYellow, width: 1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'reschedule'.tr,
-                          style: const TextStyle(
-                            color: AppDesign.primaryYellow,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 10,
-                          ),
-                        ),
+                    TextButton(
+                      onPressed: onReschedule,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppDesign.primaryYellow,
+                        side: const BorderSide(color: AppDesign.primaryYellow),
+                        minimumSize: const Size(0, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        tapTargetSize: MaterialTapTargetSize.padded,
+                      ),
+                      child: Text(
+                        'reschedule'.tr,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
                       ),
                     ),
                   if (visit.canReschedule && visit.canCancel) const SizedBox(width: 6),
                   if (visit.canCancel)
-                    GestureDetector(
-                      onTap: onCancel,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppDesign.errorRed, width: 1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'cancel'.tr,
-                          style: const TextStyle(
-                            color: AppDesign.errorRed,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 10,
-                          ),
-                        ),
+                    TextButton(
+                      onPressed: onCancel,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppDesign.errorRed,
+                        side: const BorderSide(color: AppDesign.errorRed),
+                        minimumSize: const Size(0, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        tapTargetSize: MaterialTapTargetSize.padded,
+                      ),
+                      child: Text(
+                        'cancel'.tr,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
                       ),
                     ),
                 ],
@@ -295,7 +287,7 @@ class VisitCard extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600),
+        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
       ),

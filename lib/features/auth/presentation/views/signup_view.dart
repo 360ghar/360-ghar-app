@@ -4,6 +4,7 @@ import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:ghar360/core/utils/password_validators.dart';
 import 'package:ghar360/features/auth/presentation/controllers/signup_controller.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
 import 'package:ghar360/features/auth/presentation/widgets/otp_input_field.dart';
@@ -195,7 +196,7 @@ class SignUpView extends GetView<SignUpController> {
                   'next'.tr,
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF8C6B52),
+                    color: AppDesign.editorialInk,
                     fontSize: 16,
                   ),
                 ),
@@ -311,15 +312,7 @@ class SignUpView extends GetView<SignUpController> {
                     ),
                   ),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'password_required'.tr;
-                  }
-                  if (value.length < 6) {
-                    return 'password_min_length'.tr;
-                  }
-                  return null;
-                },
+                validator: PasswordValidators.validate,
               ),
             ),
           ),
@@ -421,14 +414,14 @@ class SignUpView extends GetView<SignUpController> {
                               width: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.2,
-                                color: Color(0xFF8C6B52),
+                                color: AppDesign.editorialInk,
                               ),
                             )
                           : Text(
                               'create_account'.tr,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF8C6B52),
+                                color: AppDesign.editorialInk,
                                 fontSize: 16,
                               ),
                             ),
@@ -477,14 +470,14 @@ class SignUpView extends GetView<SignUpController> {
                         width: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
-                          color: Color(0xFF8C6B52),
+                          color: AppDesign.editorialInk,
                         ),
                       )
                     : Text(
                         'verify_otp'.tr,
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF8C6B52),
+                          color: AppDesign.editorialInk,
                           fontSize: 16,
                         ),
                       ),

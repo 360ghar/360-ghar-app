@@ -23,7 +23,7 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
           style: TextStyle(color: AppDesign.appBarText, fontSize: 20, fontWeight: FontWeight.w600),
         ),
         leading: IconButton(
-          tooltip: 'Back',
+          tooltip: 'back'.tr,
           icon: Icon(Icons.arrow_back, color: AppDesign.iconColor),
           onPressed: () => Get.back(),
         ),

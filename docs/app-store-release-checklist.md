@@ -149,7 +149,7 @@ For every type below: **Linked to user = No**, **Used for tracking = No**.
 ### Pre-build
 
 - [ ] `flutter clean && flutter pub get`
-- [ ] `cd ios && pod install` (after any dependency change)
+- [ ] Confirm iOS uses Swift Package Manager (no `pod install`; plugins resolve via SPM)
 - [ ] Confirm `pubspec.yaml` version is `1.0.7+12` (or bumped — see policy below).
 
 ### Build the IPA

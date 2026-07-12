@@ -6,10 +6,10 @@ import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/mixins/theme_mixin.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_handler.dart';
+import 'package:ghar360/core/utils/password_validators.dart';
 import 'package:ghar360/core/widgets/common/max_content_width.dart';
-import 'package:ghar360/features/auth/data/auth_repository.dart';
+import 'package:ghar360/features/profile/presentation/controllers/change_password_controller.dart';
 import 'package:ghar360/features/profile/presentation/views/policy_page_view.dart';
 
 class PrivacyView extends StatelessWidget with ThemeMixin {
@@ -302,51 +302,49 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   final RxBool currentVisible = false.obs;
   final RxBool newVisible = false.obs;
   final RxBool confirmVisible = false.obs;
-  final RxBool isLoading = false.obs;
-  final RxString errorMessage = ''.obs;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  late final ChangePasswordController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = Get.isRegistered<ChangePasswordController>()
+        ? Get.find<ChangePasswordController>()
+        : Get.put(ChangePasswordController());
+  }
 
   @override
   void dispose() {
     currentPasswordController.dispose();
     newPasswordController.dispose();
     confirmPasswordController.dispose();
+    if (Get.isRegistered<ChangePasswordController>() &&
+        identical(Get.find<ChangePasswordController>(), _controller)) {
+      Get.delete<ChangePasswordController>();
+    }
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!formKey.currentState!.validate()) return;
 
-    isLoading.value = true;
-    errorMessage.value = '';
+    final result = await _controller.changePassword(
+      currentPassword: currentPasswordController.text,
+      newPassword: newPasswordController.text,
+    );
 
-    try {
-      final authRepository = Get.find<AuthRepository>();
+    if (!mounted) return;
 
-      try {
-        await _verifyCurrentPassword(authRepository, currentPasswordController.text);
-      } on _PasswordVerificationUnavailable catch (e, st) {
-        errorMessage.value = 'password_verification_unavailable'.tr;
-        DebugLogger.warning('Password verification unavailable', e, st);
-        return;
-      } catch (e, st) {
-        errorMessage.value = 'incorrect_password'.tr;
-        DebugLogger.warning('Current password verification failed', e, st);
-        return;
-      }
-
-      await authRepository.updateUserPassword(newPasswordController.text);
-      Get.back();
-      AppToast.success('success'.tr, 'password_updated_successfully'.tr);
-      DebugLogger.success('Password changed from profile');
-    } catch (e) {
-      errorMessage.value = 'failed_to_update_password'.tr;
-      ErrorHandler.handleAuthError(e);
-      DebugLogger.error('Failed to change password from profile', e);
-    } finally {
-      if (mounted) {
-        isLoading.value = false;
-      }
+    switch (result) {
+      case ChangePasswordResult.success:
+        Get.back();
+        AppToast.success('success'.tr, 'password_updated_successfully'.tr);
+      case ChangePasswordResult.updateFailed:
+        ErrorHandler.handleAuthError(_controller.errorMessage.value);
+      case ChangePasswordResult.incorrectCurrent:
+      case ChangePasswordResult.verificationUnavailable:
+        // errorMessage already set on controller for inline display
+        break;
     }
   }
 
@@ -402,15 +400,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                             icon: Icon(newVisible.value ? Icons.visibility_off : Icons.visibility),
                           ),
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'password_required'.tr;
-                          }
-                          if (value.length < 8) {
-                            return 'password_min_length_8'.tr;
-                          }
-                          return null;
-                        },
+                        validator: PasswordValidators.validate,
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -441,7 +431,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                       ),
                     ),
                     Obx(() {
-                      final error = errorMessage.value;
+                      final error = _controller.errorMessage.value;
                       if (error.isEmpty) return const SizedBox.shrink();
                       return Padding(
                         padding: const EdgeInsets.only(top: 10),
@@ -459,12 +449,12 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
         ),
         actions: [
           TextButton(
-            onPressed: isLoading.value ? null : () => Get.back(),
+            onPressed: _controller.isLoading.value ? null : () => Get.back(),
             child: Text('cancel'.tr, style: TextStyle(color: AppDesign.textSecondary)),
           ),
           TextButton(
-            onPressed: isLoading.value ? null : _submit,
-            child: isLoading.value
+            onPressed: _controller.isLoading.value ? null : _submit,
+            child: _controller.isLoading.value
                 ? const SizedBox(
                     height: 18,
                     width: 18,
@@ -484,24 +474,6 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   }
 }
 
-Future<void> _verifyCurrentPassword(AuthRepository authRepository, String currentPassword) async {
-  final authUser = authRepository.currentUser;
-  final email = authUser?.email?.trim();
-  final phone = authUser?.phone?.trim();
-
-  if (email != null && email.isNotEmpty) {
-    await authRepository.signInWithEmailPassword(email, currentPassword);
-    return;
-  }
-
-  if (phone != null && phone.isNotEmpty) {
-    await authRepository.signInWithPhonePassword(phone, currentPassword);
-    return;
-  }
-
-  throw const _PasswordVerificationUnavailable();
-}
-
 class _PolicyItem {
   final String titleKey;
   final String subtitleKey;
@@ -514,8 +486,4 @@ class _PolicyItem {
     required this.uniqueName,
     required this.icon,
   });
-}
-
-class _PasswordVerificationUnavailable implements Exception {
-  const _PasswordVerificationUnavailable();
 }

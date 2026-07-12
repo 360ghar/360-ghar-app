@@ -227,11 +227,11 @@ class AuthPremiumShell extends StatelessWidget {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.red.shade300, width: 1),
+          borderSide: BorderSide(color: AppDesign.errorRed, width: 1),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.red.shade300, width: 2),
+          borderSide: BorderSide(color: AppDesign.errorRed, width: 2),
         ),
         hintStyle: TextStyle(color: white50, fontSize: 15),
         labelStyle: TextStyle(color: white70, fontSize: 15),
@@ -373,19 +373,19 @@ class AuthInlineError extends StatelessWidget {
       margin: const EdgeInsets.only(top: 12, bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.12),
+        color: AppDesign.errorRed.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.25), width: 1),
+        border: Border.all(color: AppDesign.errorRed.withValues(alpha: 0.25), width: 1),
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, size: 18, color: Colors.red.shade300),
+          Icon(Icons.error_outline, size: 18, color: AppDesign.errorRed),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
               style: TextStyle(
-                color: Colors.red.shade200,
+                color: AppDesign.errorRed,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),

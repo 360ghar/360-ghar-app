@@ -21,45 +21,52 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Create environment file
+    - name: Create dart-define config (not packaged as assets)
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+        GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+        GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+        DEFAULT_COUNTRY: ${{ secrets.DEFAULT_COUNTRY }}
+        DEBUG_MODE: ${{ secrets.DEBUG_MODE }}
+        LOG_API_CALLS: ${{ secrets.LOG_API_CALLS }}
+        FIREBASE_ENABLED: ${{ secrets.FIREBASE_ENABLED }}
+        FIREBASE_CRASHLYTICS: ${{ secrets.FIREBASE_CRASHLYTICS }}
+        FIREBASE_ANALYTICS: ${{ secrets.FIREBASE_ANALYTICS }}
+        FIREBASE_PERFORMANCE: ${{ secrets.FIREBASE_PERFORMANCE }}
+        FIREBASE_IAM: ${{ secrets.FIREBASE_IAM }}
       run: |
-        # Determine environment content based on branch
-        if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.base_ref }}" == "main" ]]; then
-          echo "Using production environment for main branch/PR"
-          ENV_CONTENT="production"
-        else
-          echo "Using development environment for feature branches"
-          ENV_CONTENT="development"
-        fi
-
-        # Create both environment files (required by pubspec.yaml assets)
-        # But populate them with appropriate content based on branch
-        for ENV_FILE in ".env.development" ".env.production"; do
-          cat > $ENV_FILE << EOF
-        # Environment variables for CI/CD build
-        # Generated from GitHub repository secrets
-
-        # API Configuration
-        API_BASE_URL=${{ secrets.API_BASE_URL }}
-        SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-        SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-        GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}
-
-        # App Configuration
-        DEFAULT_COUNTRY=${{ secrets.DEFAULT_COUNTRY || 'in' }}
-        DEBUG_MODE=${{ secrets.DEBUG_MODE || 'false' }}
-        LOG_API_CALLS=${{ secrets.LOG_API_CALLS || 'false' }}
-
-        # Build Configuration
-        BUILD_ENV=ci
-        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        COMMIT_SHA=${{ github.sha }}
-        BRANCH_NAME=${{ github.head_ref || github.ref_name }}
-        EOF
-        done
-
-        echo "Environment files created successfully"
-        # Don't print the file contents to avoid exposing secrets in logs
+        set -euo pipefail
+        # Secrets are injected at compile time via --dart-define-from-file.
+        # Do NOT write them into Flutter assets (extractable from APK/IPA).
+        python3 - <<'PY'
+        import json, os
+        def env(key, default=""):
+            v = os.environ.get(key)
+            return default if v is None or v == "" else v
+        payload = {
+            "API_BASE_URL": env("API_BASE_URL", "https://api.360ghar.com"),
+            "SUPABASE_URL": env("SUPABASE_URL"),
+            "SUPABASE_PUBLISHABLE_KEY": env("SUPABASE_PUBLISHABLE_KEY"),
+            "GOOGLE_PLACES_API_KEY": env("GOOGLE_PLACES_API_KEY"),
+            "GOOGLE_WEB_CLIENT_ID": env("GOOGLE_WEB_CLIENT_ID"),
+            "GOOGLE_IOS_CLIENT_ID": env("GOOGLE_IOS_CLIENT_ID"),
+            "DEFAULT_COUNTRY": env("DEFAULT_COUNTRY", "in"),
+            "DEBUG_MODE": env("DEBUG_MODE", "false"),
+            "LOG_API_CALLS": env("LOG_API_CALLS", "false"),
+            "FIREBASE_ENABLED": env("FIREBASE_ENABLED", "true"),
+            "FIREBASE_CRASHLYTICS": env("FIREBASE_CRASHLYTICS", "true"),
+            # Privacy-by-default unless secrets explicitly enable.
+            "FIREBASE_ANALYTICS": env("FIREBASE_ANALYTICS", "false"),
+            "FIREBASE_PERFORMANCE": env("FIREBASE_PERFORMANCE", "false"),
+            "FIREBASE_IAM": env("FIREBASE_IAM", "false"),
+        }
+        with open("dart_defines.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        print("dart_defines.json written (values not printed)")
+        PY
 
     - name: Configure Firebase (optional)
       if: secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 != ''
@@ -76,7 +83,7 @@ jobs:
     - name: Set up Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.35.2'
+        flutter-version: '3.44.6'
         channel: 'stable'
         cache: true
 
@@ -121,11 +128,11 @@ jobs:
         dart_version=$(dart --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
         echo "Dart version extracted: $dart_version"
 
-        # Check if Dart version is >= 3.8.0
-        if [ "$(printf '%s\n' "$dart_version" "3.8.0" | sort -V | head -n1)" = "3.8.0" ]; then
-          echo "✅ Dart version $dart_version is compatible (≥3.8.0)"
+        # Check if Dart version is >= 3.12.0
+        if [ "$(printf '%s\n' "$dart_version" "3.12.0" | sort -V | head -n1)" = "3.12.0" ]; then
+          echo "✅ Dart version $dart_version is compatible (≥3.12.0)"
         else
-          echo "❌ Dart version $dart_version is incompatible (<3.8.0)"
+          echo "❌ Dart version $dart_version is incompatible (<3.12.0)"
           exit 1
         fi
 
@@ -133,7 +140,10 @@ jobs:
       run: flutter pub get
 
     - name: Build APK
-      run: flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+      run: >
+        flutter build apk --release
+        --target-platform android-arm,android-arm64,android-x64
+        --dart-define-from-file=dart_defines.json
 
     - name: Rename APK to 360ghar.apk
       run: |

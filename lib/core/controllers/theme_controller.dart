@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
+import 'package:ghar360/core/utils/storage_keys.dart';
+
 enum AppThemeMode { light, dark, system }
 
 class ThemeController extends GetxController with WidgetsBindingObserver {
@@ -25,6 +27,34 @@ class ThemeController extends GetxController with WidgetsBindingObserver {
 
   AppThemeMode get currentThemeMode => _themeMode.value;
 
+  /// Parses a stored theme value into [AppThemeMode].
+  ///
+  /// Canonical format is the enum name (`"light"` / `"dark"` / `"system"`).
+  /// Also accepts legacy int indexes written by older PreferencesController
+  /// builds. Invalid or null values fall back to [AppThemeMode.system].
+  static AppThemeMode parseStoredThemeMode(dynamic stored) {
+    if (stored == null) return AppThemeMode.system;
+
+    if (stored is String) {
+      for (final mode in AppThemeMode.values) {
+        if (mode.name == stored) return mode;
+      }
+      return AppThemeMode.system;
+    }
+
+    if (stored is int) {
+      if (stored >= 0 && stored < AppThemeMode.values.length) {
+        return AppThemeMode.values[stored];
+      }
+      return AppThemeMode.system;
+    }
+
+    return AppThemeMode.system;
+  }
+
+  /// Maps [AppThemeMode] to Flutter [ThemeMode] for app bootstrap.
+  static ThemeMode toFlutterThemeMode(AppThemeMode mode) => _themeModeMap[mode]!;
+
   @override
   void onInit() {
     super.onInit();
@@ -40,19 +70,19 @@ class ThemeController extends GetxController with WidgetsBindingObserver {
   }
 
   void _loadThemeFromStorage() {
-    final storedThemeMode = _storage.read('themeMode');
-    if (storedThemeMode != null) {
-      try {
-        _themeMode.value = AppThemeMode.values.firstWhere(
-          (mode) => mode.name == storedThemeMode,
-          orElse: () => AppThemeMode.system,
-        );
-      } catch (e) {
-        _themeMode.value = AppThemeMode.system;
-      }
-    } else {
+    final storedThemeMode = _storage.read(StorageKeys.themeMode);
+    if (storedThemeMode == null) {
       _themeMode.value = AppThemeMode.system;
-      _storage.write('themeMode', _themeMode.value.name);
+      _storage.write(StorageKeys.themeMode, _themeMode.value.name);
+      return;
+    }
+
+    final parsed = parseStoredThemeMode(storedThemeMode);
+    _themeMode.value = parsed;
+
+    // Migrate legacy int (or any non-canonical form) to enum name string.
+    if (storedThemeMode is! String || storedThemeMode != parsed.name) {
+      _storage.write(StorageKeys.themeMode, parsed.name);
     }
   }
 
@@ -107,7 +137,7 @@ class ThemeController extends GetxController with WidgetsBindingObserver {
   }
 
   void _saveThemeToStorage() {
-    _storage.write('themeMode', _themeMode.value.name);
+    _storage.write(StorageKeys.themeMode, _themeMode.value.name);
   }
 
   // Sync with preferences controller

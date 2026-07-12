@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:http/http.dart' as http;
@@ -44,14 +44,15 @@ class GooglePlacesService extends GetxService {
     try {
       isSearchingPlaces.value = true;
 
-      final apiKey = dotenv.env['GOOGLE_PLACES_API_KEY'] ?? '';
+      final config = AppConfig.instance;
+      final apiKey = config.googlePlacesApiKey;
       if (apiKey.isEmpty) {
         DebugLogger.warning('Google Places API key not found');
         placeSuggestions.clear();
         return [];
       }
 
-      final countryCode = dotenv.env['DEFAULT_COUNTRY'] ?? 'in';
+      final countryCode = config.defaultCountry;
       final queryParams = <String, String>{
         'input': query,
         'components': 'country:$countryCode',
@@ -59,12 +60,9 @@ class GooglePlacesService extends GetxService {
       };
 
       if (currentPosition != null) {
-        final configuredRadius = dotenv.env['PLACES_RADIUS_METERS'] ?? '25000';
-        final strictBoundsEnabled =
-            (dotenv.env['PLACES_STRICT_BOUNDS'] ?? 'false').toLowerCase() == 'true';
         queryParams['location'] = '${currentPosition.latitude},${currentPosition.longitude}';
-        queryParams['radius'] = configuredRadius;
-        if (strictBoundsEnabled) {
+        queryParams['radius'] = config.placesRadiusMeters;
+        if (config.placesStrictBounds) {
           queryParams['strictbounds'] = 'true';
         }
       }
@@ -145,7 +143,7 @@ class GooglePlacesService extends GetxService {
   /// If [preferredName] is provided, it is used as the display name.
   Future<LocationData?> getPlaceDetails(String placeId, {String? preferredName}) async {
     try {
-      final apiKey = dotenv.env['GOOGLE_PLACES_API_KEY'] ?? '';
+      final apiKey = AppConfig.instance.googlePlacesApiKey;
       if (apiKey.isEmpty) {
         DebugLogger.warning('Google Places API key not found');
         return null;

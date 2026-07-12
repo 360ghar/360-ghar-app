@@ -5,14 +5,20 @@ import 'dart:async';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:ghar360/core/controllers/offline_queue_service.dart';
+import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
+import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/firebase/analytics_service.dart';
 import 'package:ghar360/core/firebase/push_notifications_service.dart';
 import 'package:ghar360/core/network/api_client.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_handler.dart';
+import 'package:ghar360/core/utils/retry_policy.dart';
+import 'package:ghar360/features/assistant/data/assistant_repository.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
 import 'package:ghar360/features/profile/data/profile_repository.dart';
@@ -60,8 +66,6 @@ class AuthController extends GetxController {
   static const Duration _authStateDebounce = Duration(
     milliseconds: 300,
   ); // Increased from 100ms for Supabase propagation
-  static const int _maxBootRetries = 3;
-  static const Duration _initialRetryDelay = Duration(seconds: 2);
 
   void _setAuthResolving(bool value) {
     isAuthResolving.value = value;
@@ -124,8 +128,22 @@ class AuthController extends GetxController {
     if (initialUser != null) {
       _onAuthStateChanged(initialUser);
     } else {
-      authStatus.value = AuthStatus.unauthenticated;
+      // Clear any prior user's offline queue / page state that survived a kill.
+      _transitionToUnauthenticated();
     }
+  }
+
+  /// Shared path for any transition to signed-out UI state.
+  void _transitionToUnauthenticated() {
+    authErrorMessage.value = null;
+    currentUser.value = null;
+    authStatus.value = AuthStatus.unauthenticated;
+    _setAuthResolving(false);
+    _profileRetryInFlight = false;
+    _requiresPasswordSetup = false;
+    _lastRegisteredNotificationToken = null;
+    _lastRegisteredNotificationUserId = null;
+    _clearUserScopedState();
   }
 
   /// Keeps Crashlytics context in sync with auth status.
@@ -181,11 +199,9 @@ class AuthController extends GetxController {
         e,
         st,
       );
-      currentUser.value = null;
-      _setAuthResolving(false);
-      if (authStatus.value != AuthStatus.unauthenticated) {
-        authStatus.value = AuthStatus.unauthenticated;
-      }
+      // Sign-out failed — still clear local user-scoped state so the next
+      // session cannot leak offline queue / page decks / caches.
+      _transitionToUnauthenticated();
     } finally {
       _isHandlingUnauthorized = false;
     }
@@ -231,13 +247,7 @@ class AuthController extends GetxController {
     if (supabaseUser == null) {
       // --- USER IS SIGNED OUT ---
       DebugLogger.auth('Auth state changed: User is signed out.');
-      authErrorMessage.value = null;
-      currentUser.value = null;
-      authStatus.value = AuthStatus.unauthenticated;
-      _setAuthResolving(false);
-      _profileRetryInFlight = false;
-      _lastRegisteredNotificationToken = null;
-      _lastRegisteredNotificationUserId = null;
+      _transitionToUnauthenticated();
       // Clear analytics/Crashlytics user context
       try {
         await AnalyticsService.setUserId(null);
@@ -270,12 +280,14 @@ class AuthController extends GetxController {
   }
 
   Future<void> _ensureTokenThenLoadProfile() async {
-    int attempt = 0;
-    while (true) {
-      try {
+    final policy = RetryPolicy.profileBoot(retryIf: _isTransientError);
+    var attempt = 0;
+    try {
+      await policy.execute(() async {
+        attempt++;
         DebugLogger.auth(
           '🔐 [AUTH_BOOT] Waiting for access token '
-          '(attempt ${attempt + 1}/$_maxBootRetries)',
+          '(attempt $attempt/${policy.maxAttempts})',
         );
         final token = await _authRepository.waitForAccessToken(
           timeout: _tokenWaitTimeout,
@@ -290,31 +302,71 @@ class AuthController extends GetxController {
           'Loading user profile...',
         );
         await _loadUserProfile();
-        return; // Success
-      } catch (e, st) {
-        attempt++;
-        if (attempt >= _maxBootRetries || !_isTransientError(e)) {
-          DebugLogger.error('🔐 [AUTH_BOOT] Failed after $attempt attempt(s)', e, st);
-          _handleProfileLoadFailure(userMessage: 'profile_load_error_user'.tr);
-          return;
-        }
-        final delay = _initialRetryDelay * (1 << (attempt - 1));
-        DebugLogger.warning(
-          '🔐 [AUTH_BOOT] Attempt $attempt failed, '
-          'retrying in ${delay.inSeconds}s...',
-        );
-        await Future.delayed(delay);
-      }
+      });
+    } catch (e, st) {
+      DebugLogger.error('🔐 [AUTH_BOOT] Failed after $attempt attempt(s)', e, st);
+      final message = e is TimeoutException
+          ? 'profile_load_timeout'.tr
+          : 'profile_load_error_user'.tr;
+      _handleProfileLoadFailure(userMessage: message);
     }
   }
 
   bool _isTransientError(Object error) {
+    if (RetryPolicy.isTransientError(error)) return true;
     if (error is TimeoutException) return true;
     final msg = error.toString().toLowerCase();
     return msg.contains('timeout') ||
         msg.contains('network') ||
         msg.contains('socket') ||
         msg.contains('connection');
+  }
+
+  /// Clears caches and user-scoped in-memory state so the next session cannot
+  /// leak the previous user's data (page decks, ETags, offline queue, etc.).
+  void _clearUserScopedState() {
+    try {
+      if (Get.isRegistered<ApiClient>()) {
+        Get.find<ApiClient>().clearCache();
+      }
+    } catch (e, st) {
+      DebugLogger.warning('Failed to clear ApiClient cache on logout', e, st);
+    }
+
+    try {
+      if (Get.isRegistered<PageStateService>()) {
+        Get.find<PageStateService>().clearSessionData();
+      }
+    } catch (e, st) {
+      DebugLogger.warning('Failed to clear PageStateService on logout', e, st);
+    }
+
+    try {
+      if (Get.isRegistered<OfflineQueueService>()) {
+        Get.find<OfflineQueueService>().clearQueue();
+      }
+    } catch (e, st) {
+      DebugLogger.warning('Failed to clear offline queue on logout', e, st);
+    }
+
+    try {
+      if (Get.isRegistered<PropertiesPort>()) {
+        Get.find<PropertiesPort>().clearCache();
+      }
+    } catch (e, st) {
+      DebugLogger.warning('Failed to clear properties cache on logout', e, st);
+    }
+
+    try {
+      if (Get.isRegistered<AssistantRepository>()) {
+        Get.find<AssistantRepository>().clearWidgetCache();
+      }
+    } catch (e, st) {
+      DebugLogger.warning('Failed to clear AssistantRepository cache on logout', e, st);
+    }
+
+    AnalyticsService.clearSessionState();
+    DebugLogger.info('🧹 User-scoped session state cleared');
   }
 
   /// Fetches the user profile from our backend and updates the app's auth status.
@@ -367,9 +419,17 @@ class AuthController extends GetxController {
       }
     } on TimeoutException catch (e, stackTrace) {
       DebugLogger.error('👤 [AUTH_BOOT] Timed out while loading user profile.', e, stackTrace);
-      _handleProfileLoadFailure(userMessage: 'profile_load_timeout'.tr);
+      // Rethrow so [RetryPolicy.profileBoot] can retry transient timeouts.
+      // Final failure is handled by the caller's catch (no double toast here).
+      rethrow;
     } catch (e, stackTrace) {
       DebugLogger.error('Failed to load user profile after sign-in.', e, stackTrace);
+      // Retry only typed transport failures (NetworkException/ServerException/etc.).
+      // Do not rethrow bare Exception just because the message contains "network" —
+      // that string heuristic is for token-wait failures, not profile mapping.
+      if (e is AppException && RetryPolicy.isTransientError(e)) {
+        rethrow;
+      }
       _handleProfileLoadFailure(userMessage: 'profile_load_error_user'.tr);
     }
   }
@@ -492,6 +552,18 @@ class AuthController extends GetxController {
   }
 
   /// Allows the UI to retry loading the profile if it fails.
+  /// Forces a fresh bootstrap from the current Supabase session.
+  ///
+  /// Used by the Root boot loader when auth is stuck on [AuthStatus.initial]
+  /// or navigation has stalled after a partial start.
+  Future<void> recheckAuthBootstrap() async {
+    DebugLogger.info('🔐 [AUTH_BOOT] Manual recheckAuthBootstrap requested');
+    _lastProcessedAuthFingerprint = null;
+    _debounceTimer?.cancel();
+    final user = _authRepository.currentUser;
+    await _processAuthStateChange(user);
+  }
+
   Future<void> retryProfileLoad() async {
     if (authStatus.value == AuthStatus.error) {
       if (_profileRetryInFlight) {

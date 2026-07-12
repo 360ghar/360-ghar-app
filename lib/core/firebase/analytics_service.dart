@@ -69,6 +69,11 @@ class AnalyticsService {
     await viewProperty(propertyId);
   }
 
+  /// Clears session-local de-dupe state (call on logout).
+  static void clearSessionState() {
+    _seenProperties.clear();
+  }
+
   static Future<void> likeProperty(String propertyId) =>
       logVital('property_like', params: {'id': propertyId});
   static Future<void> scheduleVisit(String propertyId) =>

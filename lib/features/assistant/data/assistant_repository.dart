@@ -22,8 +22,12 @@ class ConversationsPage {
 }
 
 class AssistantRepository {
-  final SseClient _sseClient = Get.find<SseClient>();
-  final ApiClient _apiClient = Get.find<ApiClient>();
+  AssistantRepository({SseClient? sseClient, ApiClient? apiClient})
+    : _sseClient = sseClient ?? Get.find<SseClient>(),
+      _apiClient = apiClient ?? Get.find<ApiClient>();
+
+  final SseClient _sseClient;
+  final ApiClient _apiClient;
   final Map<String, String?> _widgetHtmlCache = {};
 
   /// Stream chat response from the agent via SSE.
@@ -100,16 +104,26 @@ class AssistantRepository {
     }
   }
 
+  /// Safe widget name: alphanumeric, underscore, hyphen only (blocks path traversal).
+  static final RegExp widgetNamePattern = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$');
+
+  /// Returns true when [widgetName] is safe to interpolate into a URL path.
+  static bool isValidWidgetName(String widgetName) => widgetNamePattern.hasMatch(widgetName);
+
   /// Fetch widget HTML bundle by name (cached in memory).
   ///
   /// Caches both successful and failed results to avoid repeated
   /// network requests during streaming list rebuilds.
   Future<String?> getWidgetHtml(String widgetName) async {
+    if (!isValidWidgetName(widgetName)) {
+      DebugLogger.warning('Rejected unsafe assistant widget name: $widgetName');
+      return null;
+    }
     if (_widgetHtmlCache.containsKey(widgetName)) {
       return _widgetHtmlCache[widgetName];
     }
     try {
-      final response = await _apiClient.get('/agent/widgets/$widgetName');
+      final response = await _apiClient.get('/agent/widgets/${Uri.encodeComponent(widgetName)}');
       if (response.body is String) {
         final html = response.body as String;
         _widgetHtmlCache[widgetName] = html;
@@ -121,6 +135,9 @@ class AssistantRepository {
     // Do not cache failures — allow retry on next call.
     return null;
   }
+
+  /// Clears in-memory widget HTML (call on logout).
+  void clearWidgetCache() => _widgetHtmlCache.clear();
 
   /// Delete a conversation.
   Future<bool> deleteConversation(int conversationId) async {

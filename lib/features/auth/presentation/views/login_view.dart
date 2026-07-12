@@ -152,12 +152,11 @@ class LoginView extends GetView<LoginController> {
           autofillHints: const [AutofillHints.password],
           onFieldSubmitted: (_) => controller.signIn(),
           style: const TextStyle(color: AppDesign.overlayLight),
+          // Login only requires non-empty; min-length is for create/change password.
+          // Existing accounts may predate the 8-char policy.
           validator: (value) {
             if (value == null || value.isEmpty) {
               return 'password_required'.tr;
-            }
-            if (value.length < 6) {
-              return 'password_min_length'.tr;
             }
             return null;
           },
@@ -195,13 +194,13 @@ class LoginView extends GetView<LoginController> {
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2.2, color: Color(0xFF8C6B52)),
+                    child: CircularProgressIndicator(strokeWidth: 2.2, color: AppDesign.editorialInk),
                   )
                 : Text(
                     'sign_in'.tr,
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF8C6B52),
+                      color: AppDesign.editorialInk,
                       fontSize: 16,
                     ),
                   ),
@@ -243,14 +242,14 @@ class LoginView extends GetView<LoginController> {
                         width: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
-                          color: Color(0xFF8C6B52),
+                          color: AppDesign.editorialInk,
                         ),
                       )
                     : Text(
                         'verify_otp'.tr,
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF8C6B52),
+                          color: AppDesign.editorialInk,
                           fontSize: 16,
                         ),
                       ),

@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/static_page_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/mixins/theme_mixin.dart';
+import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/features/profile/data/static_page_repository.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -118,16 +119,11 @@ class _PolicyPageViewState extends State<PolicyPageView> {
 
     try {
       final bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('unable_to_open_link'.tr)));
+      if (!launched) {
+        AppToast.error('error'.tr, 'unable_to_open_link'.tr);
       }
     } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('unable_to_open_link'.tr)));
+      AppToast.error('error'.tr, 'unable_to_open_link'.tr);
     }
   }
 

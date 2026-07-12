@@ -1,7 +1,7 @@
 # 360Ghar - Flutter Real Estate App
 
-![Flutter](https://img.shields.io/badge/Flutter-3.35+-blue?logo=flutter)
-![Dart](https://img.shields.io/badge/Dart-3.8+-blue?logo=dart)
+![Flutter](https://img.shields.io/badge/Flutter-3.44+-blue?logo=flutter)
+![Dart](https://img.shields.io/badge/Dart-3.12+-blue?logo=dart)
 ![GetX](https://img.shields.io/badge/State%20Management-GetX-orange)
 ![Supabase](https://img.shields.io/badge/Backend-Supabase-green?logo=supabase)
 
@@ -76,35 +76,29 @@ Follow these instructions to get a copy of the project up and running on your lo
     ```
 
 2.  **Set up environment variables:**
-    Create two files in the root of the project: `.env.development` and `.env.production`.
-    Use the provided templates and fill in your values:
+    Create a gitignored `.env.development` from the template (local only — **not** packaged into the app):
     ```bash
     cp .env.development.example .env.development
+    # optional for release builds:
     cp .env.production.example .env.production
     ```
-    Fill in the required values in `.env.development` with your Supabase, API and other credentials:
-    ```env
-    # Supabase Credentials
-    SUPABASE_URL=https://your-project-ref.supabase.co
-    SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
+    Fill in Supabase, API, Places, and other values. **Do not commit these files.**
 
-    # API Base URL (if different from Supabase)
-    API_BASE_URL=http://your-backend-api.com/api/v1
-
-    # Google Places API Key (for location search)
-    GOOGLE_PLACES_API_KEY=your-google-places-api-key
-
-    # Debugging Flags
-    DEBUG_MODE=true
-    LOG_API_CALLS=true
-    ```
+    `.env` files are **not** Flutter assets (shipping them in the APK/IPA is a secret leak).
 
 3.  **Install dependencies:**
     ```bash
     flutter pub get
     ```
 
-4.  **Run code generation:**
+4.  **Sync local env into debug config (once, and after editing `.env*`):**
+    ```bash
+    dart run tool/sync_dev_env.dart
+    ```
+    This fills a debug-only map so bare `flutter run` works. Do **not** commit
+    secrets in `lib/core/config/dev_env.g.dart` (pre-commit blocks it).
+
+5.  **Run code generation:**
     The project uses `json_serializable` for data models. Run the build runner to generate the necessary files:
     ```bash
     dart run build_runner build --delete-conflicting-outputs
@@ -114,14 +108,20 @@ Follow these instructions to get a copy of the project up and running on your lo
     dart run build_runner watch --delete-conflicting-outputs
     ```
 
-5.  **Run the application:**
+6.  **Run the application:**
     ```bash
-    flutter run --dart-define=DEBUG=false
+    # Plain run (debug uses synced .env.development)
+    flutter run
+
+    # Or inject defines explicitly:
+    ./tool/run_with_env.sh
+    # flutter run --dart-define-from-file=.env.development
     ```
 
 Notes:
-- Secrets must never be committed. Files `.env.development` and `.env.production` are git-ignored.
-- The app automatically loads `.env.development` in debug/profile and `.env.production` in release builds.
+- Secrets must never be committed. `.env.*` and `.dart_defines*.json` are git-ignored.
+- VS Code / Cursor pass `--dart-define-from-file=.env.development` via workspace settings.
+- Restrict Google Places API keys by Android package/SHA and iOS bundle ID in Google Cloud.
 
 ## 📱 Bottom Navigation
 

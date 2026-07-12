@@ -46,6 +46,9 @@ class _MiniMapViewState extends State<MiniMapView> {
             trackCameraPosition: true,
             rotateGesturesEnabled: false,
             tiltGesturesEnabled: false,
+            // Pin is a Flutter overlay; skip package AnnotationManager init.
+            annotationOrder: const [],
+            annotationConsumeTapEvents: const [AnnotationType.symbol],
             // Keep attribution visible per the OSM/OpenFreeMap license.
             attributionButtonPosition: AttributionButtonPosition.bottomRight,
             onMapCreated: _onMapCreated,

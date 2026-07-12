@@ -21,6 +21,8 @@ import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/core/data/ports/properties_port.dart';
+import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/features/properties/data/properties_repository.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:mocktail/mocktail.dart';
@@ -96,14 +98,18 @@ void main() {
     when(() => authController.isAuthenticated).thenReturn(false);
     when(() => authController.updateUserPreferences(any())).thenAnswer((_) async => true);
 
-    // Stub PropertiesRepository — called during initial data load for explore/discover
+    // Stub PropertiesPort.searchProperties — PageDataLoader uses the port API
+    // (not getProperties) for explore/discover loads.
     when(
-      () => propertiesRepo.getProperties(
+      () => propertiesRepo.searchProperties(
         filters: any(named: 'filters'),
         cursor: any(named: 'cursor'),
         limit: any(named: 'limit'),
         latitude: any(named: 'latitude'),
         longitude: any(named: 'longitude'),
+        radiusKm: any(named: 'radiusKm'),
+        excludeSwiped: any(named: 'excludeSwiped'),
+        useCache: any(named: 'useCache'),
       ),
     ).thenAnswer((_) async => testPropertyResponse());
 
@@ -129,7 +135,9 @@ void main() {
       ..register<LocationController>(locationController)
       ..register<AuthController>(authController)
       ..register<SwipesRepository>(swipesRepo)
-      ..register<PropertiesRepository>(propertiesRepo);
+      ..register<SwipesPort>(swipesRepo)
+      ..register<PropertiesRepository>(propertiesRepo)
+      ..register<PropertiesPort>(propertiesRepo);
   });
 
   tearDown(() {
@@ -559,6 +567,425 @@ void main() {
       expect(reset.hasMore, isTrue);
       expect(reset.nextCursor, isNull);
       expect(reset.error, isNull);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // clearSessionData
+  // -------------------------------------------------------------------------
+  group('clearSessionData', () {
+    test('resets all page states to initial', () async {
+      final service = await createService();
+
+      // Seed data into all page states
+      service.updatePageState(
+        PageType.explore,
+        service.exploreState.value.copyWith(properties: [testPropertyModel(id: 1)]),
+      );
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [testPropertyModel(id: 2)]),
+      );
+      service.updatePageState(
+        PageType.likes,
+        service.likesState.value.copyWith(properties: [testPropertyModel(id: 3)]),
+      );
+
+      expect(service.exploreState.value.properties, isNotEmpty);
+      expect(service.discoverState.value.properties, isNotEmpty);
+      expect(service.likesState.value.properties, isNotEmpty);
+
+      service.clearSessionData();
+
+      expect(service.exploreState.value.properties, isEmpty);
+      expect(service.discoverState.value.properties, isEmpty);
+      expect(service.likesState.value.properties, isEmpty);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // undoSwipe
+  // -------------------------------------------------------------------------
+  group('undoSwipe', () {
+    test('undo of a liked swipe removes from likes', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 42);
+
+      // Add property to likes
+      service.updatePageState(
+        PageType.likes,
+        service.likesState.value.copyWith(properties: [prop]),
+      );
+
+      await service.undoSwipe(propertyId: 42, originalIsLiked: true);
+
+      // Should be removed from likes
+      expect(service.likesState.value.properties.any((p) => p.id == 42), isFalse);
+      // Network sync called with reversed action
+      verify(() => swipesRepo.recordSwipe(propertyId: 42, isLiked: false)).called(1);
+    });
+
+    test('undo of a passed swipe does not add to likes', () async {
+      final service = await createService();
+
+      await service.undoSwipe(propertyId: 99, originalIsLiked: false);
+
+      // Should NOT add to likes
+      expect(service.likesState.value.properties.any((p) => p.id == 99), isFalse);
+      // Network sync called with reversed action (liked=true)
+      verify(() => swipesRepo.recordSwipe(propertyId: 99, isLiked: true)).called(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // updateLikesSegment
+  // -------------------------------------------------------------------------
+  group('updateLikesSegment', () {
+    test('switching to same segment is a no-op', () async {
+      final service = await createService();
+      expect(service.currentLikesSegment, 'liked');
+
+      service.updateLikesSegment('liked');
+
+      expect(service.currentLikesSegment, 'liked');
+    });
+
+    test('switching to passed resets data and triggers load', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 10);
+      service.updatePageState(
+        PageType.likes,
+        service.likesState.value.copyWith(properties: [prop]),
+      );
+
+      service.updateLikesSegment('passed');
+
+      expect(service.currentLikesSegment, 'passed');
+      // Data should be reset (empty) since no cache for passed
+      expect(service.likesState.value.properties, isEmpty);
+    });
+
+    test('switching back to liked restores cached data', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 10);
+      service.updatePageState(
+        PageType.likes,
+        service.likesState.value.copyWith(properties: [prop], lastFetched: DateTime.now()),
+      );
+
+      // Switch to passed (caches liked data)
+      service.updateLikesSegment('passed');
+
+      // Switch back to liked (should restore cached data)
+      service.updateLikesSegment('liked');
+
+      expect(service.currentLikesSegment, 'liked');
+      // Cached data should be restored
+      expect(service.likesState.value.properties.any((p) => p.id == 10), isTrue);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Search visibility
+  // -------------------------------------------------------------------------
+  group('search visibility', () {
+    test('isSearchVisible returns false by default', () async {
+      final service = await createService();
+
+      expect(service.isSearchVisible(PageType.explore), isFalse);
+      expect(service.isSearchVisible(PageType.discover), isFalse);
+      expect(service.isSearchVisible(PageType.likes), isFalse);
+    });
+
+    test('setSearchVisible updates visibility', () async {
+      final service = await createService();
+
+      service.setSearchVisible(PageType.explore, true);
+      expect(service.isSearchVisible(PageType.explore), isTrue);
+
+      service.setSearchVisible(PageType.likes, true);
+      expect(service.isSearchVisible(PageType.likes), isTrue);
+    });
+
+    test('toggleSearch flips visibility', () async {
+      final service = await createService();
+
+      expect(service.isSearchVisible(PageType.discover), isFalse);
+      service.toggleSearch(PageType.discover);
+      expect(service.isSearchVisible(PageType.discover), isTrue);
+      service.toggleSearch(PageType.discover);
+      expect(service.isSearchVisible(PageType.discover), isFalse);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Page refreshing
+  // -------------------------------------------------------------------------
+  group('page refreshing', () {
+    test('isPageRefreshing returns false by default', () async {
+      final service = await createService();
+
+      expect(service.isPageRefreshing(PageType.explore), isFalse);
+      expect(service.isPageRefreshing(PageType.discover), isFalse);
+      expect(service.isPageRefreshing(PageType.likes), isFalse);
+    });
+
+    test('notifyPageRefreshing updates refreshing state', () async {
+      final service = await createService();
+
+      service.notifyPageRefreshing(PageType.explore, true);
+      expect(service.isPageRefreshing(PageType.explore), isTrue);
+
+      service.notifyPageRefreshing(PageType.likes, true);
+      expect(service.isPageRefreshing(PageType.likes), isTrue);
+
+      service.notifyPageRefreshing(PageType.explore, false);
+      expect(service.isPageRefreshing(PageType.explore), isFalse);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // normalizeLegacyStateForRuntime
+  // -------------------------------------------------------------------------
+  group('normalizeLegacyStateForRuntime', () {
+    test('clears transient fields and properties', () {
+      final legacy = PageStateModel(
+        pageType: PageType.explore,
+        filters: UnifiedFilterModel.initial(),
+        properties: [testPropertyModel(id: 1)],
+        isLoading: true,
+        isLoadingMore: true,
+        isRefreshing: true,
+        hasMore: false,
+        nextCursor: 'abc',
+      );
+
+      final normalized = PageStateService.normalizeLegacyStateForRuntime(legacy);
+
+      expect(normalized.properties, isEmpty);
+      expect(normalized.isLoading, isFalse);
+      expect(normalized.isLoadingMore, isFalse);
+      expect(normalized.isRefreshing, isFalse);
+      expect(normalized.hasMore, isTrue);
+      expect(normalized.nextCursor, isNull);
+      expect(normalized.error, isNull);
+    });
+
+    test('preserves pageType, filters, and selectedLocation', () {
+      final legacy = PageStateModel(
+        pageType: PageType.likes,
+        filters: UnifiedFilterModel.initial(),
+        properties: [testPropertyModel(id: 1)],
+        selectedLocation: const LocationData(name: 'Delhi', latitude: 28.6, longitude: 77.2),
+      );
+
+      final normalized = PageStateService.normalizeLegacyStateForRuntime(legacy);
+
+      expect(normalized.pageType, PageType.likes);
+      expect(normalized.selectedLocation?.name, 'Delhi');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // syncPreferencesToBackend
+  // -------------------------------------------------------------------------
+  group('syncPreferencesToBackend', () {
+    test('skips when not authenticated', () async {
+      final service = await createService();
+
+      when(() => authController.isAuthenticated).thenReturn(false);
+
+      await service.syncPreferencesToBackend();
+
+      verifyNever(() => authController.updateUserPreferences(any()));
+    });
+
+    test('syncs preferences when authenticated with filters', () async {
+      final service = await createService();
+
+      when(() => authController.isAuthenticated).thenReturn(true);
+      when(() => authController.updateUserPreferences(any())).thenAnswer((_) async => true);
+
+      // Set some filters on current page
+      service.setCurrentPage(PageType.explore);
+      service.updatePageState(
+        PageType.explore,
+        service.exploreState.value.copyWith(
+          filters: UnifiedFilterModel.initial().copyWith(
+            purpose: 'buy',
+            priceMin: 5000000,
+            priceMax: 10000000,
+          ),
+        ),
+      );
+
+      await service.syncPreferencesToBackend();
+
+      verify(() => authController.updateUserPreferences(any())).called(1);
+    });
+
+    test('syncs with default purpose when authenticated', () async {
+      final service = await createService();
+
+      when(() => authController.isAuthenticated).thenReturn(true);
+      when(() => authController.updateUserPreferences(any())).thenAnswer((_) async => true);
+
+      // Default filters have purpose='buy' set during bootstrap
+      await service.syncPreferencesToBackend();
+
+      // Should call updateUserPreferences (purpose is set by default)
+      verify(() => authController.updateUserPreferences(any())).called(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // addPropertyToPassed
+  // -------------------------------------------------------------------------
+  group('addPropertyToPassed', () {
+    test('does not add when segment is not passed', () async {
+      final service = await createService();
+      // Default segment is 'liked'
+      final prop = testPropertyModel(id: 50);
+
+      service.addPropertyToPassed(prop);
+
+      expect(service.likesState.value.properties, isEmpty);
+    });
+
+    test('does not duplicate existing property in passed', () async {
+      final service = await createService();
+      service.updateLikesSegment('passed');
+      final prop = testPropertyModel(id: 50);
+
+      service.addPropertyToPassed(prop);
+      service.addPropertyToPassed(prop);
+
+      expect(service.likesState.value.properties, hasLength(1));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // onClose
+  // -------------------------------------------------------------------------
+  group('onClose', () {
+    test('disposes without throwing', () async {
+      final service = await createService();
+
+      expect(() => service.onClose(), returnsNormally);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Filter / search / location delegates
+  // -------------------------------------------------------------------------
+  group('filter and search delegates', () {
+    test('updatePageFilters mutates page filters', () async {
+      final service = await createService();
+      final filters = UnifiedFilterModel.initial().copyWith(purpose: 'sale');
+
+      service.updatePageFilters(PageType.discover, filters);
+
+      expect(service.discoverState.value.filters.purpose, 'sale');
+    });
+
+    test('updatePageSearch and clearPageSearch round-trip', () async {
+      final service = await createService();
+      service.updatePageSearch(PageType.explore, 'gurgaon');
+      expect(service.exploreState.value.searchQuery, 'gurgaon');
+
+      service.clearPageSearch(PageType.explore);
+      final cleared = service.exploreState.value.searchQuery;
+      expect(cleared == null || cleared.isEmpty, isTrue);
+    });
+
+    test('getOrCreateSearchController seeds text and is reusable', () async {
+      final service = await createService();
+      final first = service.getOrCreateSearchController(
+        PageType.discover,
+        seedText: 'seed',
+      );
+      final second = service.getOrCreateSearchController(PageType.discover);
+      expect(identical(first, second), isTrue);
+      expect(first.text, 'seed');
+      first.dispose();
+    });
+
+    test('resetPageFilters and resetAllFilters do not throw', () async {
+      final service = await createService();
+      service.updatePageFilters(
+        PageType.discover,
+        UnifiedFilterModel.initial().copyWith(purpose: 'rent'),
+      );
+      service.resetPageFilters(PageType.discover);
+      service.resetAllFilters();
+      expect(service.discoverState.value.filters, isA<UnifiedFilterModel>());
+    });
+
+    test('setPurposeForAllPages and setPropertyTypeForAllPages apply', () async {
+      final service = await createService();
+      service.setPurposeForAllPages('sale');
+      service.setPropertyTypeForAllPages(const ['apartment']);
+
+      expect(service.discoverState.value.filters.purpose, 'sale');
+      expect(service.exploreState.value.filters.purpose, 'sale');
+    });
+
+    test('search visibility helpers toggle state', () async {
+      final service = await createService();
+      expect(service.isSearchVisible(PageType.discover), isFalse);
+      service.setSearchVisible(PageType.discover, true);
+      expect(service.isSearchVisible(PageType.discover), isTrue);
+      service.toggleSearch(PageType.discover);
+      expect(service.isSearchVisible(PageType.discover), isFalse);
+    });
+
+    test('notifyPageRefreshing updates isPageRefreshing', () async {
+      final service = await createService();
+      service.notifyPageRefreshing(PageType.explore, true);
+      expect(service.isPageRefreshing(PageType.explore), isTrue);
+      service.notifyPageRefreshing(PageType.explore, false);
+      expect(service.isPageRefreshing(PageType.explore), isFalse);
+    });
+  });
+
+  group('location delegates', () {
+    test('updateLocation and updateLocationForPage apply location', () async {
+      final service = await createService();
+      const location = LocationData(
+        name: 'Noida',
+        latitude: 28.5,
+        longitude: 77.4,
+      );
+
+      await service.updateLocation(location, source: 'manual');
+      await service.updateLocationForPage(
+        PageType.discover,
+        location,
+        source: 'manual',
+      );
+
+      expect(service.discoverState.value.selectedLocation?.name, 'Noida');
+    });
+  });
+
+  group('loadPageData delegates', () {
+    test('loadPageData and loadMore* complete against stubs', () async {
+      final service = await createService();
+      await service.loadPageData(PageType.explore, forceRefresh: true);
+      await service.loadMorePageData(PageType.explore);
+      await service.loadMoreData(PageType.explore);
+      expect(service.exploreState.value, isA<PageStateModel>());
+    });
+  });
+
+  group('clearSessionData', () {
+    test('clears properties without throwing', () async {
+      final service = await createService();
+      service.clearSessionData();
+      expect(service.discoverState.value.properties, isEmpty);
+      expect(service.exploreState.value.properties, isEmpty);
+      // Allow GetStorage microtask flushes to finish before tearDown.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     });
   });
 }

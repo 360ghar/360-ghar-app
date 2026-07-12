@@ -101,7 +101,7 @@ class _PropertyMarkerChipState extends State<PropertyMarkerChip>
               // Chip
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                constraints: const BoxConstraints(minHeight: 36, minWidth: 44),
+                constraints: const BoxConstraints(minHeight: 44, minWidth: 44, maxWidth: 120),
                 decoration: BoxDecoration(
                   color: bg,
                   borderRadius: BorderRadius.circular(999),
@@ -118,7 +118,7 @@ class _PropertyMarkerChipState extends State<PropertyMarkerChip>
                 child: Text(
                   widget.label,
                   maxLines: 1,
-                  overflow: TextOverflow.visible,
+                  overflow: TextOverflow.ellipsis,
                   softWrap: false,
                   style: TextStyle(
                     color: textColor,

@@ -114,7 +114,7 @@ class AgentCard extends StatelessWidget {
           const SizedBox(width: 8),
           _CompactIconButton(
             icon: Icons.phone,
-            tooltip: 'Call'.tr,
+            tooltip: 'call'.tr,
             foreground: AppDesign.primaryYellow,
             background: AppDesign.primaryYellow.withValues(alpha: 0.08),
             borderColor: AppDesign.primaryYellow.withValues(alpha: 0.4),
@@ -123,7 +123,7 @@ class AgentCard extends StatelessWidget {
           const SizedBox(width: 8),
           _CompactIconButton(
             icon: Icons.message,
-            tooltip: 'WhatsApp'.tr,
+            tooltip: 'whatsapp'.tr,
             foreground: AppDesign.buttonText,
             background: AppDesign.accentGreen,
             borderColor: AppDesign.accentGreen,
@@ -160,15 +160,15 @@ class _CompactIconButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Container(
-          width: 36,
-          height: 36,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             color: background,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(color: borderColor, width: 1),
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 18, color: foreground),
+          child: Icon(icon, size: 20, color: foreground),
         ),
       ),
     );

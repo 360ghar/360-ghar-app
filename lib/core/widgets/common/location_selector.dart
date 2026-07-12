@@ -25,8 +25,9 @@ class LocationSelector extends GetView<LocationController> {
       final selectorId = 'qa.location.selector.trigger.${pageType.name}';
 
       return Semantics(
-        label: selectorId,
+        label: locationText.isNotEmpty ? locationText : 'location'.tr,
         identifier: selectorId,
+        button: true,
         child: GestureDetector(
           key: ValueKey(selectorId),
           onTap: () => _showLocationPicker(context),
@@ -79,6 +80,7 @@ class LocationSelector extends GetView<LocationController> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: AppDesign.transparent,
       builder: (context) => LocationPickerModal(pageType: pageType),
     );
@@ -162,18 +164,21 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
   @override
   Widget build(BuildContext context) {
     final modalId = 'qa.location.selector.modal.${widget.pageType.name}';
+    final viewInsets = MediaQuery.viewInsetsOf(context);
     return Semantics(
-      label: modalId,
+      label: 'select_location'.tr,
       identifier: modalId,
-      child: Container(
-        key: ValueKey(modalId),
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: BoxDecoration(
-          color: AppDesign.scaffoldBackground,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
+      child: Padding(
+        padding: EdgeInsets.only(bottom: viewInsets.bottom),
+        child: Container(
+          key: ValueKey(modalId),
+          height: MediaQuery.sizeOf(context).height * 0.7,
+          decoration: BoxDecoration(
+            color: AppDesign.scaffoldBackground,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
             // Handle bar
             Container(
               margin: const EdgeInsets.only(top: 8),
@@ -323,7 +328,8 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                 );
               }),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -8,7 +8,7 @@
   - Shared: `lib/core/` (`core/data/models`, providers, routing, `core/widgets`).
 - `assets/`: images and static files (declare in `pubspec.yaml`).
 - Platforms: `android/`, `ios/`, `web/` for configs and builds.
-- Config: `.env.development`, `.env.production` (do not commit secrets).
+- Config: local `.env.*` (gitignored). For bare `flutter run`, run `dart run tool/sync_dev_env.dart` after env edits. Or use `./tool/run_with_env.sh` / `--dart-define-from-file=.env.development`. Never package env as Flutter assets.
 - Lint: `analysis_options.yaml` defines rules used by CI/local.
 
 ## Build, Test, and Development Commands

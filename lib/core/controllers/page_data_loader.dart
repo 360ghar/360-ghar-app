@@ -4,18 +4,18 @@ import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/core/data/ports/properties_port.dart';
+import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/core/firebase/analytics_service.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
-import 'package:ghar360/features/properties/data/properties_repository.dart';
-import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 
 /// Handles all data loading, pagination, and debounced refresh logic
 /// for [PageStateService].
 class PageDataLoader {
   final PageStateService _pageState;
-  final PropertiesRepository _propertiesRepo;
-  final SwipesRepository _swipesRepo;
+  final PropertiesPort _propertiesRepo;
+  final SwipesPort _swipesRepo;
   final LocationController _locationController;
   final Set<PageType> _activeLoads = <PageType>{};
   static const Duration _staleLoadingGuardWindow = Duration(seconds: 20);

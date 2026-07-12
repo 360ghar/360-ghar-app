@@ -97,6 +97,8 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
   }
 
   void _onScroll() {
+    _maybeLoadMore();
+
     // Debounce to avoid spamming highlight updates
     _scrollDebounce?.cancel();
     _scrollDebounce = Timer(const Duration(milliseconds: 80), () {
@@ -114,6 +116,17 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
         }
       } catch (_) {}
     });
+  }
+
+  void _maybeLoadMore() {
+    try {
+      if (!widget.controller.hasMore || widget.controller.isLoadingMore) return;
+      if (_scrollController.position.extentAfter < 300) {
+        unawaited(widget.controller.loadMoreProperties());
+      }
+    } catch (_) {
+      // ScrollController may not have position yet.
+    }
   }
 
   @override
@@ -145,9 +158,14 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
             ),
           );
         }
-        return Container(
-          height: 10, // keep minimal footprint when empty
-          color: AppDesign.transparent,
+        return SizedBox(
+          height: 48,
+          child: Center(
+            child: Text(
+              'no_properties_found'.tr,
+              style: TextStyle(fontSize: 13, color: AppDesign.textSecondary),
+            ),
+          ),
         );
       }
 
@@ -200,7 +218,11 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
       padding: const EdgeInsets.symmetric(vertical: 2),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: isSelected ? AppDesignTokens.brandGoldSubtle.withValues(alpha: 0.5) : null,
+        color: isSelected
+            ? (Theme.of(context).brightness == Brightness.dark
+                  ? AppDesignTokens.brandGold.withValues(alpha: 0.18)
+                  : AppDesignTokens.brandGoldSubtle.withValues(alpha: 0.5))
+            : null,
         border: Border.all(
           color: isSelected ? AppDesignTokens.brandGold : AppDesign.transparent,
           width: isSelected ? 1.5 : 0,

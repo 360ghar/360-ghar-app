@@ -62,6 +62,12 @@
 		<string>360 Ghar needs access to your photos and videos so you can upload images and video tours for your property listings.</string>
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>
+		<key>LSApplicationQueriesSchemes</key>
+		<array>
+			<string>comgooglemaps</string>
+			<string>googlemaps</string>
+			<string>maps</string>
+		</array>
 		<key>UIApplicationSceneManifest</key>
 		<dict>
 			<key>UIApplicationSupportsMultipleScenes</key>

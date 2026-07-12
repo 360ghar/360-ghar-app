@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:get/get.dart';
@@ -16,6 +18,9 @@ import 'package:ghar360/core/utils/debug_logger.dart';
 /// [AuthController] in the binding so the worker fires for the initial status.
 class AuthNavigationService extends GetxService {
   Worker? _authStatusWorker;
+  int _navigationGeneration = 0;
+  Timer? _retryTimer;
+  Timer? _homeRetryTimer;
 
   @override
   void onInit() {
@@ -28,46 +33,78 @@ class AuthNavigationService extends GetxService {
     _handleAuthNavigation(initialStatus);
   }
 
+  /// Re-applies navigation for the current auth status (Root safety net when
+  /// the first navigation attempt raced the navigator).
+  void reapply() {
+    if (!Get.isRegistered<AuthController>()) return;
+    final status = Get.find<AuthController>().authStatus.value;
+    DebugLogger.info('🧭 AuthNavigationService: reapply for status -> $status');
+    _handleAuthNavigation(status);
+  }
+
   void _handleAuthNavigation(AuthStatus status) {
-    Future.microtask(() {
+    final generation = ++_navigationGeneration;
+    _retryTimer?.cancel();
+    _homeRetryTimer?.cancel();
+    var ran = false;
+
+    void runOnce() {
+      if (ran || generation != _navigationGeneration) return;
+      ran = true;
       DebugLogger.info('🧭 AuthNavigationService: handling auth status -> $status');
 
-      switch (status) {
-        case AuthStatus.initial:
-          break;
+      try {
+        _navigateForStatus(status);
+      } catch (e, st) {
+        DebugLogger.error('🧭 AuthNavigationService: navigation failed for $status', e, st);
+        _scheduleRetry(status, generation);
+        return;
+      }
 
-        case AuthStatus.unauthenticated:
-          final storage = GetStorage();
-          final hasSeenOnboarding = storage.read('has_seen_onboarding') == true;
-          if (!hasSeenOnboarding) {
-            if (Get.currentRoute != AppRoutes.splash) {
-              Get.offAllNamed(AppRoutes.splash);
-            }
-          } else {
-            if (Get.currentRoute != AppRoutes.phoneEntry) {
-              Get.offAllNamed(AppRoutes.phoneEntry);
-            }
-          }
-          break;
+      // Only schedule a home-route retry when we are still on GetMaterialApp home.
+      if (status != AuthStatus.initial &&
+          status != AuthStatus.error &&
+          _isStillOnHomeRoute()) {
+        _scheduleRetryIfStillOnHome(status, generation);
+      }
+    }
 
-        case AuthStatus.requiresPasswordSetup:
-          if (Get.currentRoute != AppRoutes.setPassword) {
-            Get.offAllNamed(AppRoutes.setPassword);
-          }
-          break;
+    // Microtask: unit tests without a full frame cycle.
+    // Post-frame: production, after GetMaterialApp navigator is mounted.
+    Future.microtask(runOnce);
+    WidgetsBinding.instance.addPostFrameCallback((_) => runOnce());
+  }
 
-        case AuthStatus.requiresProfileCompletion:
-          if (Get.currentRoute != AppRoutes.profileCompletion) {
-            Get.offAllNamed(AppRoutes.profileCompletion);
-          }
-          break;
+  void _navigateForStatus(AuthStatus status) {
+    switch (status) {
+      case AuthStatus.initial:
+        break;
 
-        case AuthStatus.authenticated:
-          final authController = Get.find<AuthController>();
-          if (authController.redirectRoute.value != null) {
-            navigateToRedirectRoute();
-          } else if (Get.currentRoute != AppRoutes.dashboard) {
-            Get.offAllNamed(AppRoutes.dashboard);
+      case AuthStatus.unauthenticated:
+        final storage = GetStorage();
+        final hasSeenOnboarding = storage.read('has_seen_onboarding') == true;
+        if (!hasSeenOnboarding) {
+          _goNamedIfNeeded(AppRoutes.splash);
+        } else {
+          _goNamedIfNeeded(AppRoutes.phoneEntry);
+        }
+        break;
+
+      case AuthStatus.requiresPasswordSetup:
+        _goNamedIfNeeded(AppRoutes.setPassword);
+        break;
+
+      case AuthStatus.requiresProfileCompletion:
+        _goNamedIfNeeded(AppRoutes.profileCompletion);
+        break;
+
+      case AuthStatus.authenticated:
+        final authController = Get.find<AuthController>();
+        if (authController.redirectRoute.value != null) {
+          navigateToRedirectRoute();
+        } else {
+          final navigated = _goNamedIfNeeded(AppRoutes.dashboard);
+          if (navigated) {
             try {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (Get.isRegistered<AppUpdateController>()) {
@@ -76,12 +113,58 @@ class AuthNavigationService extends GetxService {
               });
             } catch (_) {}
           }
-          break;
+        }
+        break;
 
-        case AuthStatus.error:
-          break;
+      case AuthStatus.error:
+        break;
+    }
+  }
+
+  bool _goNamedIfNeeded(String route) {
+    if (Get.currentRoute == route) return false;
+    DebugLogger.info('🧭 AuthNavigationService: Get.offAllNamed($route)');
+    Get.offAllNamed(route);
+    return true;
+  }
+
+  void _scheduleRetry(AuthStatus status, int generation) {
+    _retryTimer?.cancel();
+    _retryTimer = Timer(const Duration(milliseconds: 300), () {
+      if (generation != _navigationGeneration) return;
+      if (!Get.isRegistered<AuthController>()) return;
+      if (Get.find<AuthController>().authStatus.value != status) return;
+      DebugLogger.warning('🧭 AuthNavigationService: retrying navigation for $status');
+      try {
+        _navigateForStatus(status);
+      } catch (e, st) {
+        DebugLogger.error('🧭 AuthNavigationService: retry failed for $status', e, st);
       }
     });
+  }
+
+  void _scheduleRetryIfStillOnHome(AuthStatus status, int generation) {
+    _homeRetryTimer?.cancel();
+    _homeRetryTimer = Timer(const Duration(milliseconds: 400), () {
+      if (generation != _navigationGeneration) return;
+      if (!Get.isRegistered<AuthController>()) return;
+      if (Get.find<AuthController>().authStatus.value != status) return;
+      if (!_isStillOnHomeRoute()) return;
+      DebugLogger.warning(
+        '🧭 AuthNavigationService: still on home route after $status — retrying once',
+      );
+      try {
+        _navigateForStatus(status);
+      } catch (e, st) {
+        DebugLogger.error('🧭 AuthNavigationService: home-route retry failed', e, st);
+      }
+    });
+  }
+
+  /// True when GetX has not left the MaterialApp [home] (Root) yet.
+  bool _isStillOnHomeRoute() {
+    final current = Get.currentRoute;
+    return current.isEmpty || current == '/' || current == '/Root';
   }
 
   /// Navigates to the stored redirect route and clears it.
@@ -97,6 +180,8 @@ class AuthNavigationService extends GetxService {
 
   @override
   void onClose() {
+    _retryTimer?.cancel();
+    _homeRetryTimer?.cancel();
     _authStatusWorker?.dispose();
     super.onClose();
   }

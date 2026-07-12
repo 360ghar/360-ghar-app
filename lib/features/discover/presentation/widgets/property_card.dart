@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
@@ -7,10 +5,8 @@ import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/core/utils/webview_helper.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:ghar360/core/widgets/common/tour_webview.dart';
 
 class PropertyCard extends StatelessWidget {
   final PropertyModel property;
@@ -207,7 +203,7 @@ class PropertyCard extends StatelessWidget {
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: _Embedded360Tour(tourUrl: property.virtualTourUrl!),
+                            child: TourWebView(tourUrl: property.virtualTourUrl!),
                           ),
                         ),
                       ],
@@ -258,187 +254,6 @@ class PropertyCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _Embedded360Tour extends StatefulWidget {
-  final String tourUrl;
-
-  const _Embedded360Tour({required this.tourUrl});
-
-  @override
-  State<_Embedded360Tour> createState() => _Embedded360TourState();
-}
-
-class _Embedded360TourState extends State<_Embedded360Tour> {
-  WebViewController? controller;
-  bool isLoading = true;
-  bool hasError = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeWebView();
-  }
-
-  void _initializeWebView() {
-    try {
-      WebViewHelper.ensureInitialized();
-      const consoleSilencer = '''
-        if (window && window.console) {
-          window.console.log = function() {};
-          window.console.warn = function() {};
-          window.console.error = function() {};
-          window.console.info = function() {};
-          window.console.debug = function() {};
-        }
-      ''';
-
-      controller = WebViewHelper.createBaseController();
-      controller!
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(const Color(0x00000000))
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onPageStarted: (String url) {
-              if (mounted) {
-                setState(() {
-                  isLoading = true;
-                });
-              }
-              controller!.runJavaScript(consoleSilencer);
-            },
-            onPageFinished: (String url) {
-              if (mounted) {
-                setState(() {
-                  isLoading = false;
-                });
-              }
-              controller!.runJavaScript(consoleSilencer);
-            },
-            onWebResourceError: (WebResourceError error) {
-              DebugLogger.warning('WebView error in 360° tour: ${error.description}');
-              if (mounted) {
-                setState(() {
-                  isLoading = false;
-                  hasError = true;
-                });
-              }
-            },
-          ),
-        );
-
-      final sanitizedUrl = htmlEscape.convert(widget.tourUrl);
-      final htmlContent =
-          '''
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-          body {
-            margin: 0;
-            padding: 0;
-            background: #f0f0f0;
-            overflow: hidden;
-          }
-          iframe {
-            width: 100vw;
-            height: 100vh;
-            border: none;
-            display: block;
-          }
-        </style>
-        <script type="text/javascript">
-          $consoleSilencer
-        </script>
-      </head>
-      <body>
-        <iframe class="ku-embed"
-                frameborder="0"
-                allow="xr-spatial-tracking; gyroscope; accelerometer"
-                allowfullscreen
-                scrolling="no"
-                src="$sanitizedUrl">
-        </iframe>
-      </body>
-      </html>
-    ''';
-
-      controller!.loadHtmlString(htmlContent);
-    } catch (e, stackTrace) {
-      DebugLogger.error('Error initializing WebView for 360° tour', e, stackTrace);
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-          hasError = true;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (hasError || controller == null) {
-      return Container(
-        color: AppDesign.inputBackground,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.public_off,
-                size: 48,
-                color: AppDesign.textSecondary.withValues(alpha: 0.7),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'tour_unavailable_title'.tr,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppDesign.textSecondary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'tour_unavailable_body'.tr,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppDesign.textSecondary.withValues(alpha: 0.7),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Stack(
-      children: [
-        WebViewWidget(
-          controller: controller!,
-          gestureRecognizers: WebViewHelper.createInteractiveGestureRecognizers(),
-        ),
-        if (isLoading)
-          Container(
-            color: AppDesign.inputBackground,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(color: AppDesign.primaryYellow, strokeWidth: 2),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'loading_virtual_tour'.tr,
-                    style: TextStyle(fontSize: 12, color: AppDesign.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

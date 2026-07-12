@@ -12,13 +12,7 @@ class AuthHeaderProvider {
   final Future<AuthResponse> Function()? _refreshSession;
   Future<Session?>? _refreshInFlight;
 
-  AuthHeaderProvider({
-    SupabaseClient? supabaseClient,
-    Session? Function()? currentSessionProvider,
-    Future<AuthResponse> Function()? refreshSession,
-  }) : _supabaseClient = supabaseClient,
-       _currentSessionProvider = currentSessionProvider,
-       _refreshSession = refreshSession;
+  AuthHeaderProvider({this._supabaseClient, this._currentSessionProvider, this._refreshSession});
 
   SupabaseClient get _supabase => _supabaseClient ?? Supabase.instance.client;
 

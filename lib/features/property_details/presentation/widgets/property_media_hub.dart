@@ -1,358 +1,338 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/core/utils/image_cache_service.dart';
-import 'package:ghar360/core/utils/webview_helper.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
+import 'package:ghar360/features/property_details/presentation/widgets/property_details_section_header.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
-class PropertyMediaBadges extends StatelessWidget {
-  const PropertyMediaBadges({super.key, required this.property});
-
-  final PropertyModel property;
-
-  @override
-  Widget build(BuildContext context) {
-    final badges = <Widget>[
-      if (property.hasPhotos) _badge(icon: Icons.photo, label: 'images'.tr),
-      if (property.hasVideos) _badge(icon: Icons.videocam, label: 'video'.tr),
-      if (property.hasVirtualTour) _badge(icon: Icons.threesixty, label: 'virtual_tour_title'.tr),
-      if (property.hasStreetView) _badge(icon: Icons.streetview, label: 'street_view'.tr),
-      if (property.hasFloorPlan) _badge(icon: Icons.apartment, label: 'floor_plan'.tr),
-    ];
-
-    if (badges.isEmpty) return const SizedBox.shrink();
-
-    return Wrap(spacing: 8, runSpacing: 8, children: badges);
-  }
-
-  Widget _badge({required IconData icon, required String label}) {
-    final bool isDark = Get.isDarkMode;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? AppDesign.inputBackground : AppDesign.warmCream,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppDesign.primaryYellow.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: isDark ? AppDesign.textSecondary : AppDesign.editorialInk),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: isDark ? AppDesign.textPrimary : AppDesign.editorialInk,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class PropertyMediaHub extends StatefulWidget {
+/// Horizontal media experience strip — photos, 360°, video, floor plan, street view.
+/// No eager WebViews; tours navigate to [AppRoutes.tour] like Discover.
+class PropertyMediaHub extends StatelessWidget {
   const PropertyMediaHub({super.key, required this.property, this.googleMapsApiKey});
 
   final PropertyModel property;
   final String? googleMapsApiKey;
 
-  @override
-  State<PropertyMediaHub> createState() => _PropertyMediaHubState();
-}
-
-class _PropertyMediaHubState extends State<PropertyMediaHub> {
-  late final List<String> _images;
-  bool _prefetching = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _images = widget.property.galleryImageUrls.isNotEmpty
-        ? widget.property.galleryImageUrls
-        : [widget.property.mainImage];
-    _prefetchImages();
-  }
-
-  Future<void> _prefetchImages() async {
-    if (_prefetching) return;
-    _prefetching = true;
-    for (final url in _images.take(12)) {
-      try {
-        await ImageCacheService.instance.preloadImage(url);
-        if (mounted) {
-          await precacheImage(CachedNetworkImageProvider(url), context);
-        }
-      } catch (e) {
-        DebugLogger.debug('Image prefetch failed for $url: $e');
-      }
-    }
-    if (mounted) {
-      setState(() {
-        _prefetching = false;
-      });
-    }
+  List<String> get _images {
+    final urls = property.galleryImageUrls.isNotEmpty
+        ? property.galleryImageUrls
+        : [property.mainImage];
+    return urls.where((u) => u.trim().isNotEmpty).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final property = widget.property;
-    final primaryVideo = property.primaryVideoUrl ?? property.mediaVideoUrls.firstOrNull;
-    final googleKey = widget.googleMapsApiKey ?? dotenv.env['GOOGLE_PLACES_API_KEY'];
+    final tiles = <_MediaTileData>[];
 
-    final sections = <Widget>[];
-    void addSection(Widget child) {
-      if (sections.isNotEmpty) {
-        sections.add(const SizedBox(height: 16));
-      }
-      sections.add(child);
+    if (property.hasPhotos || _images.isNotEmpty) {
+      tiles.add(
+        _MediaTileData(
+          kind: _MediaKind.photos,
+          label: 'photos'.tr,
+          icon: Icons.photo_library_rounded,
+          thumbnail: _images.isNotEmpty ? _images.first : property.mainImage,
+          badge: _images.length > 1 ? '${_images.length}' : null,
+        ),
+      );
     }
-
     if (property.hasVirtualTour) {
-      addSection(_VirtualTourCard(url: property.virtualTourUrl!, thumbnail: property.mainImage));
+      tiles.add(
+        _MediaTileData(
+          kind: _MediaKind.tour,
+          label: 'virtual_tour_title'.tr,
+          icon: Icons.threesixty,
+          thumbnail: property.mainImage,
+        ),
+      );
     }
-
-    addSection(_MediaGalleryCard(images: _images, title: 'gallery'.tr));
-
+    if (property.hasVideos) {
+      tiles.add(
+        _MediaTileData(
+          kind: _MediaKind.video,
+          label: 'video_tour'.tr,
+          icon: Icons.videocam_rounded,
+          thumbnail: property.mainImage,
+        ),
+      );
+    }
+    if (property.hasFloorPlan) {
+      tiles.add(
+        _MediaTileData(
+          kind: _MediaKind.floorPlan,
+          label: 'floor_plan'.tr,
+          icon: Icons.apartment_rounded,
+          thumbnail: property.floorPlanImageUrls.firstOrNull ?? property.mainImage,
+        ),
+      );
+    }
     if (property.hasStreetView) {
-      addSection(_StreetViewCard(property: property, googleMapsApiKey: googleKey));
+      final key = googleMapsApiKey ?? AppConfig.instance.googlePlacesApiKey;
+      tiles.add(
+        _MediaTileData(
+          kind: _MediaKind.streetView,
+          label: 'street_view'.tr,
+          icon: Icons.streetview,
+          thumbnail: property.streetViewStaticImage(key) ?? property.mainImage,
+        ),
+      );
     }
+
+    if (tiles.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ...sections,
-        if (property.hasVideos && primaryVideo != null) ...[
-          const SizedBox(height: 16),
-          _InlineVideoPlayer(
-            videoUrl: primaryVideo,
-            extraVideos: property.mediaVideoUrls.where((v) => v != primaryVideo).toList(),
+        PropertyDetailsSectionHeader('section_media'.tr),
+        SizedBox(
+          height: 132,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: tiles.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final tile = tiles[index];
+              return _MediaExperienceCard(data: tile, onTap: () => _onTileTap(context, tile.kind));
+            },
           ),
-        ],
-        if (property.hasFloorPlan) ...[
-          const SizedBox(height: 16),
-          _FloorPlanCard(imageUrls: property.floorPlanImageUrls),
-        ],
+        ),
       ],
     );
   }
-}
 
-class _MediaGalleryCard extends StatefulWidget {
-  const _MediaGalleryCard({required this.images, required this.title});
-
-  final List<String> images;
-  final String title;
-
-  @override
-  State<_MediaGalleryCard> createState() => _MediaGalleryCardState();
-}
-
-class _MediaGalleryCardState extends State<_MediaGalleryCard> {
-  late final PageController _controller;
-  int _index = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = PageController();
+  void _onTileTap(BuildContext context, _MediaKind kind) {
+    switch (kind) {
+      case _MediaKind.photos:
+        _openFullscreenGallery(context, _images, 0);
+      case _MediaKind.tour:
+        final url = property.virtualTourUrl;
+        if (url != null && url.isNotEmpty) {
+          Get.toNamed(AppRoutes.tour, arguments: url);
+        }
+      case _MediaKind.video:
+        final video = property.primaryVideoUrl ?? property.mediaVideoUrls.firstOrNull;
+        if (video != null) {
+          _openVideoSheet(
+            context,
+            video,
+            property.mediaVideoUrls.where((v) => v != video).toList(),
+          );
+        }
+      case _MediaKind.floorPlan:
+        _openFullscreenGallery(context, property.floorPlanImageUrls, 0);
+      case _MediaKind.streetView:
+        _openStreetView();
+    }
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Future<void> _openStreetView() async {
+    final urlString = property.streetViewLaunchUrl;
+    if (urlString == null) return;
+    final uri = Uri.tryParse(urlString);
+    if (uri != null && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
-  void _openViewer(int initialIndex) {
-    showDialog<void>(
+  void _openFullscreenGallery(BuildContext context, List<String> images, int initialIndex) {
+    if (images.isEmpty) return;
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: true,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return _FullscreenMediaGallery(images: images, initialIndex: initialIndex);
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+
+  void _openVideoSheet(BuildContext context, String videoUrl, List<String> extraVideos) {
+    showModalBottomSheet<void>(
       context: context,
-      builder: (_) {
-        return Dialog(
-          insetPadding: const EdgeInsets.all(12),
-          backgroundColor: AppDesign.shadowColor.withValues(alpha: 0.9),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.75,
-            child: PhotoViewGallery.builder(
-              itemCount: widget.images.length,
-              pageController: PageController(initialPage: initialIndex),
-              backgroundDecoration: BoxDecoration(
-                color: AppDesign.shadowColor.withValues(alpha: 0.9),
-              ),
-              builder: (context, index) {
-                final url = widget.images[index];
-                return PhotoViewGalleryPageOptions(
-                  imageProvider: CachedNetworkImageProvider(url),
-                  minScale: PhotoViewComputedScale.contained,
-                  maxScale: PhotoViewComputedScale.covered * 2.5,
-                  heroAttributes: PhotoViewHeroAttributes(tag: url),
-                );
-              },
+      isScrollControlled: true,
+      backgroundColor: AppDesign.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppBorderRadius.bottomSheet)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppDesign.border,
+                    borderRadius: BorderRadius.circular(AppBorderRadius.round),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(Icons.videocam_rounded, color: AppDesign.primaryYellow),
+                    const SizedBox(width: 8),
+                    Text(
+                      'video_tour'.tr,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppDesign.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _LazyVideoPlayer(videoUrl: videoUrl, extraVideos: extraVideos),
+              ],
             ),
           ),
         );
       },
     );
   }
+}
+
+enum _MediaKind { photos, tour, video, floorPlan, streetView }
+
+class _MediaTileData {
+  const _MediaTileData({
+    required this.kind,
+    required this.label,
+    required this.icon,
+    required this.thumbnail,
+    this.badge,
+  });
+
+  final _MediaKind kind;
+  final String label;
+  final IconData icon;
+  final String thumbnail;
+  final String? badge;
+}
+
+class _MediaExperienceCard extends StatelessWidget {
+  const _MediaExperienceCard({required this.data, required this.onTap});
+
+  final _MediaTileData data;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final hasImages = widget.images.isNotEmpty;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppDesign.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppDesign.border),
-        boxShadow: AppDesign.getCardShadow(),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.photo_library, color: AppDesign.primaryYellow, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                widget.title,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  color: AppDesign.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              if (hasImages)
-                TextButton(onPressed: () => _openViewer(_index), child: Text('view'.tr)),
-            ],
+    return Material(
+      color: AppDesign.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppBorderRadius.card),
+        child: Ink(
+          width: 148,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppBorderRadius.card),
+            border: Border.all(color: AppDesign.border.withValues(alpha: 0.75)),
+            boxShadow: AppDesign.getCardShadow(),
           ),
-          const SizedBox(height: 8),
-          AspectRatio(
-            aspectRatio: 4 / 3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: hasImages
-                  ? Stack(
-                      children: [
-                        PageView.builder(
-                          controller: _controller,
-                          itemCount: widget.images.length,
-                          onPageChanged: (i) => setState(() => _index = i),
-                          itemBuilder: (context, index) {
-                            final url = widget.images[index];
-                            return CachedNetworkImage(
-                              imageUrl: url,
-                              fit: BoxFit.cover,
-                              placeholder: (context, _) =>
-                                  Container(color: AppDesign.inputBackground),
-                              errorWidget: (context, error, stackTrace) => Container(
-                                color: AppDesign.inputBackground,
-                                child: Icon(Icons.image, color: AppDesign.textSecondary),
-                              ),
-                            );
-                          },
-                        ),
-                        if (widget.images.length > 1)
-                          Positioned(
-                            right: 8,
-                            bottom: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: AppDesign.shadowColor.withValues(alpha: 0.45),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '${_index + 1}/${widget.images.length}',
-                                style: const TextStyle(
-                                  color: AppDesign.darkTextPrimary,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppBorderRadius.card),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                RobustNetworkImage(imageUrl: data.thumbnail, fit: BoxFit.cover),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        AppDesign.overlayDark.withValues(alpha: 0.1),
+                        AppDesign.overlayDark.withValues(alpha: 0.65),
                       ],
-                    )
-                  : Container(
-                      color: AppDesign.inputBackground,
-                      child: Center(
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppDesign.primaryYellow,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(data.icon, size: 14, color: AppDesign.buttonText),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
                         child: Text(
-                          'no_images_available'.tr,
-                          style: TextStyle(color: AppDesign.textSecondary),
+                          data.label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppDesign.overlayLight,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (data.badge != null)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppDesign.overlayDark.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(AppBorderRadius.round),
+                      ),
+                      child: Text(
+                        data.badge!,
+                        style: TextStyle(
+                          color: AppDesign.overlayLight,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
+                  ),
+              ],
             ),
           ),
-          if (hasImages && widget.images.length > 1) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 68,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: widget.images.length,
-                separatorBuilder: (_, index) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final url = widget.images[index];
-                  final isActive = index == _index;
-                  return GestureDetector(
-                    onTap: () => _controller.animateToPage(
-                      index,
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeInOut,
-                    ),
-                    child: Container(
-                      width: 90,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isActive ? AppDesign.primaryYellow : AppDesign.border,
-                          width: isActive ? 2 : 1,
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: url,
-                          fit: BoxFit.cover,
-                          placeholder: (context, _) => Container(color: AppDesign.inputBackground),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 }
 
-class _InlineVideoPlayer extends StatefulWidget {
-  const _InlineVideoPlayer({required this.videoUrl, required this.extraVideos});
+class _LazyVideoPlayer extends StatefulWidget {
+  const _LazyVideoPlayer({required this.videoUrl, required this.extraVideos});
 
   final String videoUrl;
   final List<String> extraVideos;
 
   @override
-  State<_InlineVideoPlayer> createState() => _InlineVideoPlayerState();
+  State<_LazyVideoPlayer> createState() => _LazyVideoPlayerState();
 }
 
-class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
+class _LazyVideoPlayerState extends State<_LazyVideoPlayer> {
   VideoPlayerController? _controller;
   ChewieController? _chewieController;
   bool _loading = true;
@@ -392,11 +372,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       DebugLogger.error('Video player init failed', e);
       _error = 'video_load_failed'.tr;
     } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -409,32 +385,13 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppDesign.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppDesign.border),
-        boxShadow: AppDesign.getCardShadow(),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.videocam, color: AppDesign.primaryYellow),
-              const SizedBox(width: 8),
-              Text(
-                'video_tour'.tr,
-                style: TextStyle(fontWeight: FontWeight.w700, color: AppDesign.textPrimary),
-              ),
-              const Spacer(),
-              TextButton(onPressed: () => _openExternal(widget.videoUrl), child: Text('open'.tr)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          AspectRatio(
-            aspectRatio: _controller?.value.aspectRatio ?? 16 / 9,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AspectRatio(
+          aspectRatio: _controller?.value.aspectRatio ?? 16 / 9,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppBorderRadius.md),
             child: _loading
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                 : _error != null
@@ -442,7 +399,6 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(_error!, style: TextStyle(color: AppDesign.textSecondary)),
-                      const SizedBox(height: 8),
                       TextButton(onPressed: _initialize, child: Text('retry'.tr)),
                     ],
                   )
@@ -450,353 +406,128 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                 ? Chewie(controller: _chewieController!)
                 : Container(color: AppDesign.inputBackground),
           ),
-          if (widget.extraVideos.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: widget.extraVideos
-                  .map(
-                    (url) => ActionChip(
-                      label: Text(
-                        Uri.tryParse(url)?.host.replaceFirst('www.', '') ?? 'video'.tr,
-                        style: TextStyle(color: AppDesign.textPrimary),
-                      ),
-                      avatar: const Icon(Icons.play_circle_fill, size: 18),
-                      onPressed: () => _openExternal(url),
+        ),
+        if (widget.extraVideos.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: widget.extraVideos
+                .map(
+                  (url) => ActionChip(
+                    label: Text(
+                      Uri.tryParse(url)?.host.replaceFirst('www.', '') ?? 'video'.tr,
+                      style: TextStyle(color: AppDesign.textPrimary),
                     ),
-                  )
-                  .toList(),
-            ),
-          ],
+                    avatar: const Icon(Icons.play_circle_fill, size: 18),
+                    onPressed: () => _openExternal(url),
+                  ),
+                )
+                .toList(),
+          ),
         ],
-      ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () => _openExternal(widget.videoUrl),
+            child: Text('open'.tr),
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _VirtualTourCard extends StatefulWidget {
-  const _VirtualTourCard({required this.url, required this.thumbnail});
+class _FullscreenMediaGallery extends StatefulWidget {
+  const _FullscreenMediaGallery({required this.images, required this.initialIndex});
 
-  final String url;
-  final String thumbnail;
+  final List<String> images;
+  final int initialIndex;
 
   @override
-  State<_VirtualTourCard> createState() => _VirtualTourCardState();
+  State<_FullscreenMediaGallery> createState() => _FullscreenMediaGalleryState();
 }
 
-class _VirtualTourCardState extends State<_VirtualTourCard> {
-  WebViewController? _controller;
-  bool _loading = true;
+class _FullscreenMediaGalleryState extends State<_FullscreenMediaGallery> {
+  late int _index;
+  late final PageController _controller;
 
   @override
   void initState() {
     super.initState();
-    final controller = WebViewHelper.createBaseController();
-    controller
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (_) => _applySensorBlock(controller),
-          onPageFinished: (_) {
-            _setLoaded();
-            _applySensorBlock(controller);
-          },
-          onWebResourceError: (_) => _setLoaded(),
-        ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
-    // Apply once more right after load in case the tour boots scripts early.
-    _applySensorBlock(controller);
-    _controller = controller;
+    _index = widget.initialIndex;
+    _controller = PageController(initialPage: widget.initialIndex);
   }
 
-  Future<void> _openFullScreen(BuildContext context) async {
-    final controller = WebViewHelper.createBaseController();
-    controller
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (_) => _applySensorBlock(controller),
-          onPageFinished: (_) => _applySensorBlock(controller),
-          onWebResourceError: (_) {},
-        ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
-
-    await showDialog<void>(
-      context: context,
-      barrierColor: AppDesign.shadowColor.withValues(alpha: 0.9),
-      builder: (_) => Dialog(
-        insetPadding: EdgeInsets.zero,
-        backgroundColor: AppDesign.shadowColor,
-        child: SafeArea(
-          child: Stack(
-            children: [
-              Positioned.fill(child: WebViewWidget(controller: controller)),
-              Positioned(
-                right: 12,
-                top: 12,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: AppDesign.darkTextPrimary),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _applySensorBlock(WebViewController controller) async {
-    const script = '''
-      (function() {
-        const blocked = new Set(['deviceorientation', 'deviceorientationabsolute', 'devicemotion']);
-        const originalAdd = window.addEventListener;
-        window.addEventListener = function(type, listener, options) {
-          if (blocked.has(type)) return;
-          return originalAdd.call(window, type, listener, options);
-        };
-        blocked.forEach(type => {
-          window.addEventListener(type, function(event) {
-            event.stopImmediatePropagation();
-            event.preventDefault();
-            return false;
-          }, { capture: true });
-        });
-        ['ondeviceorientation','ondeviceorientationabsolute','ondevicemotion'].forEach((prop) => {
-          try {
-            Object.defineProperty(window, prop, { get() { return null; }, set(_) {}, configurable: true });
-          } catch (e) {}
-        });
-      })();
-    ''';
-    try {
-      await controller.runJavaScript(script);
-    } catch (e) {
-      DebugLogger.debug('Sensor block script failed: $e');
-    }
-  }
-
-  void _setLoaded() {
-    if (mounted) {
-      setState(() {
-        _loading = false;
-      });
-    }
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppDesign.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppDesign.border),
-        boxShadow: AppDesign.getCardShadow(),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.threesixty, color: AppDesign.primaryYellow),
-              const SizedBox(width: 8),
-              Text(
-                'virtual_tour_title'.tr,
-                style: TextStyle(fontWeight: FontWeight.w700, color: AppDesign.textPrimary),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed: () => _openFullScreen(context),
-                child: Text('fullscreen_mode'.tr),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              height: 520, // Fixed height to prevent shrinking/jumping.
-              child: Stack(
-                children: [
-                  if (_controller != null)
-                    WebViewWidget(
-                      controller: _controller!,
-                      gestureRecognizers: WebViewHelper.createInteractiveGestureRecognizers(),
-                    )
-                  else
-                    RobustNetworkImage(imageUrl: widget.thumbnail, fit: BoxFit.cover),
-                  if (_loading)
-                    Container(
-                      color: AppDesign.shadowColor.withValues(alpha: 0.2),
-                      child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StreetViewCard extends StatelessWidget {
-  const _StreetViewCard({required this.property, this.googleMapsApiKey});
-
-  final PropertyModel property;
-  final String? googleMapsApiKey;
-
-  Future<void> _openStreetView() async {
-    final urlString = property.streetViewLaunchUrl;
-    if (urlString == null) return;
-    final uri = Uri.tryParse(urlString);
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final staticUrl = property.streetViewStaticImage(googleMapsApiKey ?? '');
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppDesign.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppDesign.border),
-        boxShadow: AppDesign.getCardShadow(),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.streetview, color: AppDesign.primaryYellow),
-              const SizedBox(width: 8),
-              Text(
-                'street_view'.tr,
-                style: TextStyle(fontWeight: FontWeight.w700, color: AppDesign.textPrimary),
-              ),
-              const Spacer(),
-              TextButton(onPressed: _openStreetView, child: Text('open'.tr)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: staticUrl != null
-                  ? RobustNetworkImage(imageUrl: staticUrl, fit: BoxFit.cover)
-                  : Container(
-                      color: AppDesign.inputBackground,
-                      child: Center(
-                        child: Text(
-                          'street_view_unavailable'.tr,
-                          style: TextStyle(color: AppDesign.textSecondary),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FloorPlanCard extends StatelessWidget {
-  const _FloorPlanCard({required this.imageUrls});
-
-  final List<String> imageUrls;
-
-  void _openViewer(BuildContext context, int initialIndex) {
-    showDialog<void>(
-      context: context,
-      builder: (_) {
-        return Dialog(
-          insetPadding: const EdgeInsets.all(12),
-          backgroundColor: AppDesign.shadowColor.withValues(alpha: 0.9),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.75,
-            child: PhotoViewGallery.builder(
-              itemCount: imageUrls.length,
-              pageController: PageController(initialPage: initialIndex),
-              backgroundDecoration: BoxDecoration(
-                color: AppDesign.shadowColor.withValues(alpha: 0.9),
-              ),
+    return Scaffold(
+      backgroundColor: AppDesign.overlayDark,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            PhotoViewGallery.builder(
+              itemCount: widget.images.length,
+              pageController: _controller,
+              backgroundDecoration: const BoxDecoration(color: AppDesign.overlayDark),
+              onPageChanged: (i) => setState(() => _index = i),
               builder: (context, index) {
-                final url = imageUrls[index];
+                final url = widget.images[index];
                 return PhotoViewGalleryPageOptions(
                   imageProvider: CachedNetworkImageProvider(url),
                   minScale: PhotoViewComputedScale.contained,
                   maxScale: PhotoViewComputedScale.covered * 2.5,
-                  heroAttributes: PhotoViewHeroAttributes(tag: url),
+                  heroAttributes: PhotoViewHeroAttributes(tag: 'media_$url'),
                 );
               },
             ),
-          ),
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final hasImages = imageUrls.isNotEmpty;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppDesign.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppDesign.border),
-        boxShadow: AppDesign.getCardShadow(),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.apartment, color: AppDesign.primaryYellow),
-              const SizedBox(width: 8),
-              Text(
-                'floor_plan'.tr,
-                style: TextStyle(fontWeight: FontWeight.w700, color: AppDesign.textPrimary),
+            Positioned(
+              top: 4,
+              left: 8,
+              child: Material(
+                color: AppDesign.overlayDark.withValues(alpha: 0.45),
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: AppDesign.overlayLight),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          AspectRatio(
-            aspectRatio: 4 / 3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: hasImages
-                  ? GestureDetector(
-                      onTap: () => _openViewer(context, 0),
-                      child: RobustNetworkImage(imageUrl: imageUrls.first, fit: BoxFit.cover),
-                    )
-                  : Container(
-                      color: AppDesign.inputBackground,
-                      child: Center(
-                        child: Text(
-                          'no_floor_plan_uploaded'.tr,
-                          style: TextStyle(color: AppDesign.textSecondary),
-                        ),
+            ),
+            if (widget.images.length > 1)
+              Positioned(
+                bottom: 20,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppDesign.overlayDark.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(AppBorderRadius.round),
+                    ),
+                    child: Text(
+                      '${_index + 1}/${widget.images.length}',
+                      style: const TextStyle(
+                        color: AppDesign.overlayLight,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-            ),
-          ),
-        ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
-extension _FirstOrNull<T> on List<T> {
+extension _FirstOrNullMedia<T> on List<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }

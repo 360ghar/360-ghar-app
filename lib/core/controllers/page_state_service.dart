@@ -12,10 +12,10 @@ import 'package:ghar360/core/controllers/page_location_manager.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/core/data/ports/properties_port.dart';
+import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/features/properties/data/properties_repository.dart';
-import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 
 class PageStateService extends GetxController {
   static PageStateService get instance => Get.find<PageStateService>();
@@ -30,7 +30,7 @@ class PageStateService extends GetxController {
   // Dependencies initialized in onInit to avoid race conditions
   late final LocationController _locationController;
   late final AuthController _authController;
-  late final SwipesRepository _swipesRepository;
+  late final SwipesPort _swipesPort;
 
   // Page states
   final Rx<PageStateModel> exploreState = PageStateModel.initial(PageType.explore).obs;
@@ -69,18 +69,14 @@ class PageStateService extends GetxController {
       'AuthController',
       maxRetries: 3,
     );
-    _swipesRepository = await _findDependencyWithRetry<SwipesRepository>(
-      'SwipesRepository',
+    _swipesPort = await _findDependencyWithRetry<SwipesPort>('SwipesPort', maxRetries: 3);
+    final propertiesPort = await _findDependencyWithRetry<PropertiesPort>(
+      'PropertiesPort',
       maxRetries: 3,
     );
 
     // Initialize sub-services
-    _dataLoader = PageDataLoader(
-      this,
-      Get.find<PropertiesRepository>(),
-      _swipesRepository,
-      _locationController,
-    );
+    _dataLoader = PageDataLoader(this, propertiesPort, _swipesPort, _locationController);
     _filterManager = PageFilterManager(this, _dataLoader, _storage);
     _locationManager = PageLocationManager(this, _dataLoader, _locationController, _authController);
 
@@ -122,6 +118,28 @@ class PageStateService extends GetxController {
     _discoverPersistDebouncer?.cancel();
     _likesPersistDebouncer?.cancel();
     super.onClose();
+  }
+
+  /// Resets in-memory and persisted page state after logout so the next user
+  /// never sees the previous user's properties, likes, or swipe progress.
+  void clearSessionData() {
+    _explorePersistDebouncer?.cancel();
+    _discoverPersistDebouncer?.cancel();
+    _likesPersistDebouncer?.cancel();
+
+    exploreState.value = PageStateModel.initial(PageType.explore);
+    discoverState.value = PageStateModel.initial(PageType.discover);
+    likesState.value = PageStateModel.initial(PageType.likes);
+
+    try {
+      _storage.remove(_exploreStateStorageKey);
+      _storage.remove(_discoverStateStorageKey);
+      _storage.remove(_likesStateStorageKey);
+    } catch (e, st) {
+      DebugLogger.warning('Failed to clear persisted page state on logout', e, st);
+    }
+
+    DebugLogger.info('🧹 PageStateService session data cleared');
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -533,7 +551,7 @@ class PageStateService extends GetxController {
 
     // Network sync — await so failures propagate to callers, which revert the
     // optimistic mutation and/or surface a toast. Callers all handle errors.
-    await _swipesRepository.recordSwipe(propertyId: propertyId, isLiked: isLiked);
+    await _swipesPort.recordSwipe(propertyId: propertyId, isLiked: isLiked);
   }
 
   PropertyModel? _findPropertyInAnyList(int propertyId) {
@@ -584,7 +602,7 @@ class PageStateService extends GetxController {
     // Network sync with the REVERSED action. Without a delete-swipe API,
     // recording the opposite is the best reversal we can do. Await so failures
     // propagate to the caller (which logs via catchError).
-    await _swipesRepository.recordSwipe(propertyId: propertyId, isLiked: !originalIsLiked);
+    await _swipesPort.recordSwipe(propertyId: propertyId, isLiked: !originalIsLiked);
   }
 
   void removePropertyFromLikes(int propertyId) {

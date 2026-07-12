@@ -3,7 +3,7 @@
 # Netlify build script for the ghar360 Flutter web app.
 #
 # Netlify's build image has no Flutter SDK, so we install a pinned version,
-# generate .env.production from Netlify environment variables, then build the
+# inject config via --dart-define-from-file (not Flutter assets), then build the
 # release web bundle into build/web (the publish dir in netlify.toml).
 #
 # Configure secrets in: Netlify dashboard -> Site configuration ->
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 # Keep this in sync with .fvmrc and .github/workflows/build.yml.
-FLUTTER_VERSION="3.35.2"
+FLUTTER_VERSION="3.44.6"
 
 # Cache the SDK between builds when Netlify exposes a persistent cache dir.
 CACHE_DIR="${NETLIFY_BUILD_BASE:-$HOME}/cache"
@@ -54,61 +54,45 @@ flutter config --enable-web
 flutter precache --web
 
 # ---------------------------------------------------------------------------
-# 2. Generate the .env files from Netlify environment variables.
-#    The real .env.* files are gitignored (only the .example files are
-#    committed), so they do NOT exist in the Netlify checkout. pubspec.yaml
-#    lists BOTH .env.development and .env.production as assets, so both must
-#    be written or `flutter build web` fails on the missing asset.
-#    The web build is --release, so .env.production is what loads at runtime;
-#    .env.development is written with identical content (matching build.yml).
+# 2. Generate compile-time dart-defines from Netlify environment variables.
+#    Secrets are NOT written as Flutter assets (extractable from the bundle).
 #    Do NOT print the file contents — avoid leaking secrets into logs.
 # ---------------------------------------------------------------------------
 : "${SUPABASE_URL:?SUPABASE_URL is required (set it in Netlify env vars)}"
 : "${SUPABASE_PUBLISHABLE_KEY:?SUPABASE_PUBLISHABLE_KEY is required (set it in Netlify env vars)}"
 
-for ENV_FILE in .env.development .env.production; do
-  cat > "${ENV_FILE}" <<EOF
-# Generated at Netlify build time from environment variables. Do not commit.
-
-# Supabase (required)
-SUPABASE_URL=${SUPABASE_URL}
-SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
-
-# API + integrations
-API_BASE_URL=${API_BASE_URL:-}
-GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
-GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}
-GOOGLE_IOS_CLIENT_ID=
-
-# App configuration
-DEFAULT_COUNTRY=${DEFAULT_COUNTRY:-in}
-DEBUG_MODE=${DEBUG_MODE:-false}
-LOG_API_CALLS=${LOG_API_CALLS:-false}
-
-# PostHog
-POSTHOG_API_KEY=${POSTHOG_API_KEY:-}
-POSTHOG_HOST=${POSTHOG_HOST:-https://us.i.posthog.com}
-
-# Firebase (default off for web unless a Firebase web config is wired up)
-FIREBASE_ENABLED=${FIREBASE_ENABLED:-false}
-FIREBASE_CRASHLYTICS=${FIREBASE_CRASHLYTICS:-false}
-FIREBASE_ANALYTICS=${FIREBASE_ANALYTICS:-false}
-FIREBASE_PERFORMANCE=${FIREBASE_PERFORMANCE:-false}
-FIREBASE_IAM=${FIREBASE_IAM:-false}
-
-# Build metadata
-BUILD_ENV=netlify
-COMMIT_SHA=${COMMIT_REF:-}
-BRANCH_NAME=${BRANCH:-}
-EOF
-  echo "Wrote ${ENV_FILE} ($(wc -l < "${ENV_FILE}") lines)"
-done
+python3 - <<'PY'
+import json, os
+def env(key, default=""):
+    v = os.environ.get(key)
+    return default if v is None or v == "" else v
+payload = {
+    "SUPABASE_URL": env("SUPABASE_URL"),
+    "SUPABASE_PUBLISHABLE_KEY": env("SUPABASE_PUBLISHABLE_KEY"),
+    "API_BASE_URL": env("API_BASE_URL", "https://api.360ghar.com"),
+    "GOOGLE_PLACES_API_KEY": env("GOOGLE_PLACES_API_KEY"),
+    "GOOGLE_WEB_CLIENT_ID": env("GOOGLE_WEB_CLIENT_ID"),
+    "GOOGLE_IOS_CLIENT_ID": env("GOOGLE_IOS_CLIENT_ID"),
+    "DEFAULT_COUNTRY": env("DEFAULT_COUNTRY", "in"),
+    "DEBUG_MODE": env("DEBUG_MODE", "false"),
+    "LOG_API_CALLS": env("LOG_API_CALLS", "false"),
+    "FIREBASE_ENABLED": env("FIREBASE_ENABLED", "false"),
+    "FIREBASE_CRASHLYTICS": env("FIREBASE_CRASHLYTICS", "false"),
+    "FIREBASE_ANALYTICS": env("FIREBASE_ANALYTICS", "false"),
+    "FIREBASE_PERFORMANCE": env("FIREBASE_PERFORMANCE", "false"),
+    "FIREBASE_IAM": env("FIREBASE_IAM", "false"),
+    "RECAPTCHA_V3_SITE_KEY": env("RECAPTCHA_V3_SITE_KEY"),
+}
+with open("dart_defines.json", "w", encoding="utf-8") as f:
+    json.dump(payload, f)
+print("Wrote dart_defines.json (values not printed)")
+PY
 
 # ---------------------------------------------------------------------------
 # 3. Build the release web bundle. Generated *.g.dart files are committed,
 #    so build_runner is not needed.
 # ---------------------------------------------------------------------------
 flutter pub get
-flutter build web --release --base-href=/
+flutter build web --release --base-href=/ --dart-define-from-file=dart_defines.json
 
 echo "Web build complete: build/web"

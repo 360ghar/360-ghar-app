@@ -6,6 +6,7 @@ import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_handler.dart';
+import 'package:ghar360/core/utils/password_validators.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
 import 'package:ghar360/features/auth/presentation/controllers/otp_resend_timer.dart';
@@ -136,7 +137,7 @@ class ForgotPasswordController extends GetxController with OtpResendTimer {
       return;
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < PasswordValidators.minLength) {
       errorMessage.value = 'password_min_length'.tr;
       return;
     }

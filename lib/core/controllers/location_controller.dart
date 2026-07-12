@@ -375,7 +375,7 @@ class LocationController extends GetxController {
   // Public method for reverse geocoding that other services can use
   Future<String> getAddressFromCoordinates(double latitude, double longitude) async {
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
+      final placemarks = await Geocoding().placemarkFromCoordinates(latitude, longitude);
       if (placemarks.isNotEmpty) {
         final placemark = placemarks.first;
         return _formatAddress(placemark);

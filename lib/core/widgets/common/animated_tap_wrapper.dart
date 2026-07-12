@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:get/get.dart';
+
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 
@@ -229,45 +231,51 @@ class _AnimatedFavoriteIconState extends State<AnimatedFavoriteIcon> with Ticker
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _handleTap,
-      child: SizedBox(
-        width: widget.size + 16,
-        height: widget.size + 16,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Gold circle burst behind the icon
-            AnimatedBuilder(
-              animation: _burstController,
-              builder: (context, _) {
-                if (!_burstController.isAnimating && _burstController.value == 0) {
-                  return const SizedBox.shrink();
-                }
-                return CustomPaint(
-                  size: Size(widget.size + 16, widget.size + 16),
-                  painter: _FavoriteBurstPainter(
-                    progress: _burstController.value,
-                    color: AppDesign.primaryYellow,
-                  ),
-                );
-              },
-            ),
-            // Bouncing heart icon
-            AnimatedBuilder(
-              animation: _scaleAnimation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _scaleAnimation.value,
-                  child: Icon(
-                    widget.isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: widget.isFavorite ? widget.activeColor : widget.inactiveColor,
-                    size: widget.size,
-                  ),
-                );
-              },
-            ),
-          ],
+    // Ensure ≥44pt hit target even when the visual icon is small.
+    final hit = (widget.size + 16).clamp(44.0, 72.0);
+    return Semantics(
+      button: true,
+      label: widget.isFavorite ? 'remove_from_favorites'.tr : 'add_to_favorites'.tr,
+      child: GestureDetector(
+        onTap: _handleTap,
+        child: SizedBox(
+          width: hit,
+          height: hit,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Gold circle burst behind the icon
+              AnimatedBuilder(
+                animation: _burstController,
+                builder: (context, _) {
+                  if (!_burstController.isAnimating && _burstController.value == 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return CustomPaint(
+                    size: Size(hit, hit),
+                    painter: _FavoriteBurstPainter(
+                      progress: _burstController.value,
+                      color: AppDesign.primaryYellow,
+                    ),
+                  );
+                },
+              ),
+              // Bouncing heart icon
+              AnimatedBuilder(
+                animation: _scaleAnimation,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: Icon(
+                      widget.isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: widget.isFavorite ? widget.activeColor : widget.inactiveColor,
+                      size: widget.size,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

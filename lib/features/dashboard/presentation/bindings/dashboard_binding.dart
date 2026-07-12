@@ -1,7 +1,7 @@
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/controllers/page_state_service.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/network/api_client.dart';
+import 'package:ghar360/core/utils/repository_registration.dart';
 import 'package:ghar360/features/assistant/presentation/bindings/assistant_binding.dart';
 import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:ghar360/features/discover/presentation/bindings/discover_binding.dart';
@@ -9,24 +9,19 @@ import 'package:ghar360/features/explore/presentation/bindings/explore_binding.d
 import 'package:ghar360/features/likes/presentation/bindings/likes_binding.dart';
 import 'package:ghar360/features/profile/data/profile_repository.dart';
 import 'package:ghar360/features/profile/presentation/bindings/profile_binding.dart';
-import 'package:ghar360/features/properties/data/properties_repository.dart';
-import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:ghar360/features/visits/presentation/bindings/visits_binding.dart';
 
 class DashboardBinding extends Bindings {
   @override
   void dependencies() {
-    if (!Get.isRegistered<PropertiesRepository>()) {
-      Get.lazyPut<PropertiesRepository>(() => PropertiesRepository(), fenix: true);
-      DebugLogger.info('✅ PropertiesRepository registered');
-    }
-
-    if (!Get.isRegistered<SwipesRepository>()) {
-      Get.lazyPut<SwipesRepository>(() => SwipesRepository(), fenix: true);
-    }
+    RepositoryRegistration.ensurePropertiesRepository();
+    RepositoryRegistration.ensureSwipesRepository();
 
     if (!Get.isRegistered<ProfileRepository>()) {
-      Get.lazyPut<ProfileRepository>(() => ProfileRepository(), fenix: true);
+      Get.lazyPut<ProfileRepository>(
+        () => ProfileRepository(apiClient: Get.find<ApiClient>()),
+        fenix: true,
+      );
     }
 
     // Register PageStateService if not already registered

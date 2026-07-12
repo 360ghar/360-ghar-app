@@ -64,18 +64,32 @@ class _PromptChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.design;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppDesign.primaryYellow.withValues(alpha: 0.1),
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: AppDesign.transparent,
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppDesign.primaryYellow.withValues(alpha: 0.3)),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(fontSize: 13, color: palette.textPrimary, fontWeight: FontWeight.w500),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppDesign.primaryYellow.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppDesign.primaryYellow.withValues(alpha: 0.3)),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: palette.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
         ),
       ),
     );

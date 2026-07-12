@@ -15,6 +15,7 @@
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
+import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/agent_model.dart';
 import 'package:ghar360/core/data/models/property_image_model.dart';
@@ -35,6 +36,7 @@ import 'package:ghar360/features/properties/data/properties_repository.dart';
 import 'package:ghar360/features/swipes/data/datasources/swipes_remote_datasource.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
+import 'package:ghar360/features/visits/data/visits_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
 // ---------------------------------------------------------------------------
@@ -135,6 +137,10 @@ class MockPropertiesRemoteDatasource extends Mock implements PropertiesRemoteDat
 /// Mock for [VisitsRemoteDatasource]. Covers: fetchVisitsSummary, scheduleVisit,
 /// cancelVisit, rescheduleVisit, fetchRelationshipManager.
 class MockVisitsRemoteDatasource extends Mock implements VisitsRemoteDatasource {}
+
+/// Mock for [VisitsRepository]. Controllers depend on the repository, not the
+/// remote datasource.
+class MockVisitsRepository extends GetxServiceMock implements VisitsRepository {}
 
 /// Mock for [SwipesRemoteDatasource]. Covers: logSwipe, swipeProperty.
 class MockSwipesRemoteDatasource extends Mock implements SwipesRemoteDatasource {}
@@ -245,3 +251,6 @@ class MockPageStateService extends GetxServiceMock implements PageStateService {
 
 /// Mock for [GooglePlacesService]. Covers: getPlaceSuggestions, getPlaceDetails.
 class MockGooglePlacesService extends GetxServiceMock implements GooglePlacesService {}
+
+/// Mock for [OfflineQueueService] (GetxService lifecycle).
+class MockOfflineQueueService extends GetxServiceMock implements OfflineQueueService {}

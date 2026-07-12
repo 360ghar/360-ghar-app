@@ -286,5 +286,27 @@ void main() {
       // Should fall back to system
       expect(c.currentThemeMode, AppThemeMode.system);
     });
+
+    test('migrates legacy int themeMode index to enum name', () async {
+      GetStorage().write('themeMode', AppThemeMode.dark.index);
+
+      final c = ThemeController();
+      Get.put<ThemeController>(c);
+
+      expect(c.currentThemeMode, AppThemeMode.dark);
+      expect(GetStorage().read('themeMode'), 'dark');
+    });
+
+    test('parseStoredThemeMode accepts string names and int indexes', () {
+      expect(ThemeController.parseStoredThemeMode('light'), AppThemeMode.light);
+      expect(ThemeController.parseStoredThemeMode('dark'), AppThemeMode.dark);
+      expect(ThemeController.parseStoredThemeMode('system'), AppThemeMode.system);
+      expect(ThemeController.parseStoredThemeMode(0), AppThemeMode.light);
+      expect(ThemeController.parseStoredThemeMode(1), AppThemeMode.dark);
+      expect(ThemeController.parseStoredThemeMode(2), AppThemeMode.system);
+      expect(ThemeController.parseStoredThemeMode(99), AppThemeMode.system);
+      expect(ThemeController.parseStoredThemeMode('nope'), AppThemeMode.system);
+      expect(ThemeController.parseStoredThemeMode(null), AppThemeMode.system);
+    });
   });
 }

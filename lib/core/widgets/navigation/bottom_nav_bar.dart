@@ -40,8 +40,8 @@ class _CustomBottomNavigationBarState extends State<CustomBottomNavigationBar>
         .map(
           (controller) => Tween<double>(
             begin: 1.0,
-            end: 1.2,
-          ).animate(CurvedAnimation(parent: controller, curve: Curves.elasticOut)),
+            end: 1.12,
+          ).animate(CurvedAnimation(parent: controller, curve: AppCurves.standard)),
         )
         .toList();
 
@@ -123,13 +123,17 @@ class _CustomBottomNavigationBarState extends State<CustomBottomNavigationBar>
                     children: List.generate(_items.length, (index) {
                       final item = _items[index];
                       final isSelected = widget.currentIndex == index;
+                      final label = item.label.tr;
+                      final qaId = 'qa.dashboard.nav.${item.label}';
 
                       return Expanded(
                         child: Semantics(
-                          label: 'qa.dashboard.nav.${item.label}',
-                          identifier: 'qa.dashboard.nav.${item.label}',
+                          label: label,
+                          identifier: qaId,
+                          button: true,
+                          selected: isSelected,
                           child: GestureDetector(
-                            key: ValueKey('qa.dashboard.nav.${item.label}'),
+                            key: ValueKey(qaId),
                             onTap: () => _handleTap(index),
                             behavior: HitTestBehavior.opaque,
                             child: AnimatedBuilder(
@@ -164,7 +168,12 @@ class _CustomBottomNavigationBarState extends State<CustomBottomNavigationBar>
                                             ? AppDesign.primaryYellow
                                             : AppDesign.navigationUnselected,
                                       ),
-                                      child: Text(item.label.tr),
+                                      child: Text(
+                                        label,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                      ),
                                     ),
                                   ],
                                 );

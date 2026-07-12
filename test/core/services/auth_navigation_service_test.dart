@@ -169,5 +169,121 @@ void main() {
       final service = createService();
       expect(() => service.onClose(), returnsNormally);
     });
+
+    testWidgets('onClose can be called multiple times safely', (tester) async {
+      await pumpGetApp(tester);
+      final service = createService();
+      service.onClose();
+      expect(() => service.onClose(), returnsNormally);
+    });
+
+    testWidgets('navigateToRedirectRoute does nothing when redirectRoute is null', (tester) async {
+      await pumpGetApp(tester);
+      redirectRoute.value = null;
+      final service = createService();
+
+      expect(() => service.navigateToRedirectRoute(), returnsNormally);
+      expect(redirectRoute.value, isNull);
+    });
+
+    testWidgets('initial status initial does not navigate away from splash', (tester) async {
+      await pumpGetApp(tester);
+      authStatus.value = AuthStatus.initial;
+      createService();
+      await tester.pumpAndSettle();
+
+      // initial status is a no-op; we stay on the initial route.
+      expect(Get.currentRoute, AppRoutes.splash);
+    });
+
+    testWidgets('initial status error does not navigate away', (tester) async {
+      await pumpGetApp(tester);
+      authStatus.value = AuthStatus.error;
+      createService();
+      await tester.pumpAndSettle();
+
+      // error status is a no-op; we stay on the initial route.
+      expect(Get.currentRoute, AppRoutes.splash);
+    });
+
+    testWidgets('authenticated with redirect route navigates to redirect', (tester) async {
+      await pumpGetApp(tester);
+      authStatus.value = AuthStatus.initial;
+      createService();
+
+      redirectRoute.value = const RouteSettings(name: AppRoutes.profile, arguments: {'tab': 1});
+      authStatus.value = AuthStatus.authenticated;
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.profile);
+      // Redirect route is cleared after navigation.
+      expect(redirectRoute.value, isNull);
+    });
+
+    testWidgets('authenticated without redirect navigates to dashboard', (tester) async {
+      await pumpGetApp(tester);
+      authStatus.value = AuthStatus.initial;
+      createService();
+
+      authStatus.value = AuthStatus.authenticated;
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.dashboard);
+    });
+
+    testWidgets('requiresPasswordSetup navigates to setPassword', (tester) async {
+      await pumpGetApp(tester);
+      authStatus.value = AuthStatus.initial;
+      createService();
+
+      authStatus.value = AuthStatus.requiresPasswordSetup;
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.setPassword);
+    });
+
+    testWidgets('requiresProfileCompletion navigates to profileCompletion', (tester) async {
+      await pumpGetApp(tester);
+      authStatus.value = AuthStatus.initial;
+      createService();
+
+      authStatus.value = AuthStatus.requiresProfileCompletion;
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.profileCompletion);
+    });
+
+    testWidgets('navigateToRedirectRoute with valid route clears redirectRoute', (tester) async {
+      await pumpGetApp(tester);
+      redirectRoute.value = const RouteSettings(name: AppRoutes.dashboard);
+      final service = createService();
+
+      service.navigateToRedirectRoute();
+      await tester.pumpAndSettle();
+
+      expect(redirectRoute.value, isNull);
+    });
+
+    testWidgets('navigateToRedirectRoute with route name null does not clear', (tester) async {
+      await pumpGetApp(tester);
+      redirectRoute.value = const RouteSettings(name: null);
+      final service = createService();
+
+      service.navigateToRedirectRoute();
+      await tester.pumpAndSettle();
+
+      // The name guard prevents navigation AND clearing.
+      expect(redirectRoute.value, isNotNull);
+    });
+
+    testWidgets('navigateToRedirectRoute with empty arguments does not throw', (tester) async {
+      await pumpGetApp(tester);
+      redirectRoute.value = const RouteSettings(name: AppRoutes.profile);
+      final service = createService();
+
+      expect(() => service.navigateToRedirectRoute(), returnsNormally);
+      await tester.pumpAndSettle();
+      expect(redirectRoute.value, isNull);
+    });
   });
 }

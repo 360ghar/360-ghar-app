@@ -72,7 +72,7 @@ class UnifiedTopBar extends GetView<PageStateService> implements PreferredSizeWi
           if (supportsSearch) _buildSearchToggle(controller),
           _buildRefreshIndicator(controller),
           _buildFilterButton(context, controller),
-          if (additionalActions != null) ...additionalActions!,
+          ...?additionalActions,
         ],
       ),
       bottom: bottomWidget,
@@ -143,6 +143,9 @@ class UnifiedTopBar extends GetView<PageStateService> implements PreferredSizeWi
 
       return IconButton(
         key: ValueKey('qa.topbar.filter.${pageType.name}'),
+        tooltip: activeFiltersCount > 0
+            ? '${'filters'.tr} ($activeFiltersCount)'
+            : 'filters'.tr,
         icon: Stack(
           children: [
             Icon(Icons.tune, color: AppDesign.iconColor, size: 24),
@@ -181,6 +184,7 @@ class UnifiedTopBar extends GetView<PageStateService> implements PreferredSizeWi
       final visible = pageStateService.isSearchVisible(pageType);
       return IconButton(
         key: ValueKey('qa.topbar.search_toggle.${pageType.name}'),
+        tooltip: 'search_properties'.tr,
         icon: Icon(visible ? Icons.search_off : Icons.search, color: AppDesign.iconColor, size: 22),
         onPressed: () => pageStateService.toggleSearch(pageType),
       );

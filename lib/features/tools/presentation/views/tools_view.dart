@@ -64,7 +64,7 @@ class ToolsView extends GetView<ToolsController> {
         backgroundColor: AppDesign.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          tooltip: 'Back',
+          tooltip: 'back'.tr,
           icon: Icon(Icons.arrow_back, color: AppDesign.iconColor),
           onPressed: () => Get.back(),
         ),

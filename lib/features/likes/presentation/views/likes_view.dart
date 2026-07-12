@@ -46,7 +46,7 @@ class LikesView extends GetView<LikesController> {
         body: SafeArea(
           top: false,
           child: Semantics(
-            label: 'qa.likes.screen',
+            label: 'liked'.tr,
             identifier: 'qa.likes.screen',
             child: Column(
               children: [

@@ -4,16 +4,30 @@ import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/models/unified_property_response.dart';
+import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/network/response_parser.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
-class SwipesRepository extends GetxService {
-  final ApiClient _apiClient = Get.find<ApiClient>();
+class SwipesRepository extends GetxService implements SwipesPort {
+  SwipesRepository({ApiClient? apiClient, this.offlineQueue})
+    : _apiClient = apiClient ?? Get.find<ApiClient>();
+
+  final ApiClient _apiClient;
+  final OfflineQueueService? offlineQueue;
+
+  OfflineQueueService? get _queue {
+    if (offlineQueue != null) return offlineQueue;
+    if (Get.isRegistered<OfflineQueueService>()) {
+      return Get.find<OfflineQueueService>();
+    }
+    return null;
+  }
 
   // Record a swipe action
+  @override
   Future<void> recordSwipe({required int propertyId, required bool isLiked}) async {
     try {
       DebugLogger.api('👆 RECORDING SWIPE: ${isLiked ? 'LIKE' : 'DISLIKE'} property $propertyId');
@@ -30,7 +44,11 @@ class SwipesRepository extends GetxService {
       if (e is NetworkException) {
         DebugLogger.warning('🌐 Network error, queuing swipe for retry: ${e.message}');
         try {
-          final queue = Get.find<OfflineQueueService>();
+          final queue = _queue;
+          if (queue == null) {
+            DebugLogger.error('💥 OfflineQueueService not registered; cannot enqueue swipe');
+            rethrow;
+          }
           await queue.enqueueSwipe(propertyId: propertyId, isLiked: isLiked);
         } catch (qErr) {
           DebugLogger.error('💥 Failed to enqueue swipe: $qErr');
@@ -44,6 +62,7 @@ class SwipesRepository extends GetxService {
   }
 
   // Get swipe history properties with comprehensive filtering
+  @override
   Future<UnifiedPropertyResponse> getSwipeHistoryProperties({
     required UnifiedFilterModel filters,
     double? latitude,

@@ -28,46 +28,58 @@ const String _wrapperHtml = '''
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <style>*{margin:0;padding:0}html,body,iframe{width:100%;height:100%;border:none;overflow:hidden;background:transparent}</style>
 </head><body>
-<iframe id="w" sandbox="allow-scripts allow-same-origin"></iframe>
+<iframe id="w" sandbox="allow-scripts"></iframe>
 <script>
 var w=document.getElementById('w'),ready=false,theme='light',pendingResult=null;
+var MAX_ACTION_LEN=500;
+
+function postToWidget(msg){
+  try{w.contentWindow.postMessage(msg,location.origin||'*');}catch(x){}
+}
 
 window.addEventListener('message',function(e){
   if(e.source!==w.contentWindow)return;
+  // srcdoc iframes report a null/opaque origin in some WebViews; still require source match.
   var d=e.data;
   if(!d||d.jsonrpc!=='2.0')return;
   if(d.method==='ui/initialize'&&d.id!=null){
-    w.contentWindow.postMessage({jsonrpc:'2.0',id:d.id,result:{
+    postToWidget({jsonrpc:'2.0',id:d.id,result:{
       protocolVersion:'2026-01-26',
       serverInfo:{name:'ghar360-app',version:'1.0.0'},
       hostContext:{theme:theme}
-    }},'*');
+    }});
     ready=true;
-    if(pendingResult){w.contentWindow.postMessage(pendingResult,'*');pendingResult=null;}
+    if(pendingResult){postToWidget(pendingResult);pendingResult=null;}
     return;
   }
   if(d.method==='ui/message'&&d.id!=null){
     var text='';
     try{text=d.params.content[0].text;}catch(x){}
-    if(text){WidgetAction.postMessage(text);}
-    w.contentWindow.postMessage({jsonrpc:'2.0',id:d.id,result:{success:true}},'*');
+    if(typeof text==='string'&&text.length>0&&text.length<=MAX_ACTION_LEN){
+      WidgetAction.postMessage(text);
+    }
+    postToWidget({jsonrpc:'2.0',id:d.id,result:{success:true}});
     return;
   }
 });
 
-window.loadWidget=function(html){w.srcdoc=html;};
+window.loadWidget=function(html){
+  if(typeof html!=='string')return;
+  w.srcdoc=html;
+};
 
 window.injectToolResult=function(data){
   var msg={jsonrpc:'2.0',method:'ui/notifications/tool-result',
     params:{structuredContent:data,_meta:null}};
-  if(ready){w.contentWindow.postMessage(msg,'*');}
+  if(ready){postToWidget(msg);}
   else{pendingResult=msg;}
 };
 
 window.setTheme=function(t){
+  if(t!=='dark'&&t!=='light')return;
   theme=t;
-  if(ready){w.contentWindow.postMessage({jsonrpc:'2.0',
-    method:'ui/notifications/host-context-changed',params:{theme:t}},'*');}
+  if(ready){postToWidget({jsonrpc:'2.0',
+    method:'ui/notifications/host-context-changed',params:{theme:t}});}
 };
 </script></body></html>
 ''';
@@ -109,14 +121,14 @@ class _ChatWidgetBubbleState extends State<ChatWidgetBubble> with AutomaticKeepA
           },
         ),
       );
-    // Bridge widget button actions back to the chat
+    // Bridge widget button actions back to the chat (length-capped).
     _controller.addJavaScriptChannel(
       'WidgetAction',
       onMessageReceived: (message) {
-        final text = message.message;
-        if (text.isNotEmpty && Get.isRegistered<AssistantController>()) {
-          Get.find<AssistantController>().sendMessage(text);
-        }
+        final text = message.message.trim();
+        if (text.isEmpty || text.length > 500) return;
+        if (!Get.isRegistered<AssistantController>()) return;
+        Get.find<AssistantController>().sendMessage(text);
       },
     );
     // Load the wrapper page (not the widget directly)
@@ -129,7 +141,8 @@ class _ChatWidgetBubbleState extends State<ChatWidgetBubble> with AutomaticKeepA
     if (!mounted) return;
 
     final widgetName = widget.message.widgetName;
-    if (widgetName == null) {
+    if (widgetName == null || !AssistantRepository.isValidWidgetName(widgetName)) {
+      DebugLogger.warning('ChatWidgetBubble rejected widget name: $widgetName');
       setState(() => _hasError = true);
       return;
     }

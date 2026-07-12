@@ -21,7 +21,7 @@ class DiscoverView extends GetView<DiscoverController> {
     final pageStateService = Get.find<PageStateService>();
 
     return Semantics(
-      label: 'qa.discover.screen',
+      label: 'discover'.tr,
       identifier: 'qa.discover.screen',
       child: Scaffold(
         key: const ValueKey('qa.discover.screen'),
@@ -204,7 +204,6 @@ class DiscoverView extends GetView<DiscoverController> {
                         Get.context ?? context,
                         pageType: 'discover',
                       ),
-                      showSwipeInstructions: controller.totalSwipesInSession.value < 3,
                     ),
                   ),
                 ),

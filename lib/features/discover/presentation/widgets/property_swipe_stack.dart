@@ -12,6 +12,7 @@ import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
+import 'package:ghar360/features/discover/presentation/widgets/swipe_card_action_buttons.dart';
 
 /// Immutable drag state for the swipe gesture, driven by a [ValueNotifier]
 /// so only the transform wrapper rebuilds during drag — not the card content.
@@ -34,12 +35,19 @@ class _SwipeDragState {
 
 /// The swipe stack containing multiple property cards with gesture
 /// handling, animations, background preview cards, and sparkle effects.
+///
+/// Gesture map:
+/// - Horizontal drag (stack) → like / pass
+/// - Hero tap / View details → [onSwipeUp] (property details)
+/// - Vertical scroll → full card details (actions stay pinned on first viewport)
+/// - Pass/Details/Like → floating bar at bottom of the deck viewport
+/// - Gallery chevrons (hero) → change photo only
+/// - 360 interaction → block stack gestures via [onInteractionStart]
 class PropertySwipeStack extends StatefulWidget {
   final List<PropertyModel> properties;
   final Function(PropertyModel) onSwipeLeft;
   final Function(PropertyModel) onSwipeRight;
   final Function(PropertyModel) onSwipeUp;
-  final bool showSwipeInstructions;
   final VoidCallback? onChangeFilters;
   final VoidCallback? onRefresh;
 
@@ -49,7 +57,6 @@ class PropertySwipeStack extends StatefulWidget {
     required this.onSwipeLeft,
     required this.onSwipeRight,
     required this.onSwipeUp,
-    this.showSwipeInstructions = false,
     this.onChangeFilters,
     this.onRefresh,
   });
@@ -73,6 +80,9 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   /// during drag or snap-back.
   final ValueNotifier<_SwipeDragState> _dragNotifier = ValueNotifier(const _SwipeDragState());
 
+  /// Stable merge of drag + exit + entrance listenables (created once).
+  late final Listenable _transformListenable;
+
   /// Tracks the current snap-back controller so it can be disposed
   /// if the widget is disposed mid-animation.
   AnimationController? _snapController;
@@ -80,6 +90,11 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   bool _showSparkles = false;
   bool _isSwipingRight = false;
   bool _blockGestures = false;
+  bool _isExiting = false;
+
+  /// True while the stack must ignore pan / button swipes (exit, drag block, anim).
+  bool get _gesturesLocked =>
+      _blockGestures || _isExiting || _swipeAnimationController.isAnimating;
 
   @override
   void initState() {
@@ -107,6 +122,12 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
       end: 1.0,
     ).animate(CurvedAnimation(parent: _entranceController, curve: AppCurves.cardEntrance));
 
+    _transformListenable = Listenable.merge([
+      _dragNotifier,
+      _swipeAnimationController,
+      _entranceController,
+    ]);
+
     _swipeAnimationController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         if (_pendingProperties != null) {
@@ -120,6 +141,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
         _dragNotifier.value = const _SwipeDragState();
         _showSparkles = false;
         _isSwipingRight = false;
+        _isExiting = false;
         // setState to rebuild the card deck (next card becomes top card)
         setState(() {});
         // Animate new top card entrance
@@ -173,15 +195,34 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   }
 
   void _handlePanEnd(DragEndDetails details, Size screenSize) {
+    if (_gesturesLocked && !_dragNotifier.value.isDragging) return;
+
     final drag = _dragNotifier.value;
     _dragNotifier.value = drag.copyWith(isDragging: false);
 
     final dragDistance = drag.position.dx;
     final dragThreshold = screenSize.width * 0.25;
-    final rotationThreshold = 0.3;
+    const rotationThreshold = 0.3;
+    // Velocity-based flick: commit short, fast swipes like dating apps.
+    final velocityX = details.velocity.pixelsPerSecond.dx;
+    const velocityThreshold = 800.0;
+    final shouldCommit =
+        dragDistance.abs() > dragThreshold ||
+        drag.rotation.abs() > rotationThreshold ||
+        velocityX.abs() > velocityThreshold;
 
-    if (dragDistance.abs() > dragThreshold || drag.rotation.abs() > rotationThreshold) {
-      if (dragDistance > 0 || drag.rotation > 0) {
+    if (shouldCommit) {
+      // Prefer velocity when the flick itself crosses the threshold; otherwise
+      // use signed drag distance (rotation as tie-breaker near zero).
+      final bool isRight;
+      if (velocityX.abs() > velocityThreshold && dragDistance.abs() <= dragThreshold) {
+        isRight = velocityX > 0;
+      } else if (dragDistance.abs() > 0.5) {
+        isRight = dragDistance > 0;
+      } else {
+        isRight = drag.rotation >= 0;
+      }
+      if (isRight) {
         _isSwipingRight = true;
         _showSparkles = true;
         _sparklesAnimationController.forward();
@@ -189,8 +230,8 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
       } else {
         widget.onSwipeLeft(_properties[0]);
       }
-      // setState once to add sparkles to the widget tree
-      setState(() {});
+      // setState once to add sparkles / hide action buttons
+      setState(() => _isExiting = true);
       _swipeAnimationController.forward();
     } else {
       _snapBack();
@@ -208,7 +249,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     final startDrag = _dragNotifier.value;
     final positionTween = Tween<Offset>(begin: startDrag.position, end: Offset.zero);
     final rotationTween = Tween<double>(begin: startDrag.rotation, end: 0);
-    final snapAnimation = CurvedAnimation(parent: controller, curve: Curves.elasticOut);
+    final snapAnimation = CurvedAnimation(parent: controller, curve: AppCurves.standard);
 
     controller.addListener(() {
       _dragNotifier.value = _SwipeDragState(
@@ -227,6 +268,38 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     });
 
     controller.forward();
+  }
+
+  /// Programmatic like/pass from action buttons — same exit path as drag.
+  void _animateSwipeOff({required bool isRight, required double cardWidth}) {
+    if (_properties.isEmpty || _gesturesLocked || _dragNotifier.value.isDragging) {
+      return;
+    }
+
+    final dx = isRight ? cardWidth * 0.4 : -cardWidth * 0.4;
+    _dragNotifier.value = _SwipeDragState(
+      position: Offset(dx, 0),
+      rotation: isRight ? 0.22 : -0.22,
+      isDragging: false,
+    );
+
+    if (isRight) {
+      _isSwipingRight = true;
+      _showSparkles = true;
+      _sparklesAnimationController.forward();
+      widget.onSwipeRight(_properties[0]);
+    } else {
+      widget.onSwipeLeft(_properties[0]);
+    }
+    setState(() => _isExiting = true);
+    _swipeAnimationController.forward();
+  }
+
+  void _openDetails() {
+    if (_properties.isEmpty || _gesturesLocked) {
+      return;
+    }
+    widget.onSwipeUp(_properties[0]);
   }
 
   @override
@@ -249,14 +322,20 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
             : MediaQuery.sizeOf(context).width;
         final cardSize = Size(cardWidth, constraints.maxHeight);
         final dragThreshold = cardWidth * 0.25;
+        // Bounded deck height for min-height / scroll math (never 0/∞).
+        final deckHeight =
+            (constraints.maxHeight.isFinite
+                    ? constraints.maxHeight
+                    : MediaQuery.sizeOf(context).height)
+                .clamp(1.0, 10000.0);
 
         return GestureDetector(
           onHorizontalDragStart: (details) {
-            if (_blockGestures) return;
+            if (_gesturesLocked) return;
             _dragNotifier.value = _dragNotifier.value.copyWith(isDragging: true);
           },
           onHorizontalDragUpdate: (details) {
-            if (_blockGestures) return;
+            if (_gesturesLocked) return;
             final dx = details.primaryDelta ?? 0;
             final newPos = Offset(_dragNotifier.value.position.dx + dx, 0);
             _dragNotifier.value = _SwipeDragState(
@@ -266,10 +345,12 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
             );
           },
           onHorizontalDragEnd: (details) {
-            if (_blockGestures) return;
+            if (_gesturesLocked && !_dragNotifier.value.isDragging) return;
+            if (_isExiting || _swipeAnimationController.isAnimating) return;
             _handlePanEnd(details, cardSize);
           },
           child: Stack(
+            fit: StackFit.expand,
             clipBehavior: Clip.hardEdge,
             children: [
               // Background cards (static during drag — no rebuild needed)
@@ -294,24 +375,14 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                   ),
                 ),
 
-              // Top card with drag/swipe transform.
-              // Uses Listenable.merge so both drag updates AND swipe
-              // animation ticks rebuild only the transform wrapper.
-              // The PropertySwipeCard is passed as `child` and never rebuilt.
+              // Top card + end-of-scroll actions, with drag/swipe transform.
+              // AnimatedBuilder rebuilds only the transform wrapper during drag;
+              // the scroll deck is passed as `child` and rebuilt only on setState.
               Positioned.fill(
                 child: AnimatedBuilder(
-                  animation: Listenable.merge([
-                    _dragNotifier,
-                    _swipeAnimationController,
-                    _entranceController,
-                  ]),
-                  child: PropertySwipeCard(
-                    property: _properties[0],
-                    showSwipeInstructions: widget.showSwipeInstructions,
-                    onInteractionStart: () => _blockGestures = true,
-                    onInteractionEnd: () => _blockGestures = false,
-                  ),
-                  builder: (context, cachedCard) {
+                  animation: _transformListenable,
+                  child: _buildScrollableDeck(cardWidth: cardWidth, deckHeight: deckHeight),
+                  builder: (context, cachedScroll) {
                     final drag = _dragNotifier.value;
 
                     final swipeOffset = drag.isDragging
@@ -354,8 +425,11 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                                 ? (1 - _swipeAnimation.value)
                                 : 1.0,
                             child: Stack(
+                              fit: StackFit.expand,
                               children: [
-                                cachedCard!,
+                                // Fill the deck so scroll constraints stay bounded
+                                // (avoids reassemble/layout hangs from loose stacks).
+                                Positioned.fill(child: cachedScroll!),
                                 if (showFeedback)
                                   _buildSwipeFeedbackOverlay(
                                     context,
@@ -382,6 +456,21 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                     },
                   ),
                 ),
+
+              // Pin Like/Pass/Details on the first viewport so users never have
+              // to scroll past the full card to find primary actions.
+              if (!_isExiting)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SwipeCardActionButtons(
+                    onPass: () => _animateSwipeOff(isRight: false, cardWidth: cardWidth),
+                    onDetails: _openDetails,
+                    onLike: () => _animateSwipeOff(isRight: true, cardWidth: cardWidth),
+                    enabled: !_gesturesLocked,
+                  ),
+                ),
             ],
           ),
         );
@@ -389,15 +478,62 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     );
   }
 
+  /// Scrollable card chrome. Bottom inset keeps details clear of the floating
+  /// action bar. Opaque fill prevents stacked cards showing through gaps.
+  Widget _buildScrollableDeck({required double cardWidth, required double deckHeight}) {
+    final trayColor = AppDesign.scaffoldBackground;
+    // Room for the floating action bar (~56px buttons + vertical padding).
+    const floatingActionsInset = 96.0;
+
+    return SingleChildScrollView(
+      // Keyed so scroll position resets when the top property changes.
+      key: ValueKey('discover.scroll.${_properties[0].id}'),
+      physics: _blockGestures
+          ? const NeverScrollableScrollPhysics()
+          : const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: (deckHeight - floatingActionsInset).clamp(1.0, double.infinity),
+            ),
+            child: ColoredBox(
+              color: trayColor,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: PropertySwipeCard(
+                  property: _properties[0],
+                  onTap: _openDetails,
+                  onInteractionStart: () {
+                    setState(() => _blockGestures = true);
+                  },
+                  onInteractionEnd: () {
+                    setState(() => _blockGestures = false);
+                  },
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: floatingActionsInset),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBackgroundPreviewCard(PropertyModel property) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final memWidth = (MediaQuery.sizeOf(context).width * dpr * 0.95).round().clamp(280, 1200);
+
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppBorderRadius.card),
       child: Stack(
         fit: StackFit.expand,
         children: [
           RobustNetworkImage(
             imageUrl: property.mainImage,
             fit: BoxFit.cover,
+            memCacheWidth: memWidth,
             placeholder: Container(color: AppDesign.inputBackground),
             errorWidget: Container(
               color: AppDesign.surface,
@@ -464,7 +600,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
             if (likeProgress > 0)
               Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppBorderRadius.card),
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -478,7 +614,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
             if (passProgress > 0)
               Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppBorderRadius.card),
                   gradient: LinearGradient(
                     begin: Alignment.topRight,
                     end: Alignment.bottomLeft,

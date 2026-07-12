@@ -4,17 +4,18 @@ import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 
-/// Shows a dialog for scheduling a property visit with date picker and notes.
+/// Shows a dialog for scheduling a property visit with date, time, and notes.
 void showBookVisitDialog(
   BuildContext context,
   PropertyModel property,
   VisitsController visitsController,
 ) {
-  DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
-  const defaultHour = 10;
-  const defaultMinute = 0;
+  final now = DateTime.now();
+  DateTime selectedDate = now.add(const Duration(days: 1));
+  TimeOfDay selectedTime = const TimeOfDay(hour: 10, minute: 0);
   final TextEditingController notesController = TextEditingController();
 
   Get.dialog(
@@ -32,10 +33,13 @@ void showBookVisitDialog(
               ),
               const SizedBox(height: 20),
               ListTile(
+                contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.calendar_today, color: AppDesign.primaryYellow),
                 title: Text('date'.tr, style: TextStyle(color: AppDesign.textPrimary)),
                 subtitle: Text(
-                  '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
+                  '${selectedDate.day.toString().padLeft(2, '0')}/'
+                  '${selectedDate.month.toString().padLeft(2, '0')}/'
+                  '${selectedDate.year}',
                   style: TextStyle(color: AppDesign.textSecondary),
                 ),
                 onTap: () async {
@@ -47,6 +51,24 @@ void showBookVisitDialog(
                   );
                   if (picked != null) {
                     setState(() => selectedDate = picked);
+                  }
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.access_time, color: AppDesign.primaryYellow),
+                title: Text('time'.tr, style: TextStyle(color: AppDesign.textPrimary)),
+                subtitle: Text(
+                  selectedTime.format(context),
+                  style: TextStyle(color: AppDesign.textSecondary),
+                ),
+                onTap: () async {
+                  final TimeOfDay? picked = await showTimePicker(
+                    context: context,
+                    initialTime: selectedTime,
+                  );
+                  if (picked != null) {
+                    setState(() => selectedTime = picked);
                   }
                 },
               ),
@@ -84,9 +106,14 @@ void showBookVisitDialog(
                       selectedDate.year,
                       selectedDate.month,
                       selectedDate.day,
-                      defaultHour,
-                      defaultMinute,
+                      selectedTime.hour,
+                      selectedTime.minute,
                     );
+
+                    if (visitDateTime.isBefore(DateTime.now())) {
+                      AppToast.warning('invalid_time'.tr, 'select_future_datetime'.tr);
+                      return;
+                    }
 
                     final notes = notesController.text.trim().isEmpty
                         ? null
@@ -103,18 +130,21 @@ void showBookVisitDialog(
                   },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppDesign.primaryYellow,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              foregroundColor: AppDesign.buttonText,
             ),
             child: visitsController.isBookingVisit.value
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppDesign.buttonText),
+                    ),
                   )
                 : Text('schedule_visit'.tr),
           ),
         ),
       ],
     ),
-  );
+  ).whenComplete(notesController.dispose);
 }

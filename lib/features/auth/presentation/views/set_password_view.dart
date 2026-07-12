@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/utils/password_validators.dart';
 import 'package:ghar360/features/auth/presentation/controllers/set_password_controller.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
 
@@ -109,15 +110,7 @@ class SetPasswordView extends GetView<SetPasswordController> {
               ),
             ),
           ),
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'password_required'.tr;
-            }
-            if (value.length < 6) {
-              return 'password_min_length'.tr;
-            }
-            return null;
-          },
+          validator: PasswordValidators.validate,
         ),
       ),
     );
@@ -174,13 +167,13 @@ class SetPasswordView extends GetView<SetPasswordController> {
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2.2, color: Color(0xFF8C6B52)),
+                    child: CircularProgressIndicator(strokeWidth: 2.2, color: AppDesign.editorialInk),
                   )
                 : Text(
                     'set_password_cta'.tr,
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF8C6B52),
+                      color: AppDesign.editorialInk,
                       fontSize: 16,
                     ),
                   ),

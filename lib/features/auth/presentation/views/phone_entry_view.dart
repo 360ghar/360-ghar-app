@@ -253,7 +253,7 @@ class PhoneEntryView extends GetView<PhoneEntryController> {
                         width: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
-                          color: Color(0xFF8C6B52),
+                          color: AppDesign.editorialInk,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -261,7 +261,7 @@ class PhoneEntryView extends GetView<PhoneEntryController> {
                         'checking_account'.tr,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF8C6B52),
+                          color: AppDesign.editorialInk,
                         ),
                       ),
                     ],
@@ -270,7 +270,7 @@ class PhoneEntryView extends GetView<PhoneEntryController> {
                     'continue_btn'.tr,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFF8C6B52),
+                      color: AppDesign.editorialInk,
                     ),
                   ),
           ),

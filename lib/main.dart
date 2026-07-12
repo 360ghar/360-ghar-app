@@ -5,12 +5,14 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:ghar360/core/bindings/initial_binding.dart';
+import 'package:ghar360/core/bootstrap/app_bootstrap.dart';
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/controllers/localization_controller.dart';
+import 'package:ghar360/core/controllers/theme_controller.dart';
 import 'package:ghar360/core/design/app_design_theme.dart';
 import 'package:ghar360/core/firebase/analytics_service.dart';
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
@@ -19,6 +21,7 @@ import 'package:ghar360/core/routes/app_pages.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/null_check_trap.dart';
+import 'package:ghar360/core/utils/storage_keys.dart';
 import 'package:ghar360/core/utils/webview_helper.dart';
 import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
@@ -31,35 +34,13 @@ void main() async {
       // CRITICAL PATH ONLY - Do absolute minimum before first frame
       WidgetsFlutterBinding.ensureInitialized();
 
-      // Initialize GetStorage (needed for theme/locale persistence)
-      await GetStorage.init();
-
-      // Load environment variables (small file I/O, acceptable on critical path)
-      try {
-        final envFile = kReleaseMode ? '.env.production' : '.env.development';
-        await dotenv.load(fileName: envFile);
-      } catch (e) {
-        DebugLogger.warning('Failed to load .env file', e);
-        // Continue without .env file - will use defaults
+      final bootstrap = await bootstrapAppCore();
+      if (!bootstrap.ok) {
+        // Always paint a Flutter frame so the native splash is dismissed and
+        // the user sees a recoverable error instead of a frozen logo screen.
+        runApp(BootstrapErrorApp(error: bootstrap.errorMessage ?? 'Unknown startup error'));
+        return;
       }
-
-      // Initialize Supabase (REQUIRED for app authentication/session handling)
-      final supabaseUrl = (dotenv.env['SUPABASE_URL'] ?? '').trim();
-      final supabaseClientKey = (dotenv.env['SUPABASE_PUBLISHABLE_KEY'] ?? '').trim();
-      if (supabaseUrl.isEmpty || supabaseClientKey.isEmpty) {
-        throw StateError(
-          'Missing SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY. '
-          'Set these values in your environment before launching the app.',
-        );
-      }
-      await Supabase.initialize(
-        url: supabaseUrl,
-        anonKey: supabaseClientKey,
-        authOptions: const FlutterAuthClientOptions(
-          detectSessionInUri: false,
-          autoRefreshToken: true,
-        ),
-      );
 
       // Setup global error handlers (lightweight, no I/O)
       FlutterError.onError = (FlutterErrorDetails details) {
@@ -88,16 +69,13 @@ void main() async {
         await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
         WebViewHelper.ensureInitialized();
 
-        // Log environment status (deferred)
+        // Log environment status (deferred) — never log secret material
         try {
-          DebugLogger.success('Environment variables loaded successfully');
-          DebugLogger.info(
-            'API Base URL: ${dotenv.env['API_BASE_URL'] ?? 'https://api.360ghar.com'}',
-          );
+          DebugLogger.success('AppConfig ready: ${AppConfig.instance}');
+          DebugLogger.info('API Base URL: ${AppConfig.instance.apiBaseUrl}');
           DebugLogger.success('Supabase initialized successfully');
         } catch (e) {
-          DebugLogger.warning('Failed to load .env file', e);
-          DebugLogger.info('Using default configuration');
+          DebugLogger.warning('Failed to log AppConfig status', e);
         }
 
         // Initialize Firebase (deferred - not critical for startup)
@@ -117,11 +95,13 @@ void main() async {
       });
     },
     (error, stack) {
+      // Always surface uncaught startup/runtime errors — DebugLogger may not be ready.
+      debugPrint('Uncaught zone error: $error\n$stack');
+
       // One-time first null-check trap capture for unhandled async errors
       if (error.toString().contains('Null check operator used on a null value')) {
         NullCheckTrap.capture(error, stack, source: 'zone');
       }
-      // Logger may not be initialized yet, so skip logging here
       // Report to Crashlytics if available
       if (FirebaseInitializer.isFirebaseReady) {
         try {
@@ -132,6 +112,129 @@ void main() async {
       }
     },
   );
+}
+
+/// Minimal error shell with no GetX / Supabase dependencies so startup failures
+/// always replace the native splash with a recoverable UI.
+class BootstrapErrorApp extends StatelessWidget {
+  const BootstrapErrorApp({super.key, required this.error});
+
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFFF5B400),
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF9FAFB),
+      ),
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'assets/icons/splash_logo.png',
+                      width: 96,
+                      height: 96,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) =>
+                          const Icon(Icons.home_work_outlined, size: 64, color: Color(0xFFF5B400)),
+                    ),
+                    const SizedBox(height: 28),
+                    const Text(
+                      'Unable to start',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF121417),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'The app could not finish startup.\n\n'
+                      'Local dev:\n'
+                      '1) Fill .env.development\n'
+                      '2) dart run tool/sync_dev_env.dart\n'
+                      '3) flutter run\n\n'
+                      'Or: ./tool/run_with_env.sh',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, height: 1.45, color: Color(0xFF6C757D)),
+                    ),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 20),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F3F5),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          error,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: Color(0xFF2B2F36),
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 28),
+                    FilledButton.icon(
+                      onPressed: () {
+                        // Hot-restart is not available in-app; re-run bootstrap
+                        // and swap the root widget if services come up.
+                        unawaited(_retryBootstrapFromError());
+                      },
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFF5B400),
+                        foregroundColor: const Color(0xFF121417),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _retryBootstrapFromError() async {
+  final result = await bootstrapAppCore();
+  if (result.ok) {
+    runApp(const MyApp());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DebugLogger.initialize();
+      unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+      WebViewHelper.ensureInitialized();
+      unawaited(
+        FirebaseInitializer.init().then((_) {
+          _setupNotifications();
+        }),
+      );
+    });
+  } else {
+    runApp(BootstrapErrorApp(error: result.errorMessage ?? 'Unknown startup error'));
+  }
 }
 
 /// Deferred notifications setup - runs after first frame
@@ -233,16 +336,17 @@ void _setupNotifications() {
 
 /// Reads the persisted theme mode from GetStorage synchronously.
 /// GetStorage.init() is already awaited in main() before runApp().
+///
+/// Accepts both canonical string names and legacy int indexes so a bad
+/// PreferencesController write cannot crash MyApp on rebuild.
 ThemeMode _readInitialThemeMode() {
-  final stored = GetStorage().read<String>('themeMode');
-  switch (stored) {
-    case 'light':
-      return ThemeMode.light;
-    case 'dark':
-      return ThemeMode.dark;
-    default:
-      return ThemeMode.system;
+  final stored = GetStorage().read(StorageKeys.themeMode);
+  final mode = ThemeController.parseStoredThemeMode(stored);
+  // Heal legacy int storage so later typed readers stay safe.
+  if (stored is int || (stored is String && stored != mode.name)) {
+    GetStorage().write(StorageKeys.themeMode, mode.name);
   }
+  return ThemeController.toFlutterThemeMode(mode);
 }
 
 /// Reads the persisted locale from GetStorage synchronously.
