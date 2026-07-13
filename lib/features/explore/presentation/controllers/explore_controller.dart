@@ -16,7 +16,12 @@ import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
 import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
+import 'package:ghar360/features/explore/presentation/controllers/explore_map_session.dart';
+import 'package:ghar360/features/explore/presentation/controllers/explore_property_markers.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+
+export 'package:ghar360/features/explore/presentation/controllers/explore_property_markers.dart'
+    show PropertyMarker;
 
 // TODO(explore): loadingMore is referenced in the view for a future "load more
 // properties on scroll" feature but is never set by the controller yet.
@@ -30,14 +35,14 @@ class ExploreController extends GetxController {
   final LocationController _locationController = Get.find<LocationController>();
   final PageStateService _pageStateService = Get.find<PageStateService>();
 
-  // Map controller wrapper (MapLibre). Attached in [onMapCreated] from the view.
-  final GharMapController mapController = GharMapController();
+  final ExploreMapSession _mapSession = ExploreMapSession();
+  final ExplorePropertyMarkers _markers = ExplorePropertyMarkers();
+
+  /// Map controller wrapper (MapLibre). Attached in [onMapCreated] from the view.
+  GharMapController get mapController => _mapSession.mapController;
+
   // Map readiness flag to prevent premature controller calls
   final RxBool isMapReady = false.obs;
-
-  // Tracks programmatic camera moves so [onCameraIdle] can distinguish them
-  // from user gestures (MapLibre's onCameraIdle has no hasGesture flag).
-  bool _programmaticMove = false;
 
   // Reactive state
   final Rx<ExploreState> state = ExploreState.initial.obs;
@@ -66,9 +71,6 @@ class ExploreController extends GetxController {
   final List<Worker> _workers = <Worker>[];
   StreamSubscription<dynamic>? _locationSubscription;
 
-  // Memoized markers cache
-  List<PropertyMarker>? _cachedPropertyMarkers;
-  bool _markersDirty = true;
   // Revision to ensure Obx always consumes a reactive when markers change
   final RxInt markersRevision = 0.obs;
 
@@ -137,7 +139,7 @@ class ExploreController extends GetxController {
       worker.dispose();
     }
     _workers.clear();
-    mapController.dispose();
+    _mapSession.dispose();
     super.onClose();
     // Note: the underlying MapLibreMapController is owned/disposed by the
     // MapLibreMap widget; [GharMapController.dispose] only drops our reference.
@@ -188,13 +190,14 @@ class ExploreController extends GetxController {
   /// Binds the live MapLibre controller. Called from the view's
   /// `onMapCreated` callback.
   void attachMap(MapLibreMapController controller) {
-    mapController.attach(controller);
+    _mapSession.attach(controller);
   }
 
   // Called by the view when the MapLibre style has finished loading.
   void onMapReady() {
     if (isMapReady.value) return;
     isMapReady.value = true;
+    _mapSession.isMapReady = true;
     DebugLogger.success('✅ Explore map is ready.');
 
     // Immediately move camera to the location from PageStateService
@@ -227,14 +230,8 @@ class ExploreController extends GetxController {
     }
   }
 
-  // Marks the next camera change as programmatic, then moves the camera.
   void _moveCameraProgrammatic(LatLng center, double zoom) {
-    if (!mapController.isAttached) return;
-    _programmaticMove = true;
-    mapController.move(center, zoom).catchError((Object e) {
-      DebugLogger.warning('⚠️ Could not move map: $e');
-      _programmaticMove = false;
-    });
+    unawaited(_mapSession.moveProgrammatic(center, zoom));
   }
 
   void _setupFilterListener() {
@@ -334,6 +331,8 @@ class ExploreController extends GetxController {
         } else if (pageState.error != null) {
           state.value = ExploreState.error;
           error.value = pageState.error;
+        } else if (pageState.isLoadingMore) {
+          state.value = ExploreState.loadingMore;
         } else {
           // Clear any stale controller error when page state is healthy
           if (error.value != null) {
@@ -553,8 +552,8 @@ class ExploreController extends GetxController {
   // Map camera-idle handler. Wired to MapLibre's `onCameraIdle` from the view,
   // which fires once the camera settles after any pan/zoom. MapLibre exposes no
   // `hasGesture` flag, so we approximate it: programmatic moves set
-  // [_programmaticMove] (cleared here), and we additionally gate on the same
-  // 100m / 0.1-zoom threshold the old flutter_map handler used to avoid
+  // [_mapSession.programmaticMove] (cleared here), and we additionally gate on
+  // the same 100m / 0.1-zoom threshold the old flutter_map handler used to avoid
   // re-fetching on negligible drift.
   void onCameraIdle(LatLng center, double zoom) {
     if (!isMapReady.value) {
@@ -563,8 +562,8 @@ class ExploreController extends GetxController {
 
     // Programmatic move (recenter / zoom button / fit-bounds / ready-sync):
     // sync reactive state but never trigger a viewport re-fetch.
-    if (_programmaticMove) {
-      _programmaticMove = false;
+    if (_mapSession.programmaticMove) {
+      _mapSession.programmaticMove = false;
       currentCenter.value = center;
       currentZoom.value = zoom;
       return;
@@ -745,10 +744,10 @@ class ExploreController extends GetxController {
     final newZoom = (currentZoom.value + 1).clamp(kDefaultMinZoom, kDefaultMaxZoom);
     currentZoom.value = newZoom;
     if (isMapReady.value) {
-      _programmaticMove = true;
+      _mapSession.programmaticMove = true;
       mapController.animateZoom(newZoom).catchError((Object e) {
         DebugLogger.warning('⚠️ zoomIn failed: $e');
-        _programmaticMove = false;
+        _mapSession.programmaticMove = false;
       });
     }
   }
@@ -757,10 +756,10 @@ class ExploreController extends GetxController {
     final newZoom = (currentZoom.value - 1).clamp(kDefaultMinZoom, kDefaultMaxZoom);
     currentZoom.value = newZoom;
     if (isMapReady.value) {
-      _programmaticMove = true;
+      _mapSession.programmaticMove = true;
       mapController.animateZoom(newZoom).catchError((Object e) {
         DebugLogger.warning('⚠️ zoomOut failed: $e');
-        _programmaticMove = false;
+        _mapSession.programmaticMove = false;
       });
     }
   }
@@ -772,8 +771,8 @@ class ExploreController extends GetxController {
   void fitBoundsToProperties() {
     if (properties.isEmpty) return;
 
-    final propertiesWithLocation = properties.where((p) => p.hasLocation).toList();
-    if (propertiesWithLocation.isEmpty) return;
+    final withLocation = properties.where((p) => p.hasLocation).toList();
+    if (withLocation.isEmpty) return;
 
     if (!isMapReady.value) {
       DebugLogger.info('⏳ Map not ready; skipping fitBounds for now');
@@ -781,19 +780,17 @@ class ExploreController extends GetxController {
     }
 
     try {
-      // Safe extraction of coordinates - filter out any null values
-      final lats = propertiesWithLocation
+      final lats = withLocation
           .map((p) => p.latitude)
           .where((lat) => lat != null)
           .cast<double>()
           .toList();
-      final lngs = propertiesWithLocation
+      final lngs = withLocation
           .map((p) => p.longitude)
           .where((lng) => lng != null)
           .cast<double>()
           .toList();
 
-      // Ensure we have valid coordinates before proceeding
       if (lats.isEmpty || lngs.isEmpty) {
         DebugLogger.warning('No valid coordinates found in propertiesWithLocation');
         return;
@@ -802,10 +799,10 @@ class ExploreController extends GetxController {
       final points = <LatLng>[for (var i = 0; i < lats.length; i++) LatLng(lats[i], lngs[i])];
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _programmaticMove = true;
+        _mapSession.programmaticMove = true;
         mapController.fitBounds(points).catchError((Object e) {
           DebugLogger.warning('⚠️ fitBounds failed post-frame: $e');
-          _programmaticMove = false;
+          _mapSession.programmaticMove = false;
         });
       });
     } catch (e) {
@@ -853,6 +850,18 @@ class ExploreController extends GetxController {
     return 'radius_km'.trParams({'km': currentRadius.value.toStringAsFixed(1)});
   }
 
+  /// True when the explore page has more properties to fetch.
+  bool get hasMore => _pageStateService.exploreState.value.hasMore;
+
+  /// Loads the next page of properties for the explore map.
+  Future<void> loadMoreProperties() async {
+    final currentState = _pageStateService.exploreState.value;
+    if (currentState.isLoading || currentState.isLoadingMore || !currentState.hasMore) {
+      return;
+    }
+    await _pageStateService.loadMorePageData(PageType.explore);
+  }
+
   // Get properties for clustering (if implemented)
   List<PropertyModel> get propertiesWithLocation {
     try {
@@ -867,112 +876,11 @@ class ExploreController extends GetxController {
     }
   }
 
-  String _deriveMarkerLabel(PropertyModel property) {
-    // Build an Indian-style compact price like ₹15k, ₹75L, ₹1.2Cr
-    try {
-      final price = property.getEffectivePrice();
-      if (price <= 0) return '₹--';
-
-      String withPrecision(double v) {
-        // Keep one decimal under 10; otherwise, no decimals
-        final str = (v < 10 ? v.toStringAsFixed(1) : v.toStringAsFixed(0));
-        return str.endsWith('.0') ? str.substring(0, str.length - 2) : str;
-      }
-
-      if (price >= 10000000) {
-        // Crore
-        final val = price / 10000000.0;
-        return '₹${withPrecision(val)}Cr';
-      } else if (price >= 100000) {
-        // Lakh
-        final val = price / 100000.0;
-        return '₹${withPrecision(val)}L';
-      } else if (price >= 1000) {
-        // Thousand
-        final val = price / 1000.0;
-        return '₹${withPrecision(val)}k';
-      } else {
-        return '₹${price.toStringAsFixed(0)}';
-      }
-    } catch (_) {
-      // Fallback to model's formattedPrice if anything goes wrong
-      return property.formattedPrice;
-    }
-  }
-
-  // Get property markers for map with performance optimization
-  List<PropertyMarker> get propertyMarkers {
-    try {
-      // Return cached markers when nothing relevant changed
-      if (!_markersDirty && _cachedPropertyMarkers != null) {
-        DebugLogger.debug('⚡ Returning cached property markers: ${_cachedPropertyMarkers!.length}');
-        return _cachedPropertyMarkers!;
-      }
-
-      final propsWithLocation = propertiesWithLocation;
-      DebugLogger.info('🗺️ Generating markers for ${propsWithLocation.length} properties');
-
-      if (propsWithLocation.isEmpty) {
-        DebugLogger.info('⚠️ No properties with location found');
-        _cachedPropertyMarkers = const <PropertyMarker>[];
-        _markersDirty = false;
-        return _cachedPropertyMarkers!;
-      }
-
-      final markers = <PropertyMarker>[];
-
-      for (final property in propsWithLocation) {
-        try {
-          // Additional null safety checks
-          final lat = property.latitude;
-          final lng = property.longitude;
-
-          if (lat == null || lng == null) {
-            DebugLogger.warning(
-              '⚠️ Property ${property.id} has null coordinates: lat=$lat, lng=$lng',
-            );
-            continue;
-          }
-
-          markers.add(
-            PropertyMarker(
-              property: property,
-              position: LatLng(lat, lng),
-              isSelected: selectedProperty.value?.id == property.id,
-              label: _deriveMarkerLabel(property),
-            ),
-          );
-        } catch (e) {
-          DebugLogger.error('❌ Error creating marker for property ${property.id}: $e');
-          continue;
-        }
-      }
-
-      DebugLogger.info('🗺️ Generated ${markers.length} property markers.');
-      _cachedPropertyMarkers = markers;
-      _markersDirty = false;
-      return _cachedPropertyMarkers!;
-    } catch (e) {
-      DebugLogger.error('❌ Error generating property markers: $e');
-      _cachedPropertyMarkers = const <PropertyMarker>[];
-      _markersDirty = false;
-      return _cachedPropertyMarkers!;
-    }
-  }
-
-  bool _markerInvalidationScheduled = false;
+  List<PropertyMarker> get propertyMarkers =>
+      _markers.build(properties: properties, selectedPropertyId: selectedProperty.value?.id);
 
   void _invalidateMarkers(String reason) {
-    _markersDirty = true;
-    DebugLogger.debug('🧠 propertyMarkers cache invalidated: $reason');
-    // Coalesce rapid invalidations into a single reactive update
-    if (!_markerInvalidationScheduled) {
-      _markerInvalidationScheduled = true;
-      Future.microtask(() {
-        _markerInvalidationScheduled = false;
-        markersRevision.value++;
-      });
-    }
+    _markers.invalidate(reason, onRevision: (rev) => markersRevision.value = rev);
   }
 
   // Helper getters
@@ -982,22 +890,5 @@ class ExploreController extends GetxController {
   bool get isLoaded => state.value == ExploreState.loaded;
   bool get hasProperties => properties.isNotEmpty;
   bool get hasSelection => selectedProperty.value != null;
-  // TODO(explore): isLoadingMore always returns false because loadingMore is
-  // never set; remove once infinite-scroll is implemented or wired up.
   bool get isLoadingMore => state.value == ExploreState.loadingMore;
-}
-
-// Helper class for property markers
-class PropertyMarker {
-  final PropertyModel property;
-  final LatLng position;
-  final bool isSelected;
-  final String label;
-
-  PropertyMarker({
-    required this.property,
-    required this.position,
-    required this.isSelected,
-    required this.label,
-  });
 }

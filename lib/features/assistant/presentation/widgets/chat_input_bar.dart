@@ -90,36 +90,41 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Widget _buildActionButton(AppPalette palette) {
     if (widget.isStreaming) {
-      return GestureDetector(
-        onTap: widget.onCancel,
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: palette.error.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
+      return Semantics(
+        button: true,
+        label: 'stop_generating'.tr,
+        child: IconButton(
+          onPressed: widget.onCancel,
+          tooltip: 'stop_generating'.tr,
+          icon: Icon(Icons.stop_rounded, color: palette.error, size: 22),
+          style: IconButton.styleFrom(
+            backgroundColor: palette.error.withValues(alpha: 0.1),
+            minimumSize: const Size(44, 44),
+            fixedSize: const Size(44, 44),
           ),
-          child: Icon(Icons.stop_rounded, color: palette.error, size: 22),
         ),
       );
     }
 
-    return GestureDetector(
-      onTap: _hasText ? _send : null,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: _hasText
-              ? AppDesign.primaryYellow
-              : AppDesign.primaryYellow.withValues(alpha: 0.3),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
+    return Semantics(
+      button: true,
+      enabled: _hasText,
+      label: 'send_message'.tr,
+      child: IconButton(
+        onPressed: _hasText ? _send : null,
+        tooltip: 'send_message'.tr,
+        icon: Icon(
           Icons.arrow_upward_rounded,
           color: _hasText ? AppDesign.textDark : palette.textTertiary,
           size: 22,
+        ),
+        style: IconButton.styleFrom(
+          backgroundColor: _hasText
+              ? AppDesign.primaryYellow
+              : AppDesign.primaryYellow.withValues(alpha: 0.3),
+          disabledBackgroundColor: AppDesign.primaryYellow.withValues(alpha: 0.3),
+          minimumSize: const Size(44, 44),
+          fixedSize: const Size(44, 44),
         ),
       ),
     );

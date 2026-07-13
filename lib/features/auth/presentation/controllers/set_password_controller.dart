@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/utils/password_validators.dart';
 import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
@@ -67,7 +68,7 @@ class SetPasswordController extends GetxController {
       return;
     }
     int strength = 0;
-    if (password.length >= 6) strength++;
+    if (password.length >= PasswordValidators.minLength) strength++;
     if (password.length >= 8) strength++;
     if (RegExp(r'[A-Z]').hasMatch(password)) strength++;
     if (RegExp(r'[0-9]').hasMatch(password)) strength++;

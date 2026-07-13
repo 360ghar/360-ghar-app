@@ -5,6 +5,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/auth/data/last_auth_method_store.dart';
 import 'package:ghar360/features/auth/presentation/controllers/phone_entry_controller.dart';
@@ -226,6 +227,121 @@ void main() {
         await controller.signInWithApple();
 
         expect(controller.errorMessage.value, isEmpty);
+      });
+
+      test('sets generic error on unexpected exception', () async {
+        final controller = createController();
+        when(() => authRepository.signInWithApple()).thenThrow(Exception('unexpected'));
+
+        await controller.signInWithApple();
+
+        expect(controller.errorMessage.value, isNotEmpty);
+        expect(controller.isAppleLoading.value, isFalse);
+      });
+
+      test('clears errorMessage on success', () async {
+        final controller = createController();
+        controller.errorMessage.value = 'previous error';
+        when(() => authRepository.signInWithApple()).thenAnswer((_) async => AuthResponse());
+
+        await controller.signInWithApple();
+
+        expect(controller.errorMessage.value, isEmpty);
+      });
+
+      test('is idempotent — returns early if already loading', () async {
+        final controller = createController();
+        when(() => authRepository.signInWithApple()).thenAnswer((_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return AuthResponse();
+        });
+
+        final first = controller.signInWithApple();
+        await controller.signInWithApple();
+
+        await first;
+
+        verify(() => authRepository.signInWithApple()).called(1);
+      });
+    });
+
+    group('onInit last-method hint', () {
+      test('loads lastMethod and lastIdentifierHint from the store', () {
+        when(() => lastAuthMethodStore.lastMethod).thenReturn(AuthMethod.google);
+        when(() => lastAuthMethodStore.lastIdentifierHint).thenReturn('j***@gmail.com');
+
+        final controller = createController();
+
+        expect(controller.lastMethod.value, AuthMethod.google);
+        expect(controller.lastIdentifierHint.value, 'j***@gmail.com');
+      });
+    });
+
+    group('looksLikeEmail listener', () {
+      test('updates to true when identifier text contains @', () {
+        final controller = createController();
+
+        expect(controller.looksLikeEmail.value, isFalse);
+
+        controller.identifierController.text = 'user@example.com';
+
+        expect(controller.looksLikeEmail.value, isTrue);
+      });
+
+      test('updates to false when identifier text is a phone', () {
+        final controller = createController();
+        controller.identifierController.text = 'user@example.com';
+
+        expect(controller.looksLikeEmail.value, isTrue);
+
+        controller.identifierController.text = '9876543210';
+
+        expect(controller.looksLikeEmail.value, isFalse);
+      });
+
+      test('stays false for empty text', () {
+        final controller = createController();
+
+        controller.identifierController.text = '';
+
+        expect(controller.looksLikeEmail.value, isFalse);
+      });
+    });
+
+    group('isIdentifierFocused', () {
+      test('starts unfocused and exposes a usable focus node', () {
+        final controller = createController();
+
+        expect(controller.isIdentifierFocused.value, isFalse);
+        expect(controller.identifierFocusNode.hasFocus, isFalse);
+      });
+    });
+
+    group('validateIdentifier additional cases', () {
+      test('trims whitespace before validating email', () {
+        final controller = createController();
+
+        expect(controller.validateIdentifier('  user@example.com  '), isNull);
+      });
+
+      test('trims whitespace before validating phone', () {
+        final controller = createController();
+
+        expect(controller.validateIdentifier('  9876543210  '), isNull);
+      });
+
+      test('returns error for identifier with only spaces', () {
+        final controller = createController();
+
+        expect(controller.validateIdentifier('     '), isNotNull);
+      });
+    });
+
+    group('onClose', () {
+      test('disposes controllers without throwing', () {
+        final controller = createController();
+
+        expect(controller.onClose, returnsNormally);
       });
     });
   });

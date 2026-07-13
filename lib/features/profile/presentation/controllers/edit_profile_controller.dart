@@ -19,7 +19,15 @@ class EditProfileController extends GetxController {
   // Observable fields
   final RxString profileImageUrl = ''.obs;
   final Rx<DateTime?> dateOfBirth = Rx<DateTime?>(null);
-  final RxBool isLoading = false.obs;
+
+  /// True while saving profile form fields.
+  final RxBool isSaving = false.obs;
+
+  /// True while uploading a new profile image (form stays interactive).
+  final RxBool isUploadingImage = false.obs;
+
+  /// True when any profile mutation is in progress.
+  bool get isBusy => isSaving.value || isUploadingImage.value;
 
   @override
   void onInit() {
@@ -88,7 +96,7 @@ class EditProfileController extends GetxController {
 
       // Upload immediately so the profile persists a real URL, not a local
       // device file path. The backend returns the updated user.
-      isLoading.value = true;
+      isUploadingImage.value = true;
       final updatedUser = await _profileRepository.updateProfileImage(pickedFile.path);
       profileImageUrl.value = updatedUser.profileImage ?? '';
       _authController.currentUser.value = updatedUser;
@@ -96,7 +104,7 @@ class EditProfileController extends GetxController {
     } catch (e) {
       AppToast.error('error'.tr, 'failed_to_pick_image'.tr);
     } finally {
-      isLoading.value = false;
+      isUploadingImage.value = false;
     }
   }
 
@@ -137,7 +145,7 @@ class EditProfileController extends GetxController {
     }
 
     try {
-      isLoading.value = true;
+      isSaving.value = true;
 
       final currentUser = _authController.currentUser.value;
       if (currentUser == null) {
@@ -173,7 +181,7 @@ class EditProfileController extends GetxController {
     } catch (e) {
       AppToast.error('error'.tr, 'profile_update_failed'.trParams({'error': e.toString()}));
     } finally {
-      isLoading.value = false;
+      isSaving.value = false;
     }
   }
 }

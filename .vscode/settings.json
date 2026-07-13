@@ -64,5 +64,8 @@
   "dart.previewFlutterUiGuides": true,
   "dart.previewFlutterUiGuidesCustomTracking": true,
   "dart.hotReloadOnSave": "all",
-  "dart.devToolsTheme": "dark"
+  "dart.devToolsTheme": "dark",
+  "dart.flutterRunAdditionalArgs": [
+    "--dart-define-from-file=.env.development"
+  ]
 }

@@ -3,13 +3,14 @@ import 'dart:convert';
 
 import 'package:firebase_performance/firebase_performance.dart' as fp;
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart' as getx;
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/network/auth_header_provider.dart';
 import 'package:ghar360/core/network/etag_cache.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/utils/retry_policy.dart';
 
 class UnauthorizedEvent {
   final AuthenticationException error;
@@ -47,7 +48,10 @@ class ApiClient {
   final AuthHeaderProvider _authProvider;
   final ETagCache _etagCache;
   final int _timeoutSeconds;
-  final int _maxGetRetries;
+
+  /// Optional override of GET retry count (tests). When null, [RetryPolicy.apiGet]
+  /// is the sole budget for GET retries.
+  final int? _maxGetRetriesOverride;
   final bool _enablePerformanceMetrics;
   final RequestDispatcher? _requestDispatcher;
   getx.GetConnect? _client;
@@ -60,21 +64,18 @@ class ApiClient {
     String? baseUrl,
     AuthHeaderProvider? authProvider,
     ETagCache? etagCache,
-    int timeoutSeconds = 15,
-    int maxGetRetries = 2,
-    bool enablePerformanceMetrics = !kDebugMode,
-    RequestDispatcher? requestDispatcher,
-    getx.GetConnect? client,
-  }) : _baseUrl = _normalizeBaseUrl(
-         baseUrl ?? dotenv.env['API_BASE_URL'] ?? 'http://localhost:3600',
+    this._timeoutSeconds = 15,
+    int? maxGetRetries,
+    this._enablePerformanceMetrics = !kDebugMode,
+    this._requestDispatcher,
+    this._client,
+  }) : _maxGetRetriesOverride = maxGetRetries,
+       _baseUrl = _normalizeBaseUrl(
+         baseUrl ??
+             (AppConfig.isInitialized ? AppConfig.instance.apiBaseUrl : 'https://api.360ghar.com'),
        ),
        _authProvider = authProvider ?? AuthHeaderProvider(),
-       _etagCache = etagCache ?? ETagCache(),
-       _timeoutSeconds = timeoutSeconds,
-       _maxGetRetries = maxGetRetries,
-       _enablePerformanceMetrics = enablePerformanceMetrics,
-       _requestDispatcher = requestDispatcher,
-       _client = client;
+       _etagCache = etagCache ?? ETagCache();
 
   String get baseUrl => _baseUrl;
 
@@ -215,7 +216,7 @@ class ApiClient {
 
     final form = getx.FormData({
       field: getx.MultipartFile(filePath, filename: filePath.split('/').last),
-      if (fields != null) ...fields,
+      ...?fields,
     });
 
     DebugLogger.api('🚀 API UPLOAD POST $url');
@@ -535,21 +536,30 @@ class ApiClient {
     bool idempotent = false,
   }) {
     final isGet = method.toUpperCase() == 'GET';
-    // GETs: up to _maxGetRetries. Idempotent mutations: up to 1 retry.
-    final maxRetries = isGet ? _maxGetRetries : (idempotent ? 1 : 0);
-    if (attempt >= maxRetries) return false;
-    return error is NetworkException || error is ServerException;
+    // Non-idempotent mutations never retry. GETs and idempotent mutations use
+    // RetryPolicy as the single source of truth for attempt budgets.
+    if (!isGet && !idempotent) return false;
+    final policy = isGet ? RetryPolicy.apiGet() : RetryPolicy.idempotentMutation();
+    // Test seam: hard-cap GET retries when maxGetRetries was injected.
+    final override = _maxGetRetriesOverride;
+    if (isGet && override != null && attempt >= override) {
+      return false;
+    }
+    // [attempt] is 0-based count of failures so far; RetryPolicy uses 1-based
+    // "attempts already performed".
+    return policy.shouldRetry(attempt + 1, error);
   }
 
   Future<void> _retryBackoffDelay(int attempt) async {
-    final milliseconds = 250 * (1 << (attempt - 1));
-    await Future.delayed(Duration(milliseconds: milliseconds));
+    // [attempt] is 1-based after increment in the request loop.
+    final delay = RetryPolicy.apiGet().delayForAttempt(attempt);
+    await Future.delayed(delay);
   }
 
   static String _normalizeBaseUrl(String baseUrl) {
     var normalized = baseUrl.trim();
     if (normalized.isEmpty) {
-      return 'http://localhost:3600';
+      return 'https://api.360ghar.com';
     }
 
     if (normalized.endsWith('/')) {

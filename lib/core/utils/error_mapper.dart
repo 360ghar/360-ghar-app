@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show IconData, Icons;
 import 'package:get/get.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
@@ -298,7 +299,9 @@ class ErrorMapper {
       return false; // Validation errors need input changes
     }
 
-    return true; // Default to retryable
+    // Unknown typed errors are not retryable by default — avoids amplifying
+    // permanent client bugs / unmapped failures.
+    return false;
   }
 
   /// Deep stack analysis for null-check errors (debug only).
@@ -314,19 +317,19 @@ class ErrorMapper {
     }
   }
 
-  // Get error icon for UI
-  static String getErrorIcon(AppException error) {
+  // Get Material icon for UI (no emoji — consistent cross-platform rendering)
+  static IconData getErrorIcon(AppException error) {
     if (error is NetworkException) {
-      return '🌐';
+      return Icons.wifi_off_rounded;
     } else if (error is AuthenticationException) {
-      return '🔒';
+      return Icons.lock_outline_rounded;
     } else if (error is ValidationException) {
-      return '⚠️';
+      return Icons.warning_amber_rounded;
     } else if (error is NotFoundException) {
-      return '🔍';
+      return Icons.search_off_rounded;
     } else if (error is ServerException) {
-      return '🔧';
+      return Icons.build_circle_outlined;
     }
-    return '❌';
+    return Icons.error_outline_rounded;
   }
 }

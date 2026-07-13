@@ -87,13 +87,10 @@ flutter build web
 
 ### Platform-Specific Setup
 ```bash
-# iOS setup after dependency changes
-cd ios && pod install
-
 # Clean Flutter build cache
 flutter clean
 
-# Get all dependencies
+# Get all dependencies (iOS native plugins resolve via Swift Package Manager)
 flutter pub get
 ```
 
@@ -331,15 +328,16 @@ The app uses Supabase as the primary backend service:
 ## Environment Configuration
 
 ### Environment Files
-- **`.env.development`**: Development environment variables
-- **`.env.production`**: Production environment variables
-- **Loaded in main.dart**: `await dotenv.load(fileName: ".env.development");`
+- **`.env.development` / `.env.production`**: Local-only (gitignored). **Never** package as Flutter assets.
+- **Local debug:** `dart run tool/sync_dev_env.dart` then bare `flutter run` (debug map in `lib/core/config/dev_env.g.dart`; do not commit secrets).
+- Or inject via `--dart-define` / `--dart-define-from-file` (`./tool/run_with_env.sh` or VS Code `flutterRunAdditionalArgs`).
+- Runtime access: `AppConfig.instance` in `lib/core/config/app_config.dart`.
 
 ### Required Environment Variables
 ```bash
-# .env.development and .env.production
+# Via dart-define / dart_defines.json (from local .env)
 # API Configuration
-API_BASE_URL=http://localhost:3600
+API_BASE_URL=https://api.360ghar.com
 API_TIMEOUT_SECONDS=15  # Optional: override HTTP client timeout
 
 # Supabase Configuration
@@ -391,7 +389,6 @@ LOG_API_CALLS=true
 - **flutter_localizations**: Internationalization support
 - **intl**: ^0.20.2 - Date/time formatting and localization
 - **shared_preferences**: ^2.3.2 - Platform-specific persistent storage
-- **flutter_dotenv**: ^6.0.0 - Environment variable management
 - **logger**: ^2.0.2+1 - Structured logging and debugging
 - **url_launcher**: ^6.3.0 - External URL and app launching
 
@@ -558,12 +555,10 @@ AppToast.error('Error', 'Failed to load');
 ```
 
 ### Dependency Management
-Use `DependencyManager` in `lib/core/utils/dependency_manager.dart`:
-- Tracks initialized services and controllers
-- Handles proper cleanup and disposal
-- Prevents duplicate registrations
-- Manages controller lifecycle efficiently
-- **SafeGetView** wrapper for safe widget disposal
+- Prefer constructor injection for repositories (`ApiClient`, datasources).
+- Register property/swipe repos via `RepositoryRegistration` so both concrete
+  types and core ports (`PropertiesPort`, `SwipesPort`) are available.
+- Use GetX bindings for feature controllers; **SafeGetView** for safe disposal.
 
 ## Testing
 
@@ -631,8 +626,9 @@ dart run build_runner build --delete-conflicting-outputs
 
 ### iOS Build Issues
 - Ensure Xcode is updated to latest version
-- Run `cd ios && pod install` if CocoaPods issues occur
-- Check iOS deployment target in `ios/Podfile`
+- iOS uses Swift Package Manager (no CocoaPods / Podfile). Run `flutter pub get` then
+  `flutter build ios --config-only` if packages fail to resolve
+- Check iOS deployment target in `ios/Runner.xcodeproj` (currently 15.0)
 
 ### Android Build Issues
 - Verify Android SDK and build tools are installed
@@ -730,7 +726,7 @@ The app supports multiple languages with complete localization:
 flutter run                                              # Start development  
 dart run build_runner build --delete-conflicting-outputs # Regenerate models
 flutter analyze && dart format .                         # Code quality check
-cd ios && pod install                                     # iOS dependencies
+flutter pub get                                          # Deps (iOS via SPM)
 ```
 
 ### Key File Locations  

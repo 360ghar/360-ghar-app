@@ -20,12 +20,25 @@ fi
 if [[ -z "${API_BASE_URL:-}" ]]; then
   if [[ -f "${APP_DIR}/.env.development" ]]; then
     API_BASE_URL="$(grep -E '^API_BASE_URL=' "${APP_DIR}/.env.development" | tail -n1 | cut -d'=' -f2- | tr -d '"')"
+  elif [[ -f "${APP_DIR}/dart_defines.json" ]]; then
+    API_BASE_URL="$(python3 -c "import json; print(json.load(open('${APP_DIR}/dart_defines.json')).get('API_BASE_URL',''))")"
   fi
 fi
 
 if [[ -z "${API_BASE_URL:-}" ]]; then
-  echo "API_BASE_URL is required (set env var or define in .env.development)" >&2
+  echo "API_BASE_URL is required (set env var, .env.development, or dart_defines.json)" >&2
   exit 1
+fi
+
+# Compile-time config for the app binary (not Flutter assets).
+DART_DEFINES_FILE="${APP_DIR}/dart_defines.json"
+if [[ ! -f "${DART_DEFINES_FILE}" ]]; then
+  if [[ -f "${APP_DIR}/.env.development" ]]; then
+    (cd "${APP_DIR}" && dart run tool/env_to_dart_defines.dart .env.development > dart_defines.json)
+  else
+    echo "dart_defines.json is required for builds (or provide .env.development to generate it)" >&2
+    exit 1
+  fi
 fi
 
 if ! command -v flutter >/dev/null 2>&1; then
@@ -110,7 +123,7 @@ build_and_install_ios() {
 
   echo "Using iOS simulator: ${device_id}"
   ensure_ios_google_service_plist
-  (cd "${APP_DIR}" && flutter build ios --debug --simulator --no-codesign)
+  (cd "${APP_DIR}" && flutter build ios --debug --simulator --no-codesign --dart-define-from-file="${DART_DEFINES_FILE}")
   xcrun simctl install "${device_id}" "${APP_DIR}/build/ios/iphonesimulator/Runner.app"
 
   DEVICE_ID="${device_id}"
@@ -131,7 +144,7 @@ build_and_install_android() {
 
   echo "Using Android device: ${serial}"
   export ANDROID_SERIAL="${serial}"
-  (cd "${APP_DIR}" && flutter build apk --debug)
+  (cd "${APP_DIR}" && flutter build apk --debug --dart-define-from-file="${DART_DEFINES_FILE}")
   adb -s "${serial}" install -r "${APP_DIR}/build/app/outputs/flutter-apk/app-debug.apk"
 
   DEVICE_ID="${serial}"

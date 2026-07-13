@@ -9,7 +9,9 @@ import 'package:ghar360/core/utils/debug_logger.dart';
 
 /// Repository responsible for support and feedback related network calls.
 class SupportRepository extends GetxService {
-  final ApiClient _apiClient = Get.find<ApiClient>();
+  SupportRepository({ApiClient? apiClient}) : _apiClient = apiClient ?? Get.find<ApiClient>();
+
+  final ApiClient _apiClient;
 
   Future<BugReportResponse> submitBugReport(BugReportRequest request) async {
     try {

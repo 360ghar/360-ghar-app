@@ -1,13 +1,12 @@
 // lib/features/auth/data/auth_repository.dart
 
 import 'dart:convert';
-import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
@@ -20,9 +19,8 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthRepository extends GetxService {
-  AuthRepository({ApiClient? apiClient, LastAuthMethodStore? lastAuthMethodStore})
-    : _apiClient = apiClient,
-      _lastAuthMethodStore = lastAuthMethodStore ?? LastAuthMethodStore();
+  AuthRepository({this._apiClient, LastAuthMethodStore? lastAuthMethodStore})
+    : _lastAuthMethodStore = lastAuthMethodStore ?? LastAuthMethodStore();
 
   final _supabase = Supabase.instance.client;
   ApiClient? _apiClient;
@@ -95,10 +93,11 @@ class AuthRepository extends GetxService {
   /// OAuth redirect flow (the Google provider is enabled server-side).
   bool get isGoogleSignInConfigured {
     if (kIsWeb) return false;
-    final hasWeb = (dotenv.env['GOOGLE_WEB_CLIENT_ID'] ?? '').trim().isNotEmpty;
-    final hasIos = (dotenv.env['GOOGLE_IOS_CLIENT_ID'] ?? '').trim().isNotEmpty;
-    if (Platform.isAndroid) return hasWeb;
-    if (Platform.isIOS) return hasIos;
+    final config = AppConfig.instance;
+    final hasWeb = config.googleWebClientId.isNotEmpty;
+    final hasIos = config.googleIosClientId.isNotEmpty;
+    if (defaultTargetPlatform == TargetPlatform.android) return hasWeb;
+    if (defaultTargetPlatform == TargetPlatform.iOS) return hasIos;
     return false;
   }
 
@@ -106,12 +105,13 @@ class AuthRepository extends GetxService {
   /// otherwise use the Supabase OAuth redirect flow (works with the enabled
   /// Google provider without any native client IDs).
   bool get _preferNativeGoogle =>
-      isGoogleSignInConfigured && (dotenv.env['GOOGLE_WEB_CLIENT_ID'] ?? '').trim().isNotEmpty;
+      isGoogleSignInConfigured && AppConfig.instance.googleWebClientId.isNotEmpty;
 
   Future<void> _ensureGoogleInitialized() async {
     if (_googleInitialized) return;
-    final webClientId = (dotenv.env['GOOGLE_WEB_CLIENT_ID'] ?? '').trim();
-    final iosClientId = (dotenv.env['GOOGLE_IOS_CLIENT_ID'] ?? '').trim();
+    final config = AppConfig.instance;
+    final webClientId = config.googleWebClientId;
+    final iosClientId = config.googleIosClientId;
     await GoogleSignIn.instance.initialize(
       // Android serverClientId / token audience is the WEB client id.
       serverClientId: webClientId.isEmpty ? null : webClientId,
@@ -240,7 +240,7 @@ class AuthRepository extends GetxService {
   // --- SIGN IN WITH APPLE (iOS; native ID-token flow) ---
 
   /// True when Sign in with Apple is available (iOS only, non-web).
-  bool get isAppleSignInSupported => !kIsWeb && Platform.isIOS;
+  bool get isAppleSignInSupported => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   /// Performs Sign in with Apple and exchanges the identity token with Supabase
   /// via `signInWithIdToken`. A raw nonce is hashed (SHA-256) and sent to Apple,

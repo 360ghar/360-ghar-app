@@ -10,7 +10,9 @@ import 'package:ghar360/core/utils/debug_logger.dart';
 /// Repository for managing user profile operations
 /// Handles all profile-related API calls and data management
 class ProfileRepository extends GetxService {
-  final ApiClient _apiClient = Get.find<ApiClient>();
+  ProfileRepository({ApiClient? apiClient}) : _apiClient = apiClient ?? Get.find<ApiClient>();
+
+  final ApiClient _apiClient;
 
   /// Updates the user profile on the backend
   Future<UserModel> updateUserProfile(Map<String, dynamic> profileData) async {

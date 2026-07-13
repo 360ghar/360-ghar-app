@@ -8,7 +8,7 @@
 | Field    | Value        |
 |----------|--------------|
 | Phone    | 8178340031   |
-| Password | saksham123   |
+| Password | Test@123     |
 
 ## Manual App Testing
 
@@ -17,7 +17,7 @@
    flutter run
    ```
 2. On the phone entry screen, enter `8178340031`.
-3. On the login screen, enter password `saksham123`.
+3. On the login screen, enter password `Test@123`.
 4. If prompted for profile completion, fill in details or tap **Skip**.
 
 ## Maestro E2E Tests
@@ -27,7 +27,7 @@ environment variables. Set them before running Maestro:
 
 ```bash
 export TEST_PHONE="8178340031"
-export TEST_PASSWORD="saksham123"
+export TEST_PASSWORD="Test@123"
 ```
 
 In CI, these are provided via GitHub Actions secrets (`TEST_PHONE` and

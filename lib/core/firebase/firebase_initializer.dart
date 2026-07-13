@@ -9,9 +9,9 @@ import 'package:firebase_in_app_messaging/firebase_in_app_messaging.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
 import 'package:ghar360/core/firebase/remote_config_service.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
@@ -56,7 +56,7 @@ Future<void> _showBackgroundNotification(
     // Initialize with minimal settings for background
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
-    await fln.initialize(settings);
+    await fln.initialize(settings: settings);
 
     // Create channel if needed
     const channel = AndroidNotificationChannel(
@@ -84,7 +84,13 @@ Future<void> _showBackgroundNotification(
     );
 
     final id = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
-    await fln.show(id, title, body, details, payload: jsonEncode(data));
+    await fln.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: details,
+      payload: jsonEncode(data),
+    );
 
     DebugLogger.info('📩 [FCM][BG] Local notification displayed: $title');
   } catch (e, st) {
@@ -98,20 +104,11 @@ class FirebaseInitializer {
   static bool get isFirebaseEnabled => FirebaseRuntimeState.isEnabled;
   static bool get isFirebaseReady => FirebaseRuntimeState.isReady;
 
-  static bool _envFlag(String key, {bool fallback = false}) {
-    try {
-      final v = dotenv.env[key]?.toLowerCase();
-      if (v == null) return fallback;
-      return v == '1' || v == 'true' || v == 'yes';
-    } catch (_) {
-      return fallback;
-    }
-  }
-
   static Future<void> init() async {
     if (_initialized) return;
 
-    final shouldInit = _envFlag('FIREBASE_ENABLED', fallback: true);
+    final config = AppConfig.isInitialized ? AppConfig.instance : null;
+    final shouldInit = config?.firebaseEnabled ?? true;
     FirebaseRuntimeState.isEnabled = shouldInit;
     if (!shouldInit) {
       FirebaseRuntimeState.isReady = false;
@@ -126,12 +123,12 @@ class FirebaseInitializer {
     DebugLogger.startup('Firebase initialized');
 
     // App Check (Play Integrity / DeviceCheck). Web uses reCAPTCHA v3 if provided.
-    final appCheckEnabled = _envFlag('FIREBASE_APPCHECK', fallback: true);
+    final appCheckEnabled = config?.firebaseAppCheck ?? true;
     if (appCheckEnabled) {
       try {
         if (kIsWeb) {
-          final siteKey = dotenv.env['RECAPTCHA_V3_SITE_KEY'];
-          if (siteKey != null && siteKey.isNotEmpty) {
+          final siteKey = config?.recaptchaV3SiteKey ?? '';
+          if (siteKey.isNotEmpty) {
             await FirebaseAppCheck.instance.activate(providerWeb: ReCaptchaV3Provider(siteKey));
             DebugLogger.startup('App Check (Web) activated with reCAPTCHA v3');
           } else {
@@ -140,7 +137,7 @@ class FirebaseInitializer {
             );
           }
         } else {
-          final debugMode = _envFlag('FIREBASE_APPCHECK_DEBUG', fallback: !kReleaseMode);
+          final debugMode = config?.firebaseAppCheckDebug ?? !kReleaseMode;
           await FirebaseAppCheck.instance.activate(
             providerAndroid: debugMode
                 ? const AndroidDebugProvider()
@@ -158,23 +155,23 @@ class FirebaseInitializer {
     }
 
     // Crashlytics minimal setup: enable in debug too for QA builds
-    final crashlyticsEnabled = _envFlag('FIREBASE_CRASHLYTICS', fallback: true);
+    final crashlyticsEnabled = config?.firebaseCrashlytics ?? true;
     await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(crashlyticsEnabled);
     DebugLogger.startup('Crashlytics enabled: $crashlyticsEnabled');
 
     // Analytics disabled by default (privacy-by-default)
-    final analyticsEnabled = _envFlag('FIREBASE_ANALYTICS', fallback: false);
+    final analyticsEnabled = config?.firebaseAnalytics ?? false;
     await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(analyticsEnabled);
     DebugLogger.startup('Analytics enabled: $analyticsEnabled');
 
     // Performance disabled by default, can be toggled remotely later
-    final perfEnabled = _envFlag('FIREBASE_PERFORMANCE', fallback: false);
+    final perfEnabled = config?.firebasePerformance ?? false;
     await FirebasePerformance.instance.setPerformanceCollectionEnabled(perfEnabled);
     DebugLogger.startup('Performance enabled: $perfEnabled');
 
     // In-App Messaging collection disabled by default
     await FirebaseInAppMessaging.instance.setAutomaticDataCollectionEnabled(
-      _envFlag('FIREBASE_IAM', fallback: false),
+      config?.firebaseIam ?? false,
     );
 
     // Remote Config bootstrap with safe defaults

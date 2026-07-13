@@ -21,6 +21,20 @@ fi
 # Restage any changes done by formatter
 git add -A
 
+# Never commit secrets in the debug env map. If the working tree is filled
+# (normal after `dart run tool/sync_dev_env.dart`), stage an empty version and
+# restore local values so bare `flutter run` still works.
+DEV_ENV_G="lib/core/config/dev_env.g.dart"
+if [[ -f "$DEV_ENV_G" ]] && ! dart run tool/sync_dev_env.dart --check-clean >/dev/null 2>&1; then
+  echo -e "${YELLOW}🔐 Staging empty $DEV_ENV_G (keeping local secrets unstaged)...${NC}"
+  LOCAL_COPY="$(mktemp -t dev_env_g.XXXXXX.dart)"
+  cp "$DEV_ENV_G" "$LOCAL_COPY"
+  dart run tool/sync_dev_env.dart --empty >/dev/null
+  git add "$DEV_ENV_G"
+  cp "$LOCAL_COPY" "$DEV_ENV_G"
+  rm -f "$LOCAL_COPY"
+fi
+
 echo -e "${YELLOW}🔍 Running analyzer (will block only on errors)...${NC}"
 TMP_REPORT=$(mktemp -t analyze.XXXXXX)
 

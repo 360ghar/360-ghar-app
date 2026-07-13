@@ -9,6 +9,7 @@ import 'package:ghar360/core/utils/responsive.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/max_content_width.dart';
 import 'package:ghar360/core/widgets/common/segmented_control.dart';
+import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 import 'package:ghar360/features/visits/presentation/widgets/agent_card.dart';
 import 'package:ghar360/features/visits/presentation/widgets/visit_card.dart';
@@ -110,7 +111,7 @@ class VisitsView extends GetView<VisitsController> {
     return DefaultTabController(
       length: 2,
       child: Semantics(
-        label: 'qa.visits.screen',
+        label: 'visits'.tr,
         identifier: 'qa.visits.screen',
         child: Scaffold(
           key: const ValueKey('qa.visits.screen'),
@@ -480,28 +481,16 @@ class _VisitsContentState extends State<_VisitsContent> {
   }
 
   Widget _buildEmptyState(String title, String subtitle) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 32),
-      width: double.infinity,
-      child: Column(
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontStyle: FontStyle.italic,
-              fontSize: 18,
-              color: AppDesign.textSecondary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: TextStyle(fontSize: 14, color: AppDesign.textTertiary),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+    return ErrorStates.emptyState(
+      title: title,
+      message: subtitle,
+      icon: Icons.calendar_today_outlined,
+      actionText: 'discover'.tr,
+      onAction: () {
+        if (Get.isRegistered<DashboardController>()) {
+          Get.find<DashboardController>().changeTab(DashboardController.discoverTab);
+        }
+      },
     );
   }
 

@@ -4,6 +4,15 @@
 *.pyc
 *.swp
 .DS_Store
+
+# GetStorage files written into cwd by unit tests
+*.gs
+*.gs.bak
+GetStorage.gs
+GetStorage.bak
+TestLastAuth.gs
+TestLastAuth.bak
+TestLastAuth/
 .atom/
 .build/
 .buildlog/
@@ -59,14 +68,19 @@ digest.txt
 
 # Local tool / generated output artifacts
 outputs/
+tmp/
 
 # Environment variables - sensitive files (not committed)
 .env.development
 .env.production
 .env.staging
+.dart_defines.json
+.dart_defines.*.json
+dart_defines.json
 
 # Environment templates - safe to commit (no sensitive data)
 !.env.development.example
+!.env.production.example
 !.env.staging.example
 
 venv/

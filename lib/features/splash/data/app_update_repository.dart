@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/app_update_models.dart';
@@ -67,6 +69,10 @@ class AppUpdateRepository extends GetxService {
       return const AppVersionCheckResponse(updateAvailable: false, isMandatory: false);
     }
   }
+
+  /// Test-only exposure of version comparison.
+  @visibleForTesting
+  bool isVersionNewerForTest(String newer, String older) => _isVersionNewer(newer, older);
 
   /// Compares two semantic version strings.
   /// Returns true if [newer] is a higher version than [older].

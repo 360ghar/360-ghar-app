@@ -33,6 +33,8 @@ class ShareUtils {
       }
     }
 
-    await Share.share(text, subject: '360Ghar: $title', sharePositionOrigin: origin);
+    await SharePlus.instance.share(
+      ShareParams(text: text, subject: '360Ghar: $title', sharePositionOrigin: origin),
+    );
   }
 }

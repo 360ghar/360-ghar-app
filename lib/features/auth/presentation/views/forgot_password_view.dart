@@ -113,14 +113,14 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
                             width: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.2,
-                              color: Color(0xFF8C6B52),
+                              color: AppDesign.editorialInk,
                             ),
                           )
                         : Text(
                             'send_otp'.tr,
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF8C6B52),
+                              color: AppDesign.editorialInk,
                               fontSize: 16,
                             ),
                           ),
@@ -188,14 +188,14 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
                         width: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
-                          color: Color(0xFF8C6B52),
+                          color: AppDesign.editorialInk,
                         ),
                       )
                     : Text(
                         'verify_otp'.tr,
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF8C6B52),
+                          color: AppDesign.editorialInk,
                           fontSize: 16,
                         ),
                       ),
@@ -332,14 +332,14 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
                           width: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.2,
-                            color: Color(0xFF8C6B52),
+                            color: AppDesign.editorialInk,
                           ),
                         )
                       : Text(
                           'update_password'.tr,
                           style: const TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF8C6B52),
+                            color: AppDesign.editorialInk,
                             fontSize: 16,
                           ),
                         ),

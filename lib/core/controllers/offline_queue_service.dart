@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
+import 'package:ghar360/core/controllers/offline_action.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/swipes/data/datasources/swipes_remote_datasource.dart';
@@ -11,20 +12,66 @@ import 'package:ghar360/features/visits/data/datasources/visits_remote_datasourc
 
 /// Maximum number of actions the queue will hold. Oldest actions are
 /// dropped when the limit is exceeded during enqueue.
-const _maxQueueSize = 100;
+const maxOfflineQueueSize = 100;
 
 /// Maximum number of retry attempts per action before it is dropped.
-const _maxRetries = 5;
+const maxOfflineRetries = 5;
 
 /// Actions older than this duration are considered stale and dropped.
-const _maxAge = Duration(hours: 24);
+const maxOfflineActionAge = Duration(hours: 24);
 
-/// OfflineQueueService
+/// Persistence seam for [OfflineQueueService] (GetStorage in prod, in-memory in tests).
+abstract class OfflineQueueStorage {
+  List<dynamic>? readList(String key);
+  void writeList(String key, List<dynamic> value);
+  void remove(String key);
+}
+
+/// Default [OfflineQueueStorage] backed by [GetStorage].
+class GetStorageOfflineQueueStorage implements OfflineQueueStorage {
+  GetStorageOfflineQueueStorage([GetStorage? storage]) : _storage = storage ?? GetStorage();
+
+  final GetStorage _storage;
+
+  @override
+  List<dynamic>? readList(String key) => _storage.read<List<dynamic>>(key);
+
+  @override
+  void writeList(String key, List<dynamic> value) => _storage.write(key, value);
+
+  @override
+  void remove(String key) => _storage.remove(key);
+}
+
+/// In-memory store for unit tests (no path_provider / plugin required).
+class InMemoryOfflineQueueStorage implements OfflineQueueStorage {
+  final Map<String, List<dynamic>> _data = {};
+
+  @override
+  List<dynamic>? readList(String key) {
+    final value = _data[key];
+    return value == null ? null : List<dynamic>.from(value);
+  }
+
+  @override
+  void writeList(String key, List<dynamic> value) {
+    _data[key] = List<dynamic>.from(value);
+  }
+
+  @override
+  void remove(String key) => _data.remove(key);
+}
+
+/// Lightweight queue for deferring network actions when offline.
 ///
-/// A lightweight queue for deferring network actions when offline.
-/// Stores queued actions in GetStorage and retries when connectivity returns.
+/// Stores typed [OfflineAction]s and retries when connectivity returns.
+/// Dependencies are constructor-injectable for unit tests.
+///
+/// All mutations ([enqueueSwipe]/[enqueueVisit]/[processQueue], [clearQueue])
+/// are serialized on a single chain so a flush cannot overwrite concurrent
+/// enqueues, and a logout clear cannot be undone by a late `_saveQueue`.
 class OfflineQueueService extends GetxService {
-  static const _storageKey = 'offline_action_queue';
+  static const storageKey = 'offline_action_queue';
 
   static const _connectedResults = {
     ConnectivityResult.mobile,
@@ -33,26 +80,47 @@ class OfflineQueueService extends GetxService {
     ConnectivityResult.vpn,
   };
 
-  final GetStorage _storage = GetStorage();
-  final SwipesRemoteDatasource _swipesRemoteDatasource = Get.find<SwipesRemoteDatasource>();
-  final VisitsRemoteDatasource _visitsRemoteDatasource = Get.find<VisitsRemoteDatasource>();
+  OfflineQueueService({
+    OfflineQueueStorage? storage,
+    SwipesRemoteDatasource? swipesRemoteDatasource,
+    VisitsRemoteDatasource? visitsRemoteDatasource,
+    this.connectivityStream,
+  }) : _storage = storage ?? GetStorageOfflineQueueStorage(),
+       _swipesRemoteDatasource = swipesRemoteDatasource ?? Get.find<SwipesRemoteDatasource>(),
+       _visitsRemoteDatasource = visitsRemoteDatasource ?? Get.find<VisitsRemoteDatasource>();
+
+  final OfflineQueueStorage _storage;
+  final SwipesRemoteDatasource _swipesRemoteDatasource;
+  final VisitsRemoteDatasource _visitsRemoteDatasource;
+
+  /// Optional test seam; production uses [Connectivity.onConnectivityChanged].
+  final Stream<List<ConnectivityResult>>? connectivityStream;
 
   StreamSubscription? _connectivitySub;
-  bool _processing = false;
+
+  /// Serializes enqueue / process / clear so read-modify-write cannot race.
+  Future<void> _mutex = Future<void>.value();
+
+  /// Bumped on [clearQueue]. [processQueue] aborts `_saveQueue` if this changes
+  /// mid-flush (e.g. logout while replaying).
+  int _generation = 0;
+
+  /// Number of actions currently stored (for tests/metrics).
+  int get queueLength => _getQueue().length;
 
   Future<OfflineQueueService> init() async {
-    // Set up connectivity listener
-    _connectivitySub = Connectivity().onConnectivityChanged.listen(
+    final stream = connectivityStream ?? Connectivity().onConnectivityChanged;
+    _connectivitySub = stream.listen(
       (event) async {
         await _handleConnectivityEvent(event);
       },
-      onError: (e, st) {
+      onError: (Object e, StackTrace st) {
         DebugLogger.warning('OfflineQueue connectivity stream error: $e');
       },
     );
 
-    // Attempt initial flush on startup (non-blocking)
-    unawaited(processQueue());
+    // Await so cold-start flush finishes before callers assume the queue is idle.
+    await processQueue();
     return this;
   }
 
@@ -62,16 +130,10 @@ class OfflineQueueService extends GetxService {
     super.onClose();
   }
 
-  // Public API
-
   Future<void> enqueueSwipe({required int propertyId, required bool isLiked}) async {
-    await _enqueue({
-      'type': 'swipe',
-      'propertyId': propertyId,
-      'isLiked': isLiked,
-      'ts': DateTime.now().toIso8601String(),
-      'retries': 0,
-    });
+    await _enqueue(
+      OfflineSwipeAction(propertyId: propertyId, isLiked: isLiked, timestamp: DateTime.now()),
+    );
     DebugLogger.info('🕓 Queued swipe action for property $propertyId');
   }
 
@@ -80,32 +142,29 @@ class OfflineQueueService extends GetxService {
     required String scheduledDate,
     String? specialRequirements,
   }) async {
-    await _enqueue({
-      'type': 'visit',
-      'propertyId': propertyId,
-      'scheduledDate': scheduledDate,
-      'specialRequirements': ?specialRequirements,
-      'ts': DateTime.now().toIso8601String(),
-      'retries': 0,
-    });
+    await _enqueue(
+      OfflineVisitAction(
+        propertyId: propertyId,
+        scheduledDate: scheduledDate,
+        specialRequirements: specialRequirements,
+        timestamp: DateTime.now(),
+      ),
+    );
     DebugLogger.info('🕓 Queued visit booking for property $propertyId');
   }
 
   Future<void> processQueue() async {
-    if (_processing) return;
-    _processing = true;
-    try {
+    await _runExclusive(() async {
+      final generation = _generation;
       final queue = _getQueue();
       if (queue.isEmpty) return;
 
-      // Purge stale actions before processing
       final now = DateTime.now();
       queue.removeWhere((action) {
-        final ts = DateTime.tryParse(action['ts']?.toString() ?? '');
-        if (ts != null && now.difference(ts) > _maxAge) {
+        if (now.difference(action.timestamp) > maxOfflineActionAge) {
           DebugLogger.warning(
             '🗑️ Dropping stale offline action '
-            '(type=${action['type']}, age=${now.difference(ts).inHours}h)',
+            '(type=${action.type}, age=${now.difference(action.timestamp).inHours}h)',
           );
           return true;
         }
@@ -113,63 +172,61 @@ class OfflineQueueService extends GetxService {
       });
 
       DebugLogger.info('🔁 Processing ${queue.length} offline actions...');
-      final remaining = <Map<String, dynamic>>[];
+      final remaining = <OfflineAction>[];
 
-      for (final action in queue) {
-        final type = action['type'] as String?;
-        final retries = (action['retries'] as num?)?.toInt() ?? 0;
+      for (var i = 0; i < queue.length; i++) {
+        if (generation != _generation) {
+          DebugLogger.info('🗑️ Offline queue cleared mid-flush — aborting processQueue');
+          return;
+        }
 
-        // Drop actions that have exceeded max retries
-        if (retries >= _maxRetries) {
+        final action = queue[i];
+
+        if (action.retries >= maxOfflineRetries) {
           DebugLogger.warning(
-            '🗑️ Dropping offline action after $_maxRetries retries '
-            '(type=$type, propertyId=${action['propertyId']})',
+            '🗑️ Dropping offline action after $maxOfflineRetries retries '
+            '(type=${action.type})',
           );
           continue;
         }
 
         try {
-          if (type == 'swipe') {
-            await _processSwipe(action);
-          } else if (type == 'visit') {
-            await _processVisit(action);
-          } else {
-            DebugLogger.warning('Unknown offline action type: $type — dropping');
-          }
+          await _processAction(action);
         } on NetworkException catch (e, st) {
-          // Network error — keep in queue with incremented retry count,
-          // then stop processing to avoid hammering.
           DebugLogger.warning(
-            '🌐 Network error while replaying "$type" — '
-            'keeping in queue (retry ${retries + 1}/$_maxRetries)',
+            '🌐 Network error while replaying "${action.type}" — '
+            'keeping in queue (retry ${action.retries + 1}/$maxOfflineRetries)',
             e,
             st,
           );
-          action['retries'] = retries + 1;
-          remaining.add(action);
-          // Add remaining unprocessed actions back as-is
-          remaining.addAll(queue.sublist(queue.indexOf(action) + 1));
+          remaining.add(action.copyWithRetries(action.retries + 1));
+          remaining.addAll(queue.sublist(i + 1));
           break;
         } on AppException catch (e, st) {
-          // Non-network app errors (validation, auth, etc.) — drop action
           DebugLogger.error(
-            '❌ Non-network error on queued "$type" — '
+            '❌ Non-network error on queued "${action.type}" — '
             'dropping action: ${e.message}',
             e,
             st,
           );
         } catch (e, st) {
-          // Unexpected error — increment retry and continue to next item
-          // (don't break the loop so other actions can still process)
           DebugLogger.error(
-            '❌ Unexpected error processing offline "$type" '
-            '(retry ${retries + 1}/$_maxRetries): $e',
+            '❌ Unexpected error processing offline "${action.type}" '
+            '(retry ${action.retries + 1}/$maxOfflineRetries): $e',
             e,
             st,
           );
-          action['retries'] = retries + 1;
-          remaining.add(action);
+          // Fail-fast: keep failed item + unprocessed tail so concurrent
+          // enqueues (serialized after us) are not mixed with a partial flush.
+          remaining.add(action.copyWithRetries(action.retries + 1));
+          remaining.addAll(queue.sublist(i + 1));
+          break;
         }
+      }
+
+      if (generation != _generation) {
+        DebugLogger.info('🗑️ Offline queue cleared mid-flush — skipping save');
+        return;
       }
 
       _saveQueue(remaining);
@@ -177,100 +234,109 @@ class OfflineQueueService extends GetxService {
       if (processed > 0) {
         DebugLogger.success('📤 Flushed $processed queued action(s)');
       }
-    } finally {
-      _processing = false;
+    });
+  }
+
+  Future<void> _processAction(OfflineAction action) async {
+    switch (action) {
+      case OfflineSwipeAction(:final propertyId, :final isLiked):
+        await _swipesRemoteDatasource.swipeProperty(propertyId: propertyId, isLiked: isLiked);
+        DebugLogger.success('✅ Replayed swipe for property $propertyId');
+      case OfflineVisitAction(:final propertyId, :final scheduledDate, :final specialRequirements):
+        await _visitsRemoteDatasource.scheduleVisit(
+          propertyId: propertyId,
+          scheduledDate: scheduledDate,
+          specialRequirements: specialRequirements,
+        );
+        DebugLogger.success('✅ Replayed visit booking for $propertyId');
     }
   }
 
-  // Action processors
+  Future<void> _enqueue(OfflineAction action) async {
+    await _runExclusive(() async {
+      // Snapshot generation so a concurrent clearQueue (logout) cannot be
+      // undone by writing a stale in-memory list back to storage.
+      final generation = _generation;
+      final list = _getQueue();
+      list.add(action);
 
-  Future<void> _processSwipe(Map<String, dynamic> action) async {
-    final propertyId = _parsePropertyId(action);
-    if (propertyId == null) {
-      DebugLogger.error(
-        '❌ Invalid propertyId in queued swipe — dropping: '
-        '${action['propertyId']}',
-      );
-      return; // Drop the action
-    }
-    final isLiked = action['isLiked'] == true || action['isLiked'].toString() == 'true';
-    await _swipesRemoteDatasource.swipeProperty(propertyId: propertyId, isLiked: isLiked);
-    DebugLogger.success('✅ Replayed swipe for property $propertyId');
+      while (list.length > maxOfflineQueueSize) {
+        final dropped = list.removeAt(0);
+        DebugLogger.warning(
+          '🗑️ Queue full ($maxOfflineQueueSize) — dropping oldest action '
+          '(type=${dropped.type})',
+        );
+      }
+
+      if (generation != _generation) {
+        DebugLogger.info('🗑️ Offline queue cleared mid-enqueue — skipping save');
+        return;
+      }
+
+      _saveQueue(list);
+    });
   }
 
-  Future<void> _processVisit(Map<String, dynamic> action) async {
-    final propertyId = _parsePropertyId(action);
-    if (propertyId == null) {
-      DebugLogger.error(
-        '❌ Invalid propertyId in queued visit — dropping: '
-        '${action['propertyId']}',
-      );
-      return;
+  List<OfflineAction> _getQueue() {
+    final raw = _storage.readList(storageKey) ?? <dynamic>[];
+    final actions = <OfflineAction>[];
+    for (final e in raw) {
+      if (e is! Map) continue;
+      final map = Map<String, dynamic>.from(e);
+      final parsed = OfflineAction.tryParse(map);
+      if (parsed != null) {
+        actions.add(parsed);
+      } else {
+        DebugLogger.warning('🗑️ Dropping unparseable offline action: $map');
+      }
     }
-    final scheduledDate = action['scheduledDate']?.toString();
-    if (scheduledDate == null) {
-      DebugLogger.error('❌ Missing scheduledDate in queued visit — dropping');
-      return;
-    }
-    final specialRequirements = action['specialRequirements']?.toString();
-    await _visitsRemoteDatasource.scheduleVisit(
-      propertyId: propertyId,
-      scheduledDate: scheduledDate,
-      specialRequirements: specialRequirements,
+    return actions;
+  }
+
+  void _saveQueue(List<OfflineAction> queue) {
+    _storage.writeList(storageKey, queue.map((a) => a.toJson()).toList());
+  }
+
+  /// Drops all queued actions (call on logout to avoid cross-user replay).
+  ///
+  /// Bumps generation immediately so in-flight [processQueue]/[_enqueue]
+  /// abort their saves, then removes storage. The exclusive chain is also
+  /// scheduled so any enqueue that was already waiting on the mutex still
+  /// observes an empty queue after it acquires the lock.
+  void clearQueue() {
+    _generation++;
+    _storage.remove(storageKey);
+    DebugLogger.info('🗑️ Offline action queue cleared');
+    // Best-effort: re-clear after any in-flight exclusive work finishes.
+    unawaited(
+      _runExclusive(() async {
+        _storage.remove(storageKey);
+      }),
     );
-    DebugLogger.success('✅ Replayed visit booking for $propertyId');
   }
 
-  /// Parses propertyId from the queued action map.
-  /// Returns null instead of falling back to 0.
-  static int? _parsePropertyId(Map<String, dynamic> action) {
-    final raw = action['propertyId'];
-    if (raw is int) return raw;
-    if (raw != null) return int.tryParse(raw.toString());
-    return null;
-  }
-
-  // Internals
-
-  Future<void> _enqueue(Map<String, dynamic> action) async {
-    final list = _getQueue();
-    list.add(action);
-
-    // Enforce queue size limit — drop oldest actions
-    while (list.length > _maxQueueSize) {
-      final dropped = list.removeAt(0);
-      DebugLogger.warning(
-        '🗑️ Queue full ($_maxQueueSize) — dropping oldest action '
-        '(type=${dropped['type']})',
-      );
-    }
-
-    _saveQueue(list);
-  }
-
-  List<Map<String, dynamic>> _getQueue() {
-    final raw = _storage.read<List<dynamic>>(_storageKey) ?? <dynamic>[];
-    return raw
-        .map(
-          (e) => Map<String, dynamic>.from(
-            e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{},
-          ),
-        )
-        .toList();
-  }
-
-  void _saveQueue(List<Map<String, dynamic>> queue) {
-    _storage.write(_storageKey, queue);
-  }
-
-  Future<void> _handleConnectivityEvent(dynamic event) async {
-    final results = event is List<ConnectivityResult>
-        ? event
-        : (event is ConnectivityResult ? [event] : <ConnectivityResult>[]);
+  Future<void> _handleConnectivityEvent(List<ConnectivityResult> results) async {
     final hasConnection = results.any(_connectedResults.contains);
     if (hasConnection) {
       DebugLogger.info('📶 Connectivity restored — attempting to flush queue');
       await processQueue();
     }
+  }
+
+  /// Runs [action] after all prior exclusive work, keeping the chain alive on error.
+  Future<T> _runExclusive<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+    _mutex = _mutex
+        .then((_) async {
+          try {
+            completer.complete(await action());
+          } catch (e, st) {
+            completer.completeError(e, st);
+          }
+        })
+        .catchError((Object _) {
+          // Keep the mutex chain from permanently failing.
+        });
+    return completer.future;
   }
 }

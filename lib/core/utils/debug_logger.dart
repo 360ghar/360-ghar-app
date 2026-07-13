@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
-
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:logger/logger.dart';
 
 class DebugLogger {
@@ -9,18 +8,16 @@ class DebugLogger {
 
   static bool get isDebugMode {
     try {
-      return dotenv.env['DEBUG_MODE'] == 'true';
-    } catch (e) {
-      return kDebugMode; // Fallback to Flutter's debug mode
-    }
+      if (AppConfig.isInitialized) return AppConfig.instance.debugMode;
+    } catch (_) {}
+    return kDebugMode;
   }
 
   static bool get shouldLogAPICalls {
     try {
-      return dotenv.env['LOG_API_CALLS'] == 'true';
-    } catch (e) {
-      return false; // Default to no API call logging
-    }
+      if (AppConfig.isInitialized) return AppConfig.instance.logApiCalls;
+    } catch (_) {}
+    return false;
   }
 
   /// Initialize the logger with appropriate configuration

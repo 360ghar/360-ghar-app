@@ -8,7 +8,6 @@ import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/properties/data/properties_repository.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:video_compress/video_compress.dart';
 
 class MediaUploadResult {
   final String url;
@@ -27,7 +26,7 @@ class MediaUploadResult {
 }
 
 class MediaUploadService {
-  MediaUploadService({required ApiClient apiClient}) : _apiClient = apiClient;
+  MediaUploadService({required this._apiClient});
 
   final ApiClient _apiClient;
   final ImagePicker _picker = ImagePicker();
@@ -96,10 +95,7 @@ class MediaUploadService {
     }
   }
 
-  Future<MediaUploadResult?> pickAndUploadVideo({
-    required int propertyId,
-    bool compress = true,
-  }) async {
+  Future<MediaUploadResult?> pickAndUploadVideo({required int propertyId}) async {
     if (kIsWeb) {
       DebugLogger.warning('Video picking not supported on web sandbox');
       return null;
@@ -120,25 +116,7 @@ class MediaUploadService {
       return null;
     }
 
-    String uploadPath = file.path;
-    Duration? duration;
-    try {
-      if (compress) {
-        final info = await VideoCompress.compressVideo(
-          file.path,
-          quality: VideoQuality.MediumQuality,
-          includeAudio: true,
-        );
-        if (info?.file != null) {
-          uploadPath = info!.file!.path;
-          duration = info.duration != null ? Duration(milliseconds: info.duration!.toInt()) : null;
-        }
-      }
-    } catch (e) {
-      DebugLogger.warning('Video compression failed, uploading original file', e);
-    }
-
-    final uploadBytes = await XFile(uploadPath).readAsBytes();
+    final uploadBytes = await file.readAsBytes();
     if (uploadBytes.lengthInBytes > _maxVideoBytes) {
       DebugLogger.warning(
         'Rejected video exceeding size limit: '
@@ -152,7 +130,7 @@ class MediaUploadService {
       final response = await _apiClient.upload(
         ApiPaths.upload,
         field: 'file',
-        filePath: uploadPath,
+        filePath: file.path,
         fields: {'folder': 'property_video', 'visibility': 'public'},
       );
 
@@ -163,12 +141,11 @@ class MediaUploadService {
         return null;
       }
 
-      final ext = _fileExtension(uploadPath, fallback: 'mp4');
+      final ext = _fileExtension(file.path, fallback: 'mp4');
       return MediaUploadResult(
         url: url,
         storagePath: data['file_path'] as String? ?? '',
         bytes: uploadBytes.lengthInBytes,
-        duration: duration,
         mimeType: 'video/$ext',
       );
     } catch (e, st) {
@@ -210,9 +187,8 @@ class MediaUploadService {
   Future<PropertyModel?> uploadVideoAndAttach({
     required int propertyId,
     required PropertiesRepository repository,
-    bool compress = true,
   }) async {
-    final result = await pickAndUploadVideo(propertyId: propertyId, compress: compress);
+    final result = await pickAndUploadVideo(propertyId: propertyId);
     if (result == null) return null;
 
     return repository.updatePropertyMedia(

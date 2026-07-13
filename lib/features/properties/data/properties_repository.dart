@@ -5,6 +5,7 @@ import 'package:ghar360/core/data/models/property_media_payload.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/models/unified_property_response.dart';
+import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/network/response_parser.dart';
@@ -12,9 +13,13 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/properties/data/datasources/properties_remote_datasource.dart';
 
-class PropertiesRepository extends GetxService {
-  final PropertiesRemoteDatasource _remoteDatasource = Get.find<PropertiesRemoteDatasource>();
-  final ApiClient _apiClient = Get.find<ApiClient>();
+class PropertiesRepository extends GetxService implements PropertiesPort {
+  PropertiesRepository({PropertiesRemoteDatasource? remoteDatasource, ApiClient? apiClient})
+    : _remoteDatasource = remoteDatasource ?? Get.find<PropertiesRemoteDatasource>(),
+      _apiClient = apiClient ?? Get.find<ApiClient>();
+
+  final PropertiesRemoteDatasource _remoteDatasource;
+  final ApiClient _apiClient;
 
   Future<UnifiedPropertyResponse> getProperties({
     required UnifiedFilterModel filters,
@@ -57,6 +62,7 @@ class PropertiesRepository extends GetxService {
     }
   }
 
+  @override
   Future<PropertyModel> getPropertyDetail(int propertyId) async {
     try {
       DebugLogger.api('Fetching property details: $propertyId');
@@ -69,6 +75,7 @@ class PropertiesRepository extends GetxService {
     }
   }
 
+  @override
   Future<List<PropertyModel>> getPropertiesByIds(List<int> propertyIds) async {
     if (propertyIds.isEmpty) return [];
 
@@ -106,6 +113,7 @@ class PropertiesRepository extends GetxService {
     }
   }
 
+  @override
   Future<UnifiedPropertyResponse> searchProperties({
     required UnifiedFilterModel filters,
     required String? cursor,
@@ -214,6 +222,7 @@ class PropertiesRepository extends GetxService {
     return PropertyModel.fromJson(Map<String, dynamic>.from(payload));
   }
 
+  @override
   void clearCache() {
     DebugLogger.api('Properties repository cache cleared');
   }

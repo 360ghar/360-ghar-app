@@ -17,7 +17,7 @@ class ErrorStates {
     // Derive title, message, and icon safely for both String and AppException
     String title;
     String message;
-    String icon;
+    IconData icon;
 
     if (error is AppException) {
       title = _getErrorTitle(error);
@@ -26,11 +26,11 @@ class ErrorStates {
     } else if (error is String) {
       title = 'error'.tr;
       message = error;
-      icon = '❌';
+      icon = Icons.error_outline_rounded;
     } else {
       title = 'error'.tr;
       message = 'something_went_wrong'.tr;
-      icon = '❌';
+      icon = Icons.error_outline_rounded;
     }
 
     return Builder(
@@ -46,12 +46,7 @@ class ErrorStates {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  icon,
-                  style:
-                      textTheme.displayMedium?.copyWith(color: theme.colorScheme.primary) ??
-                      TextStyle(fontSize: 56, color: theme.colorScheme.primary),
-                ),
+                Icon(icon, size: 56, color: theme.colorScheme.primary),
                 const SizedBox(height: 16),
                 Text(
                   title,
@@ -497,9 +492,9 @@ class ErrorStates {
                     IconButton(
                       onPressed: onDismiss,
                       icon: const Icon(Icons.close, size: 18),
+                      tooltip: 'dismiss'.tr,
                       color: theme.colorScheme.onErrorContainer,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
+                      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                     ),
                 ],
               ),

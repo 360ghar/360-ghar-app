@@ -151,6 +151,86 @@ void main() {
         final controller = createController(user: null);
         expect(controller.maskedIdentifier, isEmpty);
       });
+
+      test('masks phone user keeping last 4 digits', () {
+        final user = FakeUser(email: null, phone: '+919876543210');
+        final controller = createController(user: user);
+
+        expect(controller.maskedIdentifier, '+91 ******3210');
+      });
+
+      test('masks email user with first character and domain', () {
+        final user = FakeUser(email: 'alice@gmail.com', phone: null);
+        final controller = createController(user: user);
+
+        expect(controller.maskedIdentifier, 'a***@gmail.com');
+      });
+    });
+
+    group('passwordStrength additional cases', () {
+      test('maps 6-char lowercase password to strength 1', () {
+        final controller = createController();
+
+        // 'abcdef' (>= 6, no upper/digit/special): raw 1 → mapped to 1
+        controller.passwordController.text = 'abcdef';
+        expect(controller.passwordStrength.value, 1);
+      });
+
+      test('maps digit-only password to strength 1', () {
+        final controller = createController();
+
+        // '123456' (>= 6, digit): raw 2 → mapped to 1
+        controller.passwordController.text = '123456';
+        expect(controller.passwordStrength.value, 1);
+      });
+
+      test('maps password with upper + digit + special to strength 3', () {
+        final controller = createController();
+
+        // 'Abc123!@' (8 chars, upper, digit, special): raw 5 → mapped to 3
+        controller.passwordController.text = 'Abc123!@';
+        expect(controller.passwordStrength.value, 3);
+      });
+
+      test('resets to 0 when password is cleared', () {
+        final controller = createController();
+
+        controller.passwordController.text = 'StrongPass1!';
+        expect(controller.passwordStrength.value, 3);
+
+        controller.passwordController.text = '';
+        expect(controller.passwordStrength.value, 0);
+      });
+    });
+
+    group('submit', () {
+      test('does nothing when form validation is unavailable', () async {
+        final controller = createController();
+        controller.passwordController.text = 'StrongPass1!';
+
+        // No form widget → formKey.currentState is null → validate fails
+        await controller.submit();
+
+        expect(controller.isLoading.value, isFalse);
+        verifyNever(() => authController.completePasswordSetup(any()));
+      });
+
+      test('returns early when already loading even if form is valid', () async {
+        final controller = createController();
+        controller.isLoading.value = true;
+
+        await controller.submit();
+
+        verifyNever(() => authController.completePasswordSetup(any()));
+      });
+    });
+
+    group('onClose', () {
+      test('disposes controllers without throwing', () {
+        final controller = createController();
+
+        expect(controller.onClose, returnsNormally);
+      });
     });
   });
 }

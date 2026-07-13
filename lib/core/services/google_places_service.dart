@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:http/http.dart' as http;
@@ -110,7 +110,7 @@ class GooglePlacesService extends GetxService {
   }
 
   String _nominatimCacheKey(String query) {
-    final countryCode = (dotenv.env['DEFAULT_COUNTRY'] ?? 'in').toLowerCase();
+    final countryCode = AppConfig.instance.defaultCountry.toLowerCase();
     return '${query.trim().toLowerCase()}|$countryCode';
   }
 
@@ -191,7 +191,8 @@ class GooglePlacesService extends GetxService {
     Position? currentPosition,
   }) async {
     try {
-      final apiKey = dotenv.env['GOOGLE_PLACES_API_KEY'] ?? '';
+      final config = AppConfig.instance;
+      final apiKey = config.googlePlacesApiKey;
       if (apiKey.isEmpty) {
         DebugLogger.warning('Google Places API key not found — will use OSM fallback');
         _disableGoogleTemporarily();
@@ -202,7 +203,7 @@ class GooglePlacesService extends GetxService {
         DebugLogger.info('Google Places autocomplete key present (length=${apiKey.length})');
       }
 
-      final countryCode = dotenv.env['DEFAULT_COUNTRY'] ?? 'in';
+      final countryCode = config.defaultCountry;
       final queryParams = <String, String>{
         'input': query,
         'components': 'country:$countryCode',
@@ -210,12 +211,9 @@ class GooglePlacesService extends GetxService {
       };
 
       if (currentPosition != null) {
-        final configuredRadius = dotenv.env['PLACES_RADIUS_METERS'] ?? '25000';
-        final strictBoundsEnabled =
-            (dotenv.env['PLACES_STRICT_BOUNDS'] ?? 'false').toLowerCase() == 'true';
         queryParams['location'] = '${currentPosition.latitude},${currentPosition.longitude}';
-        queryParams['radius'] = configuredRadius;
-        if (strictBoundsEnabled) {
+        queryParams['radius'] = config.placesRadiusMeters;
+        if (config.placesStrictBounds) {
           queryParams['strictbounds'] = 'true';
         }
       }
@@ -298,7 +296,7 @@ class GooglePlacesService extends GetxService {
       await _throttleNominatim();
       if (!stillCurrent()) return [];
 
-      final countryCode = (dotenv.env['DEFAULT_COUNTRY'] ?? 'in').toLowerCase();
+      final countryCode = AppConfig.instance.defaultCountry.toLowerCase();
       final url = Uri.https('nominatim.openstreetmap.org', '/search', {
         'q': query,
         'format': 'json',
@@ -441,7 +439,7 @@ class GooglePlacesService extends GetxService {
 
   Future<LocationData?> _getGooglePlaceDetails(String placeId, {String? preferredName}) async {
     try {
-      final apiKey = dotenv.env['GOOGLE_PLACES_API_KEY'] ?? '';
+      final apiKey = AppConfig.instance.googlePlacesApiKey;
       if (apiKey.isEmpty) {
         DebugLogger.warning(
           'Google Places API key not found '

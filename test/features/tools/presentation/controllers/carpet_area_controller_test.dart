@@ -122,5 +122,139 @@ void main() {
       expect(controller.builtUpArea.value, 0);
       expect(controller.usablePercentage.value, 0);
     });
+
+    // ── Negative area validation ──────────────────────────────────────────
+
+    test('calculate() with negative area shows validation error', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = '-500';
+
+      controller.calculate();
+
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.validationError.value, isNotEmpty);
+    });
+
+    // ── Non-numeric input ─────────────────────────────────────────────────
+
+    test('calculate() with non-numeric input shows validation error', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = 'abc';
+
+      controller.calculate();
+
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.validationError.value, isNotEmpty);
+    });
+
+    // ── Empty input ───────────────────────────────────────────────────────
+
+    test('calculate() with empty input shows validation error', () {
+      final controller = createController();
+
+      controller.calculate();
+
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.validationError.value, isNotEmpty);
+    });
+
+    // ── onLoadingChanged does not recalculate when not calculated ─────────
+
+    test('onLoadingChanged does not recalculate when hasCalculated is false', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = '1000';
+
+      controller.onLoadingChanged(50);
+
+      expect(controller.loadingPercentage.value, 50);
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.carpetArea.value, 0);
+    });
+
+    // ── 100% loading ──────────────────────────────────────────────────────
+
+    test('calculate() with 100% loading gives very small carpet area', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = '1000';
+      controller.loadingPercentage.value = 100;
+
+      controller.calculate();
+
+      // builtUp = 1000 / 2 = 500
+      expect(controller.builtUpArea.value, closeTo(500, 0.1));
+      // carpet = 500 * 0.88 = 440
+      expect(controller.carpetArea.value, closeTo(440, 0.1));
+    });
+
+    // ── Decimal input ─────────────────────────────────────────────────────
+
+    test('calculate() with decimal input works correctly', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = '1500.5';
+
+      controller.calculate();
+
+      expect(controller.hasCalculated.value, isTrue);
+      // builtUp = 1500.5 / 1.25 = 1200.4
+      expect(controller.builtUpArea.value, closeTo(1200.4, 0.1));
+    });
+
+    // ── Very large input ──────────────────────────────────────────────────
+
+    test('calculate() with very large input handles correctly', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = '1000000';
+
+      controller.calculate();
+
+      expect(controller.hasCalculated.value, isTrue);
+      expect(controller.builtUpArea.value, closeTo(800000, 1));
+    });
+
+    // ── Very small input ──────────────────────────────────────────────────
+
+    test('calculate() with very small input handles correctly', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = '0.01';
+
+      controller.calculate();
+
+      expect(controller.hasCalculated.value, isTrue);
+      expect(controller.carpetArea.value, greaterThan(0));
+    });
+
+    // ── usablePercentage is always less than 100 ──────────────────────────
+
+    test('calculate() usablePercentage is less than 100 for positive loading', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = '1000';
+      controller.loadingPercentage.value = 25;
+
+      controller.calculate();
+
+      expect(controller.usablePercentage.value, lessThan(100));
+      expect(controller.usablePercentage.value, greaterThan(0));
+    });
+
+    // ── onClose disposes controller ───────────────────────────────────────
+
+    test('onClose disposes TextEditingController without error', () {
+      final controller = createController();
+      controller.onClose();
+    });
+
+    // ── onLoadingChanged recalculates with lower loading ──────────────────
+
+    test('onLoadingChanged to lower value increases carpet area', () {
+      final controller = createController();
+      controller.superBuiltUpController.text = '1000';
+      controller.loadingPercentage.value = 50;
+      controller.calculate();
+      final carpetAt50 = controller.carpetArea.value;
+
+      controller.onLoadingChanged(10);
+      // Lower loading → larger carpet
+      expect(controller.carpetArea.value, greaterThan(carpetAt50));
+    });
   });
 }

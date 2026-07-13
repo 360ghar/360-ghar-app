@@ -129,5 +129,205 @@ void main() {
       expect(controller.inputController.text, isEmpty);
       expect(controller.conversions, isEmpty);
     });
+
+    // ── convert() with sqM input ──────────────────────────────────────────
+
+    test('convert() with sqM input converts correctly to all units', () {
+      final controller = createController();
+      controller.selectedUnit.value = AreaUnit.sqM;
+      controller.inputController.text = '100';
+      controller.convert();
+
+      // 100 sqm * 10.7639 = 1076.39 sqft
+      expect(controller.conversions[AreaUnit.sqFt], closeTo(1076.39, 0.1));
+      // 100 sqm = 100 sqm (identity)
+      expect(controller.conversions[AreaUnit.sqM], closeTo(100, 0.1));
+      // 1076.39 sqft / 9 ≈ 119.6 sq yards
+      expect(controller.conversions[AreaUnit.sqYards], closeTo(119.6, 0.1));
+      expect(controller.conversions[AreaUnit.gaj], closeTo(119.6, 0.1));
+      // 1076.39 sqft / 43560 ≈ 0.0247 acres
+      expect(controller.conversions[AreaUnit.acres], closeTo(0.0247, 0.0001));
+      // 1076.39 sqft / 27000 ≈ 0.03987 bigha
+      expect(controller.conversions[AreaUnit.bigha], closeTo(0.03987, 0.0001));
+    });
+
+    // ── convert() with sqYards input ──────────────────────────────────────
+
+    test('convert() with sqYards input converts correctly to all units', () {
+      final controller = createController();
+      controller.selectedUnit.value = AreaUnit.sqYards;
+      controller.inputController.text = '100';
+      controller.convert();
+
+      // 100 sq yards * 9 = 900 sqft
+      expect(controller.conversions[AreaUnit.sqFt], closeTo(900, 0.1));
+      // 900 sqft / 10.7639 ≈ 83.61 sqm
+      expect(controller.conversions[AreaUnit.sqM], closeTo(83.61, 0.1));
+      // 100 sq yards = 100 sq yards (identity)
+      expect(controller.conversions[AreaUnit.sqYards], closeTo(100, 0.1));
+      expect(controller.conversions[AreaUnit.gaj], closeTo(100, 0.1));
+    });
+
+    // ── convert() with gaj input ──────────────────────────────────────────
+
+    test('convert() with gaj input converts correctly to all units', () {
+      final controller = createController();
+      controller.selectedUnit.value = AreaUnit.gaj;
+      controller.inputController.text = '100';
+      controller.convert();
+
+      // 100 gaj * 9 = 900 sqft (gaj = sq yard)
+      expect(controller.conversions[AreaUnit.sqFt], closeTo(900, 0.1));
+      expect(controller.conversions[AreaUnit.sqYards], closeTo(100, 0.1));
+      expect(controller.conversions[AreaUnit.gaj], closeTo(100, 0.1));
+    });
+
+    // ── convert() with bigha input ────────────────────────────────────────
+
+    test('convert() with bigha input converts correctly to all units', () {
+      final controller = createController();
+      controller.selectedUnit.value = AreaUnit.bigha;
+      controller.inputController.text = '1';
+      controller.convert();
+
+      // 1 bigha * 27000 = 27000 sqft
+      expect(controller.conversions[AreaUnit.sqFt], closeTo(27000, 0.1));
+      // 27000 sqft / 10.7639 ≈ 2508.38 sqm
+      expect(controller.conversions[AreaUnit.sqM], closeTo(2508.38, 0.1));
+      // 27000 sqft / 9 = 3000 sq yards
+      expect(controller.conversions[AreaUnit.sqYards], closeTo(3000, 0.1));
+      expect(controller.conversions[AreaUnit.gaj], closeTo(3000, 0.1));
+      // 27000 sqft / 43560 ≈ 0.6198 acres
+      expect(controller.conversions[AreaUnit.acres], closeTo(0.6198, 0.0001));
+      // 1 bigha = 1 bigha (identity)
+      expect(controller.conversions[AreaUnit.bigha], closeTo(1, 0.0001));
+    });
+
+    // ── convert() with invalid input ──────────────────────────────────────
+
+    test('convert() with non-numeric input clears conversions', () {
+      final controller = createController();
+      controller.inputController.text = 'abc';
+      controller.convert();
+
+      expect(controller.conversions, isEmpty);
+    });
+
+    test('convert() with empty input clears conversions', () {
+      final controller = createController();
+      controller.inputController.text = '';
+      controller.convert();
+
+      expect(controller.conversions, isEmpty);
+    });
+
+    test('convert() with decimal input works correctly', () {
+      final controller = createController();
+      controller.inputController.text = '100.5';
+      controller.convert();
+
+      expect(controller.conversions[AreaUnit.sqFt], closeTo(100.5, 0.1));
+      expect(controller.conversions[AreaUnit.sqM], closeTo(9.337, 0.01));
+    });
+
+    // ── onUnitChanged with null ────────────────────────────────────────────
+
+    test('onUnitChanged with null does not change selectedUnit', () {
+      final controller = createController();
+      controller.inputController.text = '100';
+      controller.convert();
+      final originalUnit = controller.selectedUnit.value;
+
+      controller.onUnitChanged(null);
+
+      expect(controller.selectedUnit.value, originalUnit);
+    });
+
+    // ── onUnitChanged triggers re-conversion with new unit ─────────────────
+
+    test('onUnitChanged to sqM recalculates using sqM as base', () {
+      final controller = createController();
+      controller.inputController.text = '100';
+      controller.convert();
+      // Initially sqFt: 100 sqft
+
+      controller.onUnitChanged(AreaUnit.sqM);
+      // Now 100 sqm * 10.7639 = 1076.39 sqft
+      expect(controller.conversions[AreaUnit.sqFt], closeTo(1076.39, 0.1));
+      expect(controller.conversions[AreaUnit.sqM], closeTo(100, 0.1));
+    });
+
+    // ── onUnitChanged with empty input ─────────────────────────────────────
+
+    test('onUnitChanged with empty input clears conversions', () {
+      final controller = createController();
+      controller.onUnitChanged(AreaUnit.acres);
+
+      expect(controller.selectedUnit.value, AreaUnit.acres);
+      expect(controller.conversions, isEmpty);
+    });
+
+    // ── getUnitLabel ───────────────────────────────────────────────────────
+
+    test('getUnitLabel returns label for each unit', () {
+      final controller = createController();
+
+      // .tr returns the key itself when no translation is registered.
+      for (final unit in AreaUnit.values) {
+        final label = controller.getUnitLabel(unit);
+        expect(label, isNotEmpty);
+      }
+    });
+
+    // ── convert() identity check for each unit ─────────────────────────────
+
+    test('convert() produces identity value for the selected unit', () {
+      for (final unit in AreaUnit.values) {
+        GetxTestBinding.init();
+        final controller = AreaConverterController();
+        controller.onInit();
+        controller.selectedUnit.value = unit;
+        controller.inputController.text = '1';
+        controller.convert();
+
+        expect(
+          controller.conversions[unit],
+          closeTo(1, 0.0001),
+          reason: 'Identity conversion failed for $unit',
+        );
+        controller.onClose();
+        GetxTestBinding.reset();
+      }
+    });
+
+    // ── onClose disposes TextEditingController ─────────────────────────────
+
+    test('onClose disposes inputController without error', () {
+      final controller = createController();
+      // Should not throw.
+      controller.onClose();
+    });
+
+    // ── convert() with very large input ────────────────────────────────────
+
+    test('convert() with very large input handles correctly', () {
+      final controller = createController();
+      controller.inputController.text = '1000000';
+      controller.convert();
+
+      expect(controller.conversions[AreaUnit.sqFt], closeTo(1000000, 1));
+      expect(controller.conversions[AreaUnit.acres], closeTo(22.956, 0.001));
+    });
+
+    // ── convert() with very small input ────────────────────────────────────
+
+    test('convert() with very small decimal input handles correctly', () {
+      final controller = createController();
+      controller.inputController.text = '0.001';
+      controller.convert();
+
+      expect(controller.conversions[AreaUnit.sqFt], closeTo(0.001, 0.0001));
+      expect(controller.conversions, isNotEmpty);
+    });
   });
 }

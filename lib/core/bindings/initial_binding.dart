@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:get/get.dart';
@@ -24,6 +25,7 @@ import 'package:ghar360/features/properties/data/datasources/properties_remote_d
 import 'package:ghar360/features/splash/data/app_update_repository.dart';
 import 'package:ghar360/features/swipes/data/datasources/swipes_remote_datasource.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
+import 'package:ghar360/features/visits/data/visits_repository.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -40,7 +42,7 @@ class InitialBinding extends Bindings {
     Get.put<SseClient>(SseClient(authProvider: Get.find<AuthHeaderProvider>()), permanent: true);
 
     // ── CRITICAL: Auth repository (needed for login) ──
-    Get.put<AuthRepository>(AuthRepository(), permanent: true);
+    Get.put<AuthRepository>(AuthRepository(apiClient: Get.find<ApiClient>()), permanent: true);
 
     // ── CRITICAL: Core controllers only ──
     _initializeCoreControllers();
@@ -54,8 +56,8 @@ class InitialBinding extends Bindings {
   void _initializeCoreControllers() {
     // ── CRITICAL: These must be registered BEFORE AuthController ──
     // AuthController has field initializers that synchronously access these
-    Get.put<ProfileRepository>(ProfileRepository(), permanent: true);
     final apiClient = Get.find<ApiClient>();
+    Get.put<ProfileRepository>(ProfileRepository(apiClient: apiClient), permanent: true);
     Get.put<NotificationsRemoteDatasource>(
       NotificationsRemoteDatasource(apiClient),
       permanent: true,
@@ -91,14 +93,24 @@ class InitialBinding extends Bindings {
     // ── Other repositories ──
     // AppUpdateRepository is registered in _initializeCoreControllers (before AppUpdateController)
     // ProfileRepository is registered in _initializeCoreControllers (before AuthController)
-    Get.put<StaticPageRepository>(StaticPageRepository(), permanent: true);
+    Get.put<StaticPageRepository>(StaticPageRepository(apiClient: apiClient), permanent: true);
+    Get.put<VisitsRepository>(
+      VisitsRepository(remoteDatasource: Get.find<VisitsRemoteDatasource>()),
+      permanent: true,
+    );
 
     // ── Services ──
     // GooglePlacesService is registered in _initializeCoreControllers (before LocationController)
 
-    // ── Offline queue ──
+    // ── Offline queue (after datasources it depends on) ──
     try {
-      Get.put<OfflineQueueService>(OfflineQueueService(), permanent: true).init();
+      Get.put<OfflineQueueService>(
+        OfflineQueueService(
+          swipesRemoteDatasource: Get.find<SwipesRemoteDatasource>(),
+          visitsRemoteDatasource: Get.find<VisitsRemoteDatasource>(),
+        ),
+        permanent: true,
+      ).init();
       DebugLogger.success('✅ OfflineQueueService registered');
     } catch (e) {
       DebugLogger.error('💥 Failed to initialize OfflineQueueService: $e');
@@ -109,8 +121,11 @@ class InitialBinding extends Bindings {
 
     DebugLogger.success('✅ InitialBinding: Deferred services registered');
 
-    // Backend health check (lowest priority - delayed)
-    Future.delayed(const Duration(seconds: 2), _testBackendConnection);
+    // Backend health check only in debug — avoids noisy production probes and
+    // accidental /api/v1 prefix mismatches on bare /health URLs.
+    if (kDebugMode) {
+      Future.delayed(const Duration(seconds: 2), _testBackendConnection);
+    }
   }
 
   void _testBackendConnection() async {
@@ -118,8 +133,9 @@ class InitialBinding extends Bindings {
       if (!Get.isRegistered<ApiClient>()) return;
 
       final apiClient = Get.find<ApiClient>();
+      // Relative path is normalized to /api/v1/health by ApiPaths.
       await apiClient.get(
-        '${apiClient.baseUrl}/health',
+        '/health',
         useCache: false,
         requireAuth: false,
         notifyUnauthorized: false,

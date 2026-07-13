@@ -3,7 +3,6 @@ import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/agent_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
@@ -12,7 +11,7 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
-import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
+import 'package:ghar360/features/visits/data/visits_repository.dart';
 
 class VisitsController extends GetxController {
   static const int _visitPageSize = 25;
@@ -20,7 +19,7 @@ class VisitsController extends GetxController {
   // Resolved lazily on access (not stored in late-final fields) so the
   // controller's lifecycle can never crash with a double-initialization if
   // GetX re-runs onInit() on a cached-but-uninitialized instance.
-  VisitsRemoteDatasource get _visitsRemoteDatasource => Get.find<VisitsRemoteDatasource>();
+  VisitsRepository get _visitsRepository => Get.find<VisitsRepository>();
   AuthController get _authController => Get.find<AuthController>();
 
   final RxList<VisitModel> visits = <VisitModel>[].obs;
@@ -173,10 +172,7 @@ class VisitsController extends GetxController {
       // Fetch the first page only. Subsequent pages are fetched lazily by
       // [loadMoreVisits] (driven by the scroll listener in VisitsView).
       DebugLogger.info('🔄 Fetching visits page (cursor=first, limit=$_visitPageSize)...');
-      final page = await _visitsRemoteDatasource.fetchVisitsSummary(
-        cursor: null,
-        limit: _visitPageSize,
-      );
+      final page = await _visitsRepository.fetchVisitsSummary(cursor: null, limit: _visitPageSize);
       nextCursor.value = page.nextCursor;
       hasMore.value = page.hasMore;
 
@@ -269,7 +265,7 @@ class VisitsController extends GetxController {
       error.value = null;
 
       DebugLogger.info('🔄 Fetching next visits page (cursor=set, limit=$_visitPageSize)...');
-      final page = await _visitsRemoteDatasource.fetchVisitsSummary(
+      final page = await _visitsRepository.fetchVisitsSummary(
         cursor: cursor,
         limit: _visitPageSize,
       );
@@ -378,7 +374,7 @@ class VisitsController extends GetxController {
 
     try {
       isLoadingAgent.value = true;
-      final agentData = await _visitsRemoteDatasource.fetchRelationshipManager();
+      final agentData = await _visitsRepository.fetchRelationshipManager();
 
       // Use updated AgentModel with simplified fields
       relationshipManager.value = AgentModel(
@@ -433,7 +429,7 @@ class VisitsController extends GetxController {
           ? property.title
           : property.title?.toString() ?? 'Property';
 
-      final visitModel = await _visitsRemoteDatasource.scheduleVisit(
+      final visitModel = await _visitsRepository.scheduleVisit(
         propertyId: propertyId,
         scheduledDate: visitDateTime.toUtc().toIso8601String(),
         specialRequirements: notes ?? 'Property visit scheduled through 360ghar app',
@@ -462,22 +458,10 @@ class VisitsController extends GetxController {
       error.value = appException;
       DebugLogger.error('Error booking visit: $e');
 
-      // Enqueue for offline retry if this is a network exception
+      // Repository already enqueued on NetworkException; surface offline UX.
       if (e is NetworkException) {
-        try {
-          final queue = Get.find<OfflineQueueService>();
-          await queue.enqueueVisit(
-            propertyId: property is PropertyModel
-                ? int.tryParse(property.id.toString()) ?? 0
-                : property.id as int,
-            scheduledDate: visitDateTime.toUtc().toIso8601String(),
-            specialRequirements: notes ?? 'Property visit scheduled through 360ghar app',
-          );
-          AppToast.info('queued_offline'.tr, 'queued_offline_message'.tr);
-          return false;
-        } catch (qErr) {
-          DebugLogger.error('Failed to enqueue visit booking: $qErr');
-        }
+        AppToast.info('queued_offline'.tr, 'queued_offline_message'.tr);
+        return false;
       }
 
       AppToast.error(
@@ -517,7 +501,7 @@ class VisitsController extends GetxController {
 
     try {
       if (_authController.isAuthenticated) {
-        final ok = await _visitsRemoteDatasource.cancelVisit(visitIdInt, reason: reason);
+        final ok = await _visitsRepository.cancelVisit(visitIdInt, reason: reason);
         if (!ok) {
           throw Exception('Failed to cancel visit');
         }
@@ -555,7 +539,7 @@ class VisitsController extends GetxController {
 
     try {
       if (_authController.isAuthenticated) {
-        final ok = await _visitsRemoteDatasource.rescheduleVisit(
+        final ok = await _visitsRepository.rescheduleVisit(
           visitIdInt,
           newDate: newDateTime.toUtc().toIso8601String(),
           reason: reason,

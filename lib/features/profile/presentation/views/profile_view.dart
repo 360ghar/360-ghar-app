@@ -22,7 +22,7 @@ class ProfileView extends GetView<ProfileController> with ThemeMixin {
       body: SafeArea(
         top: false,
         child: Semantics(
-          label: 'qa.profile.screen',
+          label: 'profile'.tr,
           identifier: 'qa.profile.screen',
           child: Obx(() {
             final Widget child;

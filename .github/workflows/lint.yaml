@@ -17,7 +17,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.35.2'
+          flutter-version: '3.44.6'
           cache: true
 
       - name: Verify Flutter and Dart versions
@@ -32,11 +32,11 @@ jobs:
             exit 1
           fi
 
-          # Check if Dart version is >= 3.8.0 (matches pubspec.yaml constraint)
-          if [ "$(printf '%s\n' "$dart_version" "3.8.0" | sort -V | head -n1)" = "3.8.0" ]; then
-            echo "✅ Dart version $dart_version is compatible (≥3.8.0)"
+          # Check if Dart version is >= 3.12.0 (matches pubspec.yaml constraint)
+          if [ "$(printf '%s\n' "$dart_version" "3.12.0" | sort -V | head -n1)" = "3.12.0" ]; then
+            echo "✅ Dart version $dart_version is compatible (≥3.12.0)"
           else
-            echo "❌ Dart version $dart_version is incompatible (<3.8.0)"
+            echo "❌ Dart version $dart_version is incompatible (<3.12.0)"
             exit 1
           fi
 
@@ -51,6 +51,43 @@ jobs:
 
       - name: Run tests
         run: flutter test --machine --coverage
+
+      - name: Run integration-style critical flow tests
+        run: flutter test test/integration/
+
+      - name: Enforce coverage threshold
+        env:
+          # Hard gate: overall line coverage must stay at or above this percent.
+          # Raise gradually as suite depth improves; do not lower without review.
+          # Ratcheted after coverage push (local suite measured ~90%).
+          # Keep a buffer below 90 so CI hardware noise does not flake merges.
+          MIN_LINE_PCT: "85"
+        run: |
+          set -euo pipefail
+          if [ ! -f coverage/lcov.info ]; then
+            echo "coverage/lcov.info missing after flutter test --coverage" >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import os, sys
+          min_pct = float(os.environ.get("MIN_LINE_PCT", "45"))
+          lf = lh = 0
+          with open("coverage/lcov.info", encoding="utf-8", errors="replace") as f:
+              for line in f:
+                  if line.startswith("LF:"):
+                      lf += int(line.split(":", 1)[1])
+                  elif line.startswith("LH:"):
+                      lh += int(line.split(":", 1)[1])
+          if lf == 0:
+              print("No line coverage data found in lcov.info", file=sys.stderr)
+              sys.exit(1)
+          pct = 100.0 * lh / lf
+          print(f"Line coverage: {pct:.2f}% ({lh}/{lf}) — threshold {min_pct:.0f}%")
+          if pct + 1e-9 < min_pct:
+              print(f"FAIL: coverage {pct:.2f}% is below {min_pct:.0f}%", file=sys.stderr)
+              sys.exit(1)
+          print("Coverage threshold met.")
+          PY
 
       - name: Upload coverage to Codecov
         if: github.event_name == 'push' && secrets.CODECOV_TOKEN != ''

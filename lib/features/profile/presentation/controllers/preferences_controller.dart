@@ -32,10 +32,9 @@ class PreferencesController extends GetxController {
   }
 
   void updateTheme(AppThemeMode mode) {
+    // ThemeController owns persistence (canonical string enum name).
     _themeController.setThemeMode(mode);
     themeMode.value = mode;
-    // Persist immediately so the choice survives without tapping Save
-    _storage.write('themeMode', mode.index);
   }
 
   void updateThemeFromBoolean(bool isDark) {

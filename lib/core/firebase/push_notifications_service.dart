@@ -57,7 +57,7 @@ class PushNotificationsService {
     const settings = InitializationSettings(android: android, iOS: ios);
 
     await _fln.initialize(
-      settings,
+      settings: settings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
       onDidReceiveBackgroundNotificationResponse: _onBackgroundNotificationTapped,
     );
@@ -400,10 +400,10 @@ class PushNotificationsService {
 
     final id = (DateTime.now().millisecondsSinceEpoch & 0x7fffffff);
     await _fln.show(
-      id,
-      notification.title,
-      notification.body,
-      details,
+      id: id,
+      title: notification.title,
+      body: notification.body,
+      notificationDetails: details,
       payload: data.isEmpty ? null : jsonEncode(data),
     );
     DebugLogger.info('🔔 Local notification displayed: ${notification.title}');

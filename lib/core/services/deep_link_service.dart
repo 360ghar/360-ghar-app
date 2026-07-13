@@ -41,11 +41,7 @@ class DeepLinkService extends GetxService {
     }
 
     _sub = _appLinks.uriLinkStream.listen(
-      (Uri? uri) {
-        if (uri != null) {
-          _handleDeepLink(uri);
-        }
-      },
+      _handleDeepLink,
       onError: (Object err) {
         DebugLogger.error('Deep link stream error: $err');
       },
@@ -102,7 +98,19 @@ class DeepLinkService extends GetxService {
   void _navigateToProperty(String propertyId) {
     // Small delay to ensure UI is ready/transition has settled if coming from cold start
     Future.delayed(const Duration(milliseconds: 500), () {
-      Get.toNamed(AppRoutes.propertyDetails, arguments: propertyId);
+      // Shared property URLs are deliberately public routes. Navigating to the
+      // authenticated details route here caused a cold-start link for a signed
+      // out user to be redirected to phone entry, even though
+      // `propertyDeepLink` is explicitly available without AuthMiddleware.
+      Get.toNamed(propertyDeepLinkPath(propertyId));
     });
   }
+
+  @visibleForTesting
+  static String propertyDeepLinkPath(String propertyId) =>
+      AppRoutes.propertyDeepLink.replaceFirst(':id', propertyId);
+
+  /// Test-only entry point for URI routing without app_links streams.
+  @visibleForTesting
+  void handleDeepLinkForTest(Uri uri) => _handleDeepLink(uri);
 }

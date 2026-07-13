@@ -229,10 +229,11 @@ void main() {
         expect(controller.errorMessage.value, isNotEmpty);
       });
 
-      test('rejects password shorter than 6 characters', () async {
+      test('rejects password shorter than minimum length', () async {
         final controller = createController();
-        controller.newPasswordController.text = 'abc';
-        controller.confirmPasswordController.text = 'abc';
+        // 7 chars — below shared PasswordValidators.minLength (8).
+        controller.newPasswordController.text = 'abcdefg';
+        controller.confirmPasswordController.text = 'abcdefg';
 
         await controller.updatePassword();
 
@@ -335,6 +336,150 @@ void main() {
 
         verifyNever(() => authRepository.sendEmailOtp(any()));
         verifyNever(() => authRepository.sendPhoneOtp(any()));
+      });
+
+      test('resends email OTP when canResendOtp is true for email identifier', () async {
+        final controller = createController();
+        controller.identifierController.text = 'user@example.com';
+        controller.looksLikeEmail.value = true;
+
+        when(() => authRepository.sendEmailOtp('user@example.com')).thenAnswer((_) async {});
+        controller.canResendOtp.value = true;
+
+        await controller.resendOtp();
+
+        verify(() => authRepository.sendEmailOtp('user@example.com')).called(1);
+        expect(controller.isLoading.value, isFalse);
+      });
+
+      test('resends phone OTP when canResendOtp is true for phone identifier', () async {
+        final controller = createController();
+        controller.identifierController.text = '9876543210';
+        controller.looksLikeEmail.value = false;
+
+        // IdentifierUtils.normalize('9876543210') → '+919876543210'
+        when(() => authRepository.sendPhoneOtp('+919876543210')).thenAnswer((_) async {});
+        controller.canResendOtp.value = true;
+
+        await controller.resendOtp();
+
+        verify(() => authRepository.sendPhoneOtp('+919876543210')).called(1);
+        expect(controller.isLoading.value, isFalse);
+      });
+
+      test('handles resend error without crashing', () async {
+        final controller = createController();
+        controller.identifierController.text = 'user@example.com';
+        controller.looksLikeEmail.value = true;
+
+        when(
+          () => authRepository.sendEmailOtp(any()),
+        ).thenThrow(const AuthException('Rate limit exceeded'));
+        controller.canResendOtp.value = true;
+
+        await controller.resendOtp();
+
+        expect(controller.isLoading.value, isFalse);
+      });
+    });
+
+    group('maskedIdentifier', () {
+      test('masks email identifier', () {
+        final controller = createController();
+        controller.identifierController.text = 'john@gmail.com';
+
+        expect(controller.maskedIdentifier, 'j***@gmail.com');
+      });
+
+      test('masks phone identifier keeping last 4 digits', () {
+        final controller = createController();
+        controller.identifierController.text = '9876543210';
+
+        expect(controller.maskedIdentifier, '+91 ******3210');
+      });
+
+      test('returns empty for empty identifier', () {
+        final controller = createController();
+
+        expect(controller.maskedIdentifier, isEmpty);
+      });
+    });
+
+    group('looksLikeEmail listener', () {
+      test('updates to true when identifier text contains @', () {
+        final controller = createController();
+
+        expect(controller.looksLikeEmail.value, isFalse);
+
+        controller.identifierController.text = 'user@example.com';
+
+        expect(controller.looksLikeEmail.value, isTrue);
+      });
+
+      test('updates to false when identifier text is a phone', () {
+        final controller = createController();
+        controller.identifierController.text = 'user@example.com';
+
+        expect(controller.looksLikeEmail.value, isTrue);
+
+        controller.identifierController.text = '9876543210';
+
+        expect(controller.looksLikeEmail.value, isFalse);
+      });
+    });
+
+    group('validateIdentifier additional cases', () {
+      test('trims whitespace before validating email', () {
+        final controller = createController();
+
+        expect(controller.validateIdentifier('  user@example.com  '), isNull);
+      });
+
+      test('trims whitespace before validating phone', () {
+        final controller = createController();
+
+        expect(controller.validateIdentifier('  9876543210  '), isNull);
+      });
+
+      test('accepts +91 formatted phone', () {
+        final controller = createController();
+
+        expect(controller.validateIdentifier('+919876543210'), isNull);
+      });
+
+      test('returns error for identifier with only spaces', () {
+        final controller = createController();
+
+        expect(controller.validateIdentifier('     '), isNotNull);
+      });
+    });
+
+    group('goBackToStep additional cases', () {
+      test('clears errorMessage when navigating back', () {
+        final controller = createController();
+        controller.currentStep.value = 2;
+        controller.errorMessage.value = 'some error';
+
+        controller.goBackToStep(0);
+
+        expect(controller.errorMessage.value, isEmpty);
+      });
+
+      test('does not navigate to negative step', () {
+        final controller = createController();
+        controller.currentStep.value = 1;
+
+        controller.goBackToStep(-1);
+
+        expect(controller.currentStep.value, 1);
+      });
+    });
+
+    group('onClose', () {
+      test('disposes controllers without throwing', () {
+        final controller = createController();
+
+        expect(controller.onClose, returnsNormally);
       });
     });
   });

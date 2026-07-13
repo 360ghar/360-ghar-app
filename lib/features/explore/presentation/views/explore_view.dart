@@ -127,12 +127,36 @@ class ExploreView extends GetView<ExploreController> {
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    return ErrorStates.emptyState(
-      title: 'no_properties_found'.tr,
-      message: 'no_properties_found_area_message'.tr,
-      icon: Icons.location_off,
-      onAction: () => showPropertyFilterBottomSheet(Get.context ?? context, pageType: 'explore'),
-      actionText: 'adjust_filters'.tr,
+    // Keep the map interactive so users can pan/zoom while expanding search;
+    // show an empty-state card that only captures its own taps.
+    return Stack(
+      children: [
+        _buildMapInterface(context),
+        SafeArea(
+          child: Align(
+            alignment: Alignment.center,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: Material(
+                color: AppDesign.surface.withValues(alpha: 0.96),
+                elevation: 6,
+                borderRadius: BorderRadius.circular(AppBorderRadius.lg),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                  child: ErrorStates.emptyState(
+                    title: 'no_properties_found'.tr,
+                    message: 'no_properties_found_area_message'.tr,
+                    icon: Icons.location_off,
+                    onAction: () =>
+                        showPropertyFilterBottomSheet(Get.context ?? context, pageType: 'explore'),
+                    actionText: 'adjust_filters'.tr,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -162,22 +186,21 @@ class ExploreView extends GetView<ExploreController> {
             child: ExploreMap(controller: controller),
           ),
         ),
-        // Map controls
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 10,
-          right: 16,
-          child: _buildMapControls(context),
-        ),
+        // Map controls (body is already below AppBar — do not re-add status-bar inset)
+        Positioned(top: AppSpacing.sm + 4, right: AppSpacing.md, child: _buildMapControls(context)),
         // Info panel
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 10,
-          left: 16,
-          child: _buildInfoPanel(context),
-        ),
+        Positioned(top: AppSpacing.sm + 4, left: AppSpacing.md, child: _buildInfoPanel(context)),
         // Loading indicator for more properties (position reacts to collapse)
         if (controller.state.value == ExploreState.loadingMore)
           Obx(() {
             final indicatorBottom = controller.isListCollapsed.value ? 58.0 : 230.0;
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final chipBg = (isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream)
+                .withValues(alpha: 0.95);
+            final chipBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
+            final chipText = isDark
+                ? AppDesignTokens.darkTextSecondary
+                : AppDesignTokens.neutral500;
             return Positioned(
               bottom: indicatorBottom,
               left: 16,
@@ -185,13 +208,9 @@ class ExploreView extends GetView<ExploreController> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color:
-                      (Theme.of(context).brightness == Brightness.dark
-                              ? AppDesignTokens.darkSurfaceAlt
-                              : AppDesignTokens.warmCream)
-                          .withValues(alpha: 0.95),
+                  color: chipBg,
                   borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-                  border: Border.all(color: AppDesignTokens.neutral300, width: 1),
+                  border: Border.all(color: chipBorder, width: 1),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -207,7 +226,7 @@ class ExploreView extends GetView<ExploreController> {
                     const SizedBox(width: 8),
                     Text(
                       'loading_more_properties'.tr,
-                      style: const TextStyle(fontSize: 12, color: AppDesignTokens.neutral500),
+                      style: TextStyle(fontSize: 12, color: chipText),
                     ),
                   ],
                 ),
@@ -438,12 +457,14 @@ class ExploreView extends GetView<ExploreController> {
     final chipBg = (isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream).withValues(
       alpha: 0.95,
     );
+    final chipBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
+    final chipText = isDark ? AppDesignTokens.darkTextSecondary : AppDesignTokens.neutral500;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: chipBg,
         borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-        border: Border.all(color: AppDesignTokens.neutral300, width: 1),
+        border: Border.all(color: chipBorder, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -457,10 +478,7 @@ class ExploreView extends GetView<ExploreController> {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            'loading_more_properties'.tr,
-            style: const TextStyle(fontSize: 12, color: AppDesignTokens.neutral500),
-          ),
+          Text('loading_more_properties'.tr, style: TextStyle(fontSize: 12, color: chipText)),
         ],
       ),
     );
@@ -471,6 +489,7 @@ class ExploreView extends GetView<ExploreController> {
     final controlBg = isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream;
     final controlBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
     final iconTint = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
+    const target = BoxConstraints(minHeight: 44, minWidth: 44);
 
     return Column(
       children: [
@@ -485,16 +504,16 @@ class ExploreView extends GetView<ExploreController> {
             children: [
               IconButton(
                 icon: Icon(Icons.add, color: iconTint),
+                tooltip: 'zoom_in'.tr,
                 onPressed: controller.zoomIn,
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                constraints: target,
               ),
               Container(width: 24, height: 1, color: controlBorder),
               IconButton(
                 icon: Icon(Icons.remove, color: iconTint),
+                tooltip: 'zoom_out'.tr,
                 onPressed: controller.zoomOut,
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                constraints: target,
               ),
             ],
           ),
@@ -511,9 +530,9 @@ class ExploreView extends GetView<ExploreController> {
           ),
           child: IconButton(
             icon: const Icon(Icons.my_location, color: AppDesign.primaryYellow),
+            tooltip: 'my_location'.tr,
             onPressed: controller.recenterToCurrentLocation,
-            visualDensity: VisualDensity.compact,
-            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+            constraints: target,
           ),
         ),
 
@@ -528,9 +547,9 @@ class ExploreView extends GetView<ExploreController> {
           ),
           child: IconButton(
             icon: Icon(Icons.center_focus_strong, color: iconTint),
+            tooltip: 'fit_map_to_properties'.tr,
             onPressed: controller.fitBoundsToProperties,
-            visualDensity: VisualDensity.compact,
-            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+            constraints: target,
           ),
         ),
       ],
@@ -543,34 +562,45 @@ class ExploreView extends GetView<ExploreController> {
     final panelBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
     final textPrimary = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
     final textSecondary = isDark ? AppDesignTokens.darkTextSecondary : AppDesignTokens.neutral500;
+    final maxPanelWidth = MediaQuery.sizeOf(context).width * 0.55;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: panelBg.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(AppBorderRadius.md),
-        border: Border.all(color: panelBorder, width: 1),
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxPanelWidth),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: panelBg.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(AppBorderRadius.md),
+          border: Border.all(color: panelBorder, width: 1),
+        ),
+        child: Obx(() {
+          final count = controller.properties.length;
+          final currentAreaText = controller.currentAreaText;
+
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$count',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textPrimary),
+              ),
+              Text(
+                ' ${count == 1 ? 'property'.tr : 'properties'.tr}',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: textSecondary),
+              ),
+              Text('bullet_separator'.tr, style: TextStyle(fontSize: 11, color: textSecondary)),
+              Flexible(
+                child: Text(
+                  currentAreaText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: textSecondary),
+                ),
+              ),
+            ],
+          );
+        }),
       ),
-      child: Obx(() {
-        final count = controller.properties.length;
-        final currentAreaText = controller.currentAreaText;
-
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$count',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textPrimary),
-            ),
-            Text(
-              ' ${count == 1 ? 'property'.tr : 'properties'.tr}',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: textSecondary),
-            ),
-            Text('bullet_separator'.tr, style: TextStyle(fontSize: 11, color: textSecondary)),
-            Text(currentAreaText, style: TextStyle(fontSize: 11, color: textSecondary)),
-          ],
-        );
-      }),
     );
   }
 

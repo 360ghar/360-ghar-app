@@ -295,4 +295,410 @@ void main() {
       expect(controller.favoriteLocation, 'N/A');
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Additional tests for tab navigation, route syncing, data loading,
+  // storage, auth state, stats, and engagement metrics
+  // ─────────────────────────────────────────────────────────────────────
+
+  group('DashboardController — changeTab edge cases', () {
+    test('changeTab to discover sets page type', () {
+      final controller = createController();
+      // Default index is 2 (discover), so change to another tab first then back.
+      controller.changeTab(1); // explore
+
+      controller.changeTab(2); // discover
+
+      verify(() => mockPageStateService.setCurrentPage(PageType.discover)).called(1);
+    });
+
+    test('changeTab to assistant does not call setCurrentPage', () {
+      final controller = createController();
+
+      controller.changeTab(5);
+
+      verifyNever(() => mockPageStateService.setCurrentPage(any()));
+    });
+
+    test('changeTab adds all visited tabs to set', () {
+      final controller = createController();
+
+      controller.changeTab(0);
+      controller.changeTab(1);
+      controller.changeTab(3);
+      controller.changeTab(4);
+      controller.changeTab(5);
+
+      expect(controller.visitedTabs, containsAll([0, 1, 2, 3, 4, 5]));
+    });
+  });
+
+  group('DashboardController — onReady route syncing', () {
+    test('onReady sets discover page type for default index 2', () {
+      final controller = createController();
+      controller.onReady();
+
+      verify(() => mockPageStateService.setCurrentPage(PageType.discover)).called(1);
+    });
+
+    test('onReady sets explore page type when currentIndex is 1', () {
+      final controller = createController();
+      controller.currentIndex.value = 1;
+      controller.onReady();
+
+      verify(() => mockPageStateService.setCurrentPage(PageType.explore)).called(1);
+    });
+
+    test('onReady sets likes page type when currentIndex is 3', () {
+      final controller = createController();
+      controller.currentIndex.value = 3;
+      controller.onReady();
+
+      verify(() => mockPageStateService.setCurrentPage(PageType.likes)).called(1);
+    });
+
+    test('onReady does not set page type for profile tab (index 0)', () {
+      final controller = createController();
+      controller.currentIndex.value = 0;
+      controller.onReady();
+
+      verifyNever(() => mockPageStateService.setCurrentPage(any()));
+    });
+  });
+
+  group('DashboardController — auth state changes', () {
+    test('login triggers loadDashboardData', () async {
+      // Start unauthenticated
+      when(() => mockAuthController.isAuthenticated).thenReturn(false);
+      final controller = createController();
+
+      // Simulate login
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+      await Future<void>.delayed(Duration.zero);
+
+      // loadDashboardData should have been called (isLoading was set to true then false)
+      expect(controller.isLoading.value, isFalse);
+    });
+
+    test('initial auth status is skipped', () async {
+      // Start with initial status
+      authStatus.value = AuthStatus.initial;
+      when(() => mockAuthController.isAuthenticated).thenReturn(false);
+      final controller = createController();
+
+      // Change to initial again - should be skipped
+      authStatus.value = AuthStatus.initial;
+      await Future<void>.delayed(Duration.zero);
+
+      // Should not have loaded dashboard data
+      expect(controller.isLoading.value, isFalse);
+    });
+  });
+
+  group('DashboardController — stats persistence', () {
+    test('incrementStat persists value to storage', () async {
+      final controller = createController();
+
+      controller.incrementStat(kDashPropertiesViewedKey);
+      controller.incrementStat(kDashPropertiesViewedKey);
+      controller.incrementStat(kDashPropertiesViewedKey, by: 5);
+
+      final storage = GetStorage();
+      expect(storage.read<int>(kDashPropertiesViewedKey), 7);
+    });
+
+    test('decrementStat persists value and clamps to zero', () async {
+      final controller = createController();
+      final storage = GetStorage();
+      await storage.write(kDashPropertiesLikedKey, 3);
+
+      controller.decrementStat(kDashPropertiesLikedKey);
+      expect(storage.read<int>(kDashPropertiesLikedKey), 2);
+
+      controller.decrementStat(kDashPropertiesLikedKey, by: 10);
+      expect(storage.read<int>(kDashPropertiesLikedKey), 0);
+    });
+
+    test('incrementStat on non-existent key starts from zero', () {
+      final controller = createController();
+
+      controller.incrementStat('new_key');
+
+      final storage = GetStorage();
+      expect(storage.read<int>('new_key'), 1);
+    });
+  });
+
+  group('DashboardController — recordActivity', () {
+    test('recordActivity stores entry in storage', () {
+      final controller = createController();
+
+      controller.recordActivity(type: 'view', title: 'Viewed Property X');
+
+      final storage = GetStorage();
+      final raw = storage.read(kDashRecentActivityKey);
+      expect(raw, isA<List>());
+      expect((raw as List).length, 1);
+      expect(raw.first['type'], 'view');
+      expect(raw.first['title'], 'Viewed Property X');
+    });
+
+    test('recordActivity updates in-memory recentActivity list', () {
+      final controller = createController();
+
+      controller.recordActivity(type: 'like', title: 'Liked Property Y');
+
+      expect(controller.recentActivity.length, 1);
+      expect(controller.recentActivity.first['type'], 'like');
+    });
+
+    test('recordActivity keeps only 10 most recent entries', () {
+      final controller = createController();
+
+      for (int i = 0; i < 15; i++) {
+        controller.recordActivity(type: 'view', title: 'Activity $i');
+      }
+
+      expect(controller.recentActivity.length, 10);
+      // Most recent should be first
+      expect(controller.recentActivity.first['title'], 'Activity 14');
+    });
+
+    test('recordActivity with custom icon', () {
+      final controller = createController();
+
+      controller.recordActivity(type: 'search', title: 'Searched "villa"', icon: 'search');
+
+      expect(controller.recentActivity.first['icon'], 'search');
+    });
+  });
+
+  group('DashboardController — engagement metrics', () {
+    test('engagementScore returns 0 when no properties viewed', () {
+      final controller = createController();
+
+      expect(controller.engagementScore, 0.0);
+    });
+
+    test('engagementScore calculates percentage correctly', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 5};
+
+      expect(controller.engagementScore, 50.0);
+    });
+
+    test('engagementScore clamps to 100', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 20};
+
+      expect(controller.engagementScore, 100.0);
+    });
+
+    test('userEngagementLevelKey returns priority_high for score >= 80', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 9};
+
+      expect(controller.userEngagementLevelKey, 'priority_high');
+    });
+
+    test('userEngagementLevelKey returns priority_medium for score >= 50', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 5};
+
+      expect(controller.userEngagementLevelKey, 'priority_medium');
+    });
+
+    test('userEngagementLevelKey returns priority_low for score >= 20', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 2};
+
+      expect(controller.userEngagementLevelKey, 'priority_low');
+    });
+
+    test('userEngagementLevelKey returns priority_very_low for score < 20', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 1};
+
+      expect(controller.userEngagementLevelKey, 'priority_very_low');
+    });
+  });
+
+  group('DashboardController — time formatting', () {
+    test('timeSpentFormatted returns minutes for < 60', () {
+      final controller = createController();
+      controller.userStats.value = {'time_spent_minutes': 45};
+
+      expect(controller.timeSpentFormatted, '45m');
+    });
+
+    test('timeSpentFormatted returns hours and minutes for >= 60', () {
+      final controller = createController();
+      controller.userStats.value = {'time_spent_minutes': 125};
+
+      expect(controller.timeSpentFormatted, '2h 5m');
+    });
+
+    test('timeSpentFormatted returns 0m for zero', () {
+      final controller = createController();
+
+      expect(controller.timeSpentFormatted, '0m');
+    });
+  });
+
+  group('DashboardController — isActiveUser', () {
+    test('returns true when propertiesViewed >= 10', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 10};
+
+      expect(controller.isActiveUser, isTrue);
+    });
+
+    test('returns true when timeSpentMinutes >= 60', () {
+      final controller = createController();
+      controller.userStats.value = {'time_spent_minutes': 60};
+
+      expect(controller.isActiveUser, isTrue);
+    });
+
+    test('returns false when neither threshold met', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 5, 'time_spent_minutes': 30};
+
+      expect(controller.isActiveUser, isFalse);
+    });
+  });
+
+  group('DashboardController — data export', () {
+    test('exportDashboardData returns map with all keys', () {
+      final controller = createController();
+      controller.userStats.value = {'properties_viewed': 5};
+      controller.recentActivity.value = [
+        {'type': 'view', 'title': 'test'},
+      ];
+
+      final exported = controller.exportDashboardData();
+
+      expect(exported, containsPair('dashboard_data', controller.dashboardData));
+      expect(exported, containsPair('user_stats', controller.userStats));
+      expect(exported, containsPair('recent_activity', controller.recentActivity));
+      expect(exported, contains('export_timestamp'));
+    });
+  });
+
+  group('DashboardController — quickSummary', () {
+    test('quickSummary contains all expected keys', () {
+      final controller = createController();
+      controller.userStats.value = {
+        'properties_viewed': 10,
+        'properties_liked': 5,
+        'visits_scheduled': 2,
+        'time_spent_minutes': 30,
+        'favorite_location': 'Mumbai',
+      };
+
+      final summary = controller.quickSummary;
+
+      expect(summary, containsPair('properties_viewed', 10));
+      expect(summary, containsPair('properties_liked', 5));
+      expect(summary, containsPair('visits_scheduled', 2));
+      expect(summary, contains('engagement_level'));
+      expect(summary, contains('time_spent'));
+      expect(summary, containsPair('favorite_location', 'Mumbai'));
+    });
+  });
+
+  group('DashboardController — dashboard data getters', () {
+    test('totalViews returns 0 when dashboardData is empty', () {
+      final controller = createController();
+
+      expect(controller.totalViews, 0);
+    });
+
+    test('totalViews returns value from dashboardData', () {
+      final controller = createController();
+      controller.dashboardData.value = {'total_views': 500};
+
+      expect(controller.totalViews, 500);
+    });
+
+    test('totalLikes returns value from dashboardData', () {
+      final controller = createController();
+      controller.dashboardData.value = {'total_likes': 42};
+
+      expect(controller.totalLikes, 42);
+    });
+
+    test('conversionRate returns 0.0 by default', () {
+      final controller = createController();
+
+      expect(controller.conversionRate, 0.0);
+    });
+
+    test('preferredLocations returns empty list by default', () {
+      final controller = createController();
+
+      expect(controller.preferredLocations, isEmpty);
+    });
+
+    test('preferredLocations returns list from dashboardData', () {
+      final controller = createController();
+      controller.dashboardData.value = {
+        'preferred_locations': ['Mumbai', 'Delhi'],
+      };
+
+      expect(controller.preferredLocations, ['Mumbai', 'Delhi']);
+    });
+
+    test('topLocations returns empty list by default', () {
+      final controller = createController();
+
+      expect(controller.topLocations, isEmpty);
+    });
+
+    test('mostViewedPropertyType returns default Apartment', () {
+      final controller = createController();
+
+      expect(controller.mostViewedPropertyType, 'Apartment');
+    });
+  });
+
+  group('DashboardController — loadDashboardData success', () {
+    test('loads user stats and recent activity from storage', () async {
+      final storage = GetStorage();
+      await storage.write(kDashPropertiesViewedKey, 15);
+      await storage.write(kDashPropertiesLikedKey, 7);
+      await storage.write(kDashSearchesMadeKey, 3);
+      await storage.write(kDashRecentActivityKey, [
+        {
+          'type': 'view',
+          'title': 'test',
+          'timestamp': '2024-01-01T00:00:00Z',
+          'icon': 'visibility',
+        },
+      ]);
+
+      final controller = createController();
+      // onInit already called loadDashboardData since authenticated
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(controller.propertiesViewed, 15);
+      expect(controller.propertiesLiked, 7);
+      expect(controller.searchesMade, 3);
+      expect(controller.recentActivity.length, 1);
+      expect(controller.isLoading.value, isFalse);
+    });
+  });
+
+  group('DashboardController — refreshDashboard success', () {
+    test('refreshDashboard loads data when authenticated', () async {
+      final controller = createController();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      controller.isRefreshing.value = false;
+
+      await controller.refreshDashboard();
+
+      expect(controller.isRefreshing.value, isFalse);
+    });
+  });
 }

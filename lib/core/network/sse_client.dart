@@ -2,8 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/network/auth_header_provider.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
@@ -27,10 +26,10 @@ class SseClient {
   final AuthHeaderProvider _authProvider;
   final String _baseUrl;
 
-  SseClient({required AuthHeaderProvider authProvider, String? baseUrl})
-    : _authProvider = authProvider,
-      _baseUrl = _normalizeBaseUrl(
-        baseUrl ?? dotenv.get('API_BASE_URL', fallback: 'http://localhost:3600'),
+  SseClient({required this._authProvider, String? baseUrl})
+    : _baseUrl = _normalizeBaseUrl(
+        baseUrl ??
+            (AppConfig.isInitialized ? AppConfig.instance.apiBaseUrl : 'https://api.360ghar.com'),
       );
 
   /// Strip trailing `/api/v1` so [ApiPaths.normalize] can re-add it.

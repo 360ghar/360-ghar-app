@@ -27,24 +27,41 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: "3.35.2"
+          flutter-version: '3.44.6'
           cache: true
 
-      - name: Create environment files
+      - name: Create dart-define config
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
         run: |
-          cat > .env.development << ENV
-          API_BASE_URL=${{ secrets.API_BASE_URL }}
-          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}
-          ENV
-
-          cat > .env.production << ENV
-          API_BASE_URL=${{ secrets.API_BASE_URL }}
-          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}
-          ENV
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          def env(key, default=""):
+              v = os.environ.get(key)
+              return default if v is None or v == "" else v
+          payload = {
+              "API_BASE_URL": env("API_BASE_URL", "https://api.360ghar.com"),
+              "SUPABASE_URL": env("SUPABASE_URL"),
+              "SUPABASE_PUBLISHABLE_KEY": env("SUPABASE_PUBLISHABLE_KEY"),
+              "GOOGLE_PLACES_API_KEY": env("GOOGLE_PLACES_API_KEY"),
+              "GOOGLE_WEB_CLIENT_ID": env("GOOGLE_WEB_CLIENT_ID"),
+              "GOOGLE_IOS_CLIENT_ID": env("GOOGLE_IOS_CLIENT_ID"),
+              "DEBUG_MODE": "true",
+              "LOG_API_CALLS": "false",
+              "FIREBASE_ANALYTICS": "false",
+              "FIREBASE_PERFORMANCE": "false",
+              "FIREBASE_IAM": "false",
+          }
+          with open("dart_defines.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f)
+          print("dart_defines.json written (values not printed)")
+          PY
 
       - name: Get Flutter dependencies
         run: flutter pub get
@@ -103,24 +120,41 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: "3.35.2"
+          flutter-version: '3.44.6'
           cache: true
 
-      - name: Create environment files
+      - name: Create dart-define config
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
         run: |
-          cat > .env.development << ENV
-          API_BASE_URL=${{ secrets.API_BASE_URL }}
-          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}
-          ENV
-
-          cat > .env.production << ENV
-          API_BASE_URL=${{ secrets.API_BASE_URL }}
-          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}
-          ENV
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          def env(key, default=""):
+              v = os.environ.get(key)
+              return default if v is None or v == "" else v
+          payload = {
+              "API_BASE_URL": env("API_BASE_URL", "https://api.360ghar.com"),
+              "SUPABASE_URL": env("SUPABASE_URL"),
+              "SUPABASE_PUBLISHABLE_KEY": env("SUPABASE_PUBLISHABLE_KEY"),
+              "GOOGLE_PLACES_API_KEY": env("GOOGLE_PLACES_API_KEY"),
+              "GOOGLE_WEB_CLIENT_ID": env("GOOGLE_WEB_CLIENT_ID"),
+              "GOOGLE_IOS_CLIENT_ID": env("GOOGLE_IOS_CLIENT_ID"),
+              "DEBUG_MODE": "true",
+              "LOG_API_CALLS": "false",
+              "FIREBASE_ANALYTICS": "false",
+              "FIREBASE_PERFORMANCE": "false",
+              "FIREBASE_IAM": "false",
+          }
+          with open("dart_defines.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f)
+          print("dart_defines.json written (values not printed)")
+          PY
 
       - name: Get Flutter dependencies
         run: flutter pub get

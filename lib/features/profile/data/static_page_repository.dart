@@ -7,7 +7,9 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
 class StaticPageRepository extends GetxService {
-  final ApiClient _apiClient = Get.find<ApiClient>();
+  StaticPageRepository({ApiClient? apiClient}) : _apiClient = apiClient ?? Get.find<ApiClient>();
+
+  final ApiClient _apiClient;
 
   Future<StaticPageModel> fetchPublicPage(String uniqueName) async {
     try {

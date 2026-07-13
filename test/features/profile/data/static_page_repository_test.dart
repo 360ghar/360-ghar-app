@@ -116,5 +116,92 @@ void main() {
 
       expect(() => repository.fetchPublicPage('about-us'), throwsA(isA<ServerException>()));
     });
+
+    test('rethrows NetworkException on network error', () async {
+      when(
+        () => apiClient.get(
+          ApiPaths.staticPagePublic('about-us'),
+          useCache: any(named: 'useCache'),
+          requireAuth: any(named: 'requireAuth'),
+          notifyUnauthorized: any(named: 'notifyUnauthorized'),
+        ),
+      ).thenThrow(NetworkException('Offline'));
+
+      expect(() => repository.fetchPublicPage('about-us'), throwsA(isA<NetworkException>()));
+    });
+
+    test('throws FormatException when body is not a Map', () async {
+      when(
+        () => apiClient.get(
+          ApiPaths.staticPagePublic('about-us'),
+          useCache: any(named: 'useCache'),
+          requireAuth: any(named: 'requireAuth'),
+          notifyUnauthorized: any(named: 'notifyUnauthorized'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(statusCode: 200, body: <dynamic>['not', 'a', 'map'], headers: {}),
+      );
+
+      expect(() => repository.fetchPublicPage('about-us'), throwsA(isA<FormatException>()));
+    });
+
+    test('uses name field as title when title is absent', () async {
+      when(
+        () => apiClient.get(
+          ApiPaths.staticPagePublic('contact'),
+          useCache: any(named: 'useCache'),
+          requireAuth: any(named: 'requireAuth'),
+          notifyUnauthorized: any(named: 'notifyUnauthorized'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(
+          statusCode: 200,
+          body: {'name': 'Contact Page', 'content': 'Reach us'},
+          headers: {},
+        ),
+      );
+
+      final page = await repository.fetchPublicPage('contact');
+      expect(page.title, 'Contact Page');
+      expect(page.content, 'Reach us');
+    });
+
+    test('uses html field as content when content is absent', () async {
+      when(
+        () => apiClient.get(
+          ApiPaths.staticPagePublic('faq'),
+          useCache: any(named: 'useCache'),
+          requireAuth: any(named: 'requireAuth'),
+          notifyUnauthorized: any(named: 'notifyUnauthorized'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(
+          statusCode: 200,
+          body: {'title': 'FAQ', 'html': '<p>html body</p>'},
+          headers: {},
+        ),
+      );
+
+      final page = await repository.fetchPublicPage('faq');
+      expect(page.title, 'FAQ');
+      expect(page.content, '<p>html body</p>');
+    });
+
+    test('uses fallback title when neither title nor name present', () async {
+      when(
+        () => apiClient.get(
+          ApiPaths.staticPagePublic('cookies'),
+          useCache: any(named: 'useCache'),
+          requireAuth: any(named: 'requireAuth'),
+          notifyUnauthorized: any(named: 'notifyUnauthorized'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(statusCode: 200, body: {'body': 'cookie text'}, headers: {}),
+      );
+
+      final page = await repository.fetchPublicPage('cookies');
+      expect(page.title, 'cookies');
+      expect(page.content, 'cookie text');
+    });
   });
 }

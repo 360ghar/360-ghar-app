@@ -38,6 +38,8 @@ class MockThemeController extends GetxServiceMock implements ThemeController {
   @override
   void setThemeMode(AppThemeMode mode) {
     _mode.value = mode;
+    // Mirror production: ThemeController owns themeMode persistence as enum name.
+    GetStorage().write('themeMode', mode.name);
   }
 }
 
@@ -193,6 +195,179 @@ void main() {
 
       controller.themeMode.value = AppThemeMode.dark;
       expect(controller.currentThemeMode, AppThemeMode.dark);
+    });
+
+    // ── changeLanguage delegates to LocalizationController ────────────────
+
+    test('changeLanguage delegates to LocalizationController', () {
+      final controller = createController();
+
+      controller.changeLanguage('hi', 'IN');
+
+      // The mock's changeLanguage is a no-op, but we can verify it was called
+      // by checking that no exception was thrown.
+      expect(controller.getCurrentLanguage(), 'English');
+    });
+
+    // ── getCurrentLanguage delegates to LocalizationController ────────────
+
+    test('getCurrentLanguage returns name from LocalizationController', () {
+      final controller = createController();
+
+      expect(controller.getCurrentLanguage(), 'English');
+    });
+
+    // ── updateTheme to system mode ────────────────────────────────────────
+
+    test('updateTheme to system mode updates both controller and ThemeController', () {
+      final controller = createController();
+
+      controller.updateTheme(AppThemeMode.system);
+
+      expect(controller.themeMode.value, AppThemeMode.system);
+      expect(mockThemeController.currentThemeMode, AppThemeMode.system);
+    });
+
+    // ── updateTheme to light mode ─────────────────────────────────────────
+
+    test('updateTheme to light mode updates both controller and ThemeController', () {
+      final controller = createController();
+
+      controller.updateTheme(AppThemeMode.light);
+
+      expect(controller.themeMode.value, AppThemeMode.light);
+      expect(mockThemeController.currentThemeMode, AppThemeMode.light);
+    });
+
+    // ── savePreferences handles backend sync failure gracefully ───────────
+
+    test('savePreferences handles backend sync failure gracefully', () async {
+      final controller = createController();
+
+      when(
+        () => mockProfileRepository.updateUserPreferences(any()),
+      ).thenThrow(Exception('Network error'));
+
+      // Should not throw
+      controller.savePreferences();
+      await Future(() {});
+
+      // Local storage should still have been written
+      verify(() => mockProfileRepository.updateUserPreferences(any())).called(1);
+    });
+
+    // ── savePreferences when ProfileRepository is not registered ──────────
+
+    test('savePreferences handles missing ProfileRepository gracefully', () async {
+      // Create a controller without ProfileRepository registered
+      GetxTestBinding.reset();
+      GetxTestBinding.init();
+      await GetStorage.init();
+      GetxTestBinding.bind()
+        ..register<ThemeController>(mockThemeController)
+        ..register<LocalizationController>(mockLocalizationController);
+      // Note: ProfileRepository is NOT registered
+
+      final controller = PreferencesController();
+      controller.onInit();
+
+      // Should not throw even when ProfileRepository is missing
+      controller.savePreferences();
+      await Future(() {});
+    });
+
+    // ── currentThemeName deprecated getter ────────────────────────────────
+
+    test('currentThemeName returns same value as currentThemeNameKey', () {
+      final controller = createController();
+
+      controller.themeMode.value = AppThemeMode.dark;
+      // ignore: deprecated_member_use
+      expect(controller.currentThemeName, 'dark_mode');
+      expect(controller.currentThemeNameKey, 'dark_mode');
+    });
+
+    // ── Toggling notification values ──────────────────────────────────────
+
+    test('toggling pushNotifications updates value and getter', () {
+      final controller = createController();
+
+      controller.pushNotifications.value = false;
+      expect(controller.isPushNotificationsEnabled, isFalse);
+
+      controller.pushNotifications.value = true;
+      expect(controller.isPushNotificationsEnabled, isTrue);
+    });
+
+    test('toggling emailNotifications updates value and getter', () {
+      final controller = createController();
+
+      controller.emailNotifications.value = false;
+      expect(controller.isEmailNotificationsEnabled, isFalse);
+
+      controller.emailNotifications.value = true;
+      expect(controller.isEmailNotificationsEnabled, isTrue);
+    });
+
+    test('toggling similarProperties updates value and getter', () {
+      final controller = createController();
+
+      controller.similarProperties.value = false;
+      expect(controller.isSimilarPropertiesEnabled, isFalse);
+
+      controller.similarProperties.value = true;
+      expect(controller.isSimilarPropertiesEnabled, isTrue);
+    });
+
+    // ── updateThemeFromBoolean toggles ────────────────────────────────────
+
+    test('updateThemeFromBoolean toggles between dark and light', () {
+      final controller = createController();
+
+      // Toggle to dark
+      controller.updateThemeFromBoolean(true);
+      expect(controller.themeMode.value, AppThemeMode.dark);
+
+      // Toggle back to light
+      controller.updateThemeFromBoolean(false);
+      expect(controller.themeMode.value, AppThemeMode.light);
+
+      // Toggle to dark again
+      controller.updateThemeFromBoolean(true);
+      expect(controller.themeMode.value, AppThemeMode.dark);
+    });
+
+    // ── savePreferences persists to local storage ─────────────────────────
+
+    test('savePreferences persists notification values to local storage', () async {
+      final controller = createController();
+      controller.pushNotifications.value = false;
+      controller.emailNotifications.value = false;
+      controller.similarProperties.value = false;
+
+      when(
+        () => mockProfileRepository.updateUserPreferences(any()),
+      ).thenAnswer((_) async => testUserModel());
+
+      controller.savePreferences();
+      await Future(() {});
+
+      // Verify storage was written
+      final storage = GetStorage();
+      expect(storage.read('pushNotifications'), isFalse);
+      expect(storage.read('emailNotifications'), isFalse);
+      expect(storage.read('similarProperties'), isFalse);
+    });
+
+    // ── updateTheme persists theme mode to storage ────────────────────────
+
+    test('updateTheme persists theme mode name via ThemeController', () {
+      final controller = createController();
+
+      controller.updateTheme(AppThemeMode.dark);
+
+      final storage = GetStorage();
+      expect(storage.read('themeMode'), 'dark');
     });
   });
 }

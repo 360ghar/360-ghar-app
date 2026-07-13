@@ -2,8 +2,10 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/utils/error_mapper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ErrorHandler {
@@ -119,29 +121,28 @@ class ErrorHandler {
       additionalData: {'hasRetryCallback': onRetry != null, 'errorString': error.toString()},
     );
 
-    String message;
+    // Single mapping path — never classify HTTP codes via error.toString().
+    final mapped = error is AppException
+        ? error
+        : ErrorMapper.mapApiError(error, stackTrace ?? StackTrace.current);
 
-    if (error.toString().contains('SocketException') ||
-        error.toString().contains('TimeoutException')) {
-      message = 'no_internet_connection'.tr;
-    } else if (error.toString().contains('Connection refused')) {
-      message = 'server_unavailable'.tr;
-    } else if (error.toString().contains('401')) {
-      message = 'auth_failed_signin'.tr;
-    } else if (error.toString().contains('403')) {
-      message = 'access_denied'.tr;
-    } else if (error.toString().contains('404')) {
-      message = 'resource_not_found'.tr;
-    } else if (error.toString().contains('500')) {
-      message = 'server_error_generic'.tr;
-    } else {
-      message = 'network_error_generic'.tr;
+    String title = 'network_error'.tr;
+    Color backgroundColor = AppDesign.warningAmber;
+    if (mapped is AuthenticationException) {
+      title = 'authentication_error'.tr;
+      backgroundColor = AppDesign.errorRed;
+    } else if (mapped is ServerException) {
+      title = 'server_error'.tr;
+    } else if (mapped is ValidationException) {
+      title = 'validation_error'.tr;
+    } else if (mapped is NotFoundException) {
+      title = 'not_found'.tr;
     }
 
     AppToast.custom(
-      title: 'network_error'.tr,
-      message: message,
-      backgroundColor: AppDesign.warningAmber,
+      title: title,
+      message: mapped.message,
+      backgroundColor: backgroundColor,
       duration: const Duration(seconds: 4),
       mainButton: onRetry != null
           ? TextButton(
@@ -272,149 +273,6 @@ class ErrorHandler {
           ),
         );
       },
-    );
-  }
-}
-
-class ApiErrorHandler {
-  /// Handles API errors and provides user-friendly messages and debugging info
-  static String handleError(dynamic error, {String? context, StackTrace? stackTrace}) {
-    final errorMessage = error.toString();
-
-    DebugLogger.error(
-      'API Error in ${context ?? 'unknown context'}: $errorMessage',
-      error,
-      stackTrace,
-    );
-
-    // Type casting errors
-    if (errorMessage.contains('is not a subtype of type')) {
-      return _handleTypeCastingError(errorMessage, context);
-    }
-
-    // Network errors
-    if (errorMessage.contains('Connection refused') ||
-        errorMessage.contains('Failed host lookup') ||
-        errorMessage.contains('SocketException') ||
-        errorMessage.contains('NetworkException')) {
-      return _handleNetworkError(errorMessage, context);
-    }
-
-    // HTTP errors
-    if (errorMessage.contains('404')) {
-      return _handleHttpError(404, context);
-    } else if (errorMessage.contains('401')) {
-      return _handleHttpError(401, context);
-    } else if (errorMessage.contains('403')) {
-      return _handleHttpError(403, context);
-    } else if (errorMessage.contains('500')) {
-      return _handleHttpError(500, context);
-    }
-
-    // JSON parsing errors
-    if (errorMessage.contains('FormatException') ||
-        errorMessage.contains('Unexpected character') ||
-        errorMessage.contains('Invalid JSON')) {
-      return _handleJsonError(errorMessage, context);
-    }
-
-    // Authentication errors
-    if (errorMessage.contains('Invalid email or password') ||
-        errorMessage.contains('User not found') ||
-        errorMessage.contains('Invalid credentials')) {
-      return _handleAuthError(errorMessage, context);
-    }
-
-    // Generic error
-    return _handleGenericError(errorMessage, context);
-  }
-
-  static String _handleTypeCastingError(String error, String? context) {
-    DebugLogger.warning(
-      'Type casting error detected: backend data types don\'t match frontend expectations',
-    );
-
-    if (error.contains("'int' is not a subtype of type 'String'")) {
-      DebugLogger.info('Solution: Backend is returning integer where string is expected');
-      return 'data_format_mismatch'.tr;
-    } else if (error.contains("'List<dynamic>' is not a subtype of type 'Map<String, dynamic>'")) {
-      DebugLogger.info('Solution: Backend is returning array where object is expected');
-      return 'data_structure_mismatch'.tr;
-    } else if (error.contains("'String' is not a subtype of type 'int'")) {
-      DebugLogger.info('Solution: Backend is returning string where number is expected');
-      return 'numeric_format_issue'.tr;
-    }
-
-    return 'data_format_error'.tr;
-  }
-
-  static String _handleNetworkError(String error, String? context) {
-    DebugLogger.warning('Network connectivity issue detected');
-    DebugLogger.debug(
-      'Solutions: 1. Check backend server 2. Verify connectivity 3. Check firewall',
-    );
-
-    return 'unable_connect_server'.tr;
-  }
-
-  static String _handleHttpError(int statusCode, String? context) {
-    switch (statusCode) {
-      case 401:
-        DebugLogger.warning('Authentication error: invalid or expired token');
-        return 'please_login_again'.tr;
-
-      case 403:
-        DebugLogger.warning('Authorization error: insufficient permissions');
-        return 'insufficient_permissions'.tr;
-
-      case 404:
-        DebugLogger.warning('Resource not found');
-        return 'requested_data_not_found'.tr;
-
-      case 500:
-        DebugLogger.error('Server error: backend is experiencing issues');
-        return 'server_error_later'.tr;
-
-      default:
-        DebugLogger.error('HTTP Error $statusCode');
-        return 'server_responded_error'.trParams({'statusCode': statusCode.toString()});
-    }
-  }
-
-  static String _handleJsonError(String error, String? context) {
-    DebugLogger.warning('JSON parsing error: invalid response format');
-    DebugLogger.debug('Check backend response format and verify valid JSON');
-
-    return 'invalid_data_format'.tr;
-  }
-
-  static String _handleAuthError(String error, String? context) {
-    DebugLogger.warning('Authentication failed');
-    DebugLogger.debug('Verify credentials and account status');
-
-    return 'auth_failed_credentials'.tr;
-  }
-
-  static String _handleGenericError(String error, String? context) {
-    DebugLogger.error('Unhandled error type: $error');
-    DebugLogger.debug('Request failed - please retry');
-
-    return 'unexpected_error_later'.tr;
-  }
-
-  /// Logs detailed error information for debugging
-  static void logDetailedError({
-    required String operation,
-    required dynamic error,
-    required StackTrace stackTrace,
-    Map<String, dynamic>? additionalData,
-  }) {
-    // Use the enhanced logger's built-in detailed error method
-    DebugLogger.logDetailedError(
-      operation: operation,
-      error: error,
-      stackTrace: stackTrace,
-      additionalData: additionalData,
     );
   }
 }

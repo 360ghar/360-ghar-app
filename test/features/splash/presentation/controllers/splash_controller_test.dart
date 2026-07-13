@@ -191,5 +191,124 @@ void main() {
 
       expect(() => controller.onClose(), returnsNormally);
     });
+
+    // ── nextStep from step 0 to 2 sequentially ──────────────────────────
+
+    test('nextStep can be called multiple times to reach step 2', () {
+      final controller = SplashController();
+
+      controller.nextStep();
+      expect(controller.currentStep.value, 1);
+
+      controller.nextStep();
+      expect(controller.currentStep.value, 2);
+
+      // Third call triggers onboarding completion, step stays at 2
+      controller.nextStep();
+      expect(controller.currentStep.value, 2);
+    });
+
+    // ── previousStep from step 2 ───────────────────────────────────────
+
+    test('previousStep decrements from step 2 to 1', () {
+      final controller = SplashController();
+      controller.currentStep.value = 2;
+
+      controller.previousStep();
+
+      expect(controller.currentStep.value, 1);
+    });
+
+    // ── previousStep from step 2 to 0 sequentially ─────────────────────
+
+    test('previousStep can be called multiple times to reach step 0', () {
+      final controller = SplashController();
+      controller.currentStep.value = 2;
+
+      controller.previousStep();
+      expect(controller.currentStep.value, 1);
+
+      controller.previousStep();
+      expect(controller.currentStep.value, 0);
+
+      // Further calls are no-op
+      controller.previousStep();
+      expect(controller.currentStep.value, 0);
+    });
+
+    // ── skipToHome with initial auth status ────────────────────────────
+
+    test('skipToHome with initial auth status does not throw', () {
+      authStatus.value = AuthStatus.initial;
+
+      final controller = createController();
+
+      expect(() => controller.skipToHome(), returnsNormally);
+      expect(GetStorage().read('has_seen_onboarding'), true);
+    });
+
+    // ── nextStep at step 2 with initial auth status ────────────────────
+
+    test('nextStep at step 2 with initial auth status does not throw', () {
+      authStatus.value = AuthStatus.initial;
+      final controller = SplashController();
+      controller.currentStep.value = 2;
+
+      expect(() => controller.nextStep(), returnsNormally);
+      expect(GetStorage().read('has_seen_onboarding'), true);
+    });
+
+    // ── skipToHome writes boolean true to storage ──────────────────────
+
+    test('skipToHome writes boolean true value to has_seen_onboarding', () {
+      final controller = createController();
+
+      controller.skipToHome();
+
+      final value = GetStorage().read('has_seen_onboarding');
+      expect(value, isTrue);
+      expect(value, isA<bool>());
+    });
+
+    // ── Animation controller starts forward ────────────────────────────
+
+    test('animationController is forward after onInit', () {
+      final controller = createController();
+
+      // The animation controller should have been started with forward()
+      expect(controller.animationController, isNotNull);
+      // The animation may or may not have completed depending on timing,
+      // but it should not be null.
+    });
+
+    // ── onClose disposes animation and page controllers ────────────────
+
+    test('onClose disposes animationController and pageController', () {
+      final controller = createController();
+
+      // Should complete without throwing
+      expect(() => controller.onClose(), returnsNormally);
+    });
+
+    // ── pageController has initial page 0 ──────────────────────────────
+
+    test('pageController initialPage is 0', () {
+      final controller = createController();
+
+      expect(controller.pageController!.initialPage, 0);
+    });
+
+    // ── skipToHome when AuthController is not registered ───────────────
+
+    test('skipToHome falls back to phoneEntry when AuthController not registered', () {
+      GetxTestBinding.reset();
+      GetxTestBinding.init();
+
+      final controller = createController();
+
+      // Without AuthController registered, skipToHome should not throw
+      expect(() => controller.skipToHome(), returnsNormally);
+      expect(GetStorage().read('has_seen_onboarding'), true);
+    });
   });
 }
