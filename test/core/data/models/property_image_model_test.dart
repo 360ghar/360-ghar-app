@@ -29,10 +29,7 @@ void main() {
     });
 
     test('applies defaults for missing optional fields', () {
-      final json = <String, dynamic>{
-        'id': 2,
-        'property_id': 10,
-      };
+      final json = <String, dynamic>{'id': 2, 'property_id': 10};
 
       final model = PropertyImageModel.fromJson(json);
 
@@ -169,7 +166,7 @@ void main() {
 
   group('PropertyImageModel.toApiJson', () {
     test('syncs is_main and is_main_image flags', () {
-      final model = PropertyImageModel(
+      final model = const PropertyImageModel(
         id: 1,
         propertyId: 1,
         imageUrl: 'https://example.com/i.jpg',
@@ -186,7 +183,7 @@ void main() {
     });
 
     test('syncs both flags true when only isMain is true', () {
-      final model = PropertyImageModel(
+      final model = const PropertyImageModel(
         id: 1,
         propertyId: 1,
         imageUrl: 'https://example.com/i.jpg',
@@ -201,7 +198,7 @@ void main() {
     });
 
     test('defaults empty category to gallery', () {
-      final model = PropertyImageModel(
+      final model = const PropertyImageModel(
         id: 1,
         propertyId: 1,
         imageUrl: 'https://example.com/i.jpg',
@@ -216,7 +213,7 @@ void main() {
 
   group('PropertyImageModel.toJson roundtrip', () {
     test('roundtrip preserves all fields', () {
-      final original = PropertyImageModel(
+      final original = const PropertyImageModel(
         id: 5,
         propertyId: 50,
         imageUrl: 'https://example.com/roundtrip.jpg',
@@ -241,7 +238,7 @@ void main() {
     });
 
     test('toJson includes caption as null when not set', () {
-      final model = PropertyImageModel(id: 1, propertyId: 1, imageUrl: 'url');
+      final model = const PropertyImageModel(id: 1, propertyId: 1, imageUrl: 'url');
       final json = model.toJson();
 
       expect(json.containsKey('caption'), true);

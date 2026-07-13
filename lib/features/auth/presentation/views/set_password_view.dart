@@ -167,7 +167,10 @@ class SetPasswordView extends GetView<SetPasswordController> {
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2.2, color: AppDesign.editorialInk),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: AppDesign.editorialInk,
+                    ),
                   )
                 : Text(
                     'set_password_cta'.tr,

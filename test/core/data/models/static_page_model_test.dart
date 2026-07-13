@@ -6,10 +6,7 @@ void main() {
   group('StaticPageModel.fromJson', () {
     test('parses JSON with "data" wrapper', () {
       final json = <String, dynamic>{
-        'data': {
-          'title': 'Privacy Policy',
-          'content': '<p>Privacy policy content</p>',
-        },
+        'data': {'title': 'Privacy Policy', 'content': '<p>Privacy policy content</p>'},
       };
 
       final model = StaticPageModel.fromJson(json);
@@ -51,10 +48,9 @@ void main() {
     });
 
     test('uses fallbackTitle when no title field is present', () {
-      final model = StaticPageModel.fromDynamic(
-        {'content': 'Body'},
-        fallbackTitle: 'Default Title',
-      );
+      final model = StaticPageModel.fromDynamic({
+        'content': 'Body',
+      }, fallbackTitle: 'Default Title');
 
       expect(model.title, 'Default Title');
     });
@@ -143,10 +139,9 @@ void main() {
     });
 
     test('fromJson delegates to fromDynamic with fallbackTitle', () {
-      final model = StaticPageModel.fromJson(
-        {'data': {'content': 'Body'}},
-        fallbackTitle: 'Provided Fallback',
-      );
+      final model = StaticPageModel.fromJson({
+        'data': {'content': 'Body'},
+      }, fallbackTitle: 'Provided Fallback');
 
       expect(model.title, 'Provided Fallback');
       expect(model.content, 'Body');

@@ -19,6 +19,5 @@ class Motion {
 
   static Duration normal(BuildContext context) => duration(context, AppDurations.normal);
 
-  static Duration contentFade(BuildContext context) =>
-      duration(context, AppDurations.contentFade);
+  static Duration contentFade(BuildContext context) => duration(context, AppDurations.contentFade);
 }

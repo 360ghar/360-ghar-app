@@ -227,11 +227,11 @@ class AuthPremiumShell extends StatelessWidget {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: AppDesign.errorRed, width: 1),
+          borderSide: const BorderSide(color: AppDesign.errorRed, width: 1),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: AppDesign.errorRed, width: 2),
+          borderSide: const BorderSide(color: AppDesign.errorRed, width: 2),
         ),
         hintStyle: TextStyle(color: white50, fontSize: 15),
         labelStyle: TextStyle(color: white70, fontSize: 15),
@@ -379,12 +379,12 @@ class AuthInlineError extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, size: 18, color: AppDesign.errorRed),
+          const Icon(Icons.error_outline, size: 18, color: AppDesign.errorRed),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: TextStyle(
+              style: const TextStyle(
                 color: AppDesign.errorRed,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,

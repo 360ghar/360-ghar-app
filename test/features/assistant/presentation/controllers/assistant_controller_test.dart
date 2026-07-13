@@ -293,7 +293,10 @@ void main() {
     test('sendMessage ignores empty/whitespace text', () {
       final streamController = StreamController<SseEvent>();
       when(
-        () => mockRepository.streamChat(message: any(named: 'message'), conversationId: any(named: 'conversationId')),
+        () => mockRepository.streamChat(
+          message: any(named: 'message'),
+          conversationId: any(named: 'conversationId'),
+        ),
       ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
@@ -302,7 +305,10 @@ void main() {
       expect(controller.messages, isEmpty);
       expect(controller.isStreaming.value, isFalse);
       verifyNever(
-        () => mockRepository.streamChat(message: any(named: 'message'), conversationId: any(named: 'conversationId')),
+        () => mockRepository.streamChat(
+          message: any(named: 'message'),
+          conversationId: any(named: 'conversationId'),
+        ),
       );
 
       streamController.close();
@@ -359,10 +365,12 @@ void main() {
     test('sendMessage does not start new stream while already streaming', () async {
       final firstController = StreamController<SseEvent>();
       final secondController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'first', conversationId: null))
-          .thenAnswer((_) => firstController.stream);
-      when(() => mockRepository.streamChat(message: 'second', conversationId: null))
-          .thenAnswer((_) => secondController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'first', conversationId: null),
+      ).thenAnswer((_) => firstController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'second', conversationId: null),
+      ).thenAnswer((_) => secondController.stream);
 
       final controller = createController();
       controller.sendMessage('first');
@@ -385,8 +393,9 @@ void main() {
 
     test('text_chunk event appends text to assistant message', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -404,8 +413,9 @@ void main() {
 
     test('text_chunk event with missing text field does not crash', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -419,13 +429,16 @@ void main() {
 
     test('tool_call_start event sets activeToolCall', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
 
-      streamController.add(const SseEvent(event: 'tool_call_start', data: {'tool': 'search_properties'}));
+      streamController.add(
+        const SseEvent(event: 'tool_call_start', data: {'tool': 'search_properties'}),
+      );
       await Future<void>.value();
       expect(controller.activeToolCall.value, 'search_properties');
 
@@ -434,8 +447,9 @@ void main() {
 
     test('tool_call_end event clears activeToolCall', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -453,17 +467,23 @@ void main() {
 
     test('widget event adds a widget message', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
       final initialCount = controller.messages.length;
 
-      streamController.add(const SseEvent(
-        event: 'widget',
-        data: {'widget_name': 'property_card', 'structured_content': {'id': 1}},
-      ));
+      streamController.add(
+        const SseEvent(
+          event: 'widget',
+          data: {
+            'widget_name': 'property_card',
+            'structured_content': {'id': 1},
+          },
+        ),
+      );
       await Future<void>.value();
 
       expect(controller.messages.length, initialCount + 1);
@@ -477,8 +497,9 @@ void main() {
 
     test('widget event with missing fields does not add a message', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -488,7 +509,14 @@ void main() {
       await Future<void>.value();
       expect(controller.messages.length, initialCount);
 
-      streamController.add(const SseEvent(event: 'widget', data: {'structured_content': {'id': 1}}));
+      streamController.add(
+        const SseEvent(
+          event: 'widget',
+          data: {
+            'structured_content': {'id': 1},
+          },
+        ),
+      );
       await Future<void>.value();
       expect(controller.messages.length, initialCount);
 
@@ -497,8 +525,9 @@ void main() {
 
     test('done event replaces assistant content with authoritative text', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -518,8 +547,9 @@ void main() {
 
     test('done event with empty response_text keeps streamed content', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -537,13 +567,16 @@ void main() {
 
     test('error event appends error message and finishes streaming', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
 
-      streamController.add(const SseEvent(event: 'error', data: {'message': 'Something went wrong'}));
+      streamController.add(
+        const SseEvent(event: 'error', data: {'message': 'Something went wrong'}),
+      );
       await Future<void>.value();
       expect(controller.messages[1].content, 'Something went wrong');
       expect(controller.isStreaming.value, isFalse);
@@ -554,8 +587,9 @@ void main() {
 
     test('stream onError finishes streaming', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -570,8 +604,9 @@ void main() {
 
     test('stream onDone finishes streaming', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -596,8 +631,9 @@ void main() {
         nextCursor: null,
       );
       when(() => mockRepository.getConversations()).thenAnswer((_) async => firstPage);
-      when(() => mockRepository.getConversations(cursor: 'cursor_1'))
-          .thenAnswer((_) async => secondPage);
+      when(
+        () => mockRepository.getConversations(cursor: 'cursor_1'),
+      ).thenAnswer((_) async => secondPage);
 
       final controller = createController();
       await controller.loadConversations();
@@ -684,8 +720,9 @@ void main() {
         nextCursor: null,
       );
       when(() => mockRepository.getConversations()).thenAnswer((_) async => firstPage);
-      when(() => mockRepository.getConversations(cursor: 'cursor_1'))
-          .thenAnswer((_) async => secondPage);
+      when(
+        () => mockRepository.getConversations(cursor: 'cursor_1'),
+      ).thenAnswer((_) async => secondPage);
 
       final controller = createController();
       await controller.loadConversations();
@@ -702,8 +739,9 @@ void main() {
         nextCursor: 'cursor_1',
       );
       when(() => mockRepository.getConversations()).thenAnswer((_) async => firstPage);
-      when(() => mockRepository.getConversations(cursor: 'cursor_1'))
-          .thenThrow(Exception('Network error'));
+      when(
+        () => mockRepository.getConversations(cursor: 'cursor_1'),
+      ).thenThrow(Exception('Network error'));
 
       final controller = createController();
       await controller.loadConversations();
@@ -716,7 +754,9 @@ void main() {
     // ── loadConversations guards ──────────────────────────────────────────
 
     test('loadConversations is no-op when already loading', () async {
-      when(() => mockRepository.getConversations()).thenAnswer((_) async => ConversationsPage(items: [], hasMore: false));
+      when(
+        () => mockRepository.getConversations(),
+      ).thenAnswer((_) async => const ConversationsPage(items: [], hasMore: false));
 
       final controller = createController();
       controller.isLoadingConversations.value = true;
@@ -726,7 +766,9 @@ void main() {
     });
 
     test('loadConversations is no-op when loading more', () async {
-      when(() => mockRepository.getConversations()).thenAnswer((_) async => ConversationsPage(items: [], hasMore: false));
+      when(
+        () => mockRepository.getConversations(),
+      ).thenAnswer((_) async => const ConversationsPage(items: [], hasMore: false));
 
       final controller = createController();
       controller.isLoadingMoreConversations.value = true;
@@ -739,8 +781,9 @@ void main() {
 
     test('startNewConversation clears messages and conversationId', () {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -775,8 +818,9 @@ void main() {
 
     test('onClose cancels stream subscription', () {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: null))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
@@ -792,15 +836,18 @@ void main() {
 
     test('conversation_info event with non-int/non-string id does not set value', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: 5))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: 5),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.conversationId.value = 5;
       controller.sendMessage('hi');
 
       // A bool value is neither int nor String, so conversationId stays unchanged.
-      streamController.add(const SseEvent(event: 'conversation_info', data: {'conversation_id': true}));
+      streamController.add(
+        const SseEvent(event: 'conversation_info', data: {'conversation_id': true}),
+      );
       await Future<void>.value();
       expect(controller.conversationId.value, 5);
 
@@ -809,14 +856,17 @@ void main() {
 
     test('conversation_info event with non-numeric string sets conversationId to null', () async {
       final streamController = StreamController<SseEvent>();
-      when(() => mockRepository.streamChat(message: 'hi', conversationId: 5))
-          .thenAnswer((_) => streamController.stream);
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: 5),
+      ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.conversationId.value = 5;
       controller.sendMessage('hi');
 
-      streamController.add(const SseEvent(event: 'conversation_info', data: {'conversation_id': 'not_a_number'}));
+      streamController.add(
+        const SseEvent(event: 'conversation_info', data: {'conversation_id': 'not_a_number'}),
+      );
       await Future<void>.value();
       expect(controller.conversationId.value, isNull);
 

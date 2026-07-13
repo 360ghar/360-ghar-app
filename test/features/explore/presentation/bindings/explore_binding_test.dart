@@ -7,9 +7,9 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/features/explore/presentation/bindings/explore_binding.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 
 void main() {

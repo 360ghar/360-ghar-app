@@ -19,8 +19,10 @@ class EditProfileController extends GetxController {
   // Observable fields
   final RxString profileImageUrl = ''.obs;
   final Rx<DateTime?> dateOfBirth = Rx<DateTime?>(null);
+
   /// True while saving profile form fields.
   final RxBool isSaving = false.obs;
+
   /// True while uploading a new profile image (form stays interactive).
   final RxBool isUploadingImage = false.obs;
 

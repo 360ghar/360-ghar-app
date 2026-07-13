@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
@@ -42,9 +43,7 @@ void main() {
         translations: AppTranslations(),
         locale: const Locale('en', 'US'),
         fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(
-          body: SingleChildScrollView(child: child),
-        ),
+        home: Scaffold(body: SingleChildScrollView(child: child)),
       ),
     );
   }

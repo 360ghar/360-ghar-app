@@ -4,8 +4,8 @@ import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/visits/data/visits_repository.dart';
 import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
+import 'package:ghar360/features/visits/data/visits_repository.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -38,10 +38,10 @@ void main() {
         cursor: any(named: 'cursor'),
         limit: any(named: 'limit'),
       ),
-    ).thenAnswer((_) async => VisitsPayload(visits: [], hasMore: false));
-    when(() => mockVisitsRepository.fetchRelationshipManager()).thenAnswer(
-      (_) async => testAgentModel(id: 1),
-    );
+    ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: false));
+    when(
+      () => mockVisitsRepository.fetchRelationshipManager(),
+    ).thenAnswer((_) async => testAgentModel(id: 1));
 
     GetxTestBinding.bind()
       ..register<AuthController>(mockAuthController)
@@ -561,9 +561,9 @@ void main() {
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
       authStatus.value = AuthStatus.authenticated;
 
-      when(() => mockVisitsRepository.fetchRelationshipManager()).thenThrow(
-        ServerException('agent error'),
-      );
+      when(
+        () => mockVisitsRepository.fetchRelationshipManager(),
+      ).thenThrow(ServerException('agent error'));
 
       final controller = createController();
       await controller.loadRelationshipManager();
@@ -583,7 +583,7 @@ void main() {
           cursor: any(named: 'cursor'),
           limit: any(named: 'limit'),
         ),
-      ).thenAnswer((_) async => VisitsPayload(visits: [], hasMore: false));
+      ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: false));
 
       final controller = createController();
       await controller.refreshVisits();
@@ -903,7 +903,7 @@ void main() {
           cursor: any(named: 'cursor'),
           limit: any(named: 'limit'),
         ),
-      ).thenAnswer((_) async => VisitsPayload(visits: [], hasMore: false));
+      ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: false));
 
       final controller = createController();
       await controller.loadVisits(silent: true);
@@ -936,13 +936,12 @@ void main() {
           cursor: any(named: 'cursor'),
           limit: any(named: 'limit'),
         ),
-      ).thenAnswer((_) async => VisitsPayload(visits: [], hasMore: false));
+      ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: false));
 
       await controller.loadVisits(isRefresh: true);
       expect(controller.visits, isEmpty);
     });
   });
-
 
   group('VisitsController — remaining high-miss paths', () {
     test('skips duplicate load when dataLoadInFlight is true', () async {
@@ -981,7 +980,7 @@ void main() {
       ).thenAnswer((_) async {
         calls++;
         await Future<void>.delayed(const Duration(milliseconds: 80));
-        return VisitsPayload(visits: [], hasMore: false);
+        return const VisitsPayload(visits: [], hasMore: false);
       });
 
       final first = controller.loadVisits(silent: true);
@@ -1175,7 +1174,7 @@ void main() {
           cursor: any(named: 'cursor'),
           limit: any(named: 'limit'),
         ),
-      ).thenAnswer((_) async => VisitsPayload(visits: [], hasMore: false));
+      ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: false));
 
       final controller = createController();
       await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -1223,9 +1222,7 @@ void main() {
           cursor: any(named: 'cursor'),
           limit: any(named: 'limit'),
         ),
-      ).thenAnswer(
-        (_) async => VisitsPayload(visits: [upcoming, past, cancelled], hasMore: false),
-      );
+      ).thenAnswer((_) async => VisitsPayload(visits: [upcoming, past, cancelled], hasMore: false));
 
       final controller = createController();
       await controller.loadVisits();
@@ -1249,7 +1246,7 @@ void main() {
           cursor: any(named: 'cursor'),
           limit: any(named: 'limit'),
         ),
-      ).thenAnswer((_) async => VisitsPayload(visits: [], hasMore: false));
+      ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: false));
 
       await controller.loadMoreVisits();
       expect(controller.isLoadingMore.value, isFalse);

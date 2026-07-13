@@ -75,49 +75,69 @@ void main() {
 
     test('unwraps via items key (cursor envelope)', () {
       const body = <String, dynamic>{
-        'items': <dynamic>[{'id': 1}],
+        'items': <dynamic>[
+          {'id': 1},
+        ],
         'has_more': false,
       };
 
       final result = ResponseParser.unwrapList(body);
 
-      expect(result, <dynamic>[{'id': 1}]);
+      expect(result, <dynamic>[
+        {'id': 1},
+      ]);
     });
 
     test('unwraps via data key when items absent', () {
       const body = <String, dynamic>{
-        'data': <dynamic>[{'id': 2}],
+        'data': <dynamic>[
+          {'id': 2},
+        ],
       };
 
       final result = ResponseParser.unwrapList(body);
 
-      expect(result, <dynamic>[{'id': 2}]);
+      expect(result, <dynamic>[
+        {'id': 2},
+      ]);
     });
 
     test('prefers items over data when both present', () {
       const body = <String, dynamic>{
-        'items': <dynamic>[{'id': 1}],
-        'data': <dynamic>[{'id': 2}],
+        'items': <dynamic>[
+          {'id': 1},
+        ],
+        'data': <dynamic>[
+          {'id': 2},
+        ],
       };
 
       final result = ResponseParser.unwrapList(body);
 
-      expect(result, <dynamic>[{'id': 1}]);
+      expect(result, <dynamic>[
+        {'id': 1},
+      ]);
     });
 
     test('falls back to provided fallbackKeys', () {
       const body = <String, dynamic>{
-        'results': <dynamic>[{'id': 3}],
+        'results': <dynamic>[
+          {'id': 3},
+        ],
       };
 
       final result = ResponseParser.unwrapList(body, fallbackKeys: const ['results']);
 
-      expect(result, <dynamic>[{'id': 3}]);
+      expect(result, <dynamic>[
+        {'id': 3},
+      ]);
     });
 
     test('tries fallbackKeys in order and uses the first List found', () {
       const body = <String, dynamic>{
-        'second': <dynamic>[{'id': 9}],
+        'second': <dynamic>[
+          {'id': 9},
+        ],
       };
 
       final result = ResponseParser.unwrapList(
@@ -125,25 +145,30 @@ void main() {
         fallbackKeys: const ['first', 'second', 'third'],
       );
 
-      expect(result, <dynamic>[{'id': 9}]);
+      expect(result, <dynamic>[
+        {'id': 9},
+      ]);
     });
 
     test('skips non-List fallback keys', () {
       const body = <String, dynamic>{
         'first': 'not a list',
-        'second': <dynamic>[{'id': 7}],
+        'second': <dynamic>[
+          {'id': 7},
+        ],
       };
 
-      final result = ResponseParser.unwrapList(
-        body,
-        fallbackKeys: const ['first', 'second'],
-      );
+      final result = ResponseParser.unwrapList(body, fallbackKeys: const ['first', 'second']);
 
-      expect(result, <dynamic>[{'id': 7}]);
+      expect(result, <dynamic>[
+        {'id': 7},
+      ]);
     });
 
     test('throws FormatException when Map has no list under any key', () {
-      const body = <String, dynamic>{'meta': <String, dynamic>{'page': 1}};
+      const body = <String, dynamic>{
+        'meta': <String, dynamic>{'page': 1},
+      };
 
       expect(
         () => ResponseParser.unwrapList(body, fallbackKeys: const ['results']),

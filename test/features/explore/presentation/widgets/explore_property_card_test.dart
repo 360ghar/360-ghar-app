@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
@@ -41,8 +42,16 @@ void main() {
         fallbackLocale: const Locale('en', 'US'),
         initialRoute: '/',
         getPages: [
-          GetPage(name: '/', page: () => Scaffold(body: Center(child: SizedBox(width: 400, height: 240, child: child)))),
-          GetPage(name: AppRoutes.propertyDetails, page: () => const Scaffold(body: Text('Property Details'))),
+          GetPage(
+            name: '/',
+            page: () => Scaffold(
+              body: Center(child: SizedBox(width: 400, height: 240, child: child)),
+            ),
+          ),
+          GetPage(
+            name: AppRoutes.propertyDetails,
+            page: () => const Scaffold(body: Text('Property Details')),
+          ),
         ],
       ),
     );
@@ -51,11 +60,7 @@ void main() {
   testWidgets('renders property title and formatted price', (tester) async {
     await pumpWidget(
       tester,
-      ExplorePropertyCard(
-        property: _richProperty(),
-        isFavourite: false,
-        onFavouriteToggle: () {},
-      ),
+      ExplorePropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.textContaining('Penthouse'), findsOneWidget);
@@ -66,11 +71,7 @@ void main() {
   testWidgets('renders property type badge translated and uppercased', (tester) async {
     await pumpWidget(
       tester,
-      ExplorePropertyCard(
-        property: _richProperty(),
-        isFavourite: false,
-        onFavouriteToggle: () {},
-      ),
+      ExplorePropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.text('PENTHOUSE'), findsOneWidget);
@@ -79,11 +80,7 @@ void main() {
   testWidgets('renders bedroom/bathroom and area specs', (tester) async {
     await pumpWidget(
       tester,
-      ExplorePropertyCard(
-        property: _richProperty(),
-        isFavourite: false,
-        onFavouriteToggle: () {},
-      ),
+      ExplorePropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.text('3BHK, 2 Bath'), findsOneWidget);
@@ -93,11 +90,7 @@ void main() {
   testWidgets('shows filled favorite icon when isFavourite is true', (tester) async {
     await pumpWidget(
       tester,
-      ExplorePropertyCard(
-        property: _richProperty(),
-        isFavourite: true,
-        onFavouriteToggle: () {},
-      ),
+      ExplorePropertyCard(property: _richProperty(), isFavourite: true, onFavouriteToggle: () {}),
     );
 
     expect(find.byIcon(Icons.favorite), findsOneWidget);
@@ -106,11 +99,7 @@ void main() {
   testWidgets('shows outlined favorite icon when isFavourite is false', (tester) async {
     await pumpWidget(
       tester,
-      ExplorePropertyCard(
-        property: _richProperty(),
-        isFavourite: false,
-        onFavouriteToggle: () {},
-      ),
+      ExplorePropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.byIcon(Icons.favorite_border), findsOneWidget);
@@ -137,11 +126,7 @@ void main() {
     final property = _richProperty();
     await pumpWidget(
       tester,
-      ExplorePropertyCard(
-        property: property,
-        isFavourite: false,
-        onFavouriteToggle: () {},
-      ),
+      ExplorePropertyCard(property: property, isFavourite: false, onFavouriteToggle: () {}),
     );
 
     // Tap the card body (not the favorite icon).

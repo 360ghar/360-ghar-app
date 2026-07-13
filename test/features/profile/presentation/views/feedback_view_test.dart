@@ -10,10 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/bug_report_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/profile/presentation/controllers/feedback_controller.dart';
 import 'package:ghar360/features/profile/presentation/views/feedback_view.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 import '../../../../helpers/pump_app.dart';
@@ -22,8 +20,7 @@ import '../../../../helpers/pump_app.dart';
 // Stub controller
 // ---------------------------------------------------------------------------
 
-class _StubFeedbackController extends GetxServiceMock
-    implements FeedbackController {
+class _StubFeedbackController extends GetxServiceMock implements FeedbackController {
   @override
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -136,9 +133,7 @@ void main() {
     testWidgets('renders submit button with correct key', (tester) async {
       await pumpView(tester);
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.feedback.submit')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.feedback.submit')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('qa.profile.feedback.submit')), findsOneWidget);
@@ -147,17 +142,13 @@ void main() {
     testWidgets('renders text input hints', (tester) async {
       await pumpView(tester);
 
-      expect(
-        find.text('Give a short summary (e.g. Search filters not working)'),
-        findsOneWidget,
-      );
+      expect(find.text('Give a short summary (e.g. Search filters not working)'), findsOneWidget);
       expect(find.text('Share what you expected and what you saw'), findsOneWidget);
     });
   });
 
   group('FeedbackView dropdown interactions', () {
-    testWidgets('bug type dropdown shows all bug type options when tapped',
-        (tester) async {
+    testWidgets('bug type dropdown shows all bug type options when tapped', (tester) async {
       await pumpView(tester);
 
       await tester.tap(find.byType(DropdownButtonFormField<BugType>).first);
@@ -188,8 +179,7 @@ void main() {
       expect(controller.selectedBugType.value, BugType.crash);
     });
 
-    testWidgets('severity dropdown shows all severity options when tapped',
-        (tester) async {
+    testWidgets('severity dropdown shows all severity options when tapped', (tester) async {
       await pumpView(tester);
 
       await tester.tap(find.byType(DropdownButtonFormField<BugSeverity>).first);
@@ -220,8 +210,7 @@ void main() {
   });
 
   group('FeedbackView text input', () {
-    testWidgets('entering text in title field updates the controller',
-        (tester) async {
+    testWidgets('entering text in title field updates the controller', (tester) async {
       await pumpView(tester);
 
       await tester.enterText(
@@ -233,8 +222,7 @@ void main() {
       expect(controller.titleController.text, 'Test bug title');
     });
 
-    testWidgets('entering text in description field updates the controller',
-        (tester) async {
+    testWidgets('entering text in description field updates the controller', (tester) async {
       await pumpView(tester);
 
       await tester.enterText(
@@ -246,8 +234,7 @@ void main() {
       expect(controller.descriptionController.text, 'This is a description of the issue.');
     });
 
-    testWidgets('entering text in steps field updates the controller',
-        (tester) async {
+    testWidgets('entering text in steps field updates the controller', (tester) async {
       await pumpView(tester);
 
       // The form has 6 TextFormFields: title, description, steps, expected,
@@ -261,8 +248,7 @@ void main() {
       expect(controller.stepsController.text, '1. Open app\n2. Tap search');
     });
 
-    testWidgets('entering text in tags field updates the controller',
-        (tester) async {
+    testWidgets('entering text in tags field updates the controller', (tester) async {
       await pumpView(tester);
 
       // Tags is the last TextFormField (index 5).
@@ -276,13 +262,10 @@ void main() {
   });
 
   group('FeedbackView form validation', () {
-    testWidgets('submitting with empty title shows validation error',
-        (tester) async {
+    testWidgets('submitting with empty title shows validation error', (tester) async {
       await pumpView(tester);
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.feedback.submit')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.feedback.submit')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.feedback.submit')));
@@ -291,8 +274,7 @@ void main() {
       expect(find.text('Please describe the issue in a short title'), findsOneWidget);
     });
 
-    testWidgets('submitting with empty description shows validation error',
-        (tester) async {
+    testWidgets('submitting with empty description shows validation error', (tester) async {
       await pumpView(tester);
 
       // Fill in the title so only description validation fails.
@@ -302,18 +284,13 @@ void main() {
       );
       await tester.pump();
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.feedback.submit')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.feedback.submit')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.feedback.submit')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Please provide a short description of the problem'),
-        findsOneWidget,
-      );
+      expect(find.text('Please provide a short description of the problem'), findsOneWidget);
     });
 
     testWidgets('submitting with valid data calls submitFeedback', (tester) async {
@@ -329,9 +306,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.feedback.submit')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.feedback.submit')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.feedback.submit')));
@@ -343,8 +318,7 @@ void main() {
   });
 
   group('FeedbackView submitting state', () {
-    testWidgets('shows progress indicator and disables button when submitting',
-        (tester) async {
+    testWidgets('shows progress indicator and disables button when submitting', (tester) async {
       controller.isSubmitting.value = true;
       await pumpView(tester);
 
@@ -360,13 +334,10 @@ void main() {
       expect(find.text('Sending feedback...'), findsOneWidget);
     });
 
-    testWidgets('shows send feedback text and enables button when not submitting',
-        (tester) async {
+    testWidgets('shows send feedback text and enables button when not submitting', (tester) async {
       await pumpView(tester);
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.feedback.submit')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.feedback.submit')));
       await tester.pumpAndSettle();
 
       final button = tester.widget<ElevatedButton>(

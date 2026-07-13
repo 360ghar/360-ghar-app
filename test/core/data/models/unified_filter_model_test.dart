@@ -55,10 +55,7 @@ void main() {
     });
 
     test('omits invalid gender and sharing type', () {
-      const filters = UnifiedFilterModel(
-        genderPreference: 'unknown',
-        sharingType: 'invalid',
-      );
+      const filters = UnifiedFilterModel(genderPreference: 'unknown', sharingType: 'invalid');
       final params = filters.toApiQueryParams();
       expect(params.containsKey('gender_preference'), isFalse);
       expect(params.containsKey('sharing_type'), isFalse);
@@ -396,10 +393,7 @@ void main() {
     });
 
     test('fromJson parses valid data with name defaulting to empty', () {
-      final location = LocationData.fromJson({
-        'latitude': 10.0,
-        'longitude': 20.0,
-      });
+      final location = LocationData.fromJson({'latitude': 10.0, 'longitude': 20.0});
       expect(location.name, '');
       expect(location.latitude, 10.0);
       expect(location.longitude, 20.0);

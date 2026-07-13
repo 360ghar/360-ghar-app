@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/agent_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/visits/presentation/widgets/agent_card.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 
 AgentModel _testAgent({
@@ -35,7 +35,9 @@ void main() {
         translations: AppTranslations(),
         locale: const Locale('en', 'US'),
         fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: Center(child: SizedBox(width: 400, child: child))),
+        home: Scaffold(
+          body: Center(child: SizedBox(width: 400, child: child)),
+        ),
       ),
     );
   }
@@ -79,13 +81,7 @@ void main() {
 
   testWidgets('calls onCall callback when call button tapped', (tester) async {
     var callCount = 0;
-    await pumpCard(
-      tester,
-      AgentCard(
-        agent: _testAgent(),
-        onCall: () => callCount++,
-      ),
-    );
+    await pumpCard(tester, AgentCard(agent: _testAgent(), onCall: () => callCount++));
 
     await tester.tap(find.byIcon(Icons.phone));
     await tester.pump();
@@ -95,13 +91,7 @@ void main() {
 
   testWidgets('calls onWhatsApp callback when whatsapp button tapped', (tester) async {
     var waCount = 0;
-    await pumpCard(
-      tester,
-      AgentCard(
-        agent: _testAgent(),
-        onWhatsApp: () => waCount++,
-      ),
-    );
+    await pumpCard(tester, AgentCard(agent: _testAgent(), onWhatsApp: () => waCount++));
 
     await tester.tap(find.byIcon(Icons.message));
     await tester.pump();
@@ -128,12 +118,7 @@ void main() {
   });
 
   testWidgets('renders beginner experience level', (tester) async {
-    await pumpCard(
-      tester,
-      AgentCard(
-        agent: _testAgent(experienceLevel: ExperienceLevel.beginner),
-      ),
-    );
+    await pumpCard(tester, AgentCard(agent: _testAgent(experienceLevel: ExperienceLevel.beginner)));
 
     expect(find.text('Beginner'), findsOneWidget);
   });
@@ -141,21 +126,14 @@ void main() {
   testWidgets('renders intermediate experience level', (tester) async {
     await pumpCard(
       tester,
-      AgentCard(
-        agent: _testAgent(experienceLevel: ExperienceLevel.intermediate),
-      ),
+      AgentCard(agent: _testAgent(experienceLevel: ExperienceLevel.intermediate)),
     );
 
     expect(find.text('Intermediate'), findsOneWidget);
   });
 
   testWidgets('renders unknown experience level', (tester) async {
-    await pumpCard(
-      tester,
-      AgentCard(
-        agent: _testAgent(experienceLevel: ExperienceLevel.unknown),
-      ),
-    );
+    await pumpCard(tester, AgentCard(agent: _testAgent(experienceLevel: ExperienceLevel.unknown)));
 
     expect(find.text('Unknown'), findsOneWidget);
   });

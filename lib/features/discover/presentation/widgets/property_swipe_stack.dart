@@ -93,8 +93,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   bool _isExiting = false;
 
   /// True while the stack must ignore pan / button swipes (exit, drag block, anim).
-  bool get _gesturesLocked =>
-      _blockGestures || _isExiting || _swipeAnimationController.isAnimating;
+  bool get _gesturesLocked => _blockGestures || _isExiting || _swipeAnimationController.isAnimating;
 
   @override
   void initState() {

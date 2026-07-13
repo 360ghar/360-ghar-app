@@ -442,8 +442,13 @@ void main() {
       );
     }
 
-    PropertyImageModel img(String url,
-        {bool isMain = false, bool isMainImage = false, int order = 0, String category = 'gallery'}) {
+    PropertyImageModel img(
+      String url, {
+      bool isMain = false,
+      bool isMainImage = false,
+      int order = 0,
+      String category = 'gallery',
+    }) {
       return PropertyImageModel(
         id: order,
         propertyId: 1,
@@ -461,17 +466,17 @@ void main() {
     });
 
     test('mainImage returns primary image from list when mainImageUrl is null', () {
-      final model = make(images: [
-        img('https://example.com/secondary.jpg', order: 0),
-        img('https://example.com/primary.jpg', isMain: true, order: 1),
-      ]);
+      final model = make(
+        images: [
+          img('https://example.com/secondary.jpg', order: 0),
+          img('https://example.com/primary.jpg', isMain: true, order: 1),
+        ],
+      );
       expect(model.mainImage, 'https://example.com/primary.jpg');
     });
 
     test('mainImage returns first image when no primary and mainImageUrl is null', () {
-      final model = make(images: [
-        img('https://example.com/first.jpg', order: 0),
-      ]);
+      final model = make(images: [img('https://example.com/first.jpg', order: 0)]);
       expect(model.mainImage, 'https://example.com/first.jpg');
     });
 
@@ -501,11 +506,13 @@ void main() {
     });
 
     test('galleryImages filters by category and image extension', () {
-      final model = make(images: [
-        img('https://example.com/photo1.jpg', order: 0, category: 'gallery'),
-        img('https://example.com/floor.jpg', order: 1, category: 'floor_plan'),
-        img('https://kuula.co/share/abc', order: 2, category: 'gallery'),
-      ]);
+      final model = make(
+        images: [
+          img('https://example.com/photo1.jpg', order: 0, category: 'gallery'),
+          img('https://example.com/floor.jpg', order: 1, category: 'floor_plan'),
+          img('https://kuula.co/share/abc', order: 2, category: 'gallery'),
+        ],
+      );
       final gallery = model.galleryImages;
       expect(gallery, hasLength(1));
       expect(gallery[0].imageUrl, 'https://example.com/photo1.jpg');
@@ -517,10 +524,12 @@ void main() {
     });
 
     test('floorPlanImages filters by floor_plan category', () {
-      final model = make(images: [
-        img('https://example.com/photo.jpg', order: 0, category: 'gallery'),
-        img('https://example.com/plan.jpg', order: 1, category: 'floor_plan'),
-      ]);
+      final model = make(
+        images: [
+          img('https://example.com/photo.jpg', order: 0, category: 'gallery'),
+          img('https://example.com/plan.jpg', order: 1, category: 'floor_plan'),
+        ],
+      );
       final plans = model.floorPlanImages;
       expect(plans, hasLength(1));
       expect(plans[0].imageUrl, 'https://example.com/plan.jpg');
@@ -548,10 +557,7 @@ void main() {
     });
 
     test('mediaVideoUrls filters empty strings', () {
-      final model = make(
-        videoTourUrl: '',
-        videoUrls: ['', 'https://example.com/video.mp4'],
-      );
+      final model = make(videoTourUrl: '', videoUrls: ['', 'https://example.com/video.mp4']);
       expect(model.mediaVideoUrls, ['https://example.com/video.mp4']);
     });
 
@@ -594,9 +600,9 @@ void main() {
     });
 
     test('_looksLikeImageUrl filters kuula.co share links', () {
-      final model = make(images: [
-        img('https://kuula.co/share/abc', order: 0, category: 'gallery'),
-      ]);
+      final model = make(
+        images: [img('https://kuula.co/share/abc', order: 0, category: 'gallery')],
+      );
       expect(model.galleryImages, isEmpty);
     });
   });
@@ -633,8 +639,10 @@ void main() {
       );
       expect(model.hasStreetView, true);
       expect(model.streetViewTarget, '28.6,77.2');
-      expect(model.streetViewLaunchUrl,
-          'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=28.6,77.2');
+      expect(
+        model.streetViewLaunchUrl,
+        'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=28.6,77.2',
+      );
     });
 
     test('hasStreetView is false when no URL and no location', () {
@@ -789,26 +797,11 @@ void main() {
 
   group('PropertyModel additional getters', () {
     test('statusString maps all status values', () {
-      expect(
-        PropertyModel.fromJson({'status': 'available'}).statusString,
-        'Available',
-      );
-      expect(
-        PropertyModel.fromJson({'status': 'sold'}).statusString,
-        'Sold',
-      );
-      expect(
-        PropertyModel.fromJson({'status': 'rented'}).statusString,
-        'Rented',
-      );
-      expect(
-        PropertyModel.fromJson({'status': 'under_offer'}).statusString,
-        'Under Offer',
-      );
-      expect(
-        PropertyModel.fromJson({'status': 'maintenance'}).statusString,
-        'Maintenance',
-      );
+      expect(PropertyModel.fromJson({'status': 'available'}).statusString, 'Available');
+      expect(PropertyModel.fromJson({'status': 'sold'}).statusString, 'Sold');
+      expect(PropertyModel.fromJson({'status': 'rented'}).statusString, 'Rented');
+      expect(PropertyModel.fromJson({'status': 'under_offer'}).statusString, 'Under Offer');
+      expect(PropertyModel.fromJson({'status': 'maintenance'}).statusString, 'Maintenance');
     });
 
     test('statusString defaults to Available', () {
@@ -825,18 +818,9 @@ void main() {
     });
 
     test('purposeString maps all purpose values', () {
-      expect(
-        PropertyModel.fromJson({'purpose': 'buy'}).purposeString,
-        'Buy',
-      );
-      expect(
-        PropertyModel.fromJson({'purpose': 'rent'}).purposeString,
-        'Rent',
-      );
-      expect(
-        PropertyModel.fromJson({'purpose': 'short_stay'}).purposeString,
-        'Short Stay',
-      );
+      expect(PropertyModel.fromJson({'purpose': 'buy'}).purposeString, 'Buy');
+      expect(PropertyModel.fromJson({'purpose': 'rent'}).purposeString, 'Rent');
+      expect(PropertyModel.fromJson({'purpose': 'short_stay'}).purposeString, 'Short Stay');
     });
 
     test('purposeString defaults to For Sale', () {
@@ -853,18 +837,9 @@ void main() {
     });
 
     test('purposeTranslationKey maps all purpose values', () {
-      expect(
-        PropertyModel.fromJson({'purpose': 'buy'}).purposeTranslationKey,
-        'buy',
-      );
-      expect(
-        PropertyModel.fromJson({'purpose': 'rent'}).purposeTranslationKey,
-        'rent',
-      );
-      expect(
-        PropertyModel.fromJson({'purpose': 'short_stay'}).purposeTranslationKey,
-        'short_stay',
-      );
+      expect(PropertyModel.fromJson({'purpose': 'buy'}).purposeTranslationKey, 'buy');
+      expect(PropertyModel.fromJson({'purpose': 'rent'}).purposeTranslationKey, 'rent');
+      expect(PropertyModel.fromJson({'purpose': 'short_stay'}).purposeTranslationKey, 'short_stay');
     });
 
     test('propertyTypeTranslationKey maps all type values', () {
@@ -880,14 +855,8 @@ void main() {
         PropertyModel.fromJson({'property_type': 'builder_floor'}).propertyTypeTranslationKey,
         'builder_floor',
       );
-      expect(
-        PropertyModel.fromJson({'property_type': 'pg'}).propertyTypeTranslationKey,
-        'pg',
-      );
-      expect(
-        PropertyModel.fromJson({}).propertyTypeTranslationKey,
-        'property',
-      );
+      expect(PropertyModel.fromJson({'property_type': 'pg'}).propertyTypeTranslationKey, 'pg');
+      expect(PropertyModel.fromJson({}).propertyTypeTranslationKey, 'property');
     });
 
     test('addressDisplay uses fullAddress when available', () {
@@ -947,10 +916,7 @@ void main() {
     });
 
     test('imageDescription combines propertyTypeString and city', () {
-      final model = PropertyModel.fromJson({
-        'property_type': 'apartment',
-        'city': 'Mumbai',
-      });
+      final model = PropertyModel.fromJson({'property_type': 'apartment', 'city': 'Mumbai'});
       expect(model.imageDescription, contains('Mumbai'));
     });
 
@@ -1113,10 +1079,7 @@ void main() {
         }).genderPreferenceTranslationKey,
         'female_only',
       );
-      expect(
-        PropertyModel.fromJson({}).genderPreferenceTranslationKey,
-        isNull,
-      );
+      expect(PropertyModel.fromJson({}).genderPreferenceTranslationKey, isNull);
     });
 
     test('sharingTypeTranslationKey maps all values', () {
@@ -1132,10 +1095,7 @@ void main() {
         }).sharingTypeTranslationKey,
         'shared_room',
       );
-      expect(
-        PropertyModel.fromJson({}).sharingTypeTranslationKey,
-        isNull,
-      );
+      expect(PropertyModel.fromJson({}).sharingTypeTranslationKey, isNull);
     });
   });
 }

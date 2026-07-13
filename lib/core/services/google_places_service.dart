@@ -9,47 +9,198 @@ import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:http/http.dart' as http;
 
-/// Place suggestion from Google Places Autocomplete.
+/// Place suggestion from autocomplete (Google Places or OSM fallback).
 class PlaceSuggestion {
   final String placeId;
   final String description;
   final String mainText;
   final String secondaryText;
 
+  /// When set (e.g. OSM Nominatim), details do not need a second network call.
+  final double? latitude;
+  final double? longitude;
+
   PlaceSuggestion({
     required this.placeId,
     required this.description,
     required this.mainText,
     required this.secondaryText,
+    this.latitude,
+    this.longitude,
   });
+
+  bool get hasCoordinates => latitude != null && longitude != null;
 }
 
-/// Service responsible for Google Places API interactions.
-/// Extracted from LocationController to follow single-responsibility.
+/// Service for place autocomplete + details.
+/// Prefers Google Places; falls back to OpenStreetMap Nominatim when Google
+/// is denied (billing), missing key, or otherwise unavailable.
+///
+/// Places errors are kept as localized [placesError] strings for in-sheet UI
+/// rather than [ErrorMapper]/[ErrorHandler] (which surface global toasts).
 class GooglePlacesService extends GetxService {
+  static const String _osmPlaceIdPrefix = 'osm:';
+
+  /// Nominatim public API: max 1 request/second (usage policy).
+  static const Duration _nominatimMinInterval = Duration(milliseconds: 1100);
+  static const int _nominatimCacheMaxEntries = 32;
+
   final RxList<PlaceSuggestion> placeSuggestions = <PlaceSuggestion>[].obs;
   final RxBool isSearchingPlaces = false.obs;
 
+  /// User-facing error for the last failed search. Empty when OK / zero results.
+  final RxString placesError = ''.obs;
+
+  /// After a denied Google call, skip Google for a while to avoid log spam.
+  DateTime? _googleDisabledUntil;
+  static const Duration _googleCooldown = Duration(minutes: 10);
+
+  /// Drop stale async results when a newer search supersedes an older one.
+  int _suggestionsRequestId = 0;
+  int _detailsRequestId = 0;
+
+  DateTime? _lastNominatimRequestAt;
+  final Map<String, List<PlaceSuggestion>> _nominatimCache = {};
+
+  void _setError(String message) {
+    placesError.value = message;
+  }
+
+  void _clearError() {
+    placesError.value = '';
+  }
+
+  bool _isLatestSuggestions(int requestId) => requestId == _suggestionsRequestId;
+
+  bool _isLatestDetails(int requestId) => requestId == _detailsRequestId;
+
+  void _logApiFailure(String action, String? status, String? errorMessage) {
+    final detail = errorMessage != null && errorMessage.isNotEmpty ? ' — $errorMessage' : '';
+    DebugLogger.error('Google Places $action status=$status$detail');
+  }
+
+  bool get _shouldTryGoogle {
+    final until = _googleDisabledUntil;
+    if (until == null) return true;
+    if (DateTime.now().isAfter(until)) {
+      _googleDisabledUntil = null;
+      return true;
+    }
+    return false;
+  }
+
+  void _disableGoogleTemporarily() {
+    _googleDisabledUntil = DateTime.now().add(_googleCooldown);
+    DebugLogger.warning(
+      'Google Places unavailable — using OpenStreetMap fallback '
+      'for ${_googleCooldown.inMinutes} minutes',
+    );
+  }
+
+  /// Enforces Nominatim's 1 req/s public-service limit across all callers.
+  Future<void> _throttleNominatim() async {
+    final last = _lastNominatimRequestAt;
+    if (last != null) {
+      final elapsed = DateTime.now().difference(last);
+      if (elapsed < _nominatimMinInterval) {
+        await Future<void>.delayed(_nominatimMinInterval - elapsed);
+      }
+    }
+    _lastNominatimRequestAt = DateTime.now();
+  }
+
+  String _nominatimCacheKey(String query) {
+    final countryCode = AppConfig.instance.defaultCountry.toLowerCase();
+    return '${query.trim().toLowerCase()}|$countryCode';
+  }
+
+  List<PlaceSuggestion>? _getCachedNominatim(String query) {
+    return _nominatimCache[_nominatimCacheKey(query)];
+  }
+
+  void _putCachedNominatim(String query, List<PlaceSuggestion> results) {
+    final key = _nominatimCacheKey(query);
+    if (_nominatimCache.length >= _nominatimCacheMaxEntries) {
+      _nominatimCache.remove(_nominatimCache.keys.first);
+    }
+    _nominatimCache[key] = results;
+  }
+
   /// Fetches place autocomplete suggestions for [query].
-  /// Optionally biases results toward [currentPosition].
   Future<List<PlaceSuggestion>> getPlaceSuggestions(
     String query, {
     Position? currentPosition,
   }) async {
+    final requestId = ++_suggestionsRequestId;
+
     if (query.trim().isEmpty || query.length < 2) {
+      if (!_isLatestSuggestions(requestId)) return [];
       placeSuggestions.clear();
+      isSearchingPlaces.value = false;
+      _clearError();
       return [];
     }
 
-    try {
-      isSearchingPlaces.value = true;
+    isSearchingPlaces.value = true;
+    _clearError();
 
+    try {
+      if (_shouldTryGoogle) {
+        final googleResults = await _searchGooglePlaces(query, currentPosition: currentPosition);
+        if (!_isLatestSuggestions(requestId)) return [];
+        if (googleResults != null) {
+          placeSuggestions.value = googleResults;
+          _clearError();
+          return googleResults;
+        }
+        // null => Google failed (denied/missing/error) — try fallback
+      }
+
+      if (!_isLatestSuggestions(requestId)) return [];
+
+      final fallback = await _searchNominatim(
+        query,
+        isCurrent: () => _isLatestSuggestions(requestId),
+      );
+      if (!_isLatestSuggestions(requestId)) return [];
+      if (fallback.isNotEmpty) {
+        placeSuggestions.value = fallback;
+        _clearError();
+        DebugLogger.success('Location search via OpenStreetMap: ${fallback.length} results');
+        return fallback;
+      }
+
+      placeSuggestions.clear();
+      // Only show error if both providers failed to return anything useful
+      // and we did not already clear for zero results from Google.
+      if (placesError.value.isEmpty) {
+        _clearError(); // real empty results
+      }
+      return [];
+    } finally {
+      if (_isLatestSuggestions(requestId)) {
+        isSearchingPlaces.value = false;
+      }
+    }
+  }
+
+  /// Returns suggestions on success / ZERO_RESULTS (empty list).
+  /// Returns null when Google cannot be used (caller should fall back).
+  Future<List<PlaceSuggestion>?> _searchGooglePlaces(
+    String query, {
+    Position? currentPosition,
+  }) async {
+    try {
       final config = AppConfig.instance;
       final apiKey = config.googlePlacesApiKey;
       if (apiKey.isEmpty) {
-        DebugLogger.warning('Google Places API key not found');
-        placeSuggestions.clear();
-        return [];
+        DebugLogger.warning('Google Places API key not found — will use OSM fallback');
+        _disableGoogleTemporarily();
+        return null;
+      }
+
+      if (kDebugMode) {
+        DebugLogger.info('Google Places autocomplete key present (length=${apiKey.length})');
       }
 
       final countryCode = config.defaultCountry;
@@ -80,72 +231,221 @@ class GooglePlacesService extends GetxService {
         if (kDebugMode) {
           DebugLogger.error('Response body: ${response.body}');
         }
-        return [];
+        return null;
       }
 
-      final data = json.decode(response.body);
-      final status = data['status'];
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final status = data['status'] as String?;
+      final errorMessage = data['error_message'] as String?;
 
       switch (status) {
         case 'OK':
           final predictions = data['predictions'] as List;
-          final suggestions = predictions.map((prediction) {
+          return predictions.map((prediction) {
             return PlaceSuggestion(
-              placeId: prediction['place_id'],
-              description: prediction['description'],
-              mainText: prediction['structured_formatting']?['main_text'] ?? '',
-              secondaryText: prediction['structured_formatting']?['secondary_text'] ?? '',
+              placeId: prediction['place_id'] as String,
+              description: prediction['description'] as String? ?? '',
+              mainText: prediction['structured_formatting']?['main_text'] as String? ?? '',
+              secondaryText:
+                  prediction['structured_formatting']?['secondary_text'] as String? ?? '',
             );
           }).toList();
 
-          placeSuggestions.value = suggestions;
-          return suggestions;
-
         case 'ZERO_RESULTS':
           DebugLogger.info('Google Places API returned no results for query: $query');
-          placeSuggestions.clear();
           return [];
 
         case 'OVER_QUERY_LIMIT':
-          DebugLogger.error('Google Places API quota exceeded for query: $query');
-          placeSuggestions.clear();
-          return [];
-
         case 'REQUEST_DENIED':
-          DebugLogger.error('Google Places API request denied for query: $query');
-          placeSuggestions.clear();
-          return [];
+          _logApiFailure('autocomplete', status, errorMessage);
+          _disableGoogleTemporarily();
+          return null;
 
         case 'INVALID_REQUEST':
-          DebugLogger.error('Invalid Google Places API request for query: $query');
-          placeSuggestions.clear();
-          return [];
+          _logApiFailure('autocomplete', status, errorMessage);
+          return null;
 
         default:
-          DebugLogger.warning('Unknown Google Places API status: $status for query: $query');
-          placeSuggestions.clear();
-          return [];
+          _logApiFailure('autocomplete', status, errorMessage);
+          return null;
       }
     } on TimeoutException catch (e) {
       DebugLogger.error('Google Places API request timed out for query: $query', e);
-      placeSuggestions.clear();
-      return [];
+      return null;
     } catch (e, stackTrace) {
       DebugLogger.error('Error getting place suggestions for query: $query', e, stackTrace);
-      placeSuggestions.clear();
+      return null;
+    }
+  }
+
+  /// OpenStreetMap Nominatim search (no API key / billing required).
+  /// Rate-limited to ~1 req/s and cached per query to respect public usage policy.
+  ///
+  /// When [isCurrent] is provided, network/error state is only applied if it
+  /// still returns true (drops superseded in-flight searches).
+  Future<List<PlaceSuggestion>> _searchNominatim(String query, {bool Function()? isCurrent}) async {
+    bool stillCurrent() => isCurrent == null || isCurrent();
+
+    final cached = _getCachedNominatim(query);
+    if (cached != null) {
+      DebugLogger.info('Nominatim cache hit for query: $query');
+      return List<PlaceSuggestion>.from(cached);
+    }
+
+    try {
+      await _throttleNominatim();
+      if (!stillCurrent()) return [];
+
+      final countryCode = AppConfig.instance.defaultCountry.toLowerCase();
+      final url = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': query,
+        'format': 'json',
+        'addressdetails': '1',
+        'limit': '8',
+        'countrycodes': countryCode,
+      });
+
+      final response = await http
+          .get(
+            url,
+            headers: {
+              // Nominatim usage policy requires a valid User-Agent.
+              'User-Agent': 'ghar360-flutter/1.0 (location-search)',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (!stillCurrent()) return [];
+
+      if (response.statusCode != 200) {
+        DebugLogger.error('Nominatim search failed: HTTP ${response.statusCode}');
+        if (stillCurrent()) {
+          _setError('failed_to_search_locations'.tr);
+        }
+        return [];
+      }
+
+      final decoded = json.decode(response.body);
+      if (decoded is! List) {
+        DebugLogger.warning('Nominatim returned unexpected payload');
+        return [];
+      }
+
+      final suggestions = <PlaceSuggestion>[];
+      for (final item in decoded) {
+        if (item is! Map<String, dynamic>) continue;
+        final lat = double.tryParse(item['lat']?.toString() ?? '');
+        final lon = double.tryParse(item['lon']?.toString() ?? '');
+        if (lat == null || lon == null) continue;
+
+        final displayName = (item['display_name'] as String?)?.trim() ?? '';
+        if (displayName.isEmpty) continue;
+
+        final parts = displayName.split(',').map((p) => p.trim()).toList();
+        final mainText = parts.isNotEmpty ? parts.first : displayName;
+        final secondaryText = parts.length > 1 ? parts.skip(1).take(3).join(', ') : '';
+
+        final osmType = item['osm_type']?.toString() ?? 'n';
+        final osmId = item['osm_id']?.toString() ?? '${lat}_$lon';
+        final placeId = '$_osmPlaceIdPrefix$osmType$osmId|$lat|$lon';
+
+        suggestions.add(
+          PlaceSuggestion(
+            placeId: placeId,
+            description: displayName,
+            mainText: mainText,
+            secondaryText: secondaryText,
+            latitude: lat,
+            longitude: lon,
+          ),
+        );
+      }
+
+      if (suggestions.isEmpty) {
+        DebugLogger.info('Nominatim returned no results for query: $query');
+      }
+      _putCachedNominatim(query, suggestions);
+      return suggestions;
+    } on TimeoutException catch (e) {
+      DebugLogger.error('Nominatim search timed out for query: $query', e);
+      if (stillCurrent()) {
+        _setError('places_api_timeout'.tr);
+      }
       return [];
-    } finally {
-      isSearchingPlaces.value = false;
+    } catch (e, stackTrace) {
+      DebugLogger.error('Nominatim search error for query: $query', e, stackTrace);
+      if (stillCurrent()) {
+        _setError('failed_to_search_locations'.tr);
+      }
+      return [];
     }
   }
 
   /// Fetches place details (coordinates, name) for [placeId].
-  /// If [preferredName] is provided, it is used as the display name.
   Future<LocationData?> getPlaceDetails(String placeId, {String? preferredName}) async {
+    final requestId = ++_detailsRequestId;
+
+    // Resolve from in-memory suggestions first (covers OSM + any pre-resolved).
+    for (final suggestion in placeSuggestions) {
+      if (suggestion.placeId == placeId && suggestion.hasCoordinates) {
+        if (!_isLatestDetails(requestId)) return null;
+        _clearError();
+        return LocationData(
+          name: (preferredName != null && preferredName.isNotEmpty)
+              ? preferredName
+              : (suggestion.mainText.isNotEmpty ? suggestion.mainText : suggestion.description),
+          latitude: suggestion.latitude!,
+          longitude: suggestion.longitude!,
+        );
+      }
+    }
+
+    // OSM place ids encode lat/lng: osm:node123|28.6|77.2
+    if (placeId.startsWith(_osmPlaceIdPrefix)) {
+      final parsed = _parseOsmPlaceId(placeId);
+      if (!_isLatestDetails(requestId)) return null;
+      if (parsed != null) {
+        _clearError();
+        return LocationData(
+          name: (preferredName != null && preferredName.isNotEmpty) ? preferredName : parsed.$3,
+          latitude: parsed.$1,
+          longitude: parsed.$2,
+        );
+      }
+      _setError('location_details_failed'.tr);
+      return null;
+    }
+
+    final details = await _getGooglePlaceDetails(placeId, preferredName: preferredName);
+    if (!_isLatestDetails(requestId)) return null;
+    return details;
+  }
+
+  /// Returns (lat, lng, fallbackName).
+  (double, double, String)? _parseOsmPlaceId(String placeId) {
+    try {
+      final body = placeId.substring(_osmPlaceIdPrefix.length);
+      final parts = body.split('|');
+      if (parts.length < 3) return null;
+      final lat = double.tryParse(parts[1]);
+      final lng = double.tryParse(parts[2]);
+      if (lat == null || lng == null) return null;
+      return (lat, lng, parts[0]);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<LocationData?> _getGooglePlaceDetails(String placeId, {String? preferredName}) async {
     try {
       final apiKey = AppConfig.instance.googlePlacesApiKey;
       if (apiKey.isEmpty) {
-        DebugLogger.warning('Google Places API key not found');
+        DebugLogger.warning(
+          'Google Places API key not found '
+          '(GOOGLE_PLACES_API_KEY missing from env)',
+        );
+        _setError('places_api_key_missing'.tr);
         return null;
       }
 
@@ -162,11 +462,13 @@ class GooglePlacesService extends GetxService {
         if (kDebugMode) {
           DebugLogger.error('Response body: ${response.body}');
         }
+        _setError('location_details_failed'.tr);
         return null;
       }
 
-      final data = json.decode(response.body);
-      final status = data['status'];
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final status = data['status'] as String?;
+      final errorMessage = data['error_message'] as String?;
 
       switch (status) {
         case 'OK':
@@ -202,6 +504,7 @@ class GooglePlacesService extends GetxService {
               }
             }
 
+            _clearError();
             return LocationData(
               name: displayName,
               latitude: location['lat'].toDouble(),
@@ -212,45 +515,30 @@ class GooglePlacesService extends GetxService {
             'Google Places Details API returned null result '
             'for placeId: $placeId',
           );
+          _setError('location_details_failed'.tr);
           return null;
 
         case 'ZERO_RESULTS':
-          DebugLogger.info(
-            'Google Places Details API returned no results '
-            'for placeId: $placeId',
-          );
+        case 'NOT_FOUND':
+          _logApiFailure('details', status, errorMessage);
+          _setError('location_details_failed'.tr);
           return null;
 
         case 'OVER_QUERY_LIMIT':
-          DebugLogger.error(
-            'Google Places Details API quota exceeded '
-            'for placeId: $placeId',
-          );
-          return null;
-
         case 'REQUEST_DENIED':
-          DebugLogger.error(
-            'Google Places Details API request denied '
-            'for placeId: $placeId',
-          );
+          _logApiFailure('details', status, errorMessage);
+          _disableGoogleTemporarily();
+          _setError('location_details_failed'.tr);
           return null;
 
         case 'INVALID_REQUEST':
-          DebugLogger.error(
-            'Invalid Google Places Details API request '
-            'for placeId: $placeId',
-          );
-          return null;
-
-        case 'NOT_FOUND':
-          DebugLogger.warning('Place not found for placeId: $placeId');
+          _logApiFailure('details', status, errorMessage);
+          _setError('location_details_failed'.tr);
           return null;
 
         default:
-          DebugLogger.warning(
-            'Unknown Google Places Details API status: $status '
-            'for placeId: $placeId',
-          );
+          _logApiFailure('details', status, errorMessage);
+          _setError('location_details_failed'.tr);
           return null;
       }
     } on TimeoutException catch (e) {
@@ -259,14 +547,15 @@ class GooglePlacesService extends GetxService {
         'for placeId: $placeId',
         e,
       );
+      _setError('places_api_timeout'.tr);
       return null;
     } catch (e, stackTrace) {
       DebugLogger.error('Error getting place details for placeId: $placeId', e, stackTrace);
+      _setError('location_details_failed'.tr);
       return null;
     }
   }
 
-  /// Performs an HTTP GET with retry on timeout.
   Future<http.Response> _getWithRetry(
     Uri url, {
     int maxRetries = 1,
@@ -284,11 +573,13 @@ class GooglePlacesService extends GetxService {
         await Future.delayed(const Duration(seconds: 2));
       }
     }
-    // Should not reach here, but satisfy analyzer
     throw TimeoutException('Request timed out after retries');
   }
 
   void clearPlaceSuggestions() {
+    _suggestionsRequestId++;
+    isSearchingPlaces.value = false;
     placeSuggestions.clear();
+    _clearError();
   }
 }

@@ -22,12 +22,15 @@ void main() {
       expect(result.message, 'Something went wrong');
     });
 
-    test('maps String with null-check message to NetworkException with data processing message', () {
-      final result = ErrorMapper.mapApiError('Null check operator used on a null value');
+    test(
+      'maps String with null-check message to NetworkException with data processing message',
+      () {
+        final result = ErrorMapper.mapApiError('Null check operator used on a null value');
 
-      expect(result, isA<NetworkException>());
-      expect(result.message, contains('data processing error'));
-    });
+        expect(result, isA<NetworkException>());
+        expect(result.message, contains('data processing error'));
+      },
+    );
 
     test('maps SocketException to NetworkException with CONNECTION_ERROR', () {
       final result = ErrorMapper.mapApiError(const SocketException('No route to host'));
@@ -92,9 +95,7 @@ void main() {
     });
 
     test('maps wrapped ApiException (Exception with ApiException in toString)', () {
-      final result = ErrorMapper.mapApiError(
-        Exception('ApiException: Bad data (Status: 400)'),
-      );
+      final result = ErrorMapper.mapApiError(Exception('ApiException: Bad data (Status: 400)'));
 
       expect(result, isA<ValidationException>());
       expect(result.code, 'BAD_REQUEST');
@@ -121,7 +122,11 @@ void main() {
         ApiException(
           'Bad request',
           statusCode: 400,
-          response: _encodeMap({'errors': {'email': ['Invalid email']}}),
+          response: _encodeMap({
+            'errors': {
+              'email': ['Invalid email'],
+            },
+          }),
         ),
       );
       expect(result, isA<ValidationException>());
@@ -197,7 +202,9 @@ void main() {
           'Unprocessable',
           statusCode: 422,
           response: _encodeMap({
-            'errors': {'name': ['Name too short', 'Name too long']}
+            'errors': {
+              'name': ['Name too short', 'Name too long'],
+            },
           }),
         ),
       );
@@ -211,7 +218,7 @@ void main() {
           'Unprocessable',
           statusCode: 422,
           response: _encodeMap({
-            'errors': {'name': 'Invalid name'}
+            'errors': {'name': 'Invalid name'},
           }),
         ),
       );
@@ -225,7 +232,7 @@ void main() {
           'Unprocessable',
           statusCode: 422,
           response: _encodeMap({
-            'errors': {'email': 'Invalid'}
+            'errors': {'email': 'Invalid'},
           }),
         ),
       );
@@ -346,9 +353,7 @@ void main() {
     test('getRetryActionText returns check_connection for TIMEOUT', () {
       Get.testMode = true;
       Get.locale = const Locale('en', 'US');
-      final action = ErrorMapper.getRetryActionText(
-        NetworkException('Slow', code: 'TIMEOUT'),
-      );
+      final action = ErrorMapper.getRetryActionText(NetworkException('Slow', code: 'TIMEOUT'));
       expect(action, isA<String>());
       Get.reset();
     });
@@ -356,9 +361,7 @@ void main() {
     test('getRetryActionText returns try_again_later for ServerException', () {
       Get.testMode = true;
       Get.locale = const Locale('en', 'US');
-      final action = ErrorMapper.getRetryActionText(
-        ServerException('Error', statusCode: 500),
-      );
+      final action = ErrorMapper.getRetryActionText(ServerException('Error', statusCode: 500));
       expect(action, isA<String>());
       Get.reset();
     });
@@ -366,9 +369,7 @@ void main() {
     test('getRetryActionText returns log_in_again for AuthenticationException', () {
       Get.testMode = true;
       Get.locale = const Locale('en', 'US');
-      final action = ErrorMapper.getRetryActionText(
-        AuthenticationException('Unauthorized'),
-      );
+      final action = ErrorMapper.getRetryActionText(AuthenticationException('Unauthorized'));
       expect(action, isA<String>());
       Get.reset();
     });
@@ -376,9 +377,7 @@ void main() {
     test('getRetryActionText returns try_again for other exceptions', () {
       Get.testMode = true;
       Get.locale = const Locale('en', 'US');
-      final action = ErrorMapper.getRetryActionText(
-        ValidationException('Bad input'),
-      );
+      final action = ErrorMapper.getRetryActionText(ValidationException('Bad input'));
       expect(action, isA<String>());
       Get.reset();
     });
@@ -406,30 +405,22 @@ void main() {
     });
 
     test('TIMEOUT returns translated check_connection_and_retry', () {
-      final action = ErrorMapper.getRetryActionText(
-        NetworkException('Slow', code: 'TIMEOUT'),
-      );
+      final action = ErrorMapper.getRetryActionText(NetworkException('Slow', code: 'TIMEOUT'));
       expect(action, 'Check Connection & Retry');
     });
 
     test('ServerException returns translated try_again_later', () {
-      final action = ErrorMapper.getRetryActionText(
-        ServerException('Error', statusCode: 500),
-      );
+      final action = ErrorMapper.getRetryActionText(ServerException('Error', statusCode: 500));
       expect(action, 'Try Again Later');
     });
 
     test('AuthenticationException returns translated log_in_again', () {
-      final action = ErrorMapper.getRetryActionText(
-        AuthenticationException('Unauthorized'),
-      );
+      final action = ErrorMapper.getRetryActionText(AuthenticationException('Unauthorized'));
       expect(action, 'Log In Again');
     });
 
     test('other exceptions return translated try_again', () {
-      final action = ErrorMapper.getRetryActionText(
-        ValidationException('Bad input'),
-      );
+      final action = ErrorMapper.getRetryActionText(ValidationException('Bad input'));
       expect(action, 'try_again'.tr);
     });
 

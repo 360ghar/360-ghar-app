@@ -33,17 +33,11 @@ void main() {
     });
 
     test('setUserProperty completes without throwing', () async {
-      await expectLater(
-        AnalyticsService.setUserProperty('role', 'agent'),
-        completes,
-      );
+      await expectLater(AnalyticsService.setUserProperty('role', 'agent'), completes);
     });
 
     test('logVital completes without throwing', () async {
-      await expectLater(
-        AnalyticsService.logVital('test_event', params: {'value': 1}),
-        completes,
-      );
+      await expectLater(AnalyticsService.logVital('test_event', params: {'value': 1}), completes);
     });
 
     test('logVital without params completes without throwing', () async {
@@ -79,31 +73,19 @@ void main() {
     });
 
     test('applyFilter completes without throwing', () async {
-      await expectLater(
-        AnalyticsService.applyFilter(<String, Object>{'type': 'rent'}),
-        completes,
-      );
+      await expectLater(AnalyticsService.applyFilter(<String, Object>{'type': 'rent'}), completes);
     });
 
     test('appLaunchComplete completes without throwing', () async {
-      await expectLater(
-        AnalyticsService.appLaunchComplete(durationMs: 1200),
-        completes,
-      );
+      await expectLater(AnalyticsService.appLaunchComplete(durationMs: 1200), completes);
     });
 
     test('firstPropertyLoaded completes without throwing', () async {
-      await expectLater(
-        AnalyticsService.firstPropertyLoaded(latencyMs: 350),
-        completes,
-      );
+      await expectLater(AnalyticsService.firstPropertyLoaded(latencyMs: 350), completes);
     });
 
     test('deckExhausted completes without throwing', () async {
-      await expectLater(
-        AnalyticsService.deckExhausted(totalSwiped: 10),
-        completes,
-      );
+      await expectLater(AnalyticsService.deckExhausted(totalSwiped: 10), completes);
     });
 
     test('filterApplied completes without throwing', () async {
@@ -114,10 +96,7 @@ void main() {
     });
 
     test('locationChanged completes without throwing', () async {
-      await expectLater(
-        AnalyticsService.locationChanged(source: 'gps'),
-        completes,
-      );
+      await expectLater(AnalyticsService.locationChanged(source: 'gps'), completes);
     });
 
     test('authPhoneEntered completes without throwing', () async {
@@ -133,10 +112,7 @@ void main() {
     });
 
     test('deepLinkOpenProperty completes without throwing', () async {
-      await expectLater(
-        AnalyticsService.deepLinkOpenProperty('prop-9'),
-        completes,
-      );
+      await expectLater(AnalyticsService.deepLinkOpenProperty('prop-9'), completes);
     });
 
     test('deepLinkOpenTour completes without throwing with both params', () async {
@@ -151,17 +127,11 @@ void main() {
     });
 
     test('deepLinkOpenTour completes with only propertyId', () async {
-      await expectLater(
-        AnalyticsService.deepLinkOpenTour(propertyId: 'prop-9'),
-        completes,
-      );
+      await expectLater(AnalyticsService.deepLinkOpenTour(propertyId: 'prop-9'), completes);
     });
 
     test('deepLinkOpenTour completes with only url', () async {
-      await expectLater(
-        AnalyticsService.deepLinkOpenTour(url: 'https://tour'),
-        completes,
-      );
+      await expectLater(AnalyticsService.deepLinkOpenTour(url: 'https://tour'), completes);
     });
   });
 

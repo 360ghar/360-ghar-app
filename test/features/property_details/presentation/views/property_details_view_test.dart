@@ -16,6 +16,7 @@ import 'package:flutter/services.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
@@ -25,9 +26,8 @@ import 'package:ghar360/features/likes/presentation/controllers/likes_controller
 import 'package:ghar360/features/property_details/presentation/controllers/property_details_controller.dart';
 import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
-
-import '../../../../helpers/google_fonts_test_helper.dart';
 import '../../../../helpers/getx_test_binding.dart';
+import '../../../../helpers/google_fonts_test_helper.dart';
 import '../../../../helpers/mocks.dart';
 
 // ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ class FakeVisitsController extends VisitsController {
 // ---------------------------------------------------------------------------
 
 PropertyModel _fullProperty() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 1,
     title: 'Sunshine Villa',
     basePrice: 5000000,
@@ -121,8 +121,8 @@ PropertyModel _fullProperty() {
     mainImageUrl: 'https://example.com/villa.jpg',
     city: 'Bangalore',
     locality: 'Indiranagar',
-    features: const ['Swimming Pool', 'Gym', 'Garden', 'Security'],
-    amenities: const [
+    features: ['Swimming Pool', 'Gym', 'Garden', 'Security'],
+    amenities: [
       PropertyAmenity(id: 1, title: 'Swimming Pool'),
       PropertyAmenity(id: 2, title: 'Gym', icon: null),
     ],
@@ -134,7 +134,7 @@ PropertyModel _fullProperty() {
 }
 
 PropertyModel _rentProperty() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 2,
     title: 'Cozy Apartment',
     basePrice: 30000,
@@ -152,7 +152,7 @@ PropertyModel _rentProperty() {
 }
 
 PropertyModel _shortStayProperty() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 3,
     title: 'Holiday Home',
     basePrice: 2000,
@@ -169,7 +169,7 @@ PropertyModel _shortStayProperty() {
 }
 
 PropertyModel _propertyWithNoMedia() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 4,
     title: 'Simple Plot',
     basePrice: 1000000,
@@ -597,7 +597,7 @@ void main() {
 
     testWidgets('renders location section when property has coordinates', (tester) async {
       // Use a property with location but no media to avoid complex rendering.
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 6,
         title: 'Located Property',
         basePrice: 3000000,
@@ -645,7 +645,7 @@ void main() {
     });
 
     testWidgets('renders no description fallback when description is empty', (tester) async {
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 7,
         title: 'No Description',
         basePrice: 2000000,
@@ -830,7 +830,7 @@ void main() {
     });
 
     testWidgets('hides highlights section when features are empty', (tester) async {
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 8,
         title: 'No Features',
         basePrice: 2000000,
@@ -848,7 +848,7 @@ void main() {
     });
 
     testWidgets('hides builder section when builderName is null', (tester) async {
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 9,
         title: 'No Builder',
         basePrice: 2000000,
@@ -873,7 +873,7 @@ void main() {
     });
 
     testWidgets('renders location address text when property has location', (tester) async {
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 10,
         title: 'Located Property',
         basePrice: 3000000,
@@ -896,7 +896,7 @@ void main() {
     });
 
     testWidgets('renders property with no amenities', (tester) async {
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 11,
         title: 'No Amenities',
         basePrice: 2000000,
@@ -950,7 +950,7 @@ void main() {
     testWidgets('renders visit scheduled banner without date when date is null', (tester) async {
       // userHasScheduledVisit true but no next visit date and no matching visit
       // in VisitsController → banner shows plain "Visit Scheduled" text.
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 12,
         title: 'Scheduled No Date',
         basePrice: 4000000,
@@ -972,14 +972,14 @@ void main() {
     testWidgets('renders amenity chip with network icon when amenity has http icon', (
       tester,
     ) async {
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 13,
         title: 'Amenity Icons',
         basePrice: 3000000,
         propertyType: PropertyType.apartment,
         purpose: PropertyPurpose.buy,
         mainImageUrl: 'https://example.com/apt.jpg',
-        amenities: const [
+        amenities: [
           PropertyAmenity(id: 1, title: 'Clubhouse', icon: 'https://example.com/icons/club.png'),
         ],
         isAvailable: true,
@@ -1001,7 +1001,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 14,
         title: 'Map Property',
         basePrice: 3000000,
@@ -1150,7 +1150,7 @@ void main() {
 
       propertyController.isLoading.value = false;
       propertyController.errorKey.value = null;
-      propertyController.property.value = PropertyModel(
+      propertyController.property.value = const PropertyModel(
         id: 20,
         title: 'Maps Branch Property',
         basePrice: 3000000,

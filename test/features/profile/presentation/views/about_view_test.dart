@@ -10,10 +10,8 @@
 // - Platform label computation
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/controllers/app_update_controller.dart';
 import 'package:ghar360/core/data/models/app_update_models.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
@@ -24,8 +22,7 @@ import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 
 /// Mock for [AppUpdateController] (a [GetxService]).
-class _MockAppUpdateController extends GetxServiceMock
-    implements AppUpdateController {}
+class _MockAppUpdateController extends GetxServiceMock implements AppUpdateController {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -44,11 +41,11 @@ void main() {
 
     appUpdateController = _MockAppUpdateController();
     // Default: resolve version info immediately.
-    when(() => appUpdateController.getVersionInfo()).thenAnswer(
-      (_) async => const AppVersionInfo(version: '1.2.3', buildNumber: 42),
-    );
+    when(
+      () => appUpdateController.getVersionInfo(),
+    ).thenAnswer((_) async => const AppVersionInfo(version: '1.2.3', buildNumber: 42));
 
-    GetxTestBinding.bind()..register<AppUpdateController>(appUpdateController);
+    GetxTestBinding.bind().register<AppUpdateController>(appUpdateController);
   });
 
   tearDown(() {
@@ -105,9 +102,7 @@ void main() {
       expect(find.byIcon(Icons.person), findsOneWidget);
     });
 
-    testWidgets('renders version and build info rows when data loads', (
-      tester,
-    ) async {
+    testWidgets('renders version and build info rows when data loads', (tester) async {
       await pumpView(tester);
       // Allow the FutureBuilder to resolve.
       await tester.pump(const Duration(milliseconds: 50));
@@ -137,12 +132,8 @@ void main() {
       expect(find.text('about_made_with_love'.tr), findsOneWidget);
     });
 
-    testWidgets('shows dash placeholder when version info is null', (
-      tester,
-    ) async {
-      when(() => appUpdateController.getVersionInfo()).thenAnswer(
-        (_) async => null,
-      );
+    testWidgets('shows dash placeholder when version info is null', (tester) async {
+      when(() => appUpdateController.getVersionInfo()).thenAnswer((_) async => null);
 
       await pumpView(tester);
       await tester.pump(const Duration(milliseconds: 50));
@@ -152,9 +143,9 @@ void main() {
     });
 
     testWidgets('shows dash for build when buildNumber is null', (tester) async {
-      when(() => appUpdateController.getVersionInfo()).thenAnswer(
-        (_) async => const AppVersionInfo(version: '2.0.0'),
-      );
+      when(
+        () => appUpdateController.getVersionInfo(),
+      ).thenAnswer((_) async => const AppVersionInfo(version: '2.0.0'));
 
       await pumpView(tester);
       await tester.pump(const Duration(milliseconds: 50));

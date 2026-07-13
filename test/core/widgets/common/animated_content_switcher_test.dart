@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/animated_content_switcher.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -26,10 +26,10 @@ void main() {
     testWidgets('renders loading widget when isLoading is true', (tester) async {
       await pumpWidget(
         tester,
-        AnimatedContentSwitcher(
+        const AnimatedContentSwitcher(
           isLoading: true,
-          loadingWidget: const Text('Loading...'),
-          contentWidget: const Text('Content'),
+          loadingWidget: Text('Loading...'),
+          contentWidget: Text('Content'),
         ),
       );
 
@@ -41,10 +41,10 @@ void main() {
     testWidgets('renders content widget when isLoading is false', (tester) async {
       await pumpWidget(
         tester,
-        AnimatedContentSwitcher(
+        const AnimatedContentSwitcher(
           isLoading: false,
-          loadingWidget: const Text('Loading...'),
-          contentWidget: const Text('Content'),
+          loadingWidget: Text('Loading...'),
+          contentWidget: Text('Content'),
         ),
       );
 
@@ -52,14 +52,13 @@ void main() {
       expect(find.text('Loading...'), findsNothing);
     });
 
-    testWidgets('switches between loading and content with animation',
-        (tester) async {
+    testWidgets('switches between loading and content with animation', (tester) async {
       await pumpWidget(
         tester,
-        AnimatedContentSwitcher(
+        const AnimatedContentSwitcher(
           isLoading: true,
-          loadingWidget: const Text('Loading...'),
-          contentWidget: const Text('Content'),
+          loadingWidget: Text('Loading...'),
+          contentWidget: Text('Content'),
         ),
       );
 
@@ -68,10 +67,10 @@ void main() {
       // Switch to content.
       await pumpWidget(
         tester,
-        AnimatedContentSwitcher(
+        const AnimatedContentSwitcher(
           isLoading: false,
-          loadingWidget: const Text('Loading...'),
-          contentWidget: const Text('Content'),
+          loadingWidget: Text('Loading...'),
+          contentWidget: Text('Content'),
         ),
       );
 
@@ -84,10 +83,10 @@ void main() {
     testWidgets('uses FadeTransition as the transition builder', (tester) async {
       await pumpWidget(
         tester,
-        AnimatedContentSwitcher(
+        const AnimatedContentSwitcher(
           isLoading: true,
-          loadingWidget: const Text('Loading...'),
-          contentWidget: const Text('Content'),
+          loadingWidget: Text('Loading...'),
+          contentWidget: Text('Content'),
         ),
       );
 
@@ -142,8 +141,7 @@ void main() {
       expect(find.text('Hello'), findsOneWidget);
     });
 
-    testWidgets('renders empty state when data is null and emptyBuilder provided',
-        (tester) async {
+    testWidgets('renders empty state when data is null and emptyBuilder provided', (tester) async {
       await pumpWidget(
         tester,
         AnimatedStateBuilder<String>(
@@ -162,10 +160,7 @@ void main() {
 
   group('FadeInWidget', () {
     testWidgets('renders child and animates on build', (tester) async {
-      await pumpWidget(
-        tester,
-        const FadeInWidget(child: Text('Fade In')),
-      );
+      await pumpWidget(tester, const FadeInWidget(child: Text('Fade In')));
 
       expect(find.byType(FadeInWidget), findsOneWidget);
       expect(find.text('Fade In'), findsOneWidget);
@@ -177,10 +172,7 @@ void main() {
     testWidgets('respects delay before animating', (tester) async {
       await pumpWidget(
         tester,
-        const FadeInWidget(
-          delay: Duration(milliseconds: 100),
-          child: Text('Delayed'),
-        ),
+        const FadeInWidget(delay: Duration(milliseconds: 100), child: Text('Delayed')),
       );
 
       // Before the delay elapses the widget is present but not yet animated.

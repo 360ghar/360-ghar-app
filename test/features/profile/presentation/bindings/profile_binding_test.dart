@@ -7,10 +7,10 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/features/profile/presentation/bindings/profile_binding.dart';
 import 'package:ghar360/features/profile/presentation/controllers/edit_profile_controller.dart';
 import 'package:ghar360/features/profile/presentation/controllers/profile_controller.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 
 void main() {

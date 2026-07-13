@@ -49,16 +49,23 @@ void main() {
 
   group('VisitsRemoteDatasource.fetchVisitsSummary', () {
     test('parses visits list from data-wrapped envelope', () async {
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {
-                  'data': [visitJson(id: 1), visitJson(id: 2)],
-                  'has_more': true,
-                  'next_cursor': 'cursor-abc',
-                },
-                headers: const {},
-              ));
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(
+          statusCode: 200,
+          body: {
+            'data': [visitJson(id: 1), visitJson(id: 2)],
+            'has_more': true,
+            'next_cursor': 'cursor-abc',
+          },
+          headers: const {},
+        ),
+      );
 
       final payload = await datasource.fetchVisitsSummary();
 
@@ -70,15 +77,22 @@ void main() {
     });
 
     test('parses visits list from items envelope', () async {
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {
-                  'items': [visitJson(id: 5)],
-                  'has_more': false,
-                },
-                headers: const {},
-              ));
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(
+          statusCode: 200,
+          body: {
+            'items': [visitJson(id: 5)],
+            'has_more': false,
+          },
+          headers: const {},
+        ),
+      );
 
       final payload = await datasource.fetchVisitsSummary();
 
@@ -89,14 +103,21 @@ void main() {
     });
 
     test('parses visits list from visits fallback key', () async {
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {
-                  'visits': [visitJson(id: 9)],
-                },
-                headers: const {},
-              ));
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(
+          statusCode: 200,
+          body: {
+            'visits': [visitJson(id: 9)],
+          },
+          headers: const {},
+        ),
+      );
 
       final payload = await datasource.fetchVisitsSummary();
 
@@ -106,14 +127,15 @@ void main() {
 
     test('includes cursor query param when provided', () async {
       Map<String, dynamic>? capturedQuery;
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedQuery = invocation.namedArguments[#queryParams] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'items': <dynamic>[]},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
       });
 
       await datasource.fetchVisitsSummary(cursor: 'next-page');
@@ -124,14 +146,15 @@ void main() {
 
     test('omits cursor query param when null', () async {
       Map<String, dynamic>? capturedQuery;
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedQuery = invocation.namedArguments[#queryParams] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'items': <dynamic>[]},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
       });
 
       await datasource.fetchVisitsSummary();
@@ -141,14 +164,15 @@ void main() {
 
     test('omits cursor query param when empty string', () async {
       Map<String, dynamic>? capturedQuery;
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedQuery = invocation.namedArguments[#queryParams] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'items': <dynamic>[]},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
       });
 
       await datasource.fetchVisitsSummary(cursor: '');
@@ -158,14 +182,15 @@ void main() {
 
     test('uses custom limit value', () async {
       Map<String, dynamic>? capturedQuery;
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedQuery = invocation.namedArguments[#queryParams] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'items': <dynamic>[]},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
       });
 
       await datasource.fetchVisitsSummary(limit: 10);
@@ -175,14 +200,15 @@ void main() {
 
     test('passes useCache false to apiClient', () async {
       bool? capturedUseCache;
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedUseCache = invocation.namedArguments[#useCache] as bool;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'items': <dynamic>[]},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
       });
 
       await datasource.fetchVisitsSummary();
@@ -192,14 +218,15 @@ void main() {
 
     test('uses ApiPaths.visits endpoint', () async {
       String? capturedEndpoint;
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedEndpoint = invocation.positionalArguments[0] as String;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'items': <dynamic>[]},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
       });
 
       await datasource.fetchVisitsSummary();
@@ -208,12 +235,15 @@ void main() {
     });
 
     test('returns empty visits for empty items list', () async {
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {'items': <dynamic>[]},
-                headers: const {},
-              ));
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {}),
+      );
 
       final payload = await datasource.fetchVisitsSummary();
 
@@ -222,28 +252,33 @@ void main() {
     });
 
     test('rethrows on parse failure (invalid body type)', () async {
-      when(() => apiClient.get(any(), queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: 'not a map',
-                headers: const {},
-              ));
+      when(
+        () => apiClient.get(
+          any(),
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 'not a map', headers: const {}));
 
-      await expectLater(
-        datasource.fetchVisitsSummary(),
-        throwsA(isA<FormatException>()),
-      );
+      await expectLater(datasource.fetchVisitsSummary(), throwsA(isA<FormatException>()));
     });
   });
 
   group('VisitsRemoteDatasource.scheduleVisit', () {
     test('returns parsed VisitModel from data-wrapped response', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 201,
-                body: {'data': visitJson(id: 42, status: 'confirmed')},
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(
+          statusCode: 201,
+          body: {'data': visitJson(id: 42, status: 'confirmed')},
+          headers: const {},
+        ),
+      );
 
       final visit = await datasource.scheduleVisit(
         propertyId: 100,
@@ -255,12 +290,15 @@ void main() {
     });
 
     test('returns parsed VisitModel from unwrapped response', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 201,
-                body: visitJson(id: 77),
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(statusCode: 201, body: visitJson(id: 77), headers: const {}),
+      );
 
       final visit = await datasource.scheduleVisit(
         propertyId: 100,
@@ -272,14 +310,15 @@ void main() {
 
     test('sends correct body with property_id and scheduled_date', () async {
       Map<String, dynamic>? capturedBody;
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 201,
-          body: visitJson(),
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 201, body: visitJson(), headers: const {});
       });
 
       await datasource.scheduleVisit(
@@ -295,51 +334,50 @@ void main() {
 
     test('defaults special_requirements to empty string when null', () async {
       Map<String, dynamic>? capturedBody;
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 201,
-          body: visitJson(),
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 201, body: visitJson(), headers: const {});
       });
 
-      await datasource.scheduleVisit(
-        propertyId: 55,
-        scheduledDate: '2025-07-01T14:00:00.000Z',
-      );
+      await datasource.scheduleVisit(propertyId: 55, scheduledDate: '2025-07-01T14:00:00.000Z');
 
       expect(capturedBody!['special_requirements'], '');
     });
 
     test('passes idempotent true to apiClient', () async {
       bool? capturedIdempotent;
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedIdempotent = invocation.namedArguments[#idempotent] as bool;
-        return ApiResponse(
-          statusCode: 201,
-          body: visitJson(),
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 201, body: visitJson(), headers: const {});
       });
 
-      await datasource.scheduleVisit(
-        propertyId: 55,
-        scheduledDate: '2025-07-01T14:00:00.000Z',
-      );
+      await datasource.scheduleVisit(propertyId: 55, scheduledDate: '2025-07-01T14:00:00.000Z');
 
       expect(capturedIdempotent, isTrue);
     });
 
     test('throws FormatException on empty response object', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 201,
-                body: <String, dynamic>{},
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(statusCode: 201, body: <String, dynamic>{}, headers: const {}),
+      );
 
       await expectLater(
         datasource.scheduleVisit(propertyId: 1, scheduledDate: '2025-01-01'),
@@ -350,12 +388,15 @@ void main() {
 
   group('VisitsRemoteDatasource.cancelVisit', () {
     test('returns true when body has success=true', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {'success': true},
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(statusCode: 200, body: {'success': true}, headers: const {}),
+      );
 
       final result = await datasource.cancelVisit(5, reason: 'Not interested');
 
@@ -363,12 +404,16 @@ void main() {
     });
 
     test('returns true when status code is 200 even without success field', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {'message': 'cancelled'},
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer(
+        (_) async =>
+            ApiResponse(statusCode: 200, body: {'message': 'cancelled'}, headers: const {}),
+      );
 
       final result = await datasource.cancelVisit(5, reason: 'Not interested');
 
@@ -376,12 +421,13 @@ void main() {
     });
 
     test('returns true when body is not a Map and status is 200', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: 'ok',
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 'ok', headers: const {}));
 
       final result = await datasource.cancelVisit(5, reason: 'Not interested');
 
@@ -390,14 +436,15 @@ void main() {
 
     test('sends reason in body', () async {
       Map<String, dynamic>? capturedBody;
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'success': true},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
       });
 
       await datasource.cancelVisit(9, reason: 'Schedule conflict');
@@ -407,14 +454,15 @@ void main() {
 
     test('uses visitCancel endpoint with visit id', () async {
       String? capturedEndpoint;
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedEndpoint = invocation.positionalArguments[0] as String;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'success': true},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
       });
 
       await datasource.cancelVisit(12, reason: 'test');
@@ -425,12 +473,15 @@ void main() {
 
   group('VisitsRemoteDatasource.rescheduleVisit', () {
     test('returns true when body has success=true', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {'success': true},
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(statusCode: 200, body: {'success': true}, headers: const {}),
+      );
 
       final result = await datasource.rescheduleVisit(5, newDate: '2025-08-01T10:00:00.000Z');
 
@@ -438,12 +489,16 @@ void main() {
     });
 
     test('returns true when status code is 200 without success field', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {'message': 'rescheduled'},
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer(
+        (_) async =>
+            ApiResponse(statusCode: 200, body: {'message': 'rescheduled'}, headers: const {}),
+      );
 
       final result = await datasource.rescheduleVisit(5, newDate: '2025-08-01T10:00:00.000Z');
 
@@ -452,17 +507,22 @@ void main() {
 
     test('sends new_date and reason in body', () async {
       Map<String, dynamic>? capturedBody;
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'success': true},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
       });
 
-      await datasource.rescheduleVisit(7, newDate: '2025-09-01T10:00:00.000Z', reason: 'Time change');
+      await datasource.rescheduleVisit(
+        7,
+        newDate: '2025-09-01T10:00:00.000Z',
+        reason: 'Time change',
+      );
 
       expect(capturedBody!['new_date'], '2025-09-01T10:00:00.000Z');
       expect(capturedBody!['reason'], 'Time change');
@@ -470,14 +530,15 @@ void main() {
 
     test('defaults reason to empty string when null', () async {
       Map<String, dynamic>? capturedBody;
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'success': true},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
       });
 
       await datasource.rescheduleVisit(7, newDate: '2025-09-01T10:00:00.000Z');
@@ -487,14 +548,15 @@ void main() {
 
     test('uses visitReschedule endpoint with visit id', () async {
       String? capturedEndpoint;
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((invocation) async {
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((invocation) async {
         capturedEndpoint = invocation.positionalArguments[0] as String;
-        return ApiResponse(
-          statusCode: 200,
-          body: {'success': true},
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
       });
 
       await datasource.rescheduleVisit(15, newDate: '2025-08-01');
@@ -503,12 +565,13 @@ void main() {
     });
 
     test('returns true when body is not a Map and status is 200', () async {
-      when(() => apiClient.post(any(), body: any(named: 'body'), idempotent: any(named: 'idempotent')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: 42,
-                headers: const {},
-              ));
+      when(
+        () => apiClient.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 42, headers: const {}));
 
       final result = await datasource.rescheduleVisit(5, newDate: '2025-08-01');
 
@@ -518,12 +581,10 @@ void main() {
 
   group('VisitsRemoteDatasource.fetchRelationshipManager', () {
     test('returns parsed AgentModel from data-wrapped response', () async {
-      when(() => apiClient.get(any(), useCache: any(named: 'useCache')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: {'data': agentJson(id: 3)},
-                headers: const {},
-              ));
+      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenAnswer(
+        (_) async =>
+            ApiResponse(statusCode: 200, body: {'data': agentJson(id: 3)}, headers: const {}),
+      );
 
       final agent = await datasource.fetchRelationshipManager();
 
@@ -533,12 +594,9 @@ void main() {
     });
 
     test('returns parsed AgentModel from unwrapped response', () async {
-      when(() => apiClient.get(any(), useCache: any(named: 'useCache')))
-          .thenAnswer((_) async => ApiResponse(
-                statusCode: 200,
-                body: agentJson(id: 8),
-                headers: const {},
-              ));
+      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenAnswer(
+        (_) async => ApiResponse(statusCode: 200, body: agentJson(id: 8), headers: const {}),
+      );
 
       final agent = await datasource.fetchRelationshipManager();
 
@@ -547,14 +605,11 @@ void main() {
 
     test('uses agentsAssigned endpoint', () async {
       String? capturedEndpoint;
-      when(() => apiClient.get(any(), useCache: any(named: 'useCache')))
-          .thenAnswer((invocation) async {
+      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenAnswer((
+        invocation,
+      ) async {
         capturedEndpoint = invocation.positionalArguments[0] as String;
-        return ApiResponse(
-          statusCode: 200,
-          body: agentJson(),
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: agentJson(), headers: const {});
       });
 
       await datasource.fetchRelationshipManager();
@@ -564,14 +619,11 @@ void main() {
 
     test('passes useCache false to apiClient', () async {
       bool? capturedUseCache;
-      when(() => apiClient.get(any(), useCache: any(named: 'useCache')))
-          .thenAnswer((invocation) async {
+      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenAnswer((
+        invocation,
+      ) async {
         capturedUseCache = invocation.namedArguments[#useCache] as bool;
-        return ApiResponse(
-          statusCode: 200,
-          body: agentJson(),
-          headers: const {},
-        );
+        return ApiResponse(statusCode: 200, body: agentJson(), headers: const {});
       });
 
       await datasource.fetchRelationshipManager();
@@ -582,11 +634,7 @@ void main() {
 
   group('VisitsPayload', () {
     test('constructor stores values correctly', () {
-      const payload = VisitsPayload(
-        visits: [],
-        hasMore: true,
-        nextCursor: 'abc',
-      );
+      const payload = VisitsPayload(visits: [], hasMore: true, nextCursor: 'abc');
 
       expect(payload.visits, isEmpty);
       expect(payload.hasMore, isTrue);

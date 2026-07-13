@@ -270,10 +270,10 @@ void main() {
     // ── createProperty ─────────────────────────────────────────────────
 
     ApiResponse propertyResponse(int id) => ApiResponse(
-          statusCode: 201,
-          body: {'data': testPropertyJson(id: id)},
-          headers: {},
-        );
+      statusCode: 201,
+      body: {'data': testPropertyJson(id: id)},
+      headers: {},
+    );
 
     test('createProperty POSTs payload and returns parsed PropertyModel', () async {
       final data = {'title': 'New Home', 'base_price': 1000000.0};
@@ -306,9 +306,9 @@ void main() {
     });
 
     test('createProperty throws FormatException on empty payload', () async {
-      when(
-        () => mockApiClient.post(ApiPaths.properties, body: any(named: 'body')),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 201, body: {'data': <String, dynamic>{}}, headers: {}));
+      when(() => mockApiClient.post(ApiPaths.properties, body: any(named: 'body'))).thenAnswer(
+        (_) async => ApiResponse(statusCode: 201, body: {'data': <String, dynamic>{}}, headers: {}),
+      );
 
       expect(
         () => repository.createProperty(propertyData: {'title': 'x'}),
@@ -337,7 +337,9 @@ void main() {
       final property = await repository.updateProperty(propertyId: 9, fields: {'title': 'Updated'});
 
       expect(property.id, 9);
-      verify(() => mockApiClient.put(ApiPaths.propertyById('9'), body: {'title': 'Updated'})).called(1);
+      verify(
+        () => mockApiClient.put(ApiPaths.propertyById('9'), body: {'title': 'Updated'}),
+      ).called(1);
     });
 
     test('updateProperty merges media update payload (excluding images)', () async {

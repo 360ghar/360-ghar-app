@@ -386,7 +386,7 @@ packages:
     source: hosted
     version: "12.4.3"
   firebase_analytics_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: firebase_analytics_platform_interface
       sha256: "0b4ae09407352ec462a2403b8addf18bdf94a35e0e0c9dda198274516c32456a"
@@ -410,7 +410,7 @@ packages:
     source: hosted
     version: "0.4.5"
   firebase_app_check_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: firebase_app_check_platform_interface
       sha256: "58248ca4a6be624f17e47d1f18b3846e477cce3dc7f1c08917e3845aa973beb3"
@@ -434,7 +434,7 @@ packages:
     source: hosted
     version: "4.11.0"
   firebase_core_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: firebase_core_platform_interface
       sha256: "913e7c96ef83a80ad7e1c3f8a059167b3de23b5d5e07fa3ed8f11abe24de98b6"
@@ -458,7 +458,7 @@ packages:
     source: hosted
     version: "5.2.4"
   firebase_crashlytics_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: firebase_crashlytics_platform_interface
       sha256: cbedfe34081c4ad5c4e0558165383d4fa6b8fd70ae6e696190aad345adbb346c
@@ -474,7 +474,7 @@ packages:
     source: hosted
     version: "0.9.2+4"
   firebase_in_app_messaging_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: firebase_in_app_messaging_platform_interface
       sha256: efdb16db5e4a25f69da75e41d68c525abf65aedce8508774a631a76e3f2dd255
@@ -490,7 +490,7 @@ packages:
     source: hosted
     version: "16.4.1"
   firebase_messaging_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: firebase_messaging_platform_interface
       sha256: e10f6d521e7ed663d0ea2f4ec7de4c6729f8c2ce25d32faf6d6b4219da8515c2
@@ -514,7 +514,7 @@ packages:
     source: hosted
     version: "0.11.4+3"
   firebase_performance_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: firebase_performance_platform_interface
       sha256: "479384432806102e2952b5c9e576986a8f79205ea65e154b8fa3195599e4fce2"
@@ -538,7 +538,7 @@ packages:
     source: hosted
     version: "6.5.3"
   firebase_remote_config_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: firebase_remote_config_platform_interface
       sha256: "59a20db282c7f6166b02d5158e6bcd998937b1c1711307af8f55cb5da110bb2a"
@@ -734,7 +734,7 @@ packages:
     source: hosted
     version: "1.0.2"
   geocoding_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: geocoding_platform_interface
       sha256: "5164b8871705af7573698b3aa0746337faf818d72b488988741bcc7aeedd2f6e"
@@ -774,7 +774,7 @@ packages:
     source: hosted
     version: "0.2.6"
   geolocator_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: geolocator_platform_interface
       sha256: cdb082e4f048b69da244117b7914cc60d2a8897546ffaa4f2529c786ded7aee2
@@ -862,7 +862,7 @@ packages:
     source: hosted
     version: "6.3.0"
   google_sign_in_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: google_sign_in_platform_interface
       sha256: "7f59208c42b415a3cca203571128d6f84f885fead2d5b53eb65a9e27f2965bb5"
@@ -1390,7 +1390,7 @@ packages:
     source: hosted
     version: "3.1.6"
   plugin_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: plugin_platform_interface
       sha256: "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"
@@ -2051,7 +2051,7 @@ packages:
     source: hosted
     version: "4.13.0"
   webview_flutter_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: webview_flutter_platform_interface
       sha256: "1221c1b12f5278791042f2ec2841743784cf25c5a644e23d6680e5d718824f04"

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/discover/presentation/widgets/embedded_swipe_360_tour.dart';
 import '../../../../helpers/getx_test_binding.dart';

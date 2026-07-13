@@ -542,7 +542,9 @@ void main() {
       // The tap should not crash.
     });
 
-    testWidgets('AgentCard with null contact number shows unavailable toast on call', (tester) async {
+    testWidgets('AgentCard with null contact number shows unavailable toast on call', (
+      tester,
+    ) async {
       final controller = _TestVisitsController();
       controller.isLoading.value = false;
       controller.hasLoadedVisits.value = true;
@@ -605,7 +607,11 @@ void main() {
       controller.isLoading.value = false;
       controller.hasLoadedVisits.value = true;
       controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      controller.pastVisitsList.assignAll([_pastVisit(id: 2), _pastVisit(id: 3), _pastVisit(id: 4)]);
+      controller.pastVisitsList.assignAll([
+        _pastVisit(id: 2),
+        _pastVisit(id: 3),
+        _pastVisit(id: 4),
+      ]);
       Get.put<VisitsController>(controller);
 
       await tester.pumpApp(const VisitsView());
@@ -785,10 +791,9 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       drainOverflowExceptions(tester);
 
-      await tester.tap(find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(GestureDetector),
-      ));
+      await tester.tap(
+        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
+      );
       await tester.pumpAndSettle();
 
       // The dialog should have a text field for the reason.
@@ -807,10 +812,9 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       drainOverflowExceptions(tester);
 
-      await tester.tap(find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(GestureDetector),
-      ));
+      await tester.tap(
+        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
+      );
       await tester.pumpAndSettle();
 
       // The "yes_cancel" button should be present but disabled (null onPressed).
@@ -835,10 +839,9 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       drainOverflowExceptions(tester);
 
-      await tester.tap(find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(GestureDetector),
-      ));
+      await tester.tap(
+        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
+      );
       await tester.pumpAndSettle();
 
       // Enter a reason in the text field.
@@ -864,10 +867,9 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       drainOverflowExceptions(tester);
 
-      await tester.tap(find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(GestureDetector),
-      ));
+      await tester.tap(
+        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
+      );
       await tester.pump(const Duration(milliseconds: 500));
 
       // Enter a reason.
@@ -897,17 +899,13 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       drainOverflowExceptions(tester);
 
-      await tester.tap(find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(GestureDetector),
-      ));
+      await tester.tap(
+        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
+      );
       await tester.pump(const Duration(milliseconds: 500));
 
       // Tap the "no" button (TextButton inside the dialog).
-      final noButton = find.ancestor(
-        of: find.text('no'.tr),
-        matching: find.byType(TextButton),
-      );
+      final noButton = find.ancestor(of: find.text('no'.tr), matching: find.byType(TextButton));
       expect(noButton, findsOneWidget);
 
       await tester.tap(noButton);
@@ -955,7 +953,6 @@ void main() {
       expect(find.text('Something broke'), findsOneWidget);
     });
   });
-
 
   // -------------------------------------------------------------------------
   // High-miss paths: multi-column grid, property tap, pickers, failures
@@ -1119,10 +1116,9 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       drainOverflowExceptions(tester);
 
-      await tester.tap(find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(GestureDetector),
-      ));
+      await tester.tap(
+        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
+      );
       await tester.pump(const Duration(milliseconds: 400));
 
       await tester.enterText(find.byType(TextField), 'Busy');
@@ -1147,7 +1143,13 @@ void main() {
       controller.hasLoadedVisits.value = true;
       controller.hasMore.value = true;
       controller.upcomingVisitsList.assignAll(
-        List.generate(15, (i) => _futureVisit(id: i + 1, property: _testProperty(id: 100 + i))),
+        List.generate(
+          15,
+          (i) => _futureVisit(
+            id: i + 1,
+            property: _testProperty(id: 100 + i),
+          ),
+        ),
       );
       Get.put<VisitsController>(controller);
 

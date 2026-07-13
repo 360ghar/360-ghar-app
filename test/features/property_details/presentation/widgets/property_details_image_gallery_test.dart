@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:ghar360/core/data/models/property_image_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_image_gallery.dart';
 
 PropertyModel _propertyWithGalleryImages() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 1,
     title: 'Gallery Home',
     basePrice: 5000000,
@@ -14,20 +15,20 @@ PropertyModel _propertyWithGalleryImages() {
     purpose: PropertyPurpose.buy,
     mainImageUrl: 'https://example.com/main.jpg',
     images: [
-      const PropertyImageModel(
+      PropertyImageModel(
         id: 1,
         propertyId: 1,
         imageUrl: 'https://example.com/main.jpg',
         isMain: true,
         displayOrder: 0,
       ),
-      const PropertyImageModel(
+      PropertyImageModel(
         id: 2,
         propertyId: 1,
         imageUrl: 'https://example.com/img2.jpg',
         displayOrder: 1,
       ),
-      const PropertyImageModel(
+      PropertyImageModel(
         id: 3,
         propertyId: 1,
         imageUrl: 'https://example.com/img3.jpg',
@@ -42,7 +43,7 @@ PropertyModel _propertyWithGalleryImages() {
 }
 
 PropertyModel _propertyWithMainImageOnly() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 2,
     title: 'Single Image',
     basePrice: 3000000,
@@ -57,7 +58,7 @@ PropertyModel _propertyWithMainImageOnly() {
 }
 
 PropertyModel _propertyWithNoImages() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 3,
     title: 'No Images',
     basePrice: 1000000,

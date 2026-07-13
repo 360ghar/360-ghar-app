@@ -84,6 +84,7 @@ class _StubSignUpController extends GetxServiceMock implements SignUpController 
   @override
   final RxInt otpCountdown = 0.obs;
 
+  @override
   DateTime? selectedDateOfBirth;
 
   bool nextStepCalled = false;
@@ -94,8 +95,7 @@ class _StubSignUpController extends GetxServiceMock implements SignUpController 
   bool get isEmailSignup => channel.value == IdentifierChannel.email;
 
   @override
-  void togglePasswordVisibility() =>
-      isPasswordVisible.value = !isPasswordVisible.value;
+  void togglePasswordVisibility() => isPasswordVisible.value = !isPasswordVisible.value;
 
   @override
   void toggleConfirmPasswordVisibility() =>

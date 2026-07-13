@@ -187,19 +187,20 @@ void main() {
     group('updateUserLocation', () {
       test('PUTs latitude and longitude to location endpoint', () async {
         when(
-          () => mockApiClient.put(ApiPaths.usersLocation,
-              body: {'latitude': 28.61, 'longitude': 77.20}),
+          () => mockApiClient.put(
+            ApiPaths.usersLocation,
+            body: {'latitude': 28.61, 'longitude': 77.20},
+          ),
         ).thenAnswer((_) async => successResponse({'data': <String, dynamic>{}}));
 
         final repo = createRepository();
-        await repo.updateUserLocation({
-          'current_latitude': 28.61,
-          'current_longitude': 77.20,
-        });
+        await repo.updateUserLocation({'current_latitude': 28.61, 'current_longitude': 77.20});
 
         verify(
-          () => mockApiClient.put(ApiPaths.usersLocation,
-              body: {'latitude': 28.61, 'longitude': 77.20}),
+          () => mockApiClient.put(
+            ApiPaths.usersLocation,
+            body: {'latitude': 28.61, 'longitude': 77.20},
+          ),
         ).called(1);
       });
 
@@ -207,18 +208,14 @@ void main() {
         final repo = createRepository();
         await repo.updateUserLocation({'current_latitude': null, 'current_longitude': 77.20});
 
-        verifyNever(
-          () => mockApiClient.put(ApiPaths.usersLocation, body: any(named: 'body')),
-        );
+        verifyNever(() => mockApiClient.put(ApiPaths.usersLocation, body: any(named: 'body')));
       });
 
       test('skips the API call when longitude is null', () async {
         final repo = createRepository();
         await repo.updateUserLocation({'current_latitude': 28.61, 'current_longitude': null});
 
-        verifyNever(
-          () => mockApiClient.put(ApiPaths.usersLocation, body: any(named: 'body')),
-        );
+        verifyNever(() => mockApiClient.put(ApiPaths.usersLocation, body: any(named: 'body')));
       });
 
       test('rethrows AppException from ApiClient', () async {
@@ -265,37 +262,48 @@ void main() {
     group('updateProfileImage', () {
       test('uploads file and returns parsed user', () async {
         when(
-          () => mockApiClient.upload(ApiPaths.usersAvatar,
-              field: 'file', filePath: '/tmp/avatar.png'),
-        ).thenAnswer((_) async => successResponse(wrappedUserJson(profileImageUrl: 'https://img.com/a.png')));
+          () => mockApiClient.upload(
+            ApiPaths.usersAvatar,
+            field: 'file',
+            filePath: '/tmp/avatar.png',
+          ),
+        ).thenAnswer(
+          (_) async => successResponse(wrappedUserJson(profileImageUrl: 'https://img.com/a.png')),
+        );
 
         final repo = createRepository();
         final user = await repo.updateProfileImage('/tmp/avatar.png');
 
         expect(user.email, 'test@example.com');
         verify(
-          () => mockApiClient.upload(ApiPaths.usersAvatar,
-              field: 'file', filePath: '/tmp/avatar.png'),
+          () => mockApiClient.upload(
+            ApiPaths.usersAvatar,
+            field: 'file',
+            filePath: '/tmp/avatar.png',
+          ),
         ).called(1);
       });
 
       test('rethrows AppException from ApiClient', () async {
         when(
-          () => mockApiClient.upload(ApiPaths.usersAvatar,
-              field: any(named: 'field'), filePath: any(named: 'filePath')),
+          () => mockApiClient.upload(
+            ApiPaths.usersAvatar,
+            field: any(named: 'field'),
+            filePath: any(named: 'filePath'),
+          ),
         ).thenThrow(NetworkException('Offline'));
 
         final repo = createRepository();
-        expect(
-          () => repo.updateProfileImage('/tmp/avatar.png'),
-          throwsA(isA<NetworkException>()),
-        );
+        expect(() => repo.updateProfileImage('/tmp/avatar.png'), throwsA(isA<NetworkException>()));
       });
 
       test('rethrows unexpected exceptions', () async {
         when(
-          () => mockApiClient.upload(ApiPaths.usersAvatar,
-              field: any(named: 'field'), filePath: any(named: 'filePath')),
+          () => mockApiClient.upload(
+            ApiPaths.usersAvatar,
+            field: any(named: 'field'),
+            filePath: any(named: 'filePath'),
+          ),
         ).thenThrow(Exception('Broke'));
 
         final repo = createRepository();
@@ -308,8 +316,11 @@ void main() {
         final json = wrappedUserJson();
         (json['data'] as Map<String, dynamic>).remove('phone');
         when(
-          () => mockApiClient.get(ApiPaths.usersProfile,
-              useCache: any(named: 'useCache'), dedupe: any(named: 'dedupe')),
+          () => mockApiClient.get(
+            ApiPaths.usersProfile,
+            useCache: any(named: 'useCache'),
+            dedupe: any(named: 'dedupe'),
+          ),
         ).thenAnswer((_) async => successResponse(json));
 
         final repo = createRepository();
@@ -322,8 +333,11 @@ void main() {
         final json = wrappedUserJson();
         (json['data'] as Map<String, dynamic>)['preferences'] = 'not-a-map';
         when(
-          () => mockApiClient.get(ApiPaths.usersProfile,
-              useCache: any(named: 'useCache'), dedupe: any(named: 'dedupe')),
+          () => mockApiClient.get(
+            ApiPaths.usersProfile,
+            useCache: any(named: 'useCache'),
+            dedupe: any(named: 'dedupe'),
+          ),
         ).thenAnswer((_) async => successResponse(json));
 
         final repo = createRepository();
@@ -334,8 +348,11 @@ void main() {
 
       test('throws FormatException on empty payload', () async {
         when(
-          () => mockApiClient.get(ApiPaths.usersProfile,
-              useCache: any(named: 'useCache'), dedupe: any(named: 'dedupe')),
+          () => mockApiClient.get(
+            ApiPaths.usersProfile,
+            useCache: any(named: 'useCache'),
+            dedupe: any(named: 'dedupe'),
+          ),
         ).thenAnswer((_) async => successResponse({'data': <String, dynamic>{}}));
 
         final repo = createRepository();
@@ -350,10 +367,7 @@ void main() {
         ).thenThrow(Exception('Unexpected'));
 
         final repo = createRepository();
-        expect(
-          () => repo.updateUserProfile({'full_name': 'x'}),
-          throwsException,
-        );
+        expect(() => repo.updateUserProfile({'full_name': 'x'}), throwsException);
       });
     });
   });

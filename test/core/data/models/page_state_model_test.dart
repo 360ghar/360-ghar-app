@@ -116,7 +116,11 @@ void main() {
       expect(json['isRefreshing'], true);
       expect(json['lastFetched'], '2026-01-15T10:30:00.000');
       expect(json['additionalData'], {'key': 'value'});
-      expect(json['selectedLocation'], {'name': 'Mumbai', 'latitude': 19.076, 'longitude': 72.8777});
+      expect(json['selectedLocation'], {
+        'name': 'Mumbai',
+        'latitude': 19.076,
+        'longitude': 72.8777,
+      });
 
       final restored = PageStateModel.fromJson(json);
       expect(restored.pageType, PageType.discover);
@@ -234,10 +238,7 @@ void main() {
     });
 
     test('fromJson handles null lastFetched', () {
-      final json = {
-        'pageType': 'likes',
-        'filters': UnifiedFilterModel.initial().toJson(),
-      };
+      final json = {'pageType': 'likes', 'filters': UnifiedFilterModel.initial().toJson()};
 
       final snapshot = PageStateSnapshot.fromJson(json);
 

@@ -34,10 +34,7 @@ void main() {
     });
 
     test('handles large numeric property ids', () {
-      expect(
-        DeepLinkService.propertyDeepLinkPath('999999999'),
-        '/property/999999999',
-      );
+      expect(DeepLinkService.propertyDeepLinkPath('999999999'), '/property/999999999');
     });
 
     test('produces a path starting with /property/', () {
@@ -61,10 +58,7 @@ void main() {
       authRepository = MockAuthRepository();
       service = DeepLinkService();
       Get.addPages([
-        GetPage(
-          name: AppRoutes.propertyDeepLink,
-          page: () => const SizedBox.shrink(),
-        ),
+        GetPage(name: AppRoutes.propertyDeepLink, page: () => const SizedBox.shrink()),
       ]);
     });
 
@@ -72,9 +66,7 @@ void main() {
 
     test('parses /property/:id path and schedules navigation', () async {
       expect(
-        () => service.handleDeepLinkForTest(
-          Uri.parse('https://the360ghar.com/property/42'),
-        ),
+        () => service.handleDeepLinkForTest(Uri.parse('https://the360ghar.com/property/42')),
         returnsNormally,
       );
       await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -116,8 +108,7 @@ void main() {
       Get.put<AuthRepository>(authRepository);
       final uri = Uri.parse('https://the360ghar.com/auth/callback?code=fail');
       when(() => authRepository.isOAuthRedirectUri(uri)).thenReturn(true);
-      when(() => authRepository.completeOAuthFromUri(uri))
-          .thenThrow(Exception('oauth failed'));
+      when(() => authRepository.completeOAuthFromUri(uri)).thenThrow(Exception('oauth failed'));
 
       expect(() => service.handleDeepLinkForTest(uri), returnsNormally);
       await Future<void>.delayed(const Duration(milliseconds: 50));

@@ -159,7 +159,8 @@ class _PropertyDetailsImageGalleryState extends State<PropertyDetailsImageGaller
             bottom: 44,
             child: Row(
               children: [
-                if (property.hasVirtualTour) _HeroMediaBadge(icon: Icons.threesixty, label: '360°'),
+                if (property.hasVirtualTour)
+                  const _HeroMediaBadge(icon: Icons.threesixty, label: '360°'),
                 if (property.hasVirtualTour && property.hasVideos) const SizedBox(width: 8),
                 if (property.hasVideos) _HeroMediaBadge(icon: Icons.videocam, label: 'video'.tr),
               ],
@@ -203,7 +204,7 @@ class _PropertyDetailsImageGalleryState extends State<PropertyDetailsImageGaller
               ),
               child: Text(
                 '${_current + 1}/$itemCount',
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppDesign.overlayLight,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -242,7 +243,7 @@ class _HeroMediaBadge extends StatelessWidget {
           const SizedBox(width: 5),
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
               color: AppDesign.overlayLight,
               fontSize: 11,
               fontWeight: FontWeight.w700,

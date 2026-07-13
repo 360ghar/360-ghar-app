@@ -375,9 +375,9 @@ void main() {
           isLiked: any(named: 'isLiked'),
         ),
       ).thenAnswer((invocation) async {
-        discoverState.value = PageStateModel(
+        discoverState.value = const PageStateModel(
           pageType: PageType.discover,
-          filters: const UnifiedFilterModel(),
+          filters: UnifiedFilterModel(),
           properties: [],
           hasMore: false,
         );
@@ -483,9 +483,9 @@ void main() {
   group('DiscoverController — filter shortcuts', () {
     test('filterByPropertyType calls updatePageFilters with type', () {
       when(() => mockPageStateService.getCurrentPageState()).thenReturn(
-        PageStateModel(
+        const PageStateModel(
           pageType: PageType.discover,
-          filters: const UnifiedFilterModel(),
+          filters: UnifiedFilterModel(),
           properties: [],
         ),
       );
@@ -498,9 +498,9 @@ void main() {
 
     test('filterByPurpose calls updatePageFilters with purpose', () {
       when(() => mockPageStateService.getCurrentPageState()).thenReturn(
-        PageStateModel(
+        const PageStateModel(
           pageType: PageType.discover,
-          filters: const UnifiedFilterModel(),
+          filters: UnifiedFilterModel(),
           properties: [],
         ),
       );
@@ -637,9 +637,9 @@ void main() {
     test('state sync transitions to loading when page state is loading', () {
       final controller = createController();
 
-      discoverState.value = PageStateModel(
+      discoverState.value = const PageStateModel(
         pageType: PageType.discover,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: true,
       );
@@ -735,9 +735,9 @@ void main() {
       controller.state.value = DiscoverState.prefetching;
       controller.isPrefetching.value = true;
 
-      discoverState.value = PageStateModel(
+      discoverState.value = const PageStateModel(
         pageType: PageType.discover,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: true,
       );
@@ -752,9 +752,9 @@ void main() {
       final controller = createController();
       controller.state.value = DiscoverState.loaded;
 
-      discoverState.value = PageStateModel(
+      discoverState.value = const PageStateModel(
         pageType: PageType.discover,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: false,
       );
@@ -783,9 +783,9 @@ void main() {
     });
 
     test('activatePage forces reload for stale loading without data', () {
-      discoverState.value = PageStateModel(
+      discoverState.value = const PageStateModel(
         pageType: PageType.discover,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: true,
       );

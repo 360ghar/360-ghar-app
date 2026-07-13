@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/core/network/api_client.dart';

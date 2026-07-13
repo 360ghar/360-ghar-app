@@ -92,10 +92,7 @@ class _TourWebViewState extends State<TourWebView> {
         ..setNavigationDelegate(
           NavigationDelegate(
             onNavigationRequest: (request) {
-              if (TourUrl.isAllowedNavigation(
-                request.url,
-                allowedOriginUrl: _validatedUrl,
-              )) {
+              if (TourUrl.isAllowedNavigation(request.url, allowedOriginUrl: _validatedUrl)) {
                 return NavigationDecision.navigate;
               }
               DebugLogger.warning('TourWebView blocked navigation: ${request.url}');

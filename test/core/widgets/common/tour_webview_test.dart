@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
@@ -180,7 +179,7 @@ void main() {
       await pumpWidget(tester, const TourWebView(tourUrl: 'https://kuula.co/share/test'));
 
       final decision = await lastNavigationDelegate?.navigationRequestCallback?.call(
-        NavigationRequest(url: 'https://kuula.co/share/test', isMainFrame: true),
+        const NavigationRequest(url: 'https://kuula.co/share/test', isMainFrame: true),
       );
 
       expect(decision, NavigationDecision.navigate);
@@ -190,7 +189,7 @@ void main() {
       await pumpWidget(tester, const TourWebView(tourUrl: 'https://kuula.co/share/test'));
 
       final decision = await lastNavigationDelegate?.navigationRequestCallback?.call(
-        NavigationRequest(url: 'tel:+1234', isMainFrame: true),
+        const NavigationRequest(url: 'tel:+1234', isMainFrame: true),
       );
 
       expect(decision, NavigationDecision.prevent);
@@ -200,7 +199,7 @@ void main() {
       await pumpWidget(tester, const TourWebView(tourUrl: 'https://kuula.co/share/test'));
 
       final decision = await lastNavigationDelegate?.navigationRequestCallback?.call(
-        NavigationRequest(url: 'about:blank', isMainFrame: true),
+        const NavigationRequest(url: 'about:blank', isMainFrame: true),
       );
 
       expect(decision, NavigationDecision.navigate);

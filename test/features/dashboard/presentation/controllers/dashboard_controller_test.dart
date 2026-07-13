@@ -483,60 +483,42 @@ void main() {
 
     test('engagementScore calculates percentage correctly', () {
       final controller = createController();
-      controller.userStats.value = {
-        'properties_viewed': 10,
-        'properties_liked': 5,
-      };
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 5};
 
       expect(controller.engagementScore, 50.0);
     });
 
     test('engagementScore clamps to 100', () {
       final controller = createController();
-      controller.userStats.value = {
-        'properties_viewed': 10,
-        'properties_liked': 20,
-      };
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 20};
 
       expect(controller.engagementScore, 100.0);
     });
 
     test('userEngagementLevelKey returns priority_high for score >= 80', () {
       final controller = createController();
-      controller.userStats.value = {
-        'properties_viewed': 10,
-        'properties_liked': 9,
-      };
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 9};
 
       expect(controller.userEngagementLevelKey, 'priority_high');
     });
 
     test('userEngagementLevelKey returns priority_medium for score >= 50', () {
       final controller = createController();
-      controller.userStats.value = {
-        'properties_viewed': 10,
-        'properties_liked': 5,
-      };
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 5};
 
       expect(controller.userEngagementLevelKey, 'priority_medium');
     });
 
     test('userEngagementLevelKey returns priority_low for score >= 20', () {
       final controller = createController();
-      controller.userStats.value = {
-        'properties_viewed': 10,
-        'properties_liked': 2,
-      };
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 2};
 
       expect(controller.userEngagementLevelKey, 'priority_low');
     });
 
     test('userEngagementLevelKey returns priority_very_low for score < 20', () {
       final controller = createController();
-      controller.userStats.value = {
-        'properties_viewed': 10,
-        'properties_liked': 1,
-      };
+      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 1};
 
       expect(controller.userEngagementLevelKey, 'priority_very_low');
     });
@@ -581,10 +563,7 @@ void main() {
 
     test('returns false when neither threshold met', () {
       final controller = createController();
-      controller.userStats.value = {
-        'properties_viewed': 5,
-        'time_spent_minutes': 30,
-      };
+      controller.userStats.value = {'properties_viewed': 5, 'time_spent_minutes': 30};
 
       expect(controller.isActiveUser, isFalse);
     });
@@ -691,7 +670,12 @@ void main() {
       await storage.write(kDashPropertiesLikedKey, 7);
       await storage.write(kDashSearchesMadeKey, 3);
       await storage.write(kDashRecentActivityKey, [
-        {'type': 'view', 'title': 'test', 'timestamp': '2024-01-01T00:00:00Z', 'icon': 'visibility'},
+        {
+          'type': 'view',
+          'title': 'test',
+          'timestamp': '2024-01-01T00:00:00Z',
+          'icon': 'visibility',
+        },
       ]);
 
       final controller = createController();

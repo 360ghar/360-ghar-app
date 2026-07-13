@@ -194,7 +194,10 @@ class LoginView extends GetView<LoginController> {
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2.2, color: AppDesign.editorialInk),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: AppDesign.editorialInk,
+                    ),
                   )
                 : Text(
                     'sign_in'.tr,

@@ -15,8 +15,7 @@ import '../../../../helpers/pump_app.dart';
 // Stub controller
 // ---------------------------------------------------------------------------
 
-class _StubForgotPasswordController extends GetxServiceMock
-    implements ForgotPasswordController {
+class _StubForgotPasswordController extends GetxServiceMock implements ForgotPasswordController {
   _StubForgotPasswordController({int initialStep = 0}) {
     currentStep.value = initialStep;
   }
@@ -68,12 +67,10 @@ class _StubForgotPasswordController extends GetxServiceMock
   bool get isEmail => looksLikeEmail.value;
 
   @override
-  String get maskedIdentifier =>
-      identifierController.text.isEmpty ? '' : identifierController.text;
+  String get maskedIdentifier => identifierController.text.isEmpty ? '' : identifierController.text;
 
   @override
-  void togglePasswordVisibility() =>
-      isPasswordVisible.value = !isPasswordVisible.value;
+  void togglePasswordVisibility() => isPasswordVisible.value = !isPasswordVisible.value;
 
   @override
   void toggleConfirmPasswordVisibility() =>
@@ -219,10 +216,7 @@ void main() {
         find.byKey(const ValueKey('qa.auth.forgot_password.confirm_password_input')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const ValueKey('qa.auth.forgot_password.update_password')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('qa.auth.forgot_password.update_password')), findsOneWidget);
     });
 
     testWidgets('tapping update password calls updatePassword', (tester) async {

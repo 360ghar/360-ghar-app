@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/network/sse_client.dart';
@@ -22,12 +21,7 @@ import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 
 ChatMessageModel _userMessage({String content = 'Hello', String id = 'u1'}) {
-  return ChatMessageModel(
-    id: id,
-    role: ChatRole.user,
-    content: content,
-    timestamp: DateTime.now(),
-  );
+  return ChatMessageModel(id: id, role: ChatRole.user, content: content, timestamp: DateTime.now());
 }
 
 ChatMessageModel _assistantMessage({String content = 'Hi there!', String id = 'a1'}) {
@@ -100,8 +94,9 @@ void main() {
     // Stub streamChat so sendMessage doesn't crash if called.
     when(
       () => mockRepository.streamChat(
-          message: any(named: 'message'),
-          conversationId: any(named: 'conversationId')),
+        message: any(named: 'message'),
+        conversationId: any(named: 'conversationId'),
+      ),
     ).thenAnswer((_) => const Stream<SseEvent>.empty());
 
     controller = AssistantController();
@@ -185,10 +180,7 @@ void main() {
     // ── Message list rendering ───────────────────────────────────────────
 
     testWidgets('shows ListView when messages are present', (tester) async {
-      controller.messages.addAll([
-        _userMessage(),
-        _assistantMessage(),
-      ]);
+      controller.messages.addAll([_userMessage(), _assistantMessage()]);
       await pumpView(tester);
 
       expect(find.byKey(const ValueKey('qa.assistant.message_list')), findsOneWidget);
@@ -282,7 +274,9 @@ void main() {
       expect(find.text('Hi!'), findsOneWidget);
     });
 
-    testWidgets('suppresses assistant when tool result is between assistant and widget', (tester) async {
+    testWidgets('suppresses assistant when tool result is between assistant and widget', (
+      tester,
+    ) async {
       controller.messages.addAll([
         _assistantMessage(id: 'a1', content: 'Searching...'),
         _toolResultMessage(id: 'tr1'),
@@ -352,7 +346,9 @@ void main() {
       expect(find.byType(ToolCallIndicator), findsNothing);
     });
 
-    testWidgets('hides ToolCallIndicator when activeToolCall is null and messages exist', (tester) async {
+    testWidgets('hides ToolCallIndicator when activeToolCall is null and messages exist', (
+      tester,
+    ) async {
       controller.messages.add(_userMessage());
       controller.activeToolCall.value = null;
       await pumpView(tester);

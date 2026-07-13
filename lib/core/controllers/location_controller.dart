@@ -48,6 +48,7 @@ class LocationController extends GetxController {
 
   RxList<PlaceSuggestion> get placeSuggestions => _placesService.placeSuggestions;
   RxBool get isSearchingPlaces => _placesService.isSearchingPlaces;
+  RxString get placesError => _placesService.placesError;
 
   // IP-based location fallback
   Future<LocationData?> getIpLocation() async {

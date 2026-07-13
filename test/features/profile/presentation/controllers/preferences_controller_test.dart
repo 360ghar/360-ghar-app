@@ -253,9 +253,7 @@ void main() {
       await Future(() {});
 
       // Local storage should still have been written
-      verify(
-        () => mockProfileRepository.updateUserPreferences(any()),
-      ).called(1);
+      verify(() => mockProfileRepository.updateUserPreferences(any())).called(1);
     });
 
     // ── savePreferences when ProfileRepository is not registered ──────────

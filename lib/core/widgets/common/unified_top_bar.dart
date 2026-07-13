@@ -143,9 +143,7 @@ class UnifiedTopBar extends GetView<PageStateService> implements PreferredSizeWi
 
       return IconButton(
         key: ValueKey('qa.topbar.filter.${pageType.name}'),
-        tooltip: activeFiltersCount > 0
-            ? '${'filters'.tr} ($activeFiltersCount)'
-            : 'filters'.tr,
+        tooltip: activeFiltersCount > 0 ? '${'filters'.tr} ($activeFiltersCount)' : 'filters'.tr,
         icon: Stack(
           children: [
             Icon(Icons.tune, color: AppDesign.iconColor, size: 24),

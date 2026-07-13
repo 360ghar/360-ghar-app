@@ -62,9 +62,7 @@ class AuthNavigationService extends GetxService {
       }
 
       // Only schedule a home-route retry when we are still on GetMaterialApp home.
-      if (status != AuthStatus.initial &&
-          status != AuthStatus.error &&
-          _isStillOnHomeRoute()) {
+      if (status != AuthStatus.initial && status != AuthStatus.error && _isStillOnHomeRoute()) {
         _scheduleRetryIfStillOnHome(status, generation);
       }
     }

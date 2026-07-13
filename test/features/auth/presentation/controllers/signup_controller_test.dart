@@ -11,6 +11,7 @@ import 'package:ghar360/features/auth/data/models/identifier_status.dart';
 import 'package:ghar360/features/auth/presentation/controllers/signup_controller.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 
@@ -546,11 +547,12 @@ void main() {
         await controller.signUp();
 
         when(
-          () => authRepository.verifyEmailOtp(email: any(named: 'email'), token: any(named: 'token')),
+          () => authRepository.verifyEmailOtp(
+            email: any(named: 'email'),
+            token: any(named: 'token'),
+          ),
         ).thenAnswer((_) async => AuthResponse());
-        when(
-          () => authRepository.updateUserPassword(any()),
-        ).thenAnswer((_) async => FakeUser());
+        when(() => authRepository.updateUserPassword(any())).thenAnswer((_) async => FakeUser());
         when(
           () => authRepository.recordLastMethod(any(), identifier: any(named: 'identifier')),
         ).thenAnswer((_) async {});
@@ -573,7 +575,10 @@ void main() {
         });
 
         when(
-          () => authRepository.verifyEmailOtp(email: any(named: 'email'), token: any(named: 'token')),
+          () => authRepository.verifyEmailOtp(
+            email: any(named: 'email'),
+            token: any(named: 'token'),
+          ),
         ).thenAnswer((_) async => AuthResponse());
         when(
           () => authRepository.recordLastMethod(any(), identifier: any(named: 'identifier')),
@@ -619,9 +624,7 @@ void main() {
 
         await controller.verifyOtp();
 
-        verify(
-          () => authRepository.verifyPhoneOtp(phone: '9876543210', token: '654321'),
-        ).called(1);
+        verify(() => authRepository.verifyPhoneOtp(phone: '9876543210', token: '654321')).called(1);
       });
 
       test('rejects OTP longer than 6 digits', () async {
@@ -679,9 +682,9 @@ void main() {
           'channel': 'email',
         });
 
-        when(() => authRepository.signUpWithEmailOtp(any())).thenThrow(
-          const AuthException('Rate limit exceeded'),
-        );
+        when(
+          () => authRepository.signUpWithEmailOtp(any()),
+        ).thenThrow(const AuthException('Rate limit exceeded'));
         controller.canResendOtp.value = true;
 
         await controller.resendOtp();

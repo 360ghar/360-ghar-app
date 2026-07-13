@@ -5,17 +5,17 @@ import 'package:flutter/services.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/property_image_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_media_hub.dart';
-
-import '../../../../helpers/google_fonts_test_helper.dart';
 import '../../../../helpers/getx_test_binding.dart';
+import '../../../../helpers/google_fonts_test_helper.dart';
 
 PropertyModel _propertyWithGalleryImages() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 1,
     title: 'Gallery Home',
     basePrice: 5000000,
@@ -23,20 +23,20 @@ PropertyModel _propertyWithGalleryImages() {
     purpose: PropertyPurpose.buy,
     mainImageUrl: 'https://example.com/main.jpg',
     images: [
-      const PropertyImageModel(
+      PropertyImageModel(
         id: 1,
         propertyId: 1,
         imageUrl: 'https://example.com/main.jpg',
         isMain: true,
         displayOrder: 0,
       ),
-      const PropertyImageModel(
+      PropertyImageModel(
         id: 2,
         propertyId: 1,
         imageUrl: 'https://example.com/img2.jpg',
         displayOrder: 1,
       ),
-      const PropertyImageModel(
+      PropertyImageModel(
         id: 3,
         propertyId: 1,
         imageUrl: 'https://example.com/img3.jpg',
@@ -51,7 +51,7 @@ PropertyModel _propertyWithGalleryImages() {
 }
 
 PropertyModel _propertyWithMainImageOnly() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 2,
     title: 'Single Image',
     basePrice: 3000000,
@@ -66,7 +66,7 @@ PropertyModel _propertyWithMainImageOnly() {
 }
 
 PropertyModel _propertyWithNoImages() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 3,
     title: 'No Images',
     basePrice: 1000000,
@@ -81,7 +81,7 @@ PropertyModel _propertyWithNoImages() {
 }
 
 PropertyModel _propertyWithVideos() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 20,
     title: 'Video Property',
     basePrice: 6000000,
@@ -89,7 +89,7 @@ PropertyModel _propertyWithVideos() {
     purpose: PropertyPurpose.buy,
     mainImageUrl: 'https://example.com/apt.jpg',
     videoTourUrl: 'https://example.com/video.mp4',
-    videoUrls: const ['https://example.com/extra.mp4'],
+    videoUrls: ['https://example.com/extra.mp4'],
     isAvailable: true,
     viewCount: 0,
     likeCount: 0,
@@ -98,7 +98,7 @@ PropertyModel _propertyWithVideos() {
 }
 
 PropertyModel _propertyWithFloorPlan() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 30,
     title: 'Floor Plan Property',
     basePrice: 4000000,
@@ -114,7 +114,7 @@ PropertyModel _propertyWithFloorPlan() {
 }
 
 PropertyModel _propertyWithStreetView() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 40,
     title: 'Street View Property',
     basePrice: 4500000,
@@ -133,7 +133,7 @@ PropertyModel _propertyWithStreetView() {
 }
 
 PropertyModel _propertyWithVirtualTour() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 50,
     title: 'Virtual Tour Property',
     basePrice: 5500000,
@@ -265,7 +265,7 @@ void main() {
     });
 
     testWidgets('renders all media tiles for rich property', (tester) async {
-      final property = PropertyModel(
+      final property = const PropertyModel(
         id: 11,
         title: 'Full Media Property',
         basePrice: 8000000,
@@ -273,7 +273,7 @@ void main() {
         purpose: PropertyPurpose.buy,
         mainImageUrl: 'https://example.com/villa.jpg',
         images: [
-          const PropertyImageModel(
+          PropertyImageModel(
             id: 10,
             propertyId: 11,
             imageUrl: 'https://example.com/villa.jpg',

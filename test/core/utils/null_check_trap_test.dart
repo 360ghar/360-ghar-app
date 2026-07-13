@@ -1,11 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/utils/null_check_trap.dart';
-
 import '../../helpers/getx_test_binding.dart';
 import '../../helpers/mocks.dart';
 
@@ -32,21 +30,13 @@ void main() {
 
   group('NullCheckTrap.capture', () {
     test('ignores errors that do not contain the null-check message', () {
-      NullCheckTrap.capture(
-        StateError('Some other error'),
-        StackTrace.current,
-        source: 'test',
-      );
+      NullCheckTrap.capture(StateError('Some other error'), StackTrace.current, source: 'test');
 
       expect(NullCheckTrap.hasFired, isFalse);
     });
 
     test('fires for a null-check operator exception', () {
-      NullCheckTrap.capture(
-        _NullCheckError(),
-        StackTrace.current,
-        source: 'test',
-      );
+      NullCheckTrap.capture(_NullCheckError(), StackTrace.current, source: 'test');
 
       expect(NullCheckTrap.hasFired, isTrue);
     });
@@ -54,11 +44,7 @@ void main() {
     test('fires only once (idempotent)', () {
       // Already fired from the previous test; calling again must not throw and
       // hasFired remains true.
-      NullCheckTrap.capture(
-        _NullCheckError(),
-        StackTrace.current,
-        source: 'test-idempotent',
-      );
+      NullCheckTrap.capture(_NullCheckError(), StackTrace.current, source: 'test-idempotent');
 
       expect(NullCheckTrap.hasFired, isTrue);
     });
@@ -67,11 +53,7 @@ void main() {
       // _fired is already true, so this is a no-op, but we verify the method
       // is safe to call without a registered PageStateService.
       expect(
-        () => NullCheckTrap.capture(
-          _NullCheckError(),
-          StackTrace.current,
-          source: 'no-service',
-        ),
+        () => NullCheckTrap.capture(_NullCheckError(), StackTrace.current, source: 'no-service'),
         returnsNormally,
       );
     });
@@ -141,11 +123,7 @@ void main() {
       GetxTestBinding.bind().register<PageStateService>(MockPageStateService());
 
       expect(
-        () => NullCheckTrap.capture(
-          _NullCheckError(),
-          StackTrace.current,
-          source: 'with-service',
-        ),
+        () => NullCheckTrap.capture(_NullCheckError(), StackTrace.current, source: 'with-service'),
         returnsNormally,
       );
     });

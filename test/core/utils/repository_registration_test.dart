@@ -10,7 +10,6 @@ import 'package:ghar360/features/properties/data/properties_repository.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
 import 'package:ghar360/features/visits/data/visits_repository.dart';
-
 import '../../helpers/getx_test_binding.dart';
 import '../../helpers/mocks.dart';
 
@@ -56,10 +55,7 @@ void main() {
     test('is idempotent — calling twice does not throw', () {
       RepositoryRegistration.ensurePropertiesRepository();
 
-      expect(
-        () => RepositoryRegistration.ensurePropertiesRepository(),
-        returnsNormally,
-      );
+      expect(() => RepositoryRegistration.ensurePropertiesRepository(), returnsNormally);
     });
 
     test('is idempotent — PropertiesRepository remains registered after second call', () {
@@ -96,10 +92,7 @@ void main() {
     test('is idempotent — calling twice does not throw', () {
       RepositoryRegistration.ensureSwipesRepository();
 
-      expect(
-        () => RepositoryRegistration.ensureSwipesRepository(),
-        returnsNormally,
-      );
+      expect(() => RepositoryRegistration.ensureSwipesRepository(), returnsNormally);
     });
 
     test('is idempotent — SwipesRepository remains registered after second call', () {
@@ -122,10 +115,7 @@ void main() {
     test('is idempotent — calling twice does not throw', () {
       RepositoryRegistration.ensureVisitsRepository();
 
-      expect(
-        () => RepositoryRegistration.ensureVisitsRepository(),
-        returnsNormally,
-      );
+      expect(() => RepositoryRegistration.ensureVisitsRepository(), returnsNormally);
       expect(Get.isRegistered<VisitsRepository>(), isTrue);
     });
   });

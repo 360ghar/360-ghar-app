@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/animated_tap_wrapper.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -23,13 +23,7 @@ void main() {
   }
 
   testWidgets('renders the provided child', (tester) async {
-    await pumpWidget(
-      tester,
-      AnimatedTapWrapper(
-        onTap: () {},
-        child: const Text('Tap Me'),
-      ),
-    );
+    await pumpWidget(tester, AnimatedTapWrapper(onTap: () {}, child: const Text('Tap Me')));
 
     expect(find.byType(AnimatedTapWrapper), findsOneWidget);
     expect(find.text('Tap Me'), findsOneWidget);
@@ -39,10 +33,7 @@ void main() {
     var tapCalled = false;
     await pumpWidget(
       tester,
-      AnimatedTapWrapper(
-        onTap: () => tapCalled = true,
-        child: const Text('Tap Me'),
-      ),
+      AnimatedTapWrapper(onTap: () => tapCalled = true, child: const Text('Tap Me')),
     );
 
     await tester.tap(find.byType(AnimatedTapWrapper));
@@ -52,13 +43,7 @@ void main() {
   });
 
   testWidgets('applies a scale transform via AnimatedBuilder', (tester) async {
-    await pumpWidget(
-      tester,
-      AnimatedTapWrapper(
-        onTap: () {},
-        child: const Text('Tap Me'),
-      ),
-    );
+    await pumpWidget(tester, AnimatedTapWrapper(onTap: () {}, child: const Text('Tap Me')));
 
     // The wrapper uses an AnimatedBuilder + Transform.scale.
     expect(
@@ -88,19 +73,14 @@ void main() {
     expect(transformBefore.transform.getMaxScaleOnAxis(), closeTo(1.0, 0.01));
 
     // Simulate tap down to trigger the forward animation.
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byType(AnimatedTapWrapper)),
-    );
+    final gesture = await tester.startGesture(tester.getCenter(find.byType(AnimatedTapWrapper)));
     await tester.pump(const Duration(milliseconds: 100));
 
     final transformDuring = tester.widget<Transform>(
       find.descendant(of: find.byType(AnimatedTapWrapper), matching: find.byType(Transform)),
     );
     // While pressed the scale moves toward scaleDown (0.9).
-    expect(
-      transformDuring.transform.getMaxScaleOnAxis(),
-      lessThanOrEqualTo(1.0),
-    );
+    expect(transformDuring.transform.getMaxScaleOnAxis(), lessThanOrEqualTo(1.0));
 
     // Release to reverse the animation.
     await gesture.up();
@@ -113,10 +93,7 @@ void main() {
   });
 
   testWidgets('does not attach tap handlers when onTap is null', (tester) async {
-    await pumpWidget(
-      tester,
-      const AnimatedTapWrapper(child: Text('No Tap')),
-    );
+    await pumpWidget(tester, const AnimatedTapWrapper(child: Text('No Tap')));
 
     // Tapping should not throw and the child is still rendered.
     await tester.tap(find.byType(AnimatedTapWrapper));
@@ -130,10 +107,7 @@ void main() {
       var pressed = false;
       await pumpWidget(
         tester,
-        AnimatedIconButton(
-          icon: Icons.favorite,
-          onPressed: () => pressed = true,
-        ),
+        AnimatedIconButton(icon: Icons.favorite, onPressed: () => pressed = true),
       );
 
       expect(find.byIcon(Icons.favorite), findsOneWidget);
@@ -147,19 +121,13 @@ void main() {
 
   group('AnimatedFavoriteIcon', () {
     testWidgets('renders favorite icon when isFavorite is true', (tester) async {
-      await pumpWidget(
-        tester,
-        AnimatedFavoriteIcon(isFavorite: true, onToggle: () {}),
-      );
+      await pumpWidget(tester, AnimatedFavoriteIcon(isFavorite: true, onToggle: () {}));
 
       expect(find.byIcon(Icons.favorite), findsOneWidget);
     });
 
     testWidgets('renders border icon when isFavorite is false', (tester) async {
-      await pumpWidget(
-        tester,
-        AnimatedFavoriteIcon(isFavorite: false, onToggle: () {}),
-      );
+      await pumpWidget(tester, AnimatedFavoriteIcon(isFavorite: false, onToggle: () {}));
 
       expect(find.byIcon(Icons.favorite_border), findsOneWidget);
     });
@@ -168,10 +136,7 @@ void main() {
       var toggled = false;
       await pumpWidget(
         tester,
-        AnimatedFavoriteIcon(
-          isFavorite: false,
-          onToggle: () => toggled = true,
-        ),
+        AnimatedFavoriteIcon(isFavorite: false, onToggle: () => toggled = true),
       );
 
       await tester.tap(find.byType(AnimatedFavoriteIcon));

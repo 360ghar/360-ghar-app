@@ -59,16 +59,17 @@ void main() {
     await storage.erase();
 
     // Default: getStateForPage returns the initial state for the requested page.
-    when(() => pageState.getStateForPage(any())).thenAnswer(
-      (inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType),
-    );
+    when(
+      () => pageState.getStateForPage(any()),
+    ).thenAnswer((inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType));
     // updatePageState is a void method.
     when(() => pageState.updatePageState(any(), any())).thenReturn(null);
     // Data loader stubs.
     when(() => dataLoader.debounceRefresh(any())).thenReturn(null);
     when(() => dataLoader.refreshAllPagesData()).thenReturn(null);
-    when(() => dataLoader.loadPageData(any(), forceRefresh: any(named: 'forceRefresh')))
-        .thenAnswer((_) async {});
+    when(
+      () => dataLoader.loadPageData(any(), forceRefresh: any(named: 'forceRefresh')),
+    ).thenAnswer((_) async {});
 
     manager = PageFilterManager(pageState, dataLoader, storage);
   });
@@ -225,8 +226,9 @@ void main() {
 
     test('updates pages when onlyIfUnset is true and purpose is null', () {
       when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType)
-            .copyWith(filters: const UnifiedFilterModel()),
+        (inv) => PageStateModel.initial(
+          inv.positionalArguments[0] as PageType,
+        ).copyWith(filters: const UnifiedFilterModel()),
       );
 
       manager.setPurposeForAllPages('buy', onlyIfUnset: true);
@@ -251,8 +253,9 @@ void main() {
 
     test('skips pages with non-empty types when onlyIfUnset is true and types set', () {
       when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType)
-            .copyWith(filters: UnifiedFilterModel.initial().copyWith(propertyType: ['house'])),
+        (inv) => PageStateModel.initial(
+          inv.positionalArguments[0] as PageType,
+        ).copyWith(filters: UnifiedFilterModel.initial().copyWith(propertyType: ['house'])),
       );
 
       manager.setPropertyTypeForAllPages(['apartment'], onlyIfUnset: true);

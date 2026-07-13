@@ -9,11 +9,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
-import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_data_loader.dart';
 import 'package:ghar360/core/controllers/page_location_manager.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:mocktail/mocktail.dart';
@@ -81,19 +78,21 @@ void main() {
     // Wire reactive getters onto the location-controller mock.
     when(() => locationController.currentPosition).thenReturn(currentPosition);
     when(() => locationController.currentAddress).thenReturn(currentAddress);
-    when(() => locationController.getAddressFromCoordinates(any(), any()))
-        .thenAnswer((_) async => 'Resolved Address');
-    when(() => locationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')))
-        .thenAnswer((_) async {});
+    when(
+      () => locationController.getAddressFromCoordinates(any(), any()),
+    ).thenAnswer((_) async => 'Resolved Address');
+    when(
+      () => locationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')),
+    ).thenAnswer((_) async {});
     when(() => locationController.getIpLocation()).thenAnswer(
       (_) async => const LocationData(name: 'IP Loc', latitude: 19.07, longitude: 72.87),
     );
 
     // PageStateService stubs.
     when(() => pageState.currentPageType).thenReturn(currentPageType);
-    when(() => pageState.getStateForPage(any())).thenAnswer(
-      (inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType),
-    );
+    when(
+      () => pageState.getStateForPage(any()),
+    ).thenAnswer((inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType));
     when(() => pageState.updatePageState(any(), any())).thenReturn(null);
 
     // DataLoader stubs.
@@ -156,14 +155,16 @@ void main() {
 
       verify(() => locationController.getAddressFromCoordinates(28.6, 77.2)).called(1);
       // The updated state should carry the resolved name.
-      final state = verify(() => pageState.updatePageState(PageType.discover, captureAny()))
-          .captured.single as PageStateModel;
+      final state =
+          verify(() => pageState.updatePageState(PageType.discover, captureAny())).captured.single
+              as PageStateModel;
       expect(state.selectedLocation?.name, 'Resolved Address');
     });
 
     test('keeps provided name when reverse geocoding fails', () async {
-      when(() => locationController.getAddressFromCoordinates(any(), any()))
-          .thenThrow(Exception('geocode failed'));
+      when(
+        () => locationController.getAddressFromCoordinates(any(), any()),
+      ).thenThrow(Exception('geocode failed'));
 
       await manager.updateLocationForPage(
         PageType.explore,
@@ -171,8 +172,9 @@ void main() {
         source: 'manual',
       );
 
-      final state = verify(() => pageState.updatePageState(PageType.explore, captureAny()))
-          .captured.single as PageStateModel;
+      final state =
+          verify(() => pageState.updatePageState(PageType.explore, captureAny())).captured.single
+              as PageStateModel;
       // Falls back to the original placeholder name on error.
       expect(state.selectedLocation?.name, 'Location (28.6, 77.2)');
     });
@@ -251,8 +253,7 @@ void main() {
 
     test('swallows backend sync errors', () async {
       when(() => authController.isAuthenticated).thenReturn(true);
-      when(() => authController.updateUserLocation(any()))
-          .thenThrow(Exception('sync failed'));
+      when(() => authController.updateUserLocation(any())).thenThrow(Exception('sync failed'));
 
       // Should not throw.
       await manager.updateLocation(
@@ -270,8 +271,9 @@ void main() {
 
       await manager.useCurrentLocation();
 
-      verify(() => locationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')))
-          .called(1);
+      verify(
+        () => locationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')),
+      ).called(1);
       verify(() => locationController.getAddressFromCoordinates(28.7, 77.1)).called(1);
       verify(() => pageState.updatePageState(PageType.discover, any())).called(1);
     });
@@ -286,8 +288,9 @@ void main() {
     });
 
     test('catches errors and shows toast', () async {
-      when(() => locationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')))
-          .thenThrow(Exception('gps error'));
+      when(
+        () => locationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')),
+      ).thenThrow(Exception('gps error'));
 
       // Should not throw.
       await manager.useCurrentLocation();
@@ -318,8 +321,9 @@ void main() {
     });
 
     test('catches errors gracefully', () async {
-      when(() => locationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')))
-          .thenThrow(Exception('gps error'));
+      when(
+        () => locationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')),
+      ).thenThrow(Exception('gps error'));
 
       await manager.useCurrentLocationForPage(PageType.explore);
       // No throw.
@@ -367,9 +371,9 @@ void main() {
     });
 
     test('skips pages with no location', () async {
-      when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType),
-      );
+      when(
+        () => pageState.getStateForPage(any()),
+      ).thenAnswer((inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType));
 
       await manager.normalizeSavedLocations();
 

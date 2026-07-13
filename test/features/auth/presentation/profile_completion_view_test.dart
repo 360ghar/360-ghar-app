@@ -196,7 +196,9 @@ void main() {
     await pumpView(tester, controller: controller);
 
     // On step 2, the button should show "complete" text, not "next".
-    final completeButton = find.byKey(const ValueKey('qa.auth.profile_completion.next_or_complete'));
+    final completeButton = find.byKey(
+      const ValueKey('qa.auth.profile_completion.next_or_complete'),
+    );
     expect(completeButton, findsOneWidget);
     // The button text should contain "complete" translation.
     final buttonText = tester.widget<FilledButton>(completeButton).child;

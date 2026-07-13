@@ -27,8 +27,7 @@ import '../../helpers/mocks.dart';
 // ---------------------------------------------------------------------------
 
 /// Mock for [AppUpdateRepository] (a [GetxService]).
-class MockAppUpdateRepository extends GetxServiceMock
-    implements AppUpdateRepository {}
+class MockAppUpdateRepository extends GetxServiceMock implements AppUpdateRepository {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -47,44 +46,46 @@ void main() {
     // Isolate GetStorage files so parallel test suites do not lock ./GetStorage.gs.
     tempDir = await Directory.systemTemp.createTemp('app_update_gs_');
     registerFallbackValue(
-      const AppVersionCheckRequest(
-        app: 'user',
-        platform: 'android',
-        currentVersion: '0.0.0',
-      ),
+      const AppVersionCheckRequest(app: 'user', platform: 'android', currentVersion: '0.0.0'),
     );
 
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(pathProviderChannel, (MethodCall call) async {
-      if (call.method == 'getApplicationDocumentsDirectory') {
-        return tempDir.path;
-      }
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      pathProviderChannel,
+      (MethodCall call) async {
+        if (call.method == 'getApplicationDocumentsDirectory') {
+          return tempDir.path;
+        }
+        return null;
+      },
+    );
 
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(packageInfoChannel, (MethodCall call) async {
-      if (call.method == 'getAll') {
-        return <String, dynamic>{
-          'appName': 'ghar360',
-          'packageName': 'com.ghar360.app',
-          'version': '1.2.3',
-          'buildNumber': '42',
-          'buildSignature': '',
-          'installerStore': null,
-        };
-      }
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      packageInfoChannel,
+      (MethodCall call) async {
+        if (call.method == 'getAll') {
+          return <String, dynamic>{
+            'appName': 'ghar360',
+            'packageName': 'com.ghar360.app',
+            'version': '1.2.3',
+            'buildNumber': '42',
+            'buildSignature': '',
+            'installerStore': null,
+          };
+        }
+        return null;
+      },
+    );
 
     // url_launcher: return true for canLaunchUrl/launchUrl so the download URL
     // opens "successfully" in tests.
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(urlLauncherChannel, (MethodCall call) async {
-      if (call.method == 'canLaunchUrl') return true;
-      if (call.method == 'launchUrl') return true;
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      urlLauncherChannel,
+      (MethodCall call) async {
+        if (call.method == 'canLaunchUrl') return true;
+        if (call.method == 'launchUrl') return true;
+        return null;
+      },
+    );
 
     await GetStorage.init();
   });
@@ -107,13 +108,10 @@ void main() {
     mockRepository = MockAppUpdateRepository();
     // Default stub: no update available.
     when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-      (_) async => const AppVersionCheckResponse(
-        updateAvailable: false,
-        isMandatory: false,
-      ),
+      (_) async => const AppVersionCheckResponse(updateAvailable: false, isMandatory: false),
     );
 
-    GetxTestBinding.bind()..register<AppUpdateRepository>(mockRepository);
+    GetxTestBinding.bind().register<AppUpdateRepository>(mockRepository);
 
     controller = AppUpdateController();
     // onInit registers the WidgetsBindingObserver; skip onReady so the
@@ -252,16 +250,10 @@ void main() {
   group('AppUpdateController platform resolution', () {
     test('checkForUpdates request includes correct platform string', () async {
       AppVersionCheckRequest? capturedRequest;
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (invocation) async {
-          capturedRequest = invocation.positionalArguments[0]
-              as AppVersionCheckRequest;
-          return const AppVersionCheckResponse(
-            updateAvailable: false,
-            isMandatory: false,
-          );
-        },
-      );
+      when(() => mockRepository.checkForUpdates(any())).thenAnswer((invocation) async {
+        capturedRequest = invocation.positionalArguments[0] as AppVersionCheckRequest;
+        return const AppVersionCheckResponse(updateAvailable: false, isMandatory: false);
+      });
 
       controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -282,10 +274,7 @@ void main() {
   group('AppUpdateController no update available', () {
     test('does not show dialog when updateAvailable is false', () async {
       when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: false,
-          isMandatory: false,
-        ),
+        (_) async => const AppVersionCheckResponse(updateAvailable: false, isMandatory: false),
       );
 
       controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
@@ -300,8 +289,7 @@ void main() {
 
   group('AppUpdateController error handling', () {
     test('catches repository exception and resets isChecking', () async {
-      when(() => mockRepository.checkForUpdates(any()))
-          .thenThrow(Exception('Network error'));
+      when(() => mockRepository.checkForUpdates(any())).thenThrow(Exception('Network error'));
 
       controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -324,8 +312,7 @@ void main() {
       expect(second?.buildNumber, 42);
     });
 
-    test('currentVersion and currentBuildNumber populated after getVersionInfo',
-        () async {
+    test('currentVersion and currentBuildNumber populated after getVersionInfo', () async {
       await controller.getVersionInfo();
 
       expect(controller.currentVersion, '1.2.3');
@@ -336,8 +323,7 @@ void main() {
   // ── Update available: mandatory ──────────────────────────────────────
 
   group('AppUpdateController mandatory update', () {
-    test('clears skipped version from storage when mandatory update detected',
-        () async {
+    test('clears skipped version from storage when mandatory update detected', () async {
       // Seed a skipped version; mandatory update should clear it.
       GetStorage().write('skipped_app_version', '1.5.0');
 
@@ -380,8 +366,7 @@ void main() {
   // ── Update available: optional + skipped ─────────────────────────────
 
   group('AppUpdateController optional update skip logic', () {
-    test('skips dialog when latestVersion matches previously skipped version',
-        () async {
+    test('skips dialog when latestVersion matches previously skipped version', () async {
       GetStorage().write('skipped_app_version', '1.9.0');
 
       when(() => mockRepository.checkForUpdates(any())).thenAnswer(
@@ -471,10 +456,7 @@ void main() {
       expect(captured!.app, 'user');
       expect(captured!.currentVersion, '1.2.3');
       expect(captured!.buildNumber, 42);
-      expect(
-        captured!.platform,
-        anyOf('android', 'ios', 'web'),
-      );
+      expect(captured!.platform, anyOf('android', 'ios', 'web'));
     });
   });
 

@@ -198,7 +198,7 @@ void main() {
     });
 
     test('toJson roundtrip preserves all fields', () {
-      final original = BugReportRequest(
+      final original = const BugReportRequest(
         source: 'mobile',
         bugType: BugType.functionalityBug,
         severity: BugSeverity.medium,
@@ -308,10 +308,7 @@ void main() {
         'description': 'Crashes',
       };
 
-      expect(
-        () => BugReportResponse.fromJson(json),
-        throwsA(isA<FormatException>()),
-      );
+      expect(() => BugReportResponse.fromJson(json), throwsA(isA<FormatException>()));
     });
 
     test('fromJson throws FormatException for missing id', () {
@@ -324,10 +321,7 @@ void main() {
         'description': 'Crashes',
       };
 
-      expect(
-        () => BugReportResponse.fromJson(json),
-        throwsA(isA<FormatException>()),
-      );
+      expect(() => BugReportResponse.fromJson(json), throwsA(isA<FormatException>()));
     });
 
     test('toJson roundtrip preserves all fields', () {

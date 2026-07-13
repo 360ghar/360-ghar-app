@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/app_update_models.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/app_update_dialog.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -23,13 +23,12 @@ void main() {
     );
   }
 
-  testWidgets('renders optional update dialog with version info and release notes',
-      (tester) async {
+  testWidgets('renders optional update dialog with version info and release notes', (tester) async {
     await pumpDialog(
       tester,
-      AppUpdateDialog(
+      const AppUpdateDialog(
         currentVersion: '1.0.0',
-        response: const AppVersionCheckResponse(
+        response: AppVersionCheckResponse(
           updateAvailable: true,
           isMandatory: false,
           latestVersion: '1.1.0',
@@ -56,13 +55,12 @@ void main() {
     expect(find.text('Update'), findsOneWidget);
   });
 
-  testWidgets('renders mandatory update dialog with single update button',
-      (tester) async {
+  testWidgets('renders mandatory update dialog with single update button', (tester) async {
     await pumpDialog(
       tester,
-      AppUpdateDialog(
+      const AppUpdateDialog(
         currentVersion: '1.0.0',
-        response: const AppVersionCheckResponse(
+        response: AppVersionCheckResponse(
           updateAvailable: true,
           isMandatory: true,
           latestVersion: '2.0.0',
@@ -80,13 +78,12 @@ void main() {
     expect(find.text('Not Now'), findsNothing);
   });
 
-  testWidgets('shows optional description when release notes are empty',
-      (tester) async {
+  testWidgets('shows optional description when release notes are empty', (tester) async {
     await pumpDialog(
       tester,
-      AppUpdateDialog(
+      const AppUpdateDialog(
         currentVersion: '1.0.0',
-        response: const AppVersionCheckResponse(
+        response: AppVersionCheckResponse(
           updateAvailable: true,
           isMandatory: false,
           latestVersion: '1.1.0',
@@ -95,19 +92,15 @@ void main() {
       ),
     );
 
-    expect(
-      find.text('A new update is available with the latest improvements.'),
-      findsOneWidget,
-    );
+    expect(find.text('A new update is available with the latest improvements.'), findsOneWidget);
   });
 
-  testWidgets('shows mandatory description when release notes are null',
-      (tester) async {
+  testWidgets('shows mandatory description when release notes are null', (tester) async {
     await pumpDialog(
       tester,
-      AppUpdateDialog(
+      const AppUpdateDialog(
         currentVersion: '1.0.0',
-        response: const AppVersionCheckResponse(
+        response: AppVersionCheckResponse(
           updateAvailable: true,
           isMandatory: true,
           latestVersion: '2.0.0',
@@ -115,22 +108,15 @@ void main() {
       ),
     );
 
-    expect(
-      find.text('Please update the app to continue using all features.'),
-      findsOneWidget,
-    );
+    expect(find.text('Please update the app to continue using all features.'), findsOneWidget);
   });
 
-  testWidgets('omits latest version line when latestVersion is null',
-      (tester) async {
+  testWidgets('omits latest version line when latestVersion is null', (tester) async {
     await pumpDialog(
       tester,
-      AppUpdateDialog(
+      const AppUpdateDialog(
         currentVersion: '1.0.0',
-        response: const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: false,
-        ),
+        response: AppVersionCheckResponse(updateAvailable: true, isMandatory: false),
       ),
     );
 
@@ -142,9 +128,9 @@ void main() {
   testWidgets('mandatory dialog prevents back navigation (PopScope)', (tester) async {
     await pumpDialog(
       tester,
-      AppUpdateDialog(
+      const AppUpdateDialog(
         currentVersion: '1.0.0',
-        response: const AppVersionCheckResponse(
+        response: AppVersionCheckResponse(
           updateAvailable: true,
           isMandatory: true,
           latestVersion: '2.0.0',
@@ -160,9 +146,9 @@ void main() {
   testWidgets('optional dialog allows back navigation (PopScope)', (tester) async {
     await pumpDialog(
       tester,
-      AppUpdateDialog(
+      const AppUpdateDialog(
         currentVersion: '1.0.0',
-        response: const AppVersionCheckResponse(
+        response: AppVersionCheckResponse(
           updateAvailable: true,
           isMandatory: false,
           latestVersion: '1.1.0',

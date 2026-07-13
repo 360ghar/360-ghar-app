@@ -308,9 +308,9 @@ void main() {
           step: LoginStep.otp,
         );
 
-        when(() => authRepository.sendEmailOtp(any())).thenThrow(
-          const AuthException('Rate limit exceeded'),
-        );
+        when(
+          () => authRepository.sendEmailOtp(any()),
+        ).thenThrow(const AuthException('Rate limit exceeded'));
 
         controller.canResendOtp.value = true;
 
@@ -385,13 +385,17 @@ void main() {
         );
 
         when(
-          () => authRepository.verifyEmailOtp(email: any(named: 'email'), token: any(named: 'token')),
+          () => authRepository.verifyEmailOtp(
+            email: any(named: 'email'),
+            token: any(named: 'token'),
+          ),
         ).thenAnswer((_) async => AuthResponse());
 
         await controller.verifyOtp('123456');
 
         verify(
-          () => authRepository.recordLastMethod(AuthMethod.emailOtp, identifier: 'user@example.com'),
+          () =>
+              authRepository.recordLastMethod(AuthMethod.emailOtp, identifier: 'user@example.com'),
         ).called(1);
       });
 
@@ -403,7 +407,10 @@ void main() {
         );
 
         when(
-          () => authRepository.verifyPhoneOtp(phone: any(named: 'phone'), token: any(named: 'token')),
+          () => authRepository.verifyPhoneOtp(
+            phone: any(named: 'phone'),
+            token: any(named: 'token'),
+          ),
         ).thenAnswer((_) async => AuthResponse());
 
         await controller.verifyOtp('654321');
@@ -426,7 +433,10 @@ void main() {
         // controller (default _hasPassword == true). Instead verify the
         // clearRequiresPasswordSetup is NOT called on success.
         when(
-          () => authRepository.verifyEmailOtp(email: any(named: 'email'), token: any(named: 'token')),
+          () => authRepository.verifyEmailOtp(
+            email: any(named: 'email'),
+            token: any(named: 'token'),
+          ),
         ).thenAnswer((_) async => AuthResponse());
 
         await controller.verifyOtp('123456');

@@ -7,7 +7,6 @@ import 'package:get/get.dart';
 
 import 'package:ghar360/features/tools/presentation/controllers/emi_calculator_controller.dart';
 import 'package:ghar360/features/tools/presentation/views/emi_calculator_view.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/pump_app.dart';
 

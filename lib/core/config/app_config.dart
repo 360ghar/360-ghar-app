@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import 'package:ghar360/core/config/dev_env.g.dart';
 
 /// Compile-time / bootstrap configuration for the app.

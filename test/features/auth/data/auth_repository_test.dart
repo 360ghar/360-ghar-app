@@ -8,8 +8,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_client.dart';
@@ -19,6 +17,7 @@ import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
 import 'package:ghar360/features/auth/data/last_auth_method_store.dart';
 import 'package:ghar360/features/auth/data/models/identifier_status.dart';
+import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -351,9 +350,7 @@ void main() {
       // Identifier is masked before persisting.
       expect(store.lastIdentifierHint, 'j***@gmail.com');
       // Backend mirror uses the wire value.
-      verify(
-        () => mockApiClient.post('/auth/last-method', body: {'method': 'google'}),
-      ).called(1);
+      verify(() => mockApiClient.post('/auth/last-method', body: {'method': 'google'})).called(1);
     });
 
     test('does not persist hint when identifier is null', () async {
@@ -399,9 +396,7 @@ void main() {
 
       await repository.deleteAccount();
 
-      verify(
-        () => mockApiClient.post('/auth/delete-account', body: {'confirm': true}),
-      ).called(1);
+      verify(() => mockApiClient.post('/auth/delete-account', body: {'confirm': true})).called(1);
     });
 
     test('propagates AppException from ApiClient', () async {
@@ -409,10 +404,7 @@ void main() {
         () => mockApiClient.post('/auth/delete-account', body: any(named: 'body')),
       ).thenThrow(AuthenticationException('Unauthorized'));
 
-      expect(
-        () => repository.deleteAccount(),
-        throwsA(isA<AuthenticationException>()),
-      );
+      expect(() => repository.deleteAccount(), throwsA(isA<AuthenticationException>()));
     });
   });
 
@@ -496,10 +488,12 @@ void main() {
     });
 
     test('returns false on unsupported platforms (macOS)', () {
-      AppConfig.initialize(overrides: {
-        'GOOGLE_WEB_CLIENT_ID': 'web-client-id',
-        'GOOGLE_IOS_CLIENT_ID': 'ios-client-id',
-      });
+      AppConfig.initialize(
+        overrides: {
+          'GOOGLE_WEB_CLIENT_ID': 'web-client-id',
+          'GOOGLE_IOS_CLIENT_ID': 'ios-client-id',
+        },
+      );
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
 
       expect(repository.isGoogleSignInConfigured, isFalse);
@@ -640,10 +634,7 @@ void main() {
 
     test('throws when no session is active (Supabase rejects)', () async {
       // Without a session, Supabase's updateUser throws an AuthException.
-      expect(
-        () => repository.updateUserPassword('newPassword123'),
-        throwsA(anything),
-      );
+      expect(() => repository.updateUserPassword('newPassword123'), throwsA(anything));
     });
   });
 
@@ -659,10 +650,7 @@ void main() {
     });
 
     test('throws when no session is active', () async {
-      expect(
-        () => repository.startAddPhone('+919876543210'),
-        throwsA(anything),
-      );
+      expect(() => repository.startAddPhone('+919876543210'), throwsA(anything));
     });
   });
 
@@ -716,10 +704,7 @@ void main() {
     });
 
     test('sendPhoneOtp propagates Supabase failure', () async {
-      expect(
-        () => repository.sendPhoneOtp('+919876543210'),
-        throwsA(anything),
-      );
+      expect(() => repository.sendPhoneOtp('+919876543210'), throwsA(anything));
     });
   });
 
@@ -735,10 +720,7 @@ void main() {
     });
 
     test('signUpWithEmailOtp propagates Supabase failure', () async {
-      expect(
-        () => repository.signUpWithEmailOtp('test@example.com'),
-        throwsA(anything),
-      );
+      expect(() => repository.signUpWithEmailOtp('test@example.com'), throwsA(anything));
     });
 
     test('signInWithEmailPassword propagates Supabase failure', () async {
@@ -749,10 +731,7 @@ void main() {
     });
 
     test('sendEmailOtp propagates Supabase failure', () async {
-      expect(
-        () => repository.sendEmailOtp('test@example.com'),
-        throwsA(anything),
-      );
+      expect(() => repository.sendEmailOtp('test@example.com'), throwsA(anything));
     });
 
     test('verifyEmailOtp propagates Supabase failure', () async {
@@ -770,10 +749,7 @@ void main() {
   group('AuthRepository.lastAuthMethodStore', () {
     test('returns the injected store instance', () {
       final store = LastAuthMethodStore();
-      final repository = AuthRepository(
-        apiClient: MockApiClient(),
-        lastAuthMethodStore: store,
-      );
+      final repository = AuthRepository(apiClient: MockApiClient(), lastAuthMethodStore: store);
 
       expect(repository.lastAuthMethodStore, same(store));
     });
@@ -799,9 +775,7 @@ void main() {
 
     test('throws when Supabase rejects the URI', () async {
       expect(
-        () => repository.completeOAuthFromUri(
-          Uri.parse('ghar360://login-callback?code=invalid'),
-        ),
+        () => repository.completeOAuthFromUri(Uri.parse('ghar360://login-callback?code=invalid')),
         throwsA(anything),
       );
     });
@@ -830,10 +804,7 @@ void main() {
 
     test('throws when redirect flow fails (no native config)', () async {
       // No Google client IDs → redirect path → Supabase signInWithOAuth fails.
-      expect(
-        () => repository.signInWithGoogle(),
-        throwsA(anything),
-      );
+      expect(() => repository.signInWithGoogle(), throwsA(anything));
     });
   });
 
@@ -857,19 +828,13 @@ void main() {
     test('throws AuthException on Android (unsupported platform)', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
 
-      expect(
-        () => repository.signInWithApple(),
-        throwsA(isA<AuthException>()),
-      );
+      expect(() => repository.signInWithApple(), throwsA(isA<AuthException>()));
     });
 
     test('throws AuthException on macOS (unsupported platform)', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
 
-      expect(
-        () => repository.signInWithApple(),
-        throwsA(isA<AuthException>()),
-      );
+      expect(() => repository.signInWithApple(), throwsA(isA<AuthException>()));
     });
   });
 
@@ -887,9 +852,7 @@ void main() {
       previousPlatform = GoogleSignInPlatform.instance;
       savedPlatform = debugDefaultTargetPlatformOverride;
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
-      AppConfig.initialize(overrides: {
-        'GOOGLE_WEB_CLIENT_ID': 'web-client-id',
-      });
+      AppConfig.initialize(overrides: {'GOOGLE_WEB_CLIENT_ID': 'web-client-id'});
       repository = AuthRepository(apiClient: MockApiClient());
     });
 
@@ -924,13 +887,7 @@ void main() {
 
       await expectLater(
         repository.signInWithGoogle(),
-        throwsA(
-          isA<AuthException>().having(
-            (e) => e.message,
-            'message',
-            contains('cancelled'),
-          ),
-        ),
+        throwsA(isA<AuthException>().having((e) => e.message, 'message', contains('cancelled'))),
       );
     });
 
@@ -979,10 +936,7 @@ void main() {
 
     test('native path with tokens reaches Supabase id-token exchange', () async {
       installPlatform(
-        FakeGoogleSignInPlatform(
-          idToken: 'valid-id-token',
-          accessToken: 'valid-access-token',
-        ),
+        FakeGoogleSignInPlatform(idToken: 'valid-id-token', accessToken: 'valid-access-token'),
       );
 
       await expectLater(repository.signInWithGoogle(), throwsA(anything));
@@ -992,9 +946,7 @@ void main() {
     test('signOut also signs out of Google after native init', () async {
       installPlatform(
         FakeGoogleSignInPlatform(
-          authException: const GoogleSignInException(
-            code: GoogleSignInExceptionCode.canceled,
-          ),
+          authException: const GoogleSignInException(code: GoogleSignInExceptionCode.canceled),
         ),
       );
 
@@ -1025,45 +977,42 @@ void main() {
 
     tearDown(() {
       debugDefaultTargetPlatformOverride = savedPlatform;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(appleChannel, null);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        appleChannel,
+        null,
+      );
     });
 
     test('throws AuthException when user cancels Apple sign-in', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(appleChannel, (call) async {
-        if (call.method == 'performAuthorizationRequest') {
-          throw PlatformException(
-            code: 'authorization-error/canceled',
-            message: 'user cancelled',
-          );
-        }
-        return null;
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        appleChannel,
+        (call) async {
+          if (call.method == 'performAuthorizationRequest') {
+            throw PlatformException(
+              code: 'authorization-error/canceled',
+              message: 'user cancelled',
+            );
+          }
+          return null;
+        },
+      );
 
       await expectLater(
         repository.signInWithApple(),
-        throwsA(
-          isA<AuthException>().having(
-            (e) => e.message,
-            'message',
-            contains('cancelled'),
-          ),
-        ),
+        throwsA(isA<AuthException>().having((e) => e.message, 'message', contains('cancelled'))),
       );
     });
 
     test('throws AuthException when Apple authorization fails', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(appleChannel, (call) async {
-        if (call.method == 'performAuthorizationRequest') {
-          throw PlatformException(
-            code: 'authorization-error/failed',
-            message: 'not available',
-          );
-        }
-        return null;
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        appleChannel,
+        (call) async {
+          if (call.method == 'performAuthorizationRequest') {
+            throw PlatformException(code: 'authorization-error/failed', message: 'not available');
+          }
+          return null;
+        },
+      );
 
       await expectLater(
         repository.signInWithApple(),
@@ -1078,50 +1027,50 @@ void main() {
     });
 
     test('throws AuthException when identity token is missing', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(appleChannel, (call) async {
-        if (call.method == 'performAuthorizationRequest') {
-          return <dynamic, dynamic>{
-            'type': 'appleid',
-            'userIdentifier': 'uid',
-            'givenName': 'A',
-            'familyName': 'B',
-            'email': 'a@b.com',
-            'identityToken': null,
-            'authorizationCode': 'code',
-          };
-        }
-        return null;
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        appleChannel,
+        (call) async {
+          if (call.method == 'performAuthorizationRequest') {
+            return <dynamic, dynamic>{
+              'type': 'appleid',
+              'userIdentifier': 'uid',
+              'givenName': 'A',
+              'familyName': 'B',
+              'email': 'a@b.com',
+              'identityToken': null,
+              'authorizationCode': 'code',
+            };
+          }
+          return null;
+        },
+      );
 
       await expectLater(
         repository.signInWithApple(),
         throwsA(
-          isA<AuthException>().having(
-            (e) => e.message,
-            'message',
-            contains('identity token'),
-          ),
+          isA<AuthException>().having((e) => e.message, 'message', contains('identity token')),
         ),
       );
     });
 
     test('propagates Supabase failure after a valid Apple credential', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(appleChannel, (call) async {
-        if (call.method == 'performAuthorizationRequest') {
-          return <dynamic, dynamic>{
-            'type': 'appleid',
-            'userIdentifier': 'uid',
-            'givenName': 'A',
-            'familyName': 'B',
-            'email': 'a@b.com',
-            'identityToken': 'apple-id-token',
-            'authorizationCode': 'code',
-          };
-        }
-        return null;
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        appleChannel,
+        (call) async {
+          if (call.method == 'performAuthorizationRequest') {
+            return <dynamic, dynamic>{
+              'type': 'appleid',
+              'userIdentifier': 'uid',
+              'givenName': 'A',
+              'familyName': 'B',
+              'email': 'a@b.com',
+              'identityToken': 'apple-id-token',
+              'authorizationCode': 'code',
+            };
+          }
+          return null;
+        },
+      );
 
       await expectLater(repository.signInWithApple(), throwsA(anything));
     });
@@ -1135,20 +1084,12 @@ void main() {
     });
 
     test('returns true when path is /login-callback', () {
-      expect(
-        repository.isOAuthRedirectUri(Uri.parse('ghar360:///login-callback')),
-        isTrue,
-      );
+      expect(repository.isOAuthRedirectUri(Uri.parse('ghar360:///login-callback')), isTrue);
     });
 
     test('returns true when path is login-callback without leading slash', () {
       // path segment equality against host-less path style.
-      expect(
-        repository.isOAuthRedirectUri(
-          Uri(scheme: 'ghar360', path: 'login-callback'),
-        ),
-        isTrue,
-      );
+      expect(repository.isOAuthRedirectUri(Uri(scheme: 'ghar360', path: 'login-callback')), isTrue);
     });
   });
 }
@@ -1181,8 +1122,7 @@ class FakeGoogleSignInPlatform extends GoogleSignInPlatform {
   @override
   Future<AuthenticationResults?> attemptLightweightAuthentication(
     AttemptLightweightAuthenticationParameters params,
-  ) async =>
-      null;
+  ) async => null;
 
   @override
   bool supportsAuthenticate() => supportsAuth;
@@ -1191,7 +1131,7 @@ class FakeGoogleSignInPlatform extends GoogleSignInPlatform {
   Future<AuthenticationResults> authenticate(AuthenticateParameters params) async {
     if (authException != null) throw authException!;
     return AuthenticationResults(
-      user: GoogleSignInUserData(email: 'g@example.com', id: 'gid-1'),
+      user: const GoogleSignInUserData(email: 'g@example.com', id: 'gid-1'),
       authenticationTokens: AuthenticationTokenData(idToken: idToken),
     );
   }
@@ -1212,8 +1152,7 @@ class FakeGoogleSignInPlatform extends GoogleSignInPlatform {
   @override
   Future<ServerAuthorizationTokenData?> serverAuthorizationTokensForScopes(
     ServerAuthorizationTokensForScopesParameters params,
-  ) async =>
-      null;
+  ) async => null;
 
   @override
   Future<void> signOut(SignOutParams params) async {

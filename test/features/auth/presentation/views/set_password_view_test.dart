@@ -52,8 +52,7 @@ class _StubSetPasswordController extends GetxServiceMock implements SetPasswordC
   bool submitCalled = false;
 
   @override
-  void togglePasswordVisibility() =>
-      isPasswordVisible.value = !isPasswordVisible.value;
+  void togglePasswordVisibility() => isPasswordVisible.value = !isPasswordVisible.value;
 
   @override
   void toggleConfirmPasswordVisibility() =>
@@ -104,8 +103,12 @@ void main() {
       final controller = _StubSetPasswordController();
       await pumpView(tester, controller);
 
-      expect(find.textContaining('set_password_for_account'.trParams({'identifier': 'test@example.com'})),
-          findsOneWidget);
+      expect(
+        find.textContaining(
+          'set_password_for_account'.trParams({'identifier': 'test@example.com'}),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('tapping submit calls submit', (tester) async {

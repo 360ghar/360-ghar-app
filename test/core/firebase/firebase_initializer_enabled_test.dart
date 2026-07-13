@@ -7,7 +7,6 @@ import 'dart:io';
 import 'package:firebase_analytics_platform_interface/firebase_analytics_platform_interface.dart';
 import 'package:firebase_app_check_platform_interface/firebase_app_check_platform_interface.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_core_platform_interface/firebase_core_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:firebase_crashlytics_platform_interface/firebase_crashlytics_platform_interface.dart';
 import 'package:firebase_in_app_messaging_platform_interface/firebase_in_app_messaging_platform_interface.dart';
@@ -17,12 +16,11 @@ import 'package:firebase_remote_config_platform_interface/firebase_remote_config
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_storage/get_storage.dart';
-import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 // ---------------------------------------------------------------------------
 // Firebase core mock with Crashlytics plugin constants
@@ -30,17 +28,13 @@ import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
 
 class _MockFirebaseAppWithConstants implements TestFirebaseCoreHostApi {
   Map<String?, Object?> get _pluginConstants => <String?, Object?>{
-        'plugins.flutter.io/firebase_crashlytics': <String, Object?>{
-          'isCrashlyticsCollectionEnabled': true,
-        },
-      };
+    'plugins.flutter.io/firebase_crashlytics': <String, Object?>{
+      'isCrashlyticsCollectionEnabled': true,
+    },
+  };
 
-  CoreFirebaseOptions get _options => CoreFirebaseOptions(
-        apiKey: '123',
-        projectId: '123',
-        appId: '123',
-        messagingSenderId: '123',
-      );
+  CoreFirebaseOptions get _options =>
+      CoreFirebaseOptions(apiKey: '123', projectId: '123', appId: '123', messagingSenderId: '123');
 
   @override
   Future<CoreInitializeResponse> initializeApp(
@@ -93,9 +87,7 @@ class _FakeCrashlytics extends Fake
   bool get isCrashlyticsCollectionEnabled => collectionEnabled;
 
   @override
-  FirebaseCrashlyticsPlatform setInitialValues({
-    required bool isCrashlyticsCollectionEnabled,
-  }) {
+  FirebaseCrashlyticsPlatform setInitialValues({required bool isCrashlyticsCollectionEnabled}) {
     collectionEnabled = isCrashlyticsCollectionEnabled;
     return this;
   }
@@ -113,13 +105,10 @@ class _FakeAnalytics extends Fake
   FirebaseAnalyticsPlatform delegateFor({
     required FirebaseApp app,
     Map<String, dynamic>? webOptions,
-  }) =>
-      this;
+  }) => this;
 
   @override
-  FirebaseAnalyticsPlatform setInitialValues({
-    required Map<dynamic, dynamic> pluginConstants,
-  }) =>
+  FirebaseAnalyticsPlatform setInitialValues({required Map<dynamic, dynamic> pluginConstants}) =>
       this;
 
   @override
@@ -180,8 +169,7 @@ class _FakeRemoteConfig extends Fake
   @override
   FirebaseRemoteConfigPlatform setInitialValues({
     required Map<dynamic, dynamic> remoteConfigValues,
-  }) =>
-      this;
+  }) => this;
 
   @override
   DateTime get lastFetchTime => DateTime.fromMillisecondsSinceEpoch(0);
@@ -191,9 +179,9 @@ class _FakeRemoteConfig extends Fake
 
   @override
   RemoteConfigSettings get settings => RemoteConfigSettings(
-        fetchTimeout: const Duration(seconds: 15),
-        minimumFetchInterval: const Duration(minutes: 1),
-      );
+    fetchTimeout: const Duration(seconds: 15),
+    minimumFetchInterval: const Duration(minutes: 1),
+  );
 
   @override
   Future<void> setConfigSettings(RemoteConfigSettings remoteConfigSettings) async {}
@@ -297,17 +285,19 @@ void main() {
   test(
     'init with Firebase enabled activates services and marks ready',
     () async {
-      AppConfig.initialize(overrides: {
-        'SUPABASE_URL': 'https://example.supabase.co',
-        'SUPABASE_PUBLISHABLE_KEY': 'test-key',
-        'FIREBASE_ENABLED': 'true',
-        'FIREBASE_APPCHECK': 'true',
-        'FIREBASE_APPCHECK_DEBUG': 'true',
-        'FIREBASE_CRASHLYTICS': 'true',
-        'FIREBASE_ANALYTICS': 'false',
-        'FIREBASE_PERFORMANCE': 'false',
-        'FIREBASE_IAM': 'false',
-      });
+      AppConfig.initialize(
+        overrides: {
+          'SUPABASE_URL': 'https://example.supabase.co',
+          'SUPABASE_PUBLISHABLE_KEY': 'test-key',
+          'FIREBASE_ENABLED': 'true',
+          'FIREBASE_APPCHECK': 'true',
+          'FIREBASE_APPCHECK_DEBUG': 'true',
+          'FIREBASE_CRASHLYTICS': 'true',
+          'FIREBASE_ANALYTICS': 'false',
+          'FIREBASE_PERFORMANCE': 'false',
+          'FIREBASE_IAM': 'false',
+        },
+      );
 
       try {
         await FirebaseInitializer.init();
@@ -329,25 +319,18 @@ void main() {
       }
       expect(FirebaseInitializer.isFirebaseReady, isTrue);
     },
-    skip:
-        'Firebase platform mock cannot fully exercise private _initialized init path',
+    skip: 'Firebase platform mock cannot fully exercise private _initialized init path',
   );
 
   test('background handler completes with notification payload', () async {
     // Handler calls Firebase.initializeApp; if already inited by prior test,
     // duplicate-app is caught and still completes.
-    final message = RemoteMessage(
+    final message = const RemoteMessage(
       messageId: 'bg-enabled-1',
-      notification: const RemoteNotification(
-        title: 'From enabled suite',
-        body: 'Body',
-      ),
+      notification: RemoteNotification(title: 'From enabled suite', body: 'Body'),
       data: <String, dynamic>{'k': 'v'},
     );
 
-    await expectLater(
-      firebaseMessagingBackgroundHandler(message),
-      completes,
-    );
+    await expectLater(firebaseMessagingBackgroundHandler(message), completes);
   });
 }

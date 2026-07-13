@@ -247,8 +247,7 @@ void main() {
 
       controller.calculate();
 
-      expect(controller.totalPayment.value,
-          closeTo(controller.monthlyEmi.value * 15 * 12, 1));
+      expect(controller.totalPayment.value, closeTo(controller.monthlyEmi.value * 15 * 12, 1));
     });
 
     // ── Total interest = total payment - principal ────────────────────────
@@ -261,8 +260,7 @@ void main() {
 
       controller.calculate();
 
-      expect(controller.totalInterest.value,
-          closeTo(controller.totalPayment.value - 500000, 1));
+      expect(controller.totalInterest.value, closeTo(controller.totalPayment.value - 500000, 1));
     });
 
     // ── Higher rate gives higher EMI ──────────────────────────────────────

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
@@ -78,7 +80,7 @@ class PropertyDetailsOverview extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   children: [
-                    Icon(Icons.location_on_rounded, size: 18, color: AppDesign.primaryYellow),
+                    const Icon(Icons.location_on_rounded, size: 18, color: AppDesign.primaryYellow),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(

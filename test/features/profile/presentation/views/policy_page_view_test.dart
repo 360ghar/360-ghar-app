@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/static_page_model.dart';
@@ -13,8 +12,7 @@ import 'package:mocktail/mocktail.dart';
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 
-class MockStaticPageRepository extends GetxServiceMock
-    implements StaticPageRepository {}
+class MockStaticPageRepository extends GetxServiceMock implements StaticPageRepository {}
 
 void main() {
   late MockStaticPageRepository repository;
@@ -22,7 +20,7 @@ void main() {
   setUp(() {
     GetxTestBinding.init();
     repository = MockStaticPageRepository();
-    GetxTestBinding.bind()..register<StaticPageRepository>(repository);
+    GetxTestBinding.bind().register<StaticPageRepository>(repository);
   });
 
   tearDown(() => GetxTestBinding.reset());
@@ -33,18 +31,14 @@ void main() {
         translations: AppTranslations(),
         locale: const Locale('en', 'US'),
         fallbackLocale: const Locale('en', 'US'),
-        home: PolicyPageView(
-          uniqueName: 'privacy_policy',
-          titleText: 'Privacy Policy',
-        ),
+        home: PolicyPageView(uniqueName: 'privacy_policy', titleText: 'Privacy Policy'),
       ),
     );
   }
 
   testWidgets('shows loading indicator initially', (tester) async {
     final completer = Completer<StaticPageModel>();
-    when(() => repository.fetchPublicPage(any()))
-        .thenAnswer((_) => completer.future);
+    when(() => repository.fetchPublicPage(any())).thenAnswer((_) => completer.future);
 
     await pumpView(tester);
     await tester.pump();
@@ -72,9 +66,9 @@ void main() {
   });
 
   testWidgets('shows content unavailable when page content is empty', (tester) async {
-    when(() => repository.fetchPublicPage(any())).thenAnswer(
-      (_) async => const StaticPageModel(title: 'Privacy', content: '   '),
-    );
+    when(
+      () => repository.fetchPublicPage(any()),
+    ).thenAnswer((_) async => const StaticPageModel(title: 'Privacy', content: '   '));
 
     await pumpView(tester);
     await tester.pumpAndSettle();
@@ -83,8 +77,7 @@ void main() {
   });
 
   testWidgets('shows error message on load failure', (tester) async {
-    when(() => repository.fetchPublicPage(any()))
-        .thenThrow(Exception('Network error'));
+    when(() => repository.fetchPublicPage(any())).thenThrow(Exception('Network error'));
 
     await pumpView(tester);
     await tester.pumpAndSettle();
@@ -93,9 +86,9 @@ void main() {
   });
 
   testWidgets('shows no content when markdownContent is null after load', (tester) async {
-    when(() => repository.fetchPublicPage(any())).thenAnswer(
-      (_) async => const StaticPageModel(title: 'Privacy', content: ''),
-    );
+    when(
+      () => repository.fetchPublicPage(any()),
+    ).thenAnswer((_) async => const StaticPageModel(title: 'Privacy', content: ''));
 
     await pumpView(tester);
     await tester.pumpAndSettle();
@@ -105,8 +98,9 @@ void main() {
   });
 
   testWidgets('renders app bar with provided title', (tester) async {
-    when(() => repository.fetchPublicPage(any()))
-        .thenAnswer((_) async => const StaticPageModel(title: 'Privacy', content: 'content'));
+    when(
+      () => repository.fetchPublicPage(any()),
+    ).thenAnswer((_) async => const StaticPageModel(title: 'Privacy', content: 'content'));
 
     await pumpView(tester);
     await tester.pumpAndSettle();

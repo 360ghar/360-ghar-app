@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_info_sections.dart';
-
-import '../../../../helpers/google_fonts_test_helper.dart';
 import '../../../../helpers/getx_test_binding.dart';
+import '../../../../helpers/google_fonts_test_helper.dart';
 
 PropertyModel _buyProperty() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 1,
     title: 'Sunshine Villa',
     basePrice: 5000000,
@@ -31,7 +31,7 @@ PropertyModel _buyProperty() {
 }
 
 PropertyModel _rentProperty() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 2,
     title: 'Cozy Apartment',
     basePrice: 30000,
@@ -48,7 +48,7 @@ PropertyModel _rentProperty() {
 }
 
 PropertyModel _shortStayProperty() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 3,
     title: 'Holiday Home',
     basePrice: 2000,
@@ -64,14 +64,14 @@ PropertyModel _shortStayProperty() {
 }
 
 PropertyModel _pgProperty() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 4,
     title: 'PG for Girls',
     basePrice: 8000,
     propertyType: PropertyType.pg,
     purpose: PropertyPurpose.rent,
     monthlyRent: 8000,
-    listingPreferences: const ListingPreferences(
+    listingPreferences: ListingPreferences(
       genderPreference: ListingGenderPreference.female,
       sharingType: ListingSharingType.sharedRoom,
     ),
@@ -127,7 +127,7 @@ void main() {
     });
 
     testWidgets('hides age row when ageOfProperty is null', (tester) async {
-      final property = PropertyModel(
+      final property = const PropertyModel(
         id: 5,
         title: 'No Age',
         basePrice: 1000000,
@@ -180,7 +180,7 @@ void main() {
     });
 
     testWidgets('uses basePrice as monthly rent when monthlyRent is null', (tester) async {
-      final property = PropertyModel(
+      final property = const PropertyModel(
         id: 6,
         title: 'Rent Fallback',
         basePrice: 25000,
@@ -198,7 +198,7 @@ void main() {
     });
 
     testWidgets('uses basePrice as daily rate when dailyRate is null', (tester) async {
-      final property = PropertyModel(
+      final property = const PropertyModel(
         id: 7,
         title: 'Short Stay Fallback',
         basePrice: 3000,
@@ -226,7 +226,7 @@ void main() {
     });
 
     testWidgets('hides builder name row when builderName is null', (tester) async {
-      final property = PropertyModel(
+      final property = const PropertyModel(
         id: 8,
         title: 'No Builder',
         basePrice: 1000000,

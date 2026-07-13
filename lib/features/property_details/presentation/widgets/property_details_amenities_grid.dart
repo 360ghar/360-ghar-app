@@ -110,10 +110,10 @@ class _AmenityTile extends StatelessWidget {
               width: 22,
               height: 22,
               errorWidget: (_, _, _) =>
-                  Icon(Icons.check_circle_outline, size: 22, color: AppDesign.primaryYellow),
+                  const Icon(Icons.check_circle_outline, size: 22, color: AppDesign.primaryYellow),
             )
           else
-            Icon(Icons.check_circle_outline, size: 22, color: AppDesign.primaryYellow),
+            const Icon(Icons.check_circle_outline, size: 22, color: AppDesign.primaryYellow),
           const SizedBox(height: 8),
           Text(
             amenity.title,

@@ -14,7 +14,6 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/profile/data/support_repository.dart';
 import 'package:ghar360/features/profile/presentation/controllers/feedback_controller.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
@@ -25,31 +24,35 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
-    registerFallbackValue(BugReportRequest(
-      source: 'mobile',
-      bugType: BugType.uiBug,
-      severity: BugSeverity.medium,
-      title: 'fallback',
-      description: 'fallback',
-    ));
+    registerFallbackValue(
+      const BugReportRequest(
+        source: 'mobile',
+        bugType: BugType.uiBug,
+        severity: BugSeverity.medium,
+        title: 'fallback',
+        description: 'fallback',
+      ),
+    );
 
     // Mock the package_info_plus method channel so PackageInfo.fromPlatform()
     // doesn't hang waiting for a platform response in widget tests.
     const packageInfoChannel = MethodChannel('dev.fluttercommunity.plus/package_info');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(packageInfoChannel, (MethodCall call) async {
-      if (call.method == 'getAll') {
-        return <String, dynamic>{
-          'appName': 'ghar360',
-          'packageName': 'com.ghar360.app',
-          'version': '1.0.0',
-          'buildNumber': '1',
-          'buildSignature': '',
-          'installerStore': null,
-        };
-      }
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      packageInfoChannel,
+      (MethodCall call) async {
+        if (call.method == 'getAll') {
+          return <String, dynamic>{
+            'appName': 'ghar360',
+            'packageName': 'com.ghar360.app',
+            'version': '1.0.0',
+            'buildNumber': '1',
+            'buildSignature': '',
+            'installerStore': null,
+          };
+        }
+        return null;
+      },
+    );
   });
 
   late MockSupportRepository supportRepo;
@@ -63,7 +66,7 @@ void main() {
         'thanks_for_feedback': 'Thanks for feedback',
         'feedback_failed': 'Feedback failed',
         'feedback_send_error': 'Send error',
-      }
+      },
     });
 
     supportRepo = MockSupportRepository();
@@ -399,22 +402,22 @@ void main() {
   // is used so Get.back() and AppToast work correctly. A /home route is
   // provided so Get.back() has a route to pop.
 
-  BugReportResponse _bugResponse({int id = 1}) => BugReportResponse(
-        id: id,
-        source: 'mobile',
-        bugType: BugType.uiBug,
-        severity: BugSeverity.medium,
-        status: 'open',
-        title: 'Test',
-        description: 'Test desc',
-      );
+  BugReportResponse bugResponse({int id = 1}) => BugReportResponse(
+    id: id,
+    source: 'mobile',
+    bugType: BugType.uiBug,
+    severity: BugSeverity.medium,
+    status: 'open',
+    title: 'Test',
+    description: 'Test desc',
+  );
 
   /// Pumps a minimal MaterialApp with the controller's formKey in a Form.
   /// Uses MaterialApp (not GetMaterialApp) so Get.back() is a no-op (Navigator
   /// pop with one route) and AppToast returns early (Get.overlayContext is
   /// null without GetMaterialApp), avoiding snackbar animation ticker leaks.
   /// The Form has no validators so validate() returns true.
-  Future<void> _withFormState(
+  Future<void> withFormState(
     WidgetTester tester,
     FeedbackController controller,
     Future<void> Function() action,
@@ -422,10 +425,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Form(
-            key: controller.formKey,
-            child: const SizedBox.shrink(),
-          ),
+          body: Form(key: controller.formKey, child: const SizedBox.shrink()),
         ),
       ),
     );
@@ -443,11 +443,9 @@ void main() {
       controller.descriptionController.text = 'Test description';
       controller.tagsController.text = 'bug, urgent';
 
-      when(() => supportRepo.submitBugReport(any())).thenAnswer(
-        (_) async => _bugResponse(id: 42),
-      );
+      when(() => supportRepo.submitBugReport(any())).thenAnswer((_) async => bugResponse(id: 42));
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -466,10 +464,10 @@ void main() {
       BugReportRequest? capturedRequest;
       when(() => supportRepo.submitBugReport(any())).thenAnswer((invocation) async {
         capturedRequest = invocation.positionalArguments[0] as BugReportRequest;
-        return _bugResponse();
+        return bugResponse();
       });
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -491,10 +489,10 @@ void main() {
       BugReportRequest? capturedRequest;
       when(() => supportRepo.submitBugReport(any())).thenAnswer((invocation) async {
         capturedRequest = invocation.positionalArguments[0] as BugReportRequest;
-        return _bugResponse();
+        return bugResponse();
       });
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -518,10 +516,10 @@ void main() {
       BugReportRequest? capturedRequest;
       when(() => supportRepo.submitBugReport(any())).thenAnswer((invocation) async {
         capturedRequest = invocation.positionalArguments[0] as BugReportRequest;
-        return _bugResponse();
+        return bugResponse();
       });
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -541,10 +539,10 @@ void main() {
       BugReportRequest? capturedRequest;
       when(() => supportRepo.submitBugReport(any())).thenAnswer((invocation) async {
         capturedRequest = invocation.positionalArguments[0] as BugReportRequest;
-        return _bugResponse();
+        return bugResponse();
       });
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -563,10 +561,15 @@ void main() {
       controller.descriptionController.text = 'Desc';
 
       when(() => supportRepo.submitBugReport(any())).thenThrow(
-        ValidationException('Invalid', fieldErrors: {'title': ['too short']}),
+        ValidationException(
+          'Invalid',
+          fieldErrors: {
+            'title': ['too short'],
+          },
+        ),
       );
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -583,11 +586,11 @@ void main() {
       controller.titleController.text = 'Title';
       controller.descriptionController.text = 'Desc';
 
-      when(() => supportRepo.submitBugReport(any())).thenThrow(
-        ValidationException('Something went wrong'),
-      );
+      when(
+        () => supportRepo.submitBugReport(any()),
+      ).thenThrow(ValidationException('Something went wrong'));
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -602,11 +605,11 @@ void main() {
       controller.titleController.text = 'Title';
       controller.descriptionController.text = 'Desc';
 
-      when(() => supportRepo.submitBugReport(any())).thenThrow(
-        ServerException('Server error', statusCode: 500),
-      );
+      when(
+        () => supportRepo.submitBugReport(any()),
+      ).thenThrow(ServerException('Server error', statusCode: 500));
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -621,11 +624,9 @@ void main() {
       controller.titleController.text = 'Title';
       controller.descriptionController.text = 'Desc';
 
-      when(() => supportRepo.submitBugReport(any())).thenThrow(
-        Exception('Unexpected'),
-      );
+      when(() => supportRepo.submitBugReport(any())).thenThrow(Exception('Unexpected'));
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -645,10 +646,10 @@ void main() {
       BugReportRequest? capturedRequest;
       when(() => supportRepo.submitBugReport(any())).thenAnswer((invocation) async {
         capturedRequest = invocation.positionalArguments[0] as BugReportRequest;
-        return _bugResponse();
+        return bugResponse();
       });
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -668,10 +669,10 @@ void main() {
       BugReportRequest? capturedRequest;
       when(() => supportRepo.submitBugReport(any())).thenAnswer((invocation) async {
         capturedRequest = invocation.positionalArguments[0] as BugReportRequest;
-        return _bugResponse();
+        return bugResponse();
       });
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 
@@ -690,10 +691,10 @@ void main() {
       BugReportRequest? capturedRequest;
       when(() => supportRepo.submitBugReport(any())).thenAnswer((invocation) async {
         capturedRequest = invocation.positionalArguments[0] as BugReportRequest;
-        return _bugResponse();
+        return bugResponse();
       });
 
-      await _withFormState(tester, controller, () async {
+      await withFormState(tester, controller, () async {
         await controller.submitFeedback();
       });
 

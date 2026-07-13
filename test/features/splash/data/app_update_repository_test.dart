@@ -4,6 +4,7 @@
 // repository must short-circuit without throwing.
 
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:ghar360/core/data/models/app_update_models.dart';
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
@@ -25,11 +26,7 @@ void main() {
       expect(FirebaseRuntimeState.isReady, isFalse);
 
       final response = await repository.checkForUpdates(
-        const AppVersionCheckRequest(
-          app: 'user',
-          platform: 'android',
-          currentVersion: '1.0.0',
-        ),
+        const AppVersionCheckRequest(app: 'user', platform: 'android', currentVersion: '1.0.0'),
       );
 
       expect(response.updateAvailable, isFalse);
@@ -53,11 +50,7 @@ void main() {
 
     test('does not throw for empty current version when Firebase disabled', () async {
       final response = await repository.checkForUpdates(
-        const AppVersionCheckRequest(
-          app: 'user',
-          platform: 'android',
-          currentVersion: '',
-        ),
+        const AppVersionCheckRequest(app: 'user', platform: 'android', currentVersion: ''),
       );
       expect(response.updateAvailable, isFalse);
     });

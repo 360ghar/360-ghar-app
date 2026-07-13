@@ -95,18 +95,18 @@ void main() {
   late _MockPageStateService pageStateService;
   late _TestDiscoverController controller;
 
-  void Function(FlutterErrorDetails)? _originalOnError;
+  void Function(FlutterErrorDetails)? originalOnError;
 
   setUp(() {
     GetxTestBinding.init();
     pageStateService = _MockPageStateService();
     // Suppress RenderFlex overflow errors thrown by skeleton/shimmer widgets
     // under the constrained test surface size.
-    _originalOnError = FlutterError.onError;
+    originalOnError = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
       final summary = details.summary.toString();
       if (summary.contains('overflowed')) return;
-      _originalOnError?.call(details);
+      originalOnError?.call(details);
     };
     // Register PageStateService before constructing the controller, since
     // DiscoverController resolves it in a field initializer.
@@ -118,7 +118,7 @@ void main() {
   });
 
   tearDown(() {
-    FlutterError.onError = _originalOnError;
+    FlutterError.onError = originalOnError;
     GetxTestBinding.reset();
   });
 

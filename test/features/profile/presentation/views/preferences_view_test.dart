@@ -10,10 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/theme_controller.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/profile/presentation/controllers/preferences_controller.dart';
 import 'package:ghar360/features/profile/presentation/views/preferences_view.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 import '../../../../helpers/pump_app.dart';
@@ -22,8 +20,7 @@ import '../../../../helpers/pump_app.dart';
 // Stub controller
 // ---------------------------------------------------------------------------
 
-class _StubPreferencesController extends GetxServiceMock
-    implements PreferencesController {
+class _StubPreferencesController extends GetxServiceMock implements PreferencesController {
   @override
   final RxBool pushNotifications = true.obs;
 
@@ -66,8 +63,7 @@ class _StubPreferencesController extends GetxServiceMock
     changedLangCode = languageCode;
     changedCountryCode = countryCode;
     // Update the observable so the view rebuilds.
-    currentLanguageName.value =
-        languageCode == 'hi' ? 'हिंदी' : 'English';
+    currentLanguageName.value = languageCode == 'hi' ? 'हिंदी' : 'English';
   }
 
   @override
@@ -129,8 +125,7 @@ void main() {
       expect(find.text('My Preferences'), findsOneWidget);
     });
 
-    testWidgets('renders property preferences section with three switches',
-        (tester) async {
+    testWidgets('renders property preferences section with three switches', (tester) async {
       await pumpView(tester);
 
       expect(find.text('Property Preferences'), findsOneWidget);
@@ -139,8 +134,7 @@ void main() {
       expect(find.text('Similar Properties'), findsOneWidget);
     });
 
-    testWidgets('renders display preferences section with theme selector',
-        (tester) async {
+    testWidgets('renders display preferences section with theme selector', (tester) async {
       await pumpView(tester);
 
       expect(find.text('Display Preferences'), findsOneWidget);
@@ -149,8 +143,7 @@ void main() {
       expect(find.text('System Mode'), findsWidgets);
     });
 
-    testWidgets('renders language preferences section with language selector',
-        (tester) async {
+    testWidgets('renders language preferences section with language selector', (tester) async {
       await pumpView(tester);
 
       expect(find.text('Language Preferences'), findsOneWidget);
@@ -162,9 +155,7 @@ void main() {
     testWidgets('renders save preferences button with correct key', (tester) async {
       await pumpView(tester);
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.preferences.save')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.preferences.save')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('qa.profile.preferences.save')), findsOneWidget);
@@ -173,8 +164,7 @@ void main() {
   });
 
   group('PreferencesView switch toggles', () {
-    testWidgets('toggling push notifications switch updates the value',
-        (tester) async {
+    testWidgets('toggling push notifications switch updates the value', (tester) async {
       await pumpView(tester);
 
       final switches = find.byType(Switch);
@@ -187,8 +177,7 @@ void main() {
       expect(controller.pushNotifications.value, isFalse);
     });
 
-    testWidgets('toggling email notifications switch updates the value',
-        (tester) async {
+    testWidgets('toggling email notifications switch updates the value', (tester) async {
       await pumpView(tester);
 
       final switches = find.byType(Switch);
@@ -200,8 +189,7 @@ void main() {
       expect(controller.emailNotifications.value, isFalse);
     });
 
-    testWidgets('toggling similar properties switch updates the value',
-        (tester) async {
+    testWidgets('toggling similar properties switch updates the value', (tester) async {
       await pumpView(tester);
 
       final switches = find.byType(Switch);
@@ -228,8 +216,7 @@ void main() {
       expect(find.text('System Mode'), findsNWidgets(2));
     });
 
-    testWidgets('selecting dark mode calls updateTheme and closes dialog',
-        (tester) async {
+    testWidgets('selecting dark mode calls updateTheme and closes dialog', (tester) async {
       await pumpView(tester);
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.preferences.theme_selector')));
@@ -243,8 +230,7 @@ void main() {
       expect(find.text('Light Mode'), findsNothing);
     });
 
-    testWidgets('selecting light mode calls updateTheme and closes dialog',
-        (tester) async {
+    testWidgets('selecting light mode calls updateTheme and closes dialog', (tester) async {
       await pumpView(tester);
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.preferences.theme_selector')));
@@ -256,8 +242,7 @@ void main() {
       expect(controller.updatedTheme, AppThemeMode.light);
     });
 
-    testWidgets('selecting system mode calls updateTheme and closes dialog',
-        (tester) async {
+    testWidgets('selecting system mode calls updateTheme and closes dialog', (tester) async {
       // Start from a non-system mode.
       controller.themeMode.value = AppThemeMode.dark;
       await pumpView(tester);
@@ -273,8 +258,7 @@ void main() {
       expect(controller.updatedTheme, AppThemeMode.system);
     });
 
-    testWidgets('tapping cancel in theme dialog closes it without changing theme',
-        (tester) async {
+    testWidgets('tapping cancel in theme dialog closes it without changing theme', (tester) async {
       await pumpView(tester);
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.preferences.theme_selector')));
@@ -302,8 +286,7 @@ void main() {
       expect(find.text('हिंदी'), findsOneWidget);
     });
 
-    testWidgets('selecting Hindi calls changeLanguage and closes dialog',
-        (tester) async {
+    testWidgets('selecting Hindi calls changeLanguage and closes dialog', (tester) async {
       await pumpView(tester);
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.preferences.language_selector')));
@@ -316,8 +299,7 @@ void main() {
       expect(controller.changedCountryCode, 'IN');
     });
 
-    testWidgets('selecting English calls changeLanguage and closes dialog',
-        (tester) async {
+    testWidgets('selecting English calls changeLanguage and closes dialog', (tester) async {
       await pumpView(tester);
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.preferences.language_selector')));
@@ -331,8 +313,9 @@ void main() {
       expect(controller.changedCountryCode, 'US');
     });
 
-    testWidgets('tapping cancel in language dialog closes it without changing language',
-        (tester) async {
+    testWidgets('tapping cancel in language dialog closes it without changing language', (
+      tester,
+    ) async {
       await pumpView(tester);
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.preferences.language_selector')));
@@ -351,9 +334,7 @@ void main() {
     testWidgets('tapping save preferences calls savePreferences', (tester) async {
       await pumpView(tester);
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.preferences.save')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.preferences.save')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.preferences.save')));

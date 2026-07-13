@@ -147,10 +147,8 @@ class ExploreView extends GetView<ExploreController> {
                     title: 'no_properties_found'.tr,
                     message: 'no_properties_found_area_message'.tr,
                     icon: Icons.location_off,
-                    onAction: () => showPropertyFilterBottomSheet(
-                      Get.context ?? context,
-                      pageType: 'explore',
-                    ),
+                    onAction: () =>
+                        showPropertyFilterBottomSheet(Get.context ?? context, pageType: 'explore'),
                     actionText: 'adjust_filters'.tr,
                   ),
                 ),
@@ -189,17 +187,9 @@ class ExploreView extends GetView<ExploreController> {
           ),
         ),
         // Map controls (body is already below AppBar — do not re-add status-bar inset)
-        Positioned(
-          top: AppSpacing.sm + 4,
-          right: AppSpacing.md,
-          child: _buildMapControls(context),
-        ),
+        Positioned(top: AppSpacing.sm + 4, right: AppSpacing.md, child: _buildMapControls(context)),
         // Info panel
-        Positioned(
-          top: AppSpacing.sm + 4,
-          left: AppSpacing.md,
-          child: _buildInfoPanel(context),
-        ),
+        Positioned(top: AppSpacing.sm + 4, left: AppSpacing.md, child: _buildInfoPanel(context)),
         // Loading indicator for more properties (position reacts to collapse)
         if (controller.state.value == ExploreState.loadingMore)
           Obx(() {
@@ -488,10 +478,7 @@ class ExploreView extends GetView<ExploreController> {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            'loading_more_properties'.tr,
-            style: TextStyle(fontSize: 12, color: chipText),
-          ),
+          Text('loading_more_properties'.tr, style: TextStyle(fontSize: 12, color: chipText)),
         ],
       ),
     );

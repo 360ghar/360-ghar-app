@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
@@ -10,8 +11,6 @@ import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/services/google_places_service.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/location_selector.dart';
-import 'package:mocktail/mocktail.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 import '../../../helpers/mocks.dart';
 
@@ -23,6 +22,9 @@ class _FakeLocationController extends GetxController implements LocationControll
 
   @override
   final RxBool isSearchingPlaces = false.obs;
+
+  @override
+  final RxString placesError = ''.obs;
 
   @override
   final Rxn<Position> currentPosition = Rxn<Position>();
@@ -318,6 +320,7 @@ void main() {
 
     final restore = suppressFrameworkErrors();
     await tester.enterText(find.byType(TextField), 'Delhi');
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
     restore();
 
@@ -332,6 +335,7 @@ void main() {
 
     final restore = suppressFrameworkErrors();
     await tester.enterText(find.byType(TextField), 'Delhi');
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.clear));
@@ -347,6 +351,7 @@ void main() {
 
     final restore = suppressFrameworkErrors();
     await tester.enterText(find.byType(TextField), 'zzzzz');
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
     restore();
 
@@ -359,6 +364,7 @@ void main() {
 
     final restore = suppressFrameworkErrors();
     await tester.enterText(find.byType(TextField), 'Delhi');
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Delhi').last);
@@ -402,7 +408,8 @@ void main() {
     locationController.isSearchingPlaces.value = true;
     await tester.pump();
 
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // One in the search field's suffix icon, one in the results area.
+    expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
 
     locationController.isSearchingPlaces.value = false;
     await tester.pump();
@@ -413,6 +420,7 @@ void main() {
 
     final restore = suppressFrameworkErrors();
     await tester.enterText(find.byType(TextField), 'Del');
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
     restore();
 
@@ -424,6 +432,7 @@ void main() {
 
     final restore = suppressFrameworkErrors();
     await tester.enterText(find.byType(TextField), 'Delhi');
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Delhi').last);

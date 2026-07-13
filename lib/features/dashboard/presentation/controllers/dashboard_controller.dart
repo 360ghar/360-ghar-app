@@ -354,7 +354,7 @@ class DashboardController extends GetxController {
     'properties_viewed': propertiesViewed,
     'properties_liked': propertiesLiked,
     'visits_scheduled': visitsScheduled,
-    'engagement_level': userEngagementLevel,
+    'engagement_level': userEngagementLevelKey,
     'time_spent': timeSpentFormatted,
     'favorite_location': favoriteLocation,
   };

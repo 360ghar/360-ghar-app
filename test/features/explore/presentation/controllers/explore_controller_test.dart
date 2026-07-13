@@ -16,6 +16,7 @@ import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 
 class MockPageStateService extends GetxServiceMock implements PageStateService {}
+
 class MockDashboardController extends GetxServiceMock implements DashboardController {}
 
 void main() {
@@ -459,7 +460,7 @@ void main() {
       final controller = createController();
       final initialCenter = controller.currentCenter.value;
 
-      controller.onCameraIdle(LatLng(19.0760, 72.8777), 14.0);
+      controller.onCameraIdle(const LatLng(19.0760, 72.8777), 14.0);
 
       // Center should not change because map is not ready
       expect(controller.currentCenter.value, initialCenter);
@@ -471,7 +472,7 @@ void main() {
       // Simulate a programmatic move flag set by zoomIn/recenter
       // We can't directly set _mapSession.programmaticMove, but we can
       // verify the early-return path works when map is ready.
-      final newCenter = LatLng(19.0760, 72.8777);
+      final newCenter = const LatLng(19.0760, 72.8777);
       controller.onCameraIdle(newCenter, 14.0);
 
       // Without programmaticMove flag, it goes through the gesture path.
@@ -508,7 +509,7 @@ void main() {
       final controller = createController();
       controller.isMapReady.value = false;
       controller.properties.assignAll([
-        PropertyModel(
+        const PropertyModel(
           id: 701,
           title: 'Located',
           basePrice: 5000000,
@@ -530,7 +531,7 @@ void main() {
     test('returns only properties with location', () {
       final controller = createController();
       controller.properties.assignAll([
-        PropertyModel(
+        const PropertyModel(
           id: 800,
           title: 'With Location',
           basePrice: 5000000,
@@ -551,10 +552,7 @@ void main() {
 
     test('returns empty list when all properties lack location', () {
       final controller = createController();
-      controller.properties.assignAll([
-        testPropertyModel(id: 900),
-        testPropertyModel(id: 901),
-      ]);
+      controller.properties.assignAll([testPropertyModel(id: 900), testPropertyModel(id: 901)]);
 
       expect(controller.propertiesWithLocation, isEmpty);
     });
@@ -564,7 +562,7 @@ void main() {
     test('propertyMarkers returns markers for properties with location', () {
       final controller = createController();
       controller.properties.assignAll([
-        PropertyModel(
+        const PropertyModel(
           id: 1000,
           title: 'Marker Property',
           basePrice: 5000000,
@@ -585,7 +583,7 @@ void main() {
 
     test('propertyMarkers reflects selected property', () {
       final controller = createController();
-      final prop = PropertyModel(
+      final prop = const PropertyModel(
         id: 1001,
         title: 'Selected Marker',
         basePrice: 5000000,
@@ -729,11 +727,11 @@ void main() {
 
     test('locationDisplayText delegates to page state', () {
       when(() => mockPageStateService.getCurrentPageState()).thenReturn(
-        PageStateModel(
+        const PageStateModel(
           pageType: PageType.explore,
-          filters: const UnifiedFilterModel(),
+          filters: UnifiedFilterModel(),
           properties: [],
-          selectedLocation: const LocationData(name: 'Mumbai', latitude: 19.07, longitude: 72.87),
+          selectedLocation: LocationData(name: 'Mumbai', latitude: 19.07, longitude: 72.87),
         ),
       );
 
@@ -886,7 +884,7 @@ void main() {
       // Trigger a programmatic move by zoomIn (sets programmaticMove flag)
       controller.zoomIn();
 
-      final newCenter = LatLng(19.0760, 72.8777);
+      final newCenter = const LatLng(19.0760, 72.8777);
       controller.onCameraIdle(newCenter, controller.currentZoom.value);
 
       // After programmatic move, center should be synced
@@ -899,10 +897,7 @@ void main() {
 
       final initialCenter = controller.currentCenter.value;
       // Very small move (< 100m)
-      final tinyMove = LatLng(
-        initialCenter.latitude + 0.00001,
-        initialCenter.longitude + 0.00001,
-      );
+      final tinyMove = LatLng(initialCenter.latitude + 0.00001, initialCenter.longitude + 0.00001);
 
       controller.onCameraIdle(tinyMove, controller.currentZoom.value);
 
@@ -914,7 +909,7 @@ void main() {
       final controller = createController();
       controller.isMapReady.value = true;
 
-      final newCenter = LatLng(19.0760, 72.8777);
+      final newCenter = const LatLng(19.0760, 72.8777);
       controller.onCameraIdle(newCenter, controller.currentZoom.value);
 
       expect(controller.currentCenter.value, newCenter);
@@ -941,18 +936,20 @@ void main() {
       // Stub getCurrentLocation to set hasLocation true
       when(() => mockLocationController.hasLocation).thenReturn(true);
       when(() => mockLocationController.currentPosition).thenReturn(
-        Rxn(Position(
-          latitude: 28.61,
-          longitude: 77.21,
-          timestamp: DateTime.now(),
-          accuracy: 10,
-          altitude: 0,
-          altitudeAccuracy: 0,
-          heading: 0,
-          headingAccuracy: 0,
-          speed: 0,
-          speedAccuracy: 0,
-        )),
+        Rxn(
+          Position(
+            latitude: 28.61,
+            longitude: 77.21,
+            timestamp: DateTime.now(),
+            accuracy: 10,
+            altitude: 0,
+            altitudeAccuracy: 0,
+            heading: 0,
+            headingAccuracy: 0,
+            speed: 0,
+            speedAccuracy: 0,
+          ),
+        ),
       );
 
       controller.recenterToCurrentLocation();
@@ -1061,9 +1058,9 @@ void main() {
     });
 
     test('activatePage with stale loading flag re-initializes', () async {
-      exploreState.value = PageStateModel(
+      exploreState.value = const PageStateModel(
         pageType: PageType.explore,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: true,
         isRefreshing: false,
@@ -1212,7 +1209,7 @@ void main() {
       controller.isMapReady.value = true;
       controller.attachMap(MockMapLibreMapController());
       controller.properties.assignAll([
-        PropertyModel(
+        const PropertyModel(
           id: 2000,
           title: 'Located',
           basePrice: 5000000,
@@ -1313,9 +1310,7 @@ void main() {
 
     test('falls back to default when getCurrentLocation throws', () async {
       when(
-        () => mockLocationController.getCurrentLocation(
-          forceRefresh: any(named: 'forceRefresh'),
-        ),
+        () => mockLocationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')),
       ).thenThrow(Exception('Location permission denied'));
 
       final controller = createController();
@@ -1337,7 +1332,7 @@ void main() {
       final controller = createController();
       controller.isMapReady.value = true;
 
-      final newCenter = LatLng(19.0760, 72.8777); // Mumbai, far from Delhi
+      final newCenter = const LatLng(19.0760, 72.8777); // Mumbai, far from Delhi
       controller.onCameraIdle(newCenter, 14.0);
 
       expect(controller.currentCenter.value, newCenter);
@@ -1383,7 +1378,7 @@ void main() {
       controller.isMapReady.value = true;
       controller.attachMap(MockMapLibreMapController());
       controller.properties.assignAll([
-        PropertyModel(
+        const PropertyModel(
           id: 3000,
           title: 'Located A',
           basePrice: 5000000,
@@ -1394,7 +1389,7 @@ void main() {
           likeCount: 0,
           interestCount: 0,
         ),
-        PropertyModel(
+        const PropertyModel(
           id: 3001,
           title: 'Located B',
           basePrice: 5000000,
@@ -1416,7 +1411,7 @@ void main() {
       controller.isMapReady.value = true;
       controller.attachMap(MockMapLibreMapController());
       controller.properties.assignAll([
-        PropertyModel(
+        const PropertyModel(
           id: 3100,
           title: 'With Location',
           basePrice: 5000000,
@@ -1444,13 +1439,14 @@ void main() {
       final mockDashboard = MockDashboardController();
       Get.put<DashboardController>(mockDashboard, permanent: true);
 
-      when(() => mockDashboard.incrementStat(any(), by: any(named: 'by')))
-          .thenReturn(null);
-      when(() => mockDashboard.recordActivity(
-            type: any(named: 'type'),
-            title: any(named: 'title'),
-            icon: any(named: 'icon'),
-          )).thenReturn(null);
+      when(() => mockDashboard.incrementStat(any(), by: any(named: 'by'))).thenReturn(null);
+      when(
+        () => mockDashboard.recordActivity(
+          type: any(named: 'type'),
+          title: any(named: 'title'),
+          icon: any(named: 'icon'),
+        ),
+      ).thenReturn(null);
 
       final controller = createController();
       controller.updateSearchQuery('apartment');
@@ -1459,11 +1455,13 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 400));
 
       verify(() => mockDashboard.incrementStat(kDashSearchesMadeKey)).called(1);
-      verify(() => mockDashboard.recordActivity(
-            type: 'search',
-            title: any(named: 'title'),
-            icon: 'search',
-          )).called(1);
+      verify(
+        () => mockDashboard.recordActivity(
+          type: 'search',
+          title: any(named: 'title'),
+          icon: 'search',
+        ),
+      ).called(1);
 
       Get.delete<DashboardController>();
     });
@@ -1490,9 +1488,7 @@ void main() {
       final controller = createController();
 
       // Trigger the debounce worker by updating exploreState
-      exploreState.value = exploreState.value.copyWith(
-        properties: seedProperties(3),
-      );
+      exploreState.value = exploreState.value.copyWith(properties: seedProperties(3));
 
       // Wait for the 200ms debounce
       await Future.delayed(const Duration(milliseconds: 300));
@@ -1623,18 +1619,20 @@ void main() {
 
       when(() => mockLocationController.hasLocation).thenReturn(true);
       when(() => mockLocationController.currentPosition).thenReturn(
-        Rxn(Position(
-          latitude: 12.97,
-          longitude: 77.59,
-          timestamp: DateTime.now(),
-          accuracy: 10,
-          altitude: 0,
-          altitudeAccuracy: 0,
-          heading: 0,
-          headingAccuracy: 0,
-          speed: 0,
-          speedAccuracy: 0,
-        )),
+        Rxn(
+          Position(
+            latitude: 12.97,
+            longitude: 77.59,
+            timestamp: DateTime.now(),
+            accuracy: 10,
+            altitude: 0,
+            altitudeAccuracy: 0,
+            heading: 0,
+            headingAccuracy: 0,
+            speed: 0,
+            speedAccuracy: 0,
+          ),
+        ),
       );
 
       final controller = createController();
@@ -1651,9 +1649,7 @@ void main() {
 
       when(() => mockLocationController.hasLocation).thenReturn(false);
       when(
-        () => mockLocationController.getCurrentLocation(
-          forceRefresh: any(named: 'forceRefresh'),
-        ),
+        () => mockLocationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')),
       ).thenAnswer((_) async {});
       when(() => mockLocationController.getIpLocation()).thenAnswer(
         (_) async => const LocationData(name: 'IP Location', latitude: 13.08, longitude: 80.27),

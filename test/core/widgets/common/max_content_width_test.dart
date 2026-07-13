@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/max_content_width.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -32,28 +32,20 @@ void main() {
   /// Finds the [ConstrainedBox] that is a direct descendant of
   /// [MaxContentWidth] (i.e. the one it creates), ignoring the Scaffold's own
   /// internal ConstrainedBox.
-  Finder constrainedBoxInMaxContent() => find.descendant(
-        of: find.byType(MaxContentWidth),
-        matching: find.byType(ConstrainedBox),
-      );
+  Finder constrainedBoxInMaxContent() =>
+      find.descendant(of: find.byType(MaxContentWidth), matching: find.byType(ConstrainedBox));
 
-  Finder centerInMaxContent() => find.descendant(
-        of: find.byType(MaxContentWidth),
-        matching: find.byType(Center),
-      );
+  Finder centerInMaxContent() =>
+      find.descendant(of: find.byType(MaxContentWidth), matching: find.byType(Center));
 
   testWidgets('renders the provided child', (tester) async {
-    await pumpWidget(
-      tester,
-      const MaxContentWidth(child: Text('Content')),
-    );
+    await pumpWidget(tester, const MaxContentWidth(child: Text('Content')));
 
     expect(find.byType(MaxContentWidth), findsOneWidget);
     expect(find.text('Content'), findsOneWidget);
   });
 
-  testWidgets('on compact width returns child directly (no Center/ConstrainedBox)',
-      (tester) async {
+  testWidgets('on compact width returns child directly (no Center/ConstrainedBox)', (tester) async {
     // Compact width (< 600) → contentMaxWidth is double.infinity → child returned as-is.
     await pumpWidget(
       tester,
@@ -87,14 +79,11 @@ void main() {
       size: const Size(1200, 800),
     );
 
-    final constrainedBox = tester.widget<ConstrainedBox>(
-      constrainedBoxInMaxContent(),
-    );
+    final constrainedBox = tester.widget<ConstrainedBox>(constrainedBoxInMaxContent());
     expect(constrainedBox.constraints.maxWidth, 500);
   });
 
-  testWidgets('explicit maxWidth overrides responsive value even on compact',
-      (tester) async {
+  testWidgets('explicit maxWidth overrides responsive value even on compact', (tester) async {
     await pumpWidget(
       tester,
       const MaxContentWidth(maxWidth: 400, child: Text('Content')),
@@ -105,9 +94,7 @@ void main() {
     expect(centerInMaxContent(), findsOneWidget);
     expect(constrainedBoxInMaxContent(), findsOneWidget);
 
-    final constrainedBox = tester.widget<ConstrainedBox>(
-      constrainedBoxInMaxContent(),
-    );
+    final constrainedBox = tester.widget<ConstrainedBox>(constrainedBoxInMaxContent());
     expect(constrainedBox.constraints.maxWidth, 400);
   });
 
@@ -121,9 +108,7 @@ void main() {
     expect(centerInMaxContent(), findsOneWidget);
     expect(constrainedBoxInMaxContent(), findsOneWidget);
 
-    final constrainedBox = tester.widget<ConstrainedBox>(
-      constrainedBoxInMaxContent(),
-    );
+    final constrainedBox = tester.widget<ConstrainedBox>(constrainedBoxInMaxContent());
     // Large class → 960.
     expect(constrainedBox.constraints.maxWidth, 960);
   });

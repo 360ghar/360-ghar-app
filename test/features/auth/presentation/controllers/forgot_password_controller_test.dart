@@ -372,9 +372,9 @@ void main() {
         controller.identifierController.text = 'user@example.com';
         controller.looksLikeEmail.value = true;
 
-        when(() => authRepository.sendEmailOtp(any())).thenThrow(
-          const AuthException('Rate limit exceeded'),
-        );
+        when(
+          () => authRepository.sendEmailOtp(any()),
+        ).thenThrow(const AuthException('Rate limit exceeded'));
         controller.canResendOtp.value = true;
 
         await controller.resendOtp();

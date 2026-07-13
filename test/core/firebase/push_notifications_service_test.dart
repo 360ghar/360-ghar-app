@@ -9,8 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-
-import 'package:ghar360/core/firebase/firebase_initializer.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
 import 'package:ghar360/core/firebase/push_notifications_service.dart';
 
@@ -190,14 +188,17 @@ void main() {
       FirebaseRuntimeState.isReady = prevReady;
     });
 
-    test('getToken returns null even if isReady is true but Firebase is not actually initialized', () async {
-      // Setting isReady = true without a real Firebase app causes the messaging
-      // instance lookup to throw internally; the service must catch and return
-      // null rather than propagating the error.
-      FirebaseRuntimeState.isReady = true;
-      FirebaseRuntimeState.isEnabled = true;
-      expect(await PushNotificationsService.getToken(), isNull);
-    });
+    test(
+      'getToken returns null even if isReady is true but Firebase is not actually initialized',
+      () async {
+        // Setting isReady = true without a real Firebase app causes the messaging
+        // instance lookup to throw internally; the service must catch and return
+        // null rather than propagating the error.
+        FirebaseRuntimeState.isReady = true;
+        FirebaseRuntimeState.isEnabled = true;
+        expect(await PushNotificationsService.getToken(), isNull);
+      },
+    );
 
     test('requestUserPermission returns null when messaging client unavailable', () async {
       FirebaseRuntimeState.isReady = true;
@@ -254,10 +255,7 @@ void main() {
     test('completes when Firebase isReady but messaging unavailable', () async {
       FirebaseRuntimeState.isReady = true;
       FirebaseRuntimeState.isEnabled = true;
-      await expectLater(
-        PushNotificationsService.initializeForegroundHandling(),
-        completes,
-      );
+      await expectLater(PushNotificationsService.initializeForegroundHandling(), completes);
     });
   });
 
@@ -286,10 +284,7 @@ void main() {
     });
 
     test('onNotificationTap callback fires with decoded JSON payload', () {
-      final payload = jsonEncode(<String, dynamic>{
-        'route': '/property/42',
-        'property_id': '42',
-      });
+      final payload = jsonEncode(<String, dynamic>{'route': '/property/42', 'property_id': '42'});
 
       Map<String, dynamic>? received;
       PushNotificationsService.onNotificationTap = (data) {
@@ -340,28 +335,32 @@ void main() {
 
   Future<void> setupFlnMock() async {
     AndroidFlutterLocalNotificationsPlugin.registerWith();
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(flnChannel, (MethodCall call) async {
-      switch (call.method) {
-        case 'initialize':
-          return true;
-        case 'createNotificationChannel':
-          return null;
-        case 'areNotificationsEnabled':
-          return true;
-        case 'requestNotificationsPermission':
-          return true;
-        case 'show':
-          return null;
-        default:
-          return null;
-      }
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      flnChannel,
+      (MethodCall call) async {
+        switch (call.method) {
+          case 'initialize':
+            return true;
+          case 'createNotificationChannel':
+            return null;
+          case 'areNotificationsEnabled':
+            return true;
+          case 'requestNotificationsPermission':
+            return true;
+          case 'show':
+            return null;
+          default:
+            return null;
+        }
+      },
+    );
   }
 
   void teardownFlnMock() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(flnChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      flnChannel,
+      null,
+    );
   }
 
   group('PushNotificationsService.initLocalNotifications (mocked FLN)', () {
@@ -374,10 +373,7 @@ void main() {
       await setupFlnMock();
       addTearDown(teardownFlnMock);
 
-      await expectLater(
-        PushNotificationsService.initLocalNotifications(),
-        completes,
-      );
+      await expectLater(PushNotificationsService.initLocalNotifications(), completes);
     });
 
     test('registers the notification tap callback', () async {
@@ -446,16 +442,14 @@ void main() {
           'notificationResponseType': 0,
         }),
       );
-      await TestDefaultBinaryMessengerBinding
-          .instance.defaultBinaryMessenger.handlePlatformMessage(
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
         flnChannel.name,
         data,
         null,
       );
     }
 
-    testWidgets('fires onNotificationTap with decoded JSON payload and navigates',
-        (tester) async {
+    testWidgets('fires onNotificationTap with decoded JSON payload and navigates', (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         await setupFlnMock();
@@ -470,7 +464,10 @@ void main() {
           GetMaterialApp(
             initialRoute: '/home',
             getPages: [
-              GetPage(name: '/home', page: () => const Scaffold(body: SizedBox())),
+              GetPage(
+                name: '/home',
+                page: () => const Scaffold(body: SizedBox()),
+              ),
               GetPage(
                 name: '/property/:id',
                 page: () => const Scaffold(body: Text('property_details')),
@@ -498,8 +495,7 @@ void main() {
       }
     });
 
-    testWidgets('navigates to property deep link when property_id is set',
-        (tester) async {
+    testWidgets('navigates to property deep link when property_id is set', (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         await setupFlnMock();
@@ -513,7 +509,10 @@ void main() {
           GetMaterialApp(
             initialRoute: '/home',
             getPages: [
-              GetPage(name: '/home', page: () => const Scaffold(body: SizedBox())),
+              GetPage(
+                name: '/home',
+                page: () => const Scaffold(body: SizedBox()),
+              ),
               GetPage(
                 name: '/property/:id',
                 page: () => const Scaffold(body: Text('property_details')),
@@ -525,9 +524,7 @@ void main() {
         await PushNotificationsService.initLocalNotifications();
 
         // Simulate a notification tap with only property_id (no route).
-        final payload = jsonEncode(<String, dynamic>{
-          'property_id': '99',
-        });
+        final payload = jsonEncode(<String, dynamic>{'property_id': '99'});
         await sendNotificationTap(payload);
         await tester.pumpAndSettle();
 
@@ -552,7 +549,10 @@ void main() {
           GetMaterialApp(
             initialRoute: '/home',
             getPages: [
-              GetPage(name: '/home', page: () => const Scaffold(body: SizedBox())),
+              GetPage(
+                name: '/home',
+                page: () => const Scaffold(body: SizedBox()),
+              ),
               GetPage(
                 name: '/property/:id',
                 page: () => const Scaffold(body: Text('property_details')),
@@ -563,9 +563,7 @@ void main() {
 
         await PushNotificationsService.initLocalNotifications();
 
-        final payload = jsonEncode(<String, dynamic>{
-          'propertyId': '77',
-        });
+        final payload = jsonEncode(<String, dynamic>{'propertyId': '77'});
         await sendNotificationTap(payload);
         await tester.pumpAndSettle();
 
@@ -590,7 +588,10 @@ void main() {
           GetMaterialApp(
             initialRoute: '/home',
             getPages: [
-              GetPage(name: '/home', page: () => const Scaffold(body: SizedBox())),
+              GetPage(
+                name: '/home',
+                page: () => const Scaffold(body: SizedBox()),
+              ),
             ],
           ),
         );
@@ -623,7 +624,10 @@ void main() {
           GetMaterialApp(
             initialRoute: '/home',
             getPages: [
-              GetPage(name: '/home', page: () => const Scaffold(body: SizedBox())),
+              GetPage(
+                name: '/home',
+                page: () => const Scaffold(body: SizedBox()),
+              ),
             ],
           ),
         );
@@ -654,7 +658,10 @@ void main() {
           GetMaterialApp(
             initialRoute: '/home',
             getPages: [
-              GetPage(name: '/home', page: () => const Scaffold(body: SizedBox())),
+              GetPage(
+                name: '/home',
+                page: () => const Scaffold(body: SizedBox()),
+              ),
             ],
           ),
         );
@@ -672,8 +679,7 @@ void main() {
       }
     });
 
-    testWidgets('does not navigate when payload has no route or property_id',
-        (tester) async {
+    testWidgets('does not navigate when payload has no route or property_id', (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         await setupFlnMock();
@@ -684,16 +690,17 @@ void main() {
           GetMaterialApp(
             initialRoute: '/home',
             getPages: [
-              GetPage(name: '/home', page: () => const Scaffold(body: SizedBox())),
+              GetPage(
+                name: '/home',
+                page: () => const Scaffold(body: SizedBox()),
+              ),
             ],
           ),
         );
 
         await PushNotificationsService.initLocalNotifications();
 
-        final payload = jsonEncode(<String, dynamic>{
-          'title': 'No route here',
-        });
+        final payload = jsonEncode(<String, dynamic>{'title': 'No route here'});
         await sendNotificationTap(payload);
         await tester.pumpAndSettle();
 
@@ -768,37 +775,36 @@ void main() {
     String apnsToken = 'fake-apns-token',
     int authorizationStatus = 1, // authorized
   }) async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(fcmChannel, (MethodCall call) async {
-      switch (call.method) {
-        case 'Messaging#getToken':
-          return {'token': token};
-        case 'Messaging#getAPNSToken':
-          return {'token': apnsToken};
-        case 'Messaging#requestPermission':
-          return {'authorizationStatus': authorizationStatus};
-        case 'Messaging#deleteToken':
-          return null;
-        case 'Messaging#setForegroundNotificationPresentationOptions':
-          return null;
-        case 'Messaging#getInitialMessage':
-          return null;
-        case 'Messaging#getNotificationSettings':
-          return {
-            'authorizationStatus': authorizationStatus,
-            'alert': 1,
-            'badge': 1,
-            'sound': 1,
-          };
-        default:
-          return null;
-      }
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      fcmChannel,
+      (MethodCall call) async {
+        switch (call.method) {
+          case 'Messaging#getToken':
+            return {'token': token};
+          case 'Messaging#getAPNSToken':
+            return {'token': apnsToken};
+          case 'Messaging#requestPermission':
+            return {'authorizationStatus': authorizationStatus};
+          case 'Messaging#deleteToken':
+            return null;
+          case 'Messaging#setForegroundNotificationPresentationOptions':
+            return null;
+          case 'Messaging#getInitialMessage':
+            return null;
+          case 'Messaging#getNotificationSettings':
+            return {'authorizationStatus': authorizationStatus, 'alert': 1, 'badge': 1, 'sound': 1};
+          default:
+            return null;
+        }
+      },
+    );
   }
 
   void teardownFcmMock() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(fcmChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      fcmChannel,
+      null,
+    );
   }
 
   group('PushNotificationsService Firebase-mocked FCM operations', () {
@@ -868,8 +874,7 @@ void main() {
       expect(registeredToken, 'fake-fcm-token-1234567890');
     });
 
-    test('getToken handles onTokenRegistration callback throwing gracefully',
-        () async {
+    test('getToken handles onTokenRegistration callback throwing gracefully', () async {
       PushNotificationsService.onTokenRegistration = (token) async {
         throw Exception('Backend registration failed');
       };
@@ -903,8 +908,7 @@ void main() {
       teardownFcmMock();
       await setupFcmMock(authorizationStatus: 2); // provisional
 
-      final settings =
-          await PushNotificationsService.requestUserPermission(provisional: true);
+      final settings = await PushNotificationsService.requestUserPermission(provisional: true);
       expect(settings, isNotNull);
       expect(settings!.authorizationStatus, AuthorizationStatus.provisional);
     });
@@ -942,45 +946,48 @@ void main() {
       await setupFcmMock();
 
       // Override the deleteToken method to throw.
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(fcmChannel, (MethodCall call) async {
-        switch (call.method) {
-          case 'Messaging#deleteToken':
-            throw PlatformException(code: 'error');
-          case 'Messaging#getAPNSToken':
-            return {'token': 'fake-apns-token'};
-          case 'Messaging#getToken':
-            return {'token': 'fake-fcm-token'};
-          default:
-            return null;
-        }
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        fcmChannel,
+        (MethodCall call) async {
+          switch (call.method) {
+            case 'Messaging#deleteToken':
+              throw PlatformException(code: 'error');
+            case 'Messaging#getAPNSToken':
+              return {'token': 'fake-apns-token'};
+            case 'Messaging#getToken':
+              return {'token': 'fake-fcm-token'};
+            default:
+              return null;
+          }
+        },
+      );
 
       // Should catch the error and complete without throwing.
       await expectLater(PushNotificationsService.deleteToken(), completes);
     });
 
     test('initLocalNotifications completes on iOS with mocked channel', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(flnChannel, (MethodCall call) async {
-        switch (call.method) {
-          case 'initialize':
-            return true;
-          case 'show':
-            return null;
-          default:
-            return null;
-        }
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        flnChannel,
+        (MethodCall call) async {
+          switch (call.method) {
+            case 'initialize':
+              return true;
+            case 'show':
+              return null;
+            default:
+              return null;
+          }
+        },
+      );
       addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(flnChannel, null);
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+          flnChannel,
+          null,
+        );
       });
 
-      await expectLater(
-        PushNotificationsService.initLocalNotifications(),
-        completes,
-      );
+      await expectLater(PushNotificationsService.initLocalNotifications(), completes);
     });
   });
 }

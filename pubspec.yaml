@@ -87,6 +87,19 @@ dev_dependencies:
 
   path_provider_platform_interface: ^2.1.2
 
+  firebase_core_platform_interface: any
+  firebase_messaging_platform_interface: any
+  firebase_analytics_platform_interface: any
+  firebase_app_check_platform_interface: any
+  firebase_crashlytics_platform_interface: any
+  firebase_in_app_messaging_platform_interface: any
+  firebase_performance_platform_interface: any
+  firebase_remote_config_platform_interface: any
+  plugin_platform_interface: any
+  geocoding_platform_interface: any
+  geolocator_platform_interface: any
+  google_sign_in_platform_interface: any
+  webview_flutter_platform_interface: any
 flutter:
   uses-material-design: true
   assets:

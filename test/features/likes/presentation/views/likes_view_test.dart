@@ -14,10 +14,8 @@
 // - Controller-level state transitions
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
@@ -28,6 +26,7 @@ import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_co
 import 'package:ghar360/features/likes/presentation/controllers/likes_controller.dart';
 import 'package:ghar360/features/likes/presentation/views/likes_view.dart';
 import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 import '../../../../helpers/pump_app.dart';

@@ -15,7 +15,6 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geocoding_platform_interface/geocoding_platform_interface.dart' as geo_pi;
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
 import 'package:get/get.dart';
@@ -26,6 +25,7 @@ import 'package:ghar360/core/services/google_places_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 import 'package:mocktail/mocktail.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import '../../helpers/getx_test_binding.dart';
 import '../../helpers/mocks.dart';
@@ -184,8 +184,7 @@ void main() {
     mockPlacesService = MockGooglePlacesService();
 
     // GooglePlacesService reactive getters used by LocationController.
-    when(() => mockPlacesService.placeSuggestions)
-        .thenReturn(<PlaceSuggestion>[].obs);
+    when(() => mockPlacesService.placeSuggestions).thenReturn(<PlaceSuggestion>[].obs);
     when(() => mockPlacesService.isSearchingPlaces).thenReturn(false.obs);
 
     GetxTestBinding.bind()
@@ -390,13 +389,10 @@ void main() {
       final controller = createController();
 
       // Override the HTTP client to simulate a network failure (throws).
-      await http.runWithClient(
-        () async {
-          final result = await controller.getIpLocation();
-          expect(result, isNull);
-        },
-        () => http_testing.MockClient((_) async => throw Exception('network down')),
-      );
+      await http.runWithClient(() async {
+        final result = await controller.getIpLocation();
+        expect(result, isNull);
+      }, () => http_testing.MockClient((_) async => throw Exception('network down')));
     });
 
     test('getIpLocation returns LocationData on successful 200 response', () async {
@@ -450,13 +446,10 @@ void main() {
     test('getIpLocation returns null on non-200 status code', () async {
       final controller = createController();
 
-      await http.runWithClient(
-        () async {
-          final result = await controller.getIpLocation();
-          expect(result, isNull);
-        },
-        () => http_testing.MockClient((_) async => http.Response('Not Found', 404)),
-      );
+      await http.runWithClient(() async {
+        final result = await controller.getIpLocation();
+        expect(result, isNull);
+      }, () => http_testing.MockClient((_) async => http.Response('Not Found', 404)));
     });
 
     test('getIpLocation returns null when lat/lon are missing', () async {
@@ -468,10 +461,7 @@ void main() {
           expect(result, isNull);
         },
         () => http_testing.MockClient(
-          (_) async => http.Response(
-            json.encode({'city': 'Delhi'}),
-            200,
-          ),
+          (_) async => http.Response(json.encode({'city': 'Delhi'}), 200),
         ),
       );
     });
@@ -552,15 +542,9 @@ void main() {
     test('throws when no location can be determined (GPS + IP both fail)', () async {
       final controller = createController();
 
-      await http.runWithClient(
-        () async {
-          await expectLater(
-            controller.getInitialLocation(),
-            throwsA(isA<Exception>()),
-          );
-        },
-        () => http_testing.MockClient((_) async => throw Exception('network down')),
-      );
+      await http.runWithClient(() async {
+        await expectLater(controller.getInitialLocation(), throwsA(isA<Exception>()));
+      }, () => http_testing.MockClient((_) async => throw Exception('network down')));
     });
   });
 
@@ -616,20 +600,32 @@ void main() {
 
   group('LocationController — places delegation', () {
     test('getPlaceSuggestions delegates to GooglePlacesService', () async {
-      when(() => mockPlacesService.getPlaceSuggestions(any(), currentPosition: any(named: 'currentPosition')))
-          .thenAnswer((_) async => <PlaceSuggestion>[]);
+      when(
+        () => mockPlacesService.getPlaceSuggestions(
+          any(),
+          currentPosition: any(named: 'currentPosition'),
+        ),
+      ).thenAnswer((_) async => <PlaceSuggestion>[]);
 
       final controller = createController();
 
       final result = await controller.getPlaceSuggestions('test query');
 
       expect(result, isEmpty);
-      verify(() => mockPlacesService.getPlaceSuggestions('test query', currentPosition: any(named: 'currentPosition'))).called(1);
+      verify(
+        () => mockPlacesService.getPlaceSuggestions(
+          'test query',
+          currentPosition: any(named: 'currentPosition'),
+        ),
+      ).called(1);
     });
 
     test('getPlaceDetails delegates to GooglePlacesService', () async {
-      when(() => mockPlacesService.getPlaceDetails(any(), preferredName: any(named: 'preferredName')))
-          .thenAnswer((_) async => const LocationData(name: 'Test Place', latitude: 28.6, longitude: 77.2));
+      when(
+        () => mockPlacesService.getPlaceDetails(any(), preferredName: any(named: 'preferredName')),
+      ).thenAnswer(
+        (_) async => const LocationData(name: 'Test Place', latitude: 28.6, longitude: 77.2),
+      );
 
       final controller = createController();
 
@@ -1077,21 +1073,13 @@ void main() {
     });
 
     test('throws when GPS unavailable and IP fails', () async {
-      fake = FakeGeolocatorPlatform(
-        serviceEnabled: false,
-      );
+      fake = FakeGeolocatorPlatform(serviceEnabled: false);
       GeolocatorPlatform.instance = fake;
 
       final controller = createController();
-      await http.runWithClient(
-        () async {
-          await expectLater(
-            controller.getInitialLocation(),
-            throwsA(isA<Exception>()),
-          );
-        },
-        () => http_testing.MockClient((_) async => throw Exception('down')),
-      );
+      await http.runWithClient(() async {
+        await expectLater(controller.getInitialLocation(), throwsA(isA<Exception>()));
+      }, () => http_testing.MockClient((_) async => throw Exception('down')));
     });
   });
 
@@ -1113,8 +1101,7 @@ void main() {
 
     test('syncs location to backend when authenticated', () async {
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      when(() => mockAuthController.updateUserLocation(any()))
-          .thenAnswer((_) async => true);
+      when(() => mockAuthController.updateUserLocation(any())).thenAnswer((_) async => true);
 
       fake = FakeGeolocatorPlatform(
         serviceEnabled: true,
@@ -1147,8 +1134,9 @@ void main() {
 
     test('swallows backend sync errors', () async {
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      when(() => mockAuthController.updateUserLocation(any()))
-          .thenThrow(Exception('network error'));
+      when(
+        () => mockAuthController.updateUserLocation(any()),
+      ).thenThrow(Exception('network error'));
 
       fake = FakeGeolocatorPlatform(
         serviceEnabled: true,
@@ -1258,43 +1246,51 @@ void main() {
       activeFake = null;
     });
 
-    test('falls back through medium then low accuracy after timeouts', () async {
-      final pos = testPosition(latitude: 18.52, longitude: 73.85);
-      final fake = FakeGeolocatorPlatform(
-        serviceEnabled: true,
-        permission: LocationPermission.always,
-        currentPosition: pos,
-        // High (1) + medium (2) hang; low (3) succeeds.
-        timeoutFirstNCurrentPositionCalls: 2,
-      );
-      activeFake = fake;
-      GeolocatorPlatform.instance = fake;
+    test(
+      'falls back through medium then low accuracy after timeouts',
+      () async {
+        final pos = testPosition(latitude: 18.52, longitude: 73.85);
+        final fake = FakeGeolocatorPlatform(
+          serviceEnabled: true,
+          permission: LocationPermission.always,
+          currentPosition: pos,
+          // High (1) + medium (2) hang; low (3) succeeds.
+          timeoutFirstNCurrentPositionCalls: 2,
+        );
+        activeFake = fake;
+        GeolocatorPlatform.instance = fake;
 
-      final controller = createController();
-      await controller.getCurrentLocation(forceRefresh: true);
+        final controller = createController();
+        await controller.getCurrentLocation(forceRefresh: true);
 
-      expect(controller.currentLatitude, 18.52);
-      expect(fake.getCurrentPositionCallCount, greaterThanOrEqualTo(3));
-      expect(controller.isLoading.value, isFalse);
-    }, timeout: const Timeout(Duration(seconds: 45)));
+        expect(controller.currentLatitude, 18.52);
+        expect(fake.getCurrentPositionCallCount, greaterThanOrEqualTo(3));
+        expect(controller.isLoading.value, isFalse);
+      },
+      timeout: const Timeout(Duration(seconds: 45)),
+    );
 
-    test('returns null path when all accuracy levels time out', () async {
-      final fake = FakeGeolocatorPlatform(
-        serviceEnabled: true,
-        permission: LocationPermission.always,
-        throwOnLastKnown: true,
-        // High + medium + low all hang.
-        timeoutFirstNCurrentPositionCalls: 3,
-      );
-      activeFake = fake;
-      GeolocatorPlatform.instance = fake;
+    test(
+      'returns null path when all accuracy levels time out',
+      () async {
+        final fake = FakeGeolocatorPlatform(
+          serviceEnabled: true,
+          permission: LocationPermission.always,
+          throwOnLastKnown: true,
+          // High + medium + low all hang.
+          timeoutFirstNCurrentPositionCalls: 3,
+        );
+        activeFake = fake;
+        GeolocatorPlatform.instance = fake;
 
-      final controller = createController();
-      await controller.getCurrentLocation(forceRefresh: true);
+        final controller = createController();
+        await controller.getCurrentLocation(forceRefresh: true);
 
-      expect(controller.locationError.value, isNotEmpty);
-      expect(controller.isLoading.value, isFalse);
-    }, timeout: const Timeout(Duration(seconds: 45)));
+        expect(controller.locationError.value, isNotEmpty);
+        expect(controller.isLoading.value, isFalse);
+      },
+      timeout: const Timeout(Duration(seconds: 45)),
+    );
   });
 
   group('LocationController — service check error', () {
@@ -1433,9 +1429,7 @@ void main() {
     });
 
     test('formatAddress city-only when no state', () async {
-      geocodeFactory.platform.placemarks = const [
-        Placemark(locality: 'Goa'),
-      ];
+      geocodeFactory.platform.placemarks = const [Placemark(locality: 'Goa')];
       final fake = FakeGeolocatorPlatform(
         serviceEnabled: true,
         permission: LocationPermission.always,
@@ -1450,9 +1444,7 @@ void main() {
     });
 
     test('formatAddress street when no city', () async {
-      geocodeFactory.platform.placemarks = const [
-        Placemark(street: 'MG Road'),
-      ];
+      geocodeFactory.platform.placemarks = const [Placemark(street: 'MG Road')];
       final fake = FakeGeolocatorPlatform(
         serviceEnabled: true,
         permission: LocationPermission.always,
@@ -1477,9 +1469,7 @@ void main() {
       ];
       // city+state branch takes precedence when locality+admin present.
       // Use name-only for pure fallback path.
-      geocodeFactory.platform.placemarks = const [
-        Placemark(name: 'Only Name'),
-      ];
+      geocodeFactory.platform.placemarks = const [Placemark(name: 'Only Name')];
       final fake = FakeGeolocatorPlatform(
         serviceEnabled: true,
         permission: LocationPermission.always,
@@ -1612,8 +1602,7 @@ void main() {
     setUp(() {
       originalPlatform = GeolocatorPlatform.instance;
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      when(() => mockAuthController.updateUserLocation(any()))
-          .thenAnswer((_) async => true);
+      when(() => mockAuthController.updateUserLocation(any())).thenAnswer((_) async => true);
     });
 
     tearDown(() {
@@ -1632,8 +1621,7 @@ void main() {
       await controller.getCurrentLocation(forceRefresh: true);
       clearInteractions(mockAuthController);
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      when(() => mockAuthController.updateUserLocation(any()))
-          .thenAnswer((_) async => true);
+      when(() => mockAuthController.updateUserLocation(any())).thenAnswer((_) async => true);
 
       // Same position force-refresh — backend sync throttled by interval/distance.
       await controller.getCurrentLocation(forceRefresh: true);
@@ -1655,8 +1643,7 @@ void main() {
       fake.currentPosition = testPosition(latitude: 28.59, longitude: 77.2);
       await controller.getCurrentLocation(forceRefresh: true);
 
-      verify(() => mockAuthController.updateUserLocation(any()))
-          .called(greaterThanOrEqualTo(2));
+      verify(() => mockAuthController.updateUserLocation(any())).called(greaterThanOrEqualTo(2));
     });
   });
 
@@ -1699,15 +1686,13 @@ void main() {
       expect(result.name, isNotEmpty);
     });
   });
-
 }
 
 /// Fake whose `checkPermission` throws, exercising the catch branch in
 /// `_requestLocationPermissionInternal`.
 class _ThrowingPermissionFake extends FakeGeolocatorPlatform {
   @override
-  Future<LocationPermission> checkPermission() async =>
-      throw Exception('permission check failed');
+  Future<LocationPermission> checkPermission() async => throw Exception('permission check failed');
 }
 
 /// Fake whose settings methods throw, exercising the catch branches in
@@ -1719,7 +1704,6 @@ class _ThrowingSettingsFake extends FakeGeolocatorPlatform {
   Future<bool> openAppSettings() async => throw Exception('cannot open');
 }
 
-
 class _FakeGeocodingPlatformFactory extends geo_pi.GeocodingPlatformFactory {
   final _FakeGeocoding platform = _FakeGeocoding();
 
@@ -1727,9 +1711,7 @@ class _FakeGeocodingPlatformFactory extends geo_pi.GeocodingPlatformFactory {
   geo_pi.Geocoding createGeocoding(GeocodingCreationParams params) => platform;
 }
 
-class _FakeGeocoding extends Mock
-    with MockPlatformInterfaceMixin
-    implements geo_pi.Geocoding {
+class _FakeGeocoding extends Mock with MockPlatformInterfaceMixin implements geo_pi.Geocoding {
   List<Placemark> placemarks = const <Placemark>[];
   int placemarkCallCount = 0;
   bool throwOnPlacemark = false;

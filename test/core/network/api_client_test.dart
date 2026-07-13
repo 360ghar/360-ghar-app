@@ -8,7 +8,6 @@ import 'package:ghar360/core/network/auth_header_provider.dart';
 import 'package:ghar360/core/network/etag_cache.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -17,9 +16,7 @@ void main() {
   late MockETagCache etagCache;
 
   setUpAll(() {
-    registerFallbackValue(
-      getx.Response<dynamic>(statusCode: 200, body: {}),
-    );
+    registerFallbackValue(const getx.Response<dynamic>(statusCode: 200, body: {}));
   });
 
   setUp(() {
@@ -36,8 +33,12 @@ void main() {
   });
 
   ApiClient buildClient({
-    required Future<getx.Response> Function(String method, String url,
-        {Map<String, dynamic>? body, required Map<String, String> headers})
+    required Future<getx.Response> Function(
+      String method,
+      String url, {
+      Map<String, dynamic>? body,
+      required Map<String, String> headers,
+    })
     dispatcher,
     int maxGetRetries = 0,
   }) {
@@ -54,8 +55,7 @@ void main() {
   group('ApiClient.get', () {
     test('returns ApiResponse on 200 with parsed body', () async {
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            _okResponse({'data': 'hello'}),
+        dispatcher: (method, url, {body, required headers}) async => _okResponse({'data': 'hello'}),
       );
 
       final res = await client.get('/properties', useCache: false);
@@ -84,8 +84,7 @@ void main() {
     test('throws AuthenticationException when requireAuth and no header', () async {
       authProvider.header = null;
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            _okResponse({'ok': true}),
+        dispatcher: (method, url, {body, required headers}) async => _okResponse({'ok': true}),
       );
 
       await expectLater(
@@ -130,9 +129,12 @@ void main() {
 
       await expectLater(
         client.get('/properties', useCache: false),
-        throwsA(allOf(isA<AuthenticationException>(), predicate<AuthenticationException>(
-          (e) => e.code == 'FORBIDDEN',
-        ))),
+        throwsA(
+          allOf(
+            isA<AuthenticationException>(),
+            predicate<AuthenticationException>((e) => e.code == 'FORBIDDEN'),
+          ),
+        ),
       );
     });
 
@@ -142,22 +144,16 @@ void main() {
             _response(404, {'error': 'not found'}),
       );
 
-      await expectLater(
-        client.get('/properties/1', useCache: false),
-        throwsA(isA<ApiException>()),
-      );
+      await expectLater(client.get('/properties/1', useCache: false), throwsA(isA<ApiException>()));
     });
 
     test('throws NetworkException on null status code', () async {
       final client = buildClient(
         dispatcher: (method, url, {body, required headers}) async =>
-            getx.Response<dynamic>(statusCode: null, body: null, bodyString: ''),
+            const getx.Response<dynamic>(statusCode: null, body: null, bodyString: ''),
       );
 
-      await expectLater(
-        client.get('/properties', useCache: false),
-        throwsA(isA<AppException>()),
-      );
+      await expectLater(client.get('/properties', useCache: false), throwsA(isA<AppException>()));
     });
 
     test('serves cached body on 304 Not Modified', () async {
@@ -165,13 +161,12 @@ void main() {
       when(() => etagCache.getCachedBody(any())).thenReturn('{"cached":true}');
 
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            getx.Response<dynamic>(
-              statusCode: 304,
-              body: null,
-              bodyString: '',
-              headers: const <String, String>{},
-            ),
+        dispatcher: (method, url, {body, required headers}) async => const getx.Response<dynamic>(
+          statusCode: 304,
+          body: null,
+          bodyString: '',
+          headers: <String, String>{},
+        ),
       );
 
       final res = await client.get('/properties', useCache: true);
@@ -197,13 +192,12 @@ void main() {
 
     test('caches successful GET response when useCache is true', () async {
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            getx.Response<dynamic>(
-              statusCode: 200,
-              body: {'ok': true},
-              bodyString: '{"ok":true}',
-              headers: const <String, String>{'etag': 'W/"new"'},
-            ),
+        dispatcher: (method, url, {body, required headers}) async => const getx.Response<dynamic>(
+          statusCode: 200,
+          body: {'ok': true},
+          bodyString: '{"ok":true}',
+          headers: <String, String>{'etag': 'W/"new"'},
+        ),
       );
 
       await client.get('/properties', useCache: true);
@@ -213,13 +207,12 @@ void main() {
 
     test('does not cache response when useCache is false', () async {
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            getx.Response<dynamic>(
-              statusCode: 200,
-              body: {'ok': true},
-              bodyString: '{"ok":true}',
-              headers: const <String, String>{'etag': 'W/"new"'},
-            ),
+        dispatcher: (method, url, {body, required headers}) async => const getx.Response<dynamic>(
+          statusCode: 200,
+          body: {'ok': true},
+          bodyString: '{"ok":true}',
+          headers: <String, String>{'etag': 'W/"new"'},
+        ),
       );
 
       await client.get('/properties', useCache: false);
@@ -358,18 +351,14 @@ void main() {
             _response(400, {'error': 'bad request'}),
       );
 
-      await expectLater(
-        client.post('/properties', body: {}),
-        throwsA(isA<ApiException>()),
-      );
+      await expectLater(client.post('/properties', body: {}), throwsA(isA<ApiException>()));
     });
   });
 
   group('ApiClient.put', () {
     test('returns ApiResponse on 200', () async {
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            _okResponse({'updated': true}),
+        dispatcher: (method, url, {body, required headers}) async => _okResponse({'updated': true}),
       );
 
       final res = await client.put('/properties/1', body: {'name': 'new'});
@@ -398,8 +387,7 @@ void main() {
   group('ApiClient.delete', () {
     test('returns ApiResponse on 200', () async {
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            _okResponse({'deleted': true}),
+        dispatcher: (method, url, {body, required headers}) async => _okResponse({'deleted': true}),
       );
 
       final res = await client.delete('/properties/1');
@@ -414,18 +402,14 @@ void main() {
             _response(404, {'error': 'not found'}),
       );
 
-      await expectLater(
-        client.delete('/properties/1'),
-        throwsA(isA<ApiException>()),
-      );
+      await expectLater(client.delete('/properties/1'), throwsA(isA<ApiException>()));
     });
   });
 
   group('ApiClient.patch', () {
     test('returns ApiResponse on 200', () async {
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            _okResponse({'patched': true}),
+        dispatcher: (method, url, {body, required headers}) async => _okResponse({'patched': true}),
       );
 
       final res = await client.patch('/properties/1', body: {'field': 'value'});
@@ -462,20 +446,21 @@ void main() {
         authProvider: authProvider,
         etagCache: etagCache,
         enablePerformanceMetrics: false,
-        requestDispatcher: (
-          String method,
-          String url, {
-          Map<String, dynamic>? body,
-          required Map<String, String> headers,
-        }) async {
-          // The upload path uses _resolvedClient.post directly, not the
-          // requestDispatcher. This test therefore only validates that the
-          // upload method constructs the form and dispatches via the real
-          // GetConnect. Since GetConnect cannot hit localhost without a
-          // server, we assert the method throws a NetworkException rather
-          // than crashing on body construction.
-          return _okResponse({'uploaded': true});
-        },
+        requestDispatcher:
+            (
+              String method,
+              String url, {
+              Map<String, dynamic>? body,
+              required Map<String, String> headers,
+            }) async {
+              // The upload path uses _resolvedClient.post directly, not the
+              // requestDispatcher. This test therefore only validates that the
+              // upload method constructs the form and dispatches via the real
+              // GetConnect. Since GetConnect cannot hit localhost without a
+              // server, we assert the method throws a NetworkException rather
+              // than crashing on body construction.
+              return _okResponse({'uploaded': true});
+            },
       );
 
       // upload() bypasses requestDispatcher and uses GetConnect directly,
@@ -585,8 +570,7 @@ void main() {
   group('ApiClient.clearCache', () {
     test('delegates to ETagCache.clear', () {
       final client = buildClient(
-        dispatcher: (method, url, {body, required headers}) async =>
-            _okResponse({'ok': true}),
+        dispatcher: (method, url, {body, required headers}) async => _okResponse({'ok': true}),
       );
 
       client.clearCache();
@@ -673,9 +657,12 @@ void main() {
         enablePerformanceMetrics: false,
       );
 
-      final url = client.buildUrlForTesting('/properties', queryParams: {
-        'type': <String>['rent', 'sale'],
-      });
+      final url = client.buildUrlForTesting(
+        '/properties',
+        queryParams: {
+          'type': <String>['rent', 'sale'],
+        },
+      );
 
       expect(url, contains('type=rent'));
       expect(url, contains('type=sale'));

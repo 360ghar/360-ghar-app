@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
-import 'package:ghar360/core/data/models/agent_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
@@ -96,7 +95,9 @@ void main() {
   group('VisitsRepository.fetchVisitsSummary', () {
     test('delegates to remote datasource and returns payload', () async {
       final payload = VisitsPayload(visits: [visit()], hasMore: true, nextCursor: 'next');
-      when(() => remote.fetchVisitsSummary(cursor: null, limit: 50)).thenAnswer((_) async => payload);
+      when(
+        () => remote.fetchVisitsSummary(cursor: null, limit: 50),
+      ).thenAnswer((_) async => payload);
 
       final result = await repository.fetchVisitsSummary();
 
@@ -108,7 +109,9 @@ void main() {
 
     test('forwards cursor and limit to remote', () async {
       final payload = const VisitsPayload(visits: [], hasMore: false);
-      when(() => remote.fetchVisitsSummary(cursor: 'abc', limit: 10)).thenAnswer((_) async => payload);
+      when(
+        () => remote.fetchVisitsSummary(cursor: 'abc', limit: 10),
+      ).thenAnswer((_) async => payload);
 
       final result = await repository.fetchVisitsSummary(cursor: 'abc', limit: 10);
 
@@ -117,8 +120,12 @@ void main() {
     });
 
     test('propagates exceptions from remote', () async {
-      when(() => remote.fetchVisitsSummary(cursor: any(named: 'cursor'), limit: any(named: 'limit')))
-          .thenThrow(NetworkException('down'));
+      when(
+        () => remote.fetchVisitsSummary(
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenThrow(NetworkException('down'));
 
       expect(() => repository.fetchVisitsSummary(), throwsA(isA<NetworkException>()));
     });
@@ -137,7 +144,9 @@ void main() {
     });
 
     test('propagates exceptions from remote', () async {
-      when(() => remote.fetchRelationshipManager()).thenThrow(ServerException('Down', statusCode: 500));
+      when(
+        () => remote.fetchRelationshipManager(),
+      ).thenThrow(ServerException('Down', statusCode: 500));
 
       expect(() => repository.fetchRelationshipManager(), throwsA(isA<ServerException>()));
     });
@@ -168,8 +177,9 @@ void main() {
 
   group('VisitsRepository.rescheduleVisit', () {
     test('delegates to remote with new date and reason', () async {
-      when(() => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: 'conflict'))
-          .thenAnswer((_) async => true);
+      when(
+        () => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: 'conflict'),
+      ).thenAnswer((_) async => true);
 
       final result = await repository.rescheduleVisit(8, newDate: '2024-07-01', reason: 'conflict');
 
@@ -178,8 +188,9 @@ void main() {
     });
 
     test('forwards null reason to remote', () async {
-      when(() => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: null))
-          .thenAnswer((_) async => true);
+      when(
+        () => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: null),
+      ).thenAnswer((_) async => true);
 
       final result = await repository.rescheduleVisit(8, newDate: '2024-07-01');
 
@@ -188,8 +199,13 @@ void main() {
     });
 
     test('propagates exceptions from remote', () async {
-      when(() => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: any(named: 'reason')))
-          .thenThrow(ServerException('Down', statusCode: 500));
+      when(
+        () => remote.rescheduleVisit(
+          8,
+          newDate: '2024-07-01',
+          reason: any(named: 'reason'),
+        ),
+      ).thenThrow(ServerException('Down', statusCode: 500));
 
       expect(
         () => repository.rescheduleVisit(8, newDate: '2024-07-01'),

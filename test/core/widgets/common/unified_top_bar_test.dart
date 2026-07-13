@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/unified_top_bar.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 import '../../../helpers/mocks.dart';
 
@@ -145,10 +145,7 @@ void main() {
   }
 
   testWidgets('renders an AppBar with location selector and filter button', (tester) async {
-    await pumpWidget(
-      tester,
-      UnifiedTopBar(pageType: PageType.discover, title: 'Test'),
-    );
+    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.discover, title: 'Test'));
 
     expect(find.byType(UnifiedTopBar), findsOneWidget);
     expect(find.byType(AppBar), findsOneWidget);
@@ -159,20 +156,14 @@ void main() {
   });
 
   testWidgets('shows search toggle for explore page', (tester) async {
-    await pumpWidget(
-      tester,
-      UnifiedTopBar(pageType: PageType.explore, title: 'Explore'),
-    );
+    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.explore, title: 'Explore'));
 
     // Explore supports search → search toggle icon is rendered.
     expect(find.byIcon(Icons.search), findsOneWidget);
   });
 
   testWidgets('does not show search toggle for discover page', (tester) async {
-    await pumpWidget(
-      tester,
-      UnifiedTopBar(pageType: PageType.discover, title: 'Discover'),
-    );
+    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.discover, title: 'Discover'));
 
     // Discover does not support search → no search toggle icon.
     expect(find.byIcon(Icons.search), findsNothing);
@@ -180,10 +171,7 @@ void main() {
   });
 
   testWidgets('tapping search toggle makes the search bar visible', (tester) async {
-    await pumpWidget(
-      tester,
-      UnifiedTopBar(pageType: PageType.explore, title: 'Explore'),
-    );
+    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.explore, title: 'Explore'));
 
     // Initially no search input field.
     expect(find.byType(TextField), findsNothing);
@@ -198,10 +186,7 @@ void main() {
   });
 
   testWidgets('shows refresh indicator when page is refreshing', (tester) async {
-    await pumpWidget(
-      tester,
-      UnifiedTopBar(pageType: PageType.discover, title: 'Discover'),
-    );
+    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.discover, title: 'Discover'));
 
     // No progress indicator initially.
     expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -220,23 +205,20 @@ void main() {
       filters: const UnifiedFilterModel(purpose: 'buy', propertyType: ['house']),
     );
 
-    await pumpWidget(
-      tester,
-      UnifiedTopBar(pageType: PageType.explore, title: 'Explore'),
-    );
+    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.explore, title: 'Explore'));
 
     // The filter badge text shows the count.
     expect(find.text('1'), findsOneWidget);
   });
 
   testWidgets('preferredSize is kToolbarHeight when search not visible', (tester) async {
-    final topBar = UnifiedTopBar(pageType: PageType.discover, title: 'Discover');
+    final topBar = const UnifiedTopBar(pageType: PageType.discover, title: 'Discover');
     expect(topBar.preferredSize.height, kToolbarHeight);
   });
 
   testWidgets('preferredSize includes search bar height when search visible', (tester) async {
     pageStateService.setSearchVisible(PageType.explore, true);
-    final topBar = UnifiedTopBar(pageType: PageType.explore, title: 'Explore');
+    final topBar = const UnifiedTopBar(pageType: PageType.explore, title: 'Explore');
     expect(topBar.preferredSize.height, kToolbarHeight + 52);
   });
 }

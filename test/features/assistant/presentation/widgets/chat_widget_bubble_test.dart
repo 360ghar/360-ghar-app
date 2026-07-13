@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
@@ -174,20 +173,14 @@ void main() {
     });
 
     testWidgets('renders without crashing for invalid widget name', (tester) async {
-      await pumpBubble(
-        tester,
-        ChatWidgetBubble(message: _widgetMessage(widgetName: '../bad')),
-      );
+      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage(widgetName: '../bad')));
 
       // The widget should still render its container structure.
       expect(find.byType(ClipRRect), findsOneWidget);
     });
 
     testWidgets('renders without crashing for empty widget name', (tester) async {
-      await pumpBubble(
-        tester,
-        ChatWidgetBubble(message: _widgetMessage(widgetName: '')),
-      );
+      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage(widgetName: '')));
 
       expect(find.byType(ClipRRect), findsOneWidget);
     });
@@ -238,9 +231,7 @@ void main() {
     testWidgets('renders with widgetData present', (tester) async {
       await pumpBubble(
         tester,
-        ChatWidgetBubble(
-          message: _widgetMessage(widgetData: {'id': 1, 'name': 'Test'}),
-        ),
+        ChatWidgetBubble(message: _widgetMessage(widgetData: {'id': 1, 'name': 'Test'})),
       );
 
       expect(find.byType(ChatWidgetBubble), findsOneWidget);
@@ -305,10 +296,7 @@ void main() {
 
   group('ChatWidgetBubble page lifecycle', () {
     testWidgets('shows error fallback for invalid widget name after page finish', (tester) async {
-      await pumpBubble(
-        tester,
-        ChatWidgetBubble(message: _widgetMessage(widgetName: '../bad')),
-      );
+      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage(widgetName: '../bad')));
 
       expect(lastNavigationDelegate?.pageFinishedCallback, isNotNull);
       lastNavigationDelegate!.pageFinishedCallback!('about:blank');
@@ -320,10 +308,7 @@ void main() {
     });
 
     testWidgets('shows error fallback for null widget name after page finish', (tester) async {
-      await pumpBubble(
-        tester,
-        ChatWidgetBubble(message: _widgetMessage(widgetName: null)),
-      );
+      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage(widgetName: null)));
 
       lastNavigationDelegate!.pageFinishedCallback!('about:blank');
       await tester.pump();
@@ -378,9 +363,7 @@ void main() {
 
       await pumpBubble(
         tester,
-        ChatWidgetBubble(
-          message: _widgetMessage(widgetData: {'id': 42, 'title': 'Villa'}),
-        ),
+        ChatWidgetBubble(message: _widgetMessage(widgetData: {'id': 42, 'title': 'Villa'})),
       );
 
       lastNavigationDelegate!.pageFinishedCallback!('about:blank');
@@ -401,10 +384,7 @@ void main() {
       when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) async => '<html>ok</html>');
       Get.put<AssistantRepository>(mockRepo);
 
-      await pumpBubble(
-        tester,
-        ChatWidgetBubble(message: _widgetMessage(widgetData: null)),
-      );
+      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage(widgetData: null)));
 
       lastNavigationDelegate!.pageFinishedCallback!('about:blank');
       await tester.pump();
@@ -428,9 +408,7 @@ void main() {
           fallbackLocale: const Locale('en', 'US'),
           theme: ThemeData.dark(),
           home: Scaffold(
-            body: Center(
-              child: ChatWidgetBubble(message: _widgetMessage()),
-            ),
+            body: Center(child: ChatWidgetBubble(message: _widgetMessage())),
           ),
         ),
       );
@@ -477,7 +455,10 @@ void main() {
       final mockRepo = MockAssistantRepository();
       when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) async => '<html>ok</html>');
       when(
-        () => mockRepo.streamChat(message: any(named: 'message'), conversationId: any(named: 'conversationId')),
+        () => mockRepo.streamChat(
+          message: any(named: 'message'),
+          conversationId: any(named: 'conversationId'),
+        ),
       ).thenAnswer((_) => const Stream.empty());
       Get.put<AssistantRepository>(mockRepo);
 

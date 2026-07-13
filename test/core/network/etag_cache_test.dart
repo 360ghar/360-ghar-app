@@ -1,9 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' as getx;
 import 'package:get_storage/get_storage.dart';
+
 import 'package:ghar360/core/network/etag_cache.dart';
 
 void main() {
@@ -11,11 +13,13 @@ void main() {
 
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   setUpAll(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-      if (methodCall.method == 'getApplicationDocumentsDirectory') return '.';
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'getApplicationDocumentsDirectory') return '.';
+        return null;
+      },
+    );
   });
 
   setUp(() async {
@@ -84,11 +88,11 @@ void main() {
       const bodyStr = '{"ok":true}';
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: bodyStr,
-          headers: const <String, String>{'etag': 'W/"abc123"'},
+          headers: <String, String>{'etag': 'W/"abc123"'},
         ),
       );
 
@@ -113,11 +117,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: '{"ok":true}',
-          headers: const <String, String>{'etag': 'W/"abc123"'},
+          headers: <String, String>{'etag': 'W/"abc123"'},
         ),
       );
 
@@ -129,11 +133,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: '{"ok":true}',
-          headers: const <String, String>{},
+          headers: <String, String>{},
         ),
       );
 
@@ -145,11 +149,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: '{"ok":true}',
-          headers: const <String, String>{'etag': ''},
+          headers: <String, String>{'etag': ''},
         ),
       );
 
@@ -160,11 +164,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: null,
           bodyString: '',
-          headers: const <String, String>{'etag': 'W/"abc123"'},
+          headers: <String, String>{'etag': 'W/"abc123"'},
         ),
       );
 
@@ -176,11 +180,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: null,
           bodyString: 'null',
-          headers: const <String, String>{'etag': 'W/"abc123"'},
+          headers: <String, String>{'etag': 'W/"abc123"'},
         ),
       );
 
@@ -191,11 +195,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: null,
           bodyString: '  null  ',
-          headers: const <String, String>{'etag': 'W/"abc123"'},
+          headers: <String, String>{'etag': 'W/"abc123"'},
         ),
       );
 
@@ -206,11 +210,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: null,
-          headers: const <String, String>{'etag': 'W/"abc123"'},
+          headers: <String, String>{'etag': 'W/"abc123"'},
         ),
       );
 
@@ -222,11 +226,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: '{"ok":true}',
-          headers: const <String, String>{'ETag': 'W/"caseInsensitive"'},
+          headers: <String, String>{'ETag': 'W/"caseInsensitive"'},
         ),
       );
 
@@ -237,11 +241,11 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: '{"ok":true}',
-          headers: const <String, String>{'ETAG': 'W/"upper"'},
+          headers: <String, String>{'ETAG': 'W/"upper"'},
         ),
       );
 
@@ -252,20 +256,20 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'v': 1},
           bodyString: '{"v":1}',
-          headers: const <String, String>{'etag': 'W/"first"'},
+          headers: <String, String>{'etag': 'W/"first"'},
         ),
       );
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'v': 2},
           bodyString: '{"v":2}',
-          headers: const <String, String>{'etag': 'W/"second"'},
+          headers: <String, String>{'etag': 'W/"second"'},
         ),
       );
 
@@ -277,7 +281,7 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: '{"ok":true}',
@@ -300,20 +304,20 @@ void main() {
       final cache = ETagCache();
       cache.cacheResponse(
         'key1',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': true},
           bodyString: '{"ok":true}',
-          headers: const <String, String>{'etag': 'W/"a"'},
+          headers: <String, String>{'etag': 'W/"a"'},
         ),
       );
       cache.cacheResponse(
         'key2',
-        getx.Response<dynamic>(
+        const getx.Response<dynamic>(
           statusCode: 200,
           body: <String, dynamic>{'ok': false},
           bodyString: '{"ok":false}',
-          headers: const <String, String>{'etag': 'W/"b"'},
+          headers: <String, String>{'etag': 'W/"b"'},
         ),
       );
 

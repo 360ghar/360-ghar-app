@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/presentation/widgets/chat_message_bubble.dart';
 
@@ -37,7 +38,9 @@ void main() {
   Future<void> pumpBubble(WidgetTester tester, Widget child) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: Center(child: SingleChildScrollView(child: child))),
+        home: Scaffold(
+          body: Center(child: SingleChildScrollView(child: child)),
+        ),
       ),
     );
   }

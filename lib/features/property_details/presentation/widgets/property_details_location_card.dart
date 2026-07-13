@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/map/mini_map_view.dart';
@@ -51,7 +53,11 @@ class PropertyDetailsLocationCard extends StatelessWidget {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.location_on_rounded, color: AppDesign.primaryYellow, size: 20),
+                        const Icon(
+                          Icons.location_on_rounded,
+                          color: AppDesign.primaryYellow,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(

@@ -436,9 +436,9 @@ void main() {
 
   group('LikesController — state getters', () {
     test('currentState returns loading when page state is loading', () {
-      likesState.value = PageStateModel(
+      likesState.value = const PageStateModel(
         pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: true,
       );
@@ -449,9 +449,9 @@ void main() {
     });
 
     test('currentState returns loadingMore when page state is loadingMore', () {
-      likesState.value = PageStateModel(
+      likesState.value = const PageStateModel(
         pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoadingMore: true,
       );
@@ -475,9 +475,9 @@ void main() {
     });
 
     test('currentState returns empty when properties are empty and not loading', () {
-      likesState.value = PageStateModel(
+      likesState.value = const PageStateModel(
         pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
       );
 
@@ -534,9 +534,9 @@ void main() {
 
   group('LikesController — helper getters', () {
     test('isCurrentLoading returns true when page state is loading', () {
-      likesState.value = PageStateModel(
+      likesState.value = const PageStateModel(
         pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: true,
       );
@@ -547,9 +547,9 @@ void main() {
     });
 
     test('isCurrentEmpty returns true when not loading, empty, and no error', () {
-      likesState.value = PageStateModel(
+      likesState.value = const PageStateModel(
         pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
       );
 
@@ -559,9 +559,9 @@ void main() {
     });
 
     test('isCurrentEmpty returns false when loading', () {
-      likesState.value = PageStateModel(
+      likesState.value = const PageStateModel(
         pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: true,
       );
@@ -696,12 +696,12 @@ void main() {
     });
 
     test('activatePage skips when already loading', () {
-      likesState.value = PageStateModel(
+      likesState.value = const PageStateModel(
         pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
         isLoading: true,
-        selectedLocation: const LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
+        selectedLocation: LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
       );
 
       final controller = createController();
@@ -715,11 +715,11 @@ void main() {
     });
 
     test('activatePage loads data when properties are empty', () {
-      likesState.value = PageStateModel(
+      likesState.value = const PageStateModel(
         pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
-        selectedLocation: const LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
+        selectedLocation: LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
       );
 
       final controller = createController();

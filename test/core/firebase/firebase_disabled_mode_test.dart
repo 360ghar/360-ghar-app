@@ -84,10 +84,7 @@ void main() {
       await expectLater(AnalyticsService.viewProperty('p-1'), completes);
       await expectLater(AnalyticsService.likeProperty('p-1'), completes);
       await expectLater(AnalyticsService.scheduleVisit('p-1'), completes);
-      await expectLater(
-        AnalyticsService.applyFilter(<String, Object>{'type': 'rent'}),
-        completes,
-      );
+      await expectLater(AnalyticsService.applyFilter(<String, Object>{'type': 'rent'}), completes);
       await expectLater(
         AnalyticsService.filterApplied(activeCount: 2, pageType: 'discover'),
         completes,
@@ -106,10 +103,7 @@ void main() {
     });
 
     test('Analytics setUserProperty is a no-op when Firebase not ready', () async {
-      await expectLater(
-        AnalyticsService.setUserProperty('role', 'agent'),
-        completes,
-      );
+      await expectLater(AnalyticsService.setUserProperty('role', 'agent'), completes);
     });
 
     test('Analytics setUserId with null is a no-op when Firebase not ready', () async {
@@ -123,4 +117,3 @@ void main() {
     });
   });
 }
-

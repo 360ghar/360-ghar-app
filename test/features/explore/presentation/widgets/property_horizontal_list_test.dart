@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
 import 'package:ghar360/features/explore/presentation/widgets/property_horizontal_list.dart';
-import 'package:mocktail/mocktail.dart';
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 
@@ -18,8 +18,11 @@ class _FakeExploreController extends GetxServiceMock implements ExploreControlle
     properties.assignAll(initial);
   }
 
+  @override
   final RxList<PropertyModel> properties = <PropertyModel>[].obs;
+  @override
   final Rx<PropertyModel?> selectedProperty = Rx<PropertyModel?>(null);
+  @override
   final RxMap<int, bool> likedOverrides = <int, bool>{}.obs;
 
   @override
@@ -101,15 +104,8 @@ void main() {
   }
 
   testWidgets('renders a card per property in horizontal mode', (tester) async {
-    final controller = _FakeExploreController([
-      _property(1),
-      _property(2),
-      _property(3),
-    ]);
-    await pumpWidget(
-      tester,
-      PropertyHorizontalList(controller: controller),
-    );
+    final controller = _FakeExploreController([_property(1), _property(2), _property(3)]);
+    await pumpWidget(tester, PropertyHorizontalList(controller: controller));
 
     expect(find.text('Property 1'), findsOneWidget);
     expect(find.text('Property 2'), findsOneWidget);
@@ -140,10 +136,7 @@ void main() {
 
   testWidgets('tapping the favorite icon toggles like via the controller', (tester) async {
     final controller = _FakeExploreController([_property(1)]);
-    await pumpWidget(
-      tester,
-      PropertyHorizontalList(controller: controller),
-    );
+    await pumpWidget(tester, PropertyHorizontalList(controller: controller));
 
     await tester.tap(find.byIcon(Icons.favorite_border));
     await tester.pump();

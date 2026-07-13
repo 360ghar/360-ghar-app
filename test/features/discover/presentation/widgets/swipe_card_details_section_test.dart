@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/discover/presentation/widgets/swipe_card_details_section.dart';
@@ -57,7 +58,7 @@ void main() {
   });
 
   testWidgets('shows no-description placeholder when description is empty', (tester) async {
-    final property = PropertyModel(
+    final property = const PropertyModel(
       id: 1,
       title: 'No Desc',
       basePrice: 100,

@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
@@ -24,10 +23,7 @@ void main() {
   }
 
   testWidgets('renders error widget for an empty URL', (tester) async {
-    await pumpWidget(
-      tester,
-      const RobustNetworkImage(imageUrl: '', width: 200, height: 200),
-    );
+    await pumpWidget(tester, const RobustNetworkImage(imageUrl: '', width: 200, height: 200));
 
     // No valid URL → default error widget with home icon.
     expect(find.byIcon(Icons.home_outlined), findsOneWidget);
@@ -51,11 +47,7 @@ void main() {
   testWidgets('renders CachedNetworkImage for a valid http URL', (tester) async {
     await pumpWidget(
       tester,
-      const RobustNetworkImage(
-        imageUrl: 'https://example.com/image.jpg',
-        width: 200,
-        height: 200,
-      ),
+      const RobustNetworkImage(imageUrl: 'https://example.com/image.jpg', width: 200, height: 200),
     );
 
     // A valid URL produces a CachedNetworkImage widget.
@@ -78,11 +70,7 @@ void main() {
   testWidgets('shows loading placeholder while image loads', (tester) async {
     await pumpWidget(
       tester,
-      const RobustNetworkImage(
-        imageUrl: 'https://example.com/image.jpg',
-        width: 200,
-        height: 200,
-      ),
+      const RobustNetworkImage(imageUrl: 'https://example.com/image.jpg', width: 200, height: 200),
     );
 
     // The default placeholder contains a CircularProgressIndicator.
@@ -92,11 +80,11 @@ void main() {
   testWidgets('uses custom placeholder when provided', (tester) async {
     await pumpWidget(
       tester,
-      RobustNetworkImage(
+      const RobustNetworkImage(
         imageUrl: 'https://example.com/image.jpg',
         width: 200,
         height: 200,
-        placeholder: const Text('Custom Placeholder'),
+        placeholder: Text('Custom Placeholder'),
       ),
     );
 
@@ -106,11 +94,11 @@ void main() {
   testWidgets('uses custom error widget when provided for invalid URL', (tester) async {
     await pumpWidget(
       tester,
-      RobustNetworkImage(
+      const RobustNetworkImage(
         imageUrl: '',
         width: 200,
         height: 200,
-        errorWidget: const Text('Custom Error'),
+        errorWidget: Text('Custom Error'),
       ),
     );
 

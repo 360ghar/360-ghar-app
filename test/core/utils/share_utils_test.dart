@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/utils/share_utils.dart';
-
 import '../../helpers/mocks.dart';
 
 void main() {
@@ -65,9 +64,8 @@ void main() {
       expect(caught, isNotNull);
     });
 
-    test('builds share text with title, location, and link when location present',
-        () async {
-      final property = PropertyModel(
+    test('builds share text with title, location, and link when location present', () async {
+      final property = const PropertyModel(
         id: 77,
         title: 'Beautiful House',
         basePrice: 5000000,

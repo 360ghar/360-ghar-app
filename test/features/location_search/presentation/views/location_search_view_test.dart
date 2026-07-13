@@ -65,11 +65,11 @@ class _FakeLocationController extends LocationController {
 }
 
 PlaceSuggestion _suggestion({String id = '1'}) => PlaceSuggestion(
-      placeId: id,
-      description: 'Test Description $id',
-      mainText: 'Main Text $id',
-      secondaryText: 'Secondary Text $id',
-    );
+  placeId: id,
+  description: 'Test Description $id',
+  mainText: 'Main Text $id',
+  secondaryText: 'Secondary Text $id',
+);
 
 // ---------------------------------------------------------------------------
 // Test controller — overrides async actions that would call AppToast/Get.back
@@ -122,8 +122,7 @@ void main() {
       expect(find.text('search_city_or_area_hint'.tr), findsWidgets);
     });
 
-    testWidgets('shows clear button when query is non-empty and clears on tap',
-        (tester) async {
+    testWidgets('shows clear button when query is non-empty and clears on tap', (tester) async {
       await tester.pumpApp(const LocationSearchView());
       await tester.pump();
 
@@ -154,16 +153,12 @@ void main() {
       await tester.pumpApp(const LocationSearchView());
       await tester.pump();
 
-      expect(
-        find.byKey(const ValueKey('qa.location_search.use_current_location')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('qa.location_search.use_current_location')), findsOneWidget);
       expect(find.text('use_current_location'.tr), findsOneWidget);
       expect(find.text('tap_to_get_current_location'.tr), findsOneWidget);
     });
 
-    testWidgets('shows current location tile with address when location available',
-        (tester) async {
+    testWidgets('shows current location tile with address when location available', (tester) async {
       locationController.setHasLocation(true);
       locationController.currentAddress.value = 'Bangalore, IN';
 
@@ -173,8 +168,9 @@ void main() {
       expect(find.text('Bangalore, IN'), findsOneWidget);
     });
 
-    testWidgets('shows current location tile with fallback text when address empty',
-        (tester) async {
+    testWidgets('shows current location tile with fallback text when address empty', (
+      tester,
+    ) async {
       locationController.setHasLocation(true);
       locationController.currentAddress.value = '';
 
@@ -226,8 +222,9 @@ void main() {
       expect(find.text('Something went wrong'), findsOneWidget);
     });
 
-    testWidgets('renders suggestion list and tapping a suggestion calls selectPlace',
-        (tester) async {
+    testWidgets('renders suggestion list and tapping a suggestion calls selectPlace', (
+      tester,
+    ) async {
       locationController.suggestions.assignAll([_suggestion(id: '1'), _suggestion(id: '2')]);
 
       await tester.pumpApp(const LocationSearchView());
@@ -245,8 +242,7 @@ void main() {
       expect(searchController.selectedPlace!.placeId, '1');
     });
 
-    testWidgets('suggestion with empty secondaryText renders without subtitle',
-        (tester) async {
+    testWidgets('suggestion with empty secondaryText renders without subtitle', (tester) async {
       locationController.suggestions.assignAll([
         PlaceSuggestion(
           placeId: '3',

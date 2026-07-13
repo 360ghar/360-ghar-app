@@ -25,8 +25,7 @@ class _FakeUser extends Fake implements User {
   String get id => 'fake-user-id';
 }
 
-class _MockStaticPageRepository extends GetxServiceMock
-    implements StaticPageRepository {}
+class _MockStaticPageRepository extends GetxServiceMock implements StaticPageRepository {}
 
 void main() {
   late MockAuthRepository authRepository;
@@ -151,24 +150,17 @@ void main() {
       expect(find.byKey(const ValueKey('qa.profile.privacy.screen')), findsOneWidget);
     });
 
-    testWidgets('renders account security section with change password item', (
-      tester,
-    ) async {
+    testWidgets('renders account security section with change password item', (tester) async {
       await pumpPrivacyView(tester);
       await tester.pump();
 
       expect(find.text('account_security'.tr), findsOneWidget);
       expect(find.text('change_password'.tr), findsOneWidget);
       expect(find.text('update_account_password'.tr), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('qa.profile.privacy.change_password')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('qa.profile.privacy.change_password')), findsOneWidget);
     });
 
-    testWidgets('renders policies legal section with all five policy items', (
-      tester,
-    ) async {
+    testWidgets('renders policies legal section with all five policy items', (tester) async {
       await pumpPrivacyView(tester);
       await tester.pump();
 
@@ -191,30 +183,21 @@ void main() {
       expect(find.byIcon(Icons.support_agent), findsOneWidget);
     });
 
-    testWidgets('renders account management section with delete button', (
-      tester,
-    ) async {
+    testWidgets('renders account management section with delete button', (tester) async {
       await pumpPrivacyView(tester);
       await tester.pump();
 
       expect(find.text('account_management'.tr), findsOneWidget);
       expect(find.text('delete_account_description'.tr), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('qa.profile.privacy.delete_account')), findsOneWidget);
       expect(find.text('delete_account'.tr), findsOneWidget);
     });
 
-    testWidgets('tapping change password opens the change password dialog', (
-      tester,
-    ) async {
+    testWidgets('tapping change password opens the change password dialog', (tester) async {
       await pumpPrivacyView(tester);
       await tester.pump();
 
-      await tester.tap(
-        find.byKey(const ValueKey('qa.profile.privacy.change_password')),
-      );
+      await tester.tap(find.byKey(const ValueKey('qa.profile.privacy.change_password')));
       await tester.pumpAndSettle();
 
       expect(find.text('change_password'.tr), findsWidgets);
@@ -227,9 +210,7 @@ void main() {
       await pumpPrivacyView(tester);
       await tester.pump();
 
-      await tester.tap(
-        find.byKey(const ValueKey('qa.profile.privacy.change_password')),
-      );
+      await tester.tap(find.byKey(const ValueKey('qa.profile.privacy.change_password')));
       await tester.pumpAndSettle();
 
       // Tap the cancel button in the dialog.
@@ -242,16 +223,12 @@ void main() {
   });
 
   group('PrivacyView — delete account dialog', () {
-    testWidgets('tapping delete account opens the confirmation dialog', (
-      tester,
-    ) async {
+    testWidgets('tapping delete account opens the confirmation dialog', (tester) async {
       await pumpPrivacyView(tester);
       await tester.pump();
 
       // Scroll the delete button into view.
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.privacy.delete_account')));
       await tester.pump();
 
       await tester.tap(
@@ -270,9 +247,7 @@ void main() {
       await pumpPrivacyView(tester);
       await tester.pump();
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.privacy.delete_account')));
       await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
@@ -293,9 +268,7 @@ void main() {
       await pumpPrivacyView(tester);
       await tester.pump();
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.privacy.delete_account')));
       await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
@@ -316,15 +289,11 @@ void main() {
       expect(button.onPressed, isNotNull);
     });
 
-    testWidgets('typing wrong text does not enable the delete button', (
-      tester,
-    ) async {
+    testWidgets('typing wrong text does not enable the delete button', (tester) async {
       await pumpPrivacyView(tester);
       await tester.pump();
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.privacy.delete_account')));
       await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
@@ -347,9 +316,7 @@ void main() {
       await pumpPrivacyView(tester);
       await tester.pump();
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.privacy.delete_account')));
       await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey('qa.profile.privacy.delete_account')),
@@ -365,12 +332,8 @@ void main() {
   });
 
   group('PrivacyView — policy navigation', () {
-    testWidgets('tapping a policy item navigates to PolicyPageView', (
-      tester,
-    ) async {
-      when(() => staticPageRepository.fetchPublicPage(any())).thenThrow(
-        Exception('network error'),
-      );
+    testWidgets('tapping a policy item navigates to PolicyPageView', (tester) async {
+      when(() => staticPageRepository.fetchPublicPage(any())).thenThrow(Exception('network error'));
 
       await pumpPrivacyView(tester);
       await tester.pump();
@@ -383,12 +346,8 @@ void main() {
       expect(find.text('failed_to_load_content'.tr), findsOneWidget);
     });
 
-    testWidgets('tapping privacy policy item navigates to PolicyPageView', (
-      tester,
-    ) async {
-      when(() => staticPageRepository.fetchPublicPage(any())).thenThrow(
-        Exception('network error'),
-      );
+    testWidgets('tapping privacy policy item navigates to PolicyPageView', (tester) async {
+      when(() => staticPageRepository.fetchPublicPage(any())).thenThrow(Exception('network error'));
 
       await pumpPrivacyView(tester);
       await tester.pump();

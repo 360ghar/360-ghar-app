@@ -162,10 +162,7 @@ void main() {
         () => auth.signInWithEmailPassword('a@b.com', 'wrong'),
       ).thenThrow(Exception('Invalid credentials'));
 
-      await controller.changePassword(
-        currentPassword: 'wrong',
-        newPassword: 'new-pass',
-      );
+      await controller.changePassword(currentPassword: 'wrong', newPassword: 'new-pass');
 
       expect(controller.isLoading.value, isFalse);
     });
@@ -178,10 +175,7 @@ void main() {
         () => auth.signInWithEmailPassword('a@b.com', 'wrong'),
       ).thenThrow(Exception('Invalid credentials'));
 
-      await controller.changePassword(
-        currentPassword: 'wrong',
-        newPassword: 'new-pass',
-      );
+      await controller.changePassword(currentPassword: 'wrong', newPassword: 'new-pass');
 
       expect(controller.errorMessage.value, isNotEmpty);
     });
@@ -191,10 +185,7 @@ void main() {
     test('errorMessage is set on verification unavailable', () async {
       when(() => auth.currentUser).thenReturn(_FakeUser());
 
-      await controller.changePassword(
-        currentPassword: 'x',
-        newPassword: 'new-pass',
-      );
+      await controller.changePassword(currentPassword: 'x', newPassword: 'new-pass');
 
       expect(controller.errorMessage.value, isNotEmpty);
     });
@@ -208,10 +199,7 @@ void main() {
       ).thenAnswer((_) async => AuthResponse(user: user));
       when(() => auth.updateUserPassword('new-pass')).thenThrow(Exception('Update failed'));
 
-      await controller.changePassword(
-        currentPassword: 'old-pass',
-        newPassword: 'new-pass',
-      );
+      await controller.changePassword(currentPassword: 'old-pass', newPassword: 'new-pass');
 
       expect(controller.errorMessage.value, isNotEmpty);
     });
@@ -225,10 +213,7 @@ void main() {
       ).thenThrow(Exception('Invalid credentials'));
 
       // First attempt fails
-      await controller.changePassword(
-        currentPassword: 'wrong',
-        newPassword: 'new-pass',
-      );
+      await controller.changePassword(currentPassword: 'wrong', newPassword: 'new-pass');
       expect(controller.errorMessage.value, isNotEmpty);
 
       // Second attempt succeeds
@@ -329,10 +314,7 @@ void main() {
     test('null currentUser returns verificationUnavailable', () async {
       when(() => auth.currentUser).thenReturn(null);
 
-      final result = await controller.changePassword(
-        currentPassword: 'x',
-        newPassword: 'new-pass',
-      );
+      final result = await controller.changePassword(currentPassword: 'x', newPassword: 'new-pass');
 
       expect(result, ChangePasswordResult.verificationUnavailable);
     });

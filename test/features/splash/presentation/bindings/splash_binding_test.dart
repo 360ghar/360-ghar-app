@@ -11,12 +11,13 @@
 // registered in the GetX container.
 
 import 'package:flutter/services.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+
 import 'package:ghar360/features/splash/presentation/bindings/splash_binding.dart';
 import 'package:ghar360/features/splash/presentation/controllers/splash_controller.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 
 void main() {

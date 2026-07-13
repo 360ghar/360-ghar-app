@@ -14,16 +14,15 @@
 // [LocalizationController] calls [Get.updateLocale], which requires an active
 // GetX navigation/app context to perform the widget-tree reassemble.
 
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
-import 'package:ghar360/core/controllers/localization_controller.dart';
 
+import 'package:ghar360/core/controllers/localization_controller.dart';
 import '../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -98,14 +97,8 @@ void main() {
 
     test('supportedLocales contains en_US and hi_IN', () {
       expect(LocalizationController.supportedLocales.length, 2);
-      expect(
-        LocalizationController.supportedLocales,
-        contains(const Locale('en', 'US')),
-      );
-      expect(
-        LocalizationController.supportedLocales,
-        contains(const Locale('hi', 'IN')),
-      );
+      expect(LocalizationController.supportedLocales, contains(const Locale('en', 'US')));
+      expect(LocalizationController.supportedLocales, contains(const Locale('hi', 'IN')));
     });
 
     // ── Initial state ─────────────────────────────────────────────────
@@ -178,7 +171,9 @@ void main() {
       });
     });
 
-    testWidgets('changeLanguage persists language_code and country_code to storage', (tester) async {
+    testWidgets('changeLanguage persists language_code and country_code to storage', (
+      tester,
+    ) async {
       await withController(tester, (c) async {
         await tester.runAsync(() async {
           c.changeLanguage('hi', 'IN');

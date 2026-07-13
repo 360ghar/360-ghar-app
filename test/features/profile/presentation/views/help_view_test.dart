@@ -13,7 +13,6 @@ import 'package:get/get.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/profile/presentation/views/help_view.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -60,9 +59,7 @@ void main() {
         getPages: [
           GetPage(
             name: AppRoutes.feedback,
-            page: () => const Scaffold(
-              body: Center(child: Text('Feedback Route Destination')),
-            ),
+            page: () => const Scaffold(body: Center(child: Text('Feedback Route Destination'))),
           ),
         ],
         home: const HelpView(),
@@ -171,8 +168,9 @@ void main() {
       expect(find.byType(HelpView), findsOneWidget);
     });
 
-    testWidgets('tapping Email Support falls back to toast when launcher unavailable',
-        (tester) async {
+    testWidgets('tapping Email Support falls back to toast when launcher unavailable', (
+      tester,
+    ) async {
       await pumpHelpView(tester);
 
       await tester.tap(find.text('Email Support'));
@@ -299,9 +297,7 @@ void main() {
     testWidgets('tapping Send Feedback navigates to feedback route', (tester) async {
       await pumpHelpView(tester);
 
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('qa.profile.help.send_feedback')),
-      );
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.help.send_feedback')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.help.send_feedback')));

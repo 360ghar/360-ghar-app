@@ -290,8 +290,11 @@ void main() {
         controller.inputController.text = '1';
         controller.convert();
 
-        expect(controller.conversions[unit], closeTo(1, 0.0001),
-            reason: 'Identity conversion failed for $unit');
+        expect(
+          controller.conversions[unit],
+          closeTo(1, 0.0001),
+          reason: 'Identity conversion failed for $unit',
+        );
         controller.onClose();
         GetxTestBinding.reset();
       }

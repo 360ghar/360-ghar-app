@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
@@ -38,12 +37,8 @@ void main() {
     expect(find.byType(Container), findsWidgets);
   });
 
-  testWidgets('propertyListSkeleton renders a ListView with card skeletons',
-      (tester) async {
-    await pumpWidget(
-      tester,
-      LoadingStates.propertyListSkeleton(itemCount: 3),
-    );
+  testWidgets('propertyListSkeleton renders a ListView with card skeletons', (tester) async {
+    await pumpWidget(tester, LoadingStates.propertyListSkeleton(itemCount: 3));
 
     expect(find.byType(ListView), findsOneWidget);
     // ListView is lazy — at least one Card is rendered (visible ones only).
@@ -51,31 +46,22 @@ void main() {
     expect(find.byType(Shimmer), findsWidgets);
   });
 
-  testWidgets('propertyGridSkeleton renders a GridView with Shimmer',
-      (tester) async {
-    await pumpWidget(
-      tester,
-      LoadingStates.propertyGridSkeleton(itemCount: 4),
-    );
+  testWidgets('propertyGridSkeleton renders a GridView with Shimmer', (tester) async {
+    await pumpWidget(tester, LoadingStates.propertyGridSkeleton(itemCount: 4));
 
     expect(find.byType(GridView), findsOneWidget);
     expect(find.byType(Shimmer), findsWidgets);
     expect(find.byType(Card), findsWidgets);
   });
 
-  testWidgets('responsiveGridSkeleton renders a GridView with Shimmer',
-      (tester) async {
-    await pumpWidget(
-      tester,
-      LoadingStates.responsiveGridSkeleton(itemCount: 2),
-    );
+  testWidgets('responsiveGridSkeleton renders a GridView with Shimmer', (tester) async {
+    await pumpWidget(tester, LoadingStates.responsiveGridSkeleton(itemCount: 2));
 
     expect(find.byType(GridView), findsOneWidget);
     expect(find.byType(Shimmer), findsWidgets);
   });
 
-  testWidgets('propertyDetailsSkeleton renders a ListView with Shimmer',
-      (tester) async {
+  testWidgets('propertyDetailsSkeleton renders a ListView with Shimmer', (tester) async {
     await pumpWidget(tester, LoadingStates.propertyDetailsSkeleton());
 
     expect(find.byType(Shimmer), findsOneWidget);
@@ -89,8 +75,7 @@ void main() {
     expect(find.byType(Container), findsWidgets);
   });
 
-  testWidgets('mapLoadingOverlay renders a progress indicator and text',
-      (tester) async {
+  testWidgets('mapLoadingOverlay renders a progress indicator and text', (tester) async {
     await pumpWidget(
       tester,
       Builder(builder: (context) => LoadingStates.mapLoadingOverlay(context)),
@@ -100,13 +85,11 @@ void main() {
     expect(find.text('Loading properties...'), findsOneWidget);
   });
 
-  testWidgets('progressiveLoadingIndicator renders a linear progress and text',
-      (tester) async {
+  testWidgets('progressiveLoadingIndicator renders a linear progress and text', (tester) async {
     await pumpWidget(
       tester,
       Builder(
-        builder: (context) =>
-            LoadingStates.progressiveLoadingIndicator(current: 2, total: 5),
+        builder: (context) => LoadingStates.progressiveLoadingIndicator(current: 2, total: 5),
       ),
     );
 
@@ -116,8 +99,7 @@ void main() {
     expect(find.textContaining('Loading page'), findsOneWidget);
   });
 
-  testWidgets('pullToRefreshIndicator renders a progress indicator',
-      (tester) async {
+  testWidgets('pullToRefreshIndicator renders a progress indicator', (tester) async {
     await pumpWidget(
       tester,
       Builder(builder: (context) => LoadingStates.pullToRefreshIndicator(context)),
@@ -145,12 +127,10 @@ void main() {
     expect(find.byType(Container), findsOneWidget);
   });
 
-  testWidgets('fullScreenLoading renders a progress indicator and optional message',
-      (tester) async {
-    await pumpWidget(
-      tester,
-      LoadingStates.fullScreenLoading(message: 'Please wait'),
-    );
+  testWidgets('fullScreenLoading renders a progress indicator and optional message', (
+    tester,
+  ) async {
+    await pumpWidget(tester, LoadingStates.fullScreenLoading(message: 'Please wait'));
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('Please wait'), findsOneWidget);

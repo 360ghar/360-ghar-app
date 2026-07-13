@@ -7,7 +7,6 @@ import 'package:get/get.dart';
 
 import 'package:ghar360/features/tools/presentation/controllers/capital_gains_controller.dart';
 import 'package:ghar360/features/tools/presentation/views/capital_gains_view.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/pump_app.dart';
 

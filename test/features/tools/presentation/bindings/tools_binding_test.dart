@@ -9,6 +9,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/features/tools/presentation/bindings/tools_binding.dart';
 import 'package:ghar360/features/tools/presentation/controllers/area_converter_controller.dart';
 import 'package:ghar360/features/tools/presentation/controllers/capital_gains_controller.dart';
@@ -17,7 +18,6 @@ import 'package:ghar360/features/tools/presentation/controllers/document_checkli
 import 'package:ghar360/features/tools/presentation/controllers/emi_calculator_controller.dart';
 import 'package:ghar360/features/tools/presentation/controllers/loan_eligibility_controller.dart';
 import 'package:ghar360/features/tools/presentation/controllers/tools_controller.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 
 void main() {

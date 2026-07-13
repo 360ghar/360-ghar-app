@@ -23,8 +23,7 @@ import 'package:mocktail/mocktail.dart';
 import '../../helpers/getx_test_binding.dart';
 import '../../helpers/mocks.dart';
 
-class MockAppUpdateRepository extends GetxServiceMock
-    implements AppUpdateRepository {}
+class MockAppUpdateRepository extends GetxServiceMock implements AppUpdateRepository {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -36,73 +35,70 @@ void main() {
   setUpAll(() {
     Get.testMode = true;
     registerFallbackValue(
-      const AppVersionCheckRequest(
-        app: 'user',
-        platform: 'android',
-        currentVersion: '0.0.0',
-      ),
+      const AppVersionCheckRequest(app: 'user', platform: 'android', currentVersion: '0.0.0'),
     );
 
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(pathProviderChannel, (MethodCall call) async {
-      if (call.method == 'getApplicationDocumentsDirectory') return '.';
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      pathProviderChannel,
+      (MethodCall call) async {
+        if (call.method == 'getApplicationDocumentsDirectory') return '.';
+        return null;
+      },
+    );
 
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(packageInfoChannel, (MethodCall call) async {
-      if (call.method == 'getAll') {
-        return <String, dynamic>{
-          'appName': 'ghar360',
-          'packageName': 'com.ghar360.app',
-          'version': '1.2.3',
-          'buildNumber': '42',
-          'buildSignature': '',
-          'installerStore': null,
-        };
-      }
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      packageInfoChannel,
+      (MethodCall call) async {
+        if (call.method == 'getAll') {
+          return <String, dynamic>{
+            'appName': 'ghar360',
+            'packageName': 'com.ghar360.app',
+            'version': '1.2.3',
+            'buildNumber': '42',
+            'buildSignature': '',
+            'installerStore': null,
+          };
+        }
+        return null;
+      },
+    );
 
     // url_launcher: return true so _openDownloadUrl completes "successfully".
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(urlLauncherChannel, (MethodCall call) async {
-      if (call.method == 'canLaunchUrl') return true;
-      if (call.method == 'launchUrl') return true;
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      urlLauncherChannel,
+      (MethodCall call) async {
+        if (call.method == 'canLaunchUrl') return true;
+        if (call.method == 'launchUrl') return true;
+        return null;
+      },
+    );
   });
 
   late MockAppUpdateRepository mockRepository;
   late AppUpdateController controller;
 
-    setUp(() async {
-      GetxTestBinding.init();
-      await GetStorage.init();
-      GetStorage().erase();
+  setUp(() async {
+    GetxTestBinding.init();
+    await GetStorage.init();
+    GetStorage().erase();
 
-      mockRepository = MockAppUpdateRepository();
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: false,
-          isMandatory: false,
-        ),
-      );
-      GetxTestBinding.bind()..register<AppUpdateRepository>(mockRepository);
+    mockRepository = MockAppUpdateRepository();
+    when(() => mockRepository.checkForUpdates(any())).thenAnswer(
+      (_) async => const AppVersionCheckResponse(updateAvailable: false, isMandatory: false),
+    );
+    GetxTestBinding.bind().register<AppUpdateRepository>(mockRepository);
 
-      controller = AppUpdateController();
-      controller.onInit();
-    });
+    controller = AppUpdateController();
+    controller.onInit();
+  });
 
-    tearDown(() {
-      controller.onClose();
-      GetxTestBinding.reset();
-    });
+  tearDown(() {
+    controller.onClose();
+    GetxTestBinding.reset();
+  });
 
   Future<void> pumpApp(WidgetTester tester) async {
-    await tester.pumpWidget(
-      GetMaterialApp(home: const Scaffold(body: SizedBox.shrink())),
-    );
+    await tester.pumpWidget(const GetMaterialApp(home: Scaffold(body: SizedBox.shrink())));
   }
 
   group('AppUpdateController dialog actions', () {
@@ -180,8 +176,9 @@ void main() {
       expect(controller.isChecking.value, false);
     });
 
-    testWidgets('optional update: dismissing dialog (null action) stores skipped version',
-        (tester) async {
+    testWidgets('optional update: dismissing dialog (null action) stores skipped version', (
+      tester,
+    ) async {
       when(() => mockRepository.checkForUpdates(any())).thenAnswer(
         (_) async => const AppVersionCheckResponse(
           updateAvailable: true,

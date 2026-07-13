@@ -3,8 +3,10 @@
 // Widget tests for [ThemeMixin] builder helpers.
 
 import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/mixins/theme_mixin.dart';
 
 class _ThemeMixinHost with ThemeMixin {}
@@ -148,11 +150,7 @@ void main() {
   testWidgets('buildActionTile without icon still renders', (tester) async {
     await pumpHost(
       tester,
-      host.buildActionTile(
-        title: 'Edit',
-        subtitle: 'Change profile',
-        onTap: () {},
-      ),
+      host.buildActionTile(title: 'Edit', subtitle: 'Change profile', onTap: () {}),
     );
     expect(find.text('Edit'), findsOneWidget);
     expect(find.byIcon(Icons.arrow_forward_ios), findsOneWidget);
@@ -165,10 +163,7 @@ void main() {
         title: 'Settings',
         body: const Text('Body content'),
         actions: const [Icon(Icons.more_vert)],
-        floatingActionButton: FloatingActionButton(
-          onPressed: () {},
-          child: const Icon(Icons.add),
-        ),
+        floatingActionButton: FloatingActionButton(onPressed: () {}, child: const Icon(Icons.add)),
       ),
     );
 

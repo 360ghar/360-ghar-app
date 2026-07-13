@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/auth/data/models/identifier_status.dart';
 import 'package:ghar360/features/auth/presentation/controllers/login_controller.dart';
 import 'package:ghar360/features/auth/presentation/views/login_view.dart';
@@ -73,8 +72,7 @@ class _StubLoginController extends GetxServiceMock implements LoginController {
   String get maskedIdentifier => identifier.value;
 
   @override
-  void togglePasswordVisibility() =>
-      isPasswordVisible.value = !isPasswordVisible.value;
+  void togglePasswordVisibility() => isPasswordVisible.value = !isPasswordVisible.value;
 
   @override
   Future<void> signIn() async {

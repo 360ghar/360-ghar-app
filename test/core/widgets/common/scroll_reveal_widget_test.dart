@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/scroll_reveal_widget.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -23,34 +23,22 @@ void main() {
   }
 
   testWidgets('renders the provided child', (tester) async {
-    await pumpWidget(
-      tester,
-      const ScrollRevealWidget(child: Text('Reveal Me')),
-    );
+    await pumpWidget(tester, const ScrollRevealWidget(child: Text('Reveal Me')));
 
     expect(find.byType(ScrollRevealWidget), findsOneWidget);
     expect(find.text('Reveal Me'), findsOneWidget);
   });
 
   testWidgets('animates on first build with index 0 (no delay)', (tester) async {
-    await pumpWidget(
-      tester,
-      const ScrollRevealWidget(index: 0, child: Text('Reveal Me')),
-    );
+    await pumpWidget(tester, const ScrollRevealWidget(index: 0, child: Text('Reveal Me')));
 
     // The FadeTransition and SlideTransition are present within the widget.
     expect(
-      find.descendant(
-        of: find.byType(ScrollRevealWidget),
-        matching: find.byType(FadeTransition),
-      ),
+      find.descendant(of: find.byType(ScrollRevealWidget), matching: find.byType(FadeTransition)),
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: find.byType(ScrollRevealWidget),
-        matching: find.byType(SlideTransition),
-      ),
+      find.descendant(of: find.byType(ScrollRevealWidget), matching: find.byType(SlideTransition)),
       findsOneWidget,
     );
 
@@ -86,10 +74,7 @@ void main() {
   });
 
   testWidgets('disposes its animation controller without errors', (tester) async {
-    await pumpWidget(
-      tester,
-      const ScrollRevealWidget(child: Text('Reveal Me')),
-    );
+    await pumpWidget(tester, const ScrollRevealWidget(child: Text('Reveal Me')));
     await tester.pumpAndSettle();
 
     // Replace the widget tree so the ScrollRevealWidget is disposed.

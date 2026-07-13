@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/core/utils/image_cache_service.dart';
@@ -18,8 +19,7 @@ void main() {
     tempDir = Directory.systemTemp.createTempSync('image_cache_test_');
     // Mock path_provider method channel to return a real temp directory so
     // flutter_cache_manager can initialize its file system and database.
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/path_provider'),
       (MethodCall call) async {
         return tempDir.path;
@@ -28,8 +28,7 @@ void main() {
   });
 
   tearDownAll(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/path_provider'),
       null,
     );
@@ -63,10 +62,7 @@ void main() {
     });
 
     test('returns true for URLs with paths and query parameters', () {
-      expect(
-        service.isValidImageUrl('https://cdn.example.com/images/123?w=800&h=600'),
-        isTrue,
-      );
+      expect(service.isValidImageUrl('https://cdn.example.com/images/123?w=800&h=600'), isTrue);
     });
 
     test('returns true for URLs with subdomains', () {
@@ -206,10 +202,7 @@ void main() {
 
   group('ImageCacheService cache maintenance', () {
     test('removeFromCache completes for any key', () async {
-      await expectLater(
-        service.removeFromCache('https://example.com/missing.jpg'),
-        completes,
-      );
+      await expectLater(service.removeFromCache('https://example.com/missing.jpg'), completes);
     });
 
     test('clearCache completes without throwing', () async {

@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/map/map_controller.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
-import 'package:mocktail/mocktail.dart';
 
 /// Fake [MapLibreMapController] that records camera calls and lets tests
 /// stub the async projection / visible-region methods.
@@ -24,8 +23,7 @@ class FakeMapLibreController extends Fake implements MapLibreMapController {
   );
 
   void setCameraPosition(CameraPosition? pos) => _cameraPosition = pos;
-  void setScreenLocationResult(math.Point<num>? result) =>
-      _screenLocationResult = result;
+  void setScreenLocationResult(math.Point<num>? result) => _screenLocationResult = result;
   void setVisibleRegion(LatLngBounds? bounds) => _visibleRegion = bounds;
 
   @override
@@ -38,10 +36,7 @@ class FakeMapLibreController extends Fake implements MapLibreMapController {
   }
 
   @override
-  Future<bool?> animateCamera(
-    CameraUpdate cameraUpdate, {
-    Duration? duration,
-  }) async {
+  Future<bool?> animateCamera(CameraUpdate cameraUpdate, {Duration? duration}) async {
     animateCalls.add((update: cameraUpdate, duration: duration));
     return true;
   }
@@ -50,8 +45,7 @@ class FakeMapLibreController extends Fake implements MapLibreMapController {
   Future<LatLngBounds> getVisibleRegion() async => _visibleRegion!;
 
   @override
-  Future<math.Point<num>> toScreenLocation(LatLng latLng) async =>
-      _screenLocationResult!;
+  Future<math.Point<num>> toScreenLocation(LatLng latLng) async => _screenLocationResult!;
 }
 
 void main() {
@@ -164,10 +158,10 @@ void main() {
 
     test('fitBounds with custom padding passes it through', () async {
       wrapper.attach(fake);
-      await wrapper.fitBounds(
-        [const LatLng(10, 20), const LatLng(30, 40)],
-        padding: const EdgeInsets.all(100),
-      );
+      await wrapper.fitBounds([
+        const LatLng(10, 20),
+        const LatLng(30, 40),
+      ], padding: const EdgeInsets.all(100));
       expect(fake.animateCalls, hasLength(1));
     });
 
@@ -227,19 +221,13 @@ void main() {
     });
 
     test('handles negative coordinates', () {
-      final bounds = boundsFromPoints([
-        const LatLng(-10, -20),
-        const LatLng(-30, -5),
-      ]);
+      final bounds = boundsFromPoints([const LatLng(-10, -20), const LatLng(-30, -5)]);
       expect(bounds.southwest, const LatLng(-30, -20));
       expect(bounds.northeast, const LatLng(-10, -5));
     });
 
     test('handles points spanning the equator and prime meridian', () {
-      final bounds = boundsFromPoints([
-        const LatLng(-5, -10),
-        const LatLng(5, 10),
-      ]);
+      final bounds = boundsFromPoints([const LatLng(-5, -10), const LatLng(5, 10)]);
       expect(bounds.southwest, const LatLng(-5, -10));
       expect(bounds.northeast, const LatLng(5, 10));
     });

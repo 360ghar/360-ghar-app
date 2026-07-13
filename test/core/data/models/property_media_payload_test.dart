@@ -62,7 +62,7 @@ void main() {
     });
 
     test('includes non-null fields with snake_case keys', () {
-      final payload = PropertyMediaPayload(
+      final payload = const PropertyMediaPayload(
         mainImageUrl: 'https://example.com/main.jpg',
         videoTourUrl: 'https://example.com/tour.mp4',
         videoUrls: ['https://example.com/v.mp4'],
@@ -81,10 +81,8 @@ void main() {
     });
 
     test('serializes nested images via explicitToJson', () {
-      final payload = PropertyMediaPayload(
-        images: [
-          PropertyImageModel(id: 1, propertyId: 10, imageUrl: 'https://example.com/1.jpg'),
-        ],
+      final payload = const PropertyMediaPayload(
+        images: [PropertyImageModel(id: 1, propertyId: 10, imageUrl: 'https://example.com/1.jpg')],
       );
 
       final json = payload.toJson();
@@ -99,11 +97,9 @@ void main() {
 
   group('PropertyMediaPayload.toPropertyUpdateJson', () {
     test('removes the images key from the payload', () {
-      final payload = PropertyMediaPayload(
+      final payload = const PropertyMediaPayload(
         mainImageUrl: 'https://example.com/main.jpg',
-        images: [
-          PropertyImageModel(id: 1, propertyId: 10, imageUrl: 'https://example.com/1.jpg'),
-        ],
+        images: [PropertyImageModel(id: 1, propertyId: 10, imageUrl: 'https://example.com/1.jpg')],
         videoTourUrl: 'https://example.com/tour.mp4',
       );
 
@@ -126,7 +122,7 @@ void main() {
 
   group('PropertyMediaPayload.copyWith', () {
     test('preserves unmodified fields', () {
-      final original = PropertyMediaPayload(
+      final original = const PropertyMediaPayload(
         mainImageUrl: 'https://example.com/main.jpg',
         images: [PropertyImageModel(id: 1, propertyId: 10, imageUrl: 'https://example.com/1.jpg')],
         videoTourUrl: 'https://example.com/tour.mp4',
@@ -149,7 +145,7 @@ void main() {
     });
 
     test('updates only modified fields', () {
-      final original = PropertyMediaPayload(
+      final original = const PropertyMediaPayload(
         mainImageUrl: 'https://example.com/main.jpg',
         videoTourUrl: 'https://example.com/tour.mp4',
         floorPlanUrl: 'https://example.com/floor.png',
@@ -169,7 +165,7 @@ void main() {
 
   group('PropertyMediaPayload.toJson roundtrip', () {
     test('roundtrip preserves all fields', () {
-      final original = PropertyMediaPayload(
+      final original = const PropertyMediaPayload(
         mainImageUrl: 'https://example.com/main.jpg',
         images: [PropertyImageModel(id: 1, propertyId: 10, imageUrl: 'https://example.com/1.jpg')],
         videoTourUrl: 'https://example.com/tour.mp4',

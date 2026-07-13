@@ -14,10 +14,8 @@
 // - Name validation shows error for empty input
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
@@ -83,9 +81,7 @@ void main() {
   }
 
   group('EditProfileView', () {
-    testWidgets('shows avatar overlay spinner when isUploadingImage is true', (
-      tester,
-    ) async {
+    testWidgets('shows avatar overlay spinner when isUploadingImage is true', (tester) async {
       final controller = registerController();
       controller.isUploadingImage.value = true;
 
@@ -97,9 +93,7 @@ void main() {
       expect(find.byKey(const ValueKey('qa.profile.edit.save')), findsOneWidget);
     });
 
-    testWidgets('renders form fields and save button when not loading', (
-      tester,
-    ) async {
+    testWidgets('renders form fields and save button when not loading', (tester) async {
       registerController();
 
       await pumpView(tester);
@@ -133,9 +127,7 @@ void main() {
       expect(nameField.enabled, isTrue);
     });
 
-    testWidgets('shows user initial in avatar when no profile image and name set', (
-      tester,
-    ) async {
+    testWidgets('shows user initial in avatar when no profile image and name set', (tester) async {
       final user = testUserModel(fullName: 'Alice', email: 'alice@example.com');
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
 
@@ -148,9 +140,7 @@ void main() {
       expect(find.text('A'), findsOneWidget);
     });
 
-    testWidgets('shows "U" fallback when no profile image and empty name', (
-      tester,
-    ) async {
+    testWidgets('shows "U" fallback when no profile image and empty name', (tester) async {
       registerController();
 
       await pumpView(tester);
@@ -159,9 +149,7 @@ void main() {
       expect(find.text('U'), findsOneWidget);
     });
 
-    testWidgets('shows date of birth placeholder when no date selected', (
-      tester,
-    ) async {
+    testWidgets('shows date of birth placeholder when no date selected', (tester) async {
       registerController();
 
       await pumpView(tester);
@@ -170,9 +158,7 @@ void main() {
       expect(find.byIcon(Icons.clear), findsNothing);
     });
 
-    testWidgets('shows formatted date and clear button when date is set', (
-      tester,
-    ) async {
+    testWidgets('shows formatted date and clear button when date is set', (tester) async {
       final controller = registerController();
       controller.dateOfBirth.value = DateTime(1995, 6, 15);
 
@@ -213,18 +199,13 @@ void main() {
       // The save button may be off-screen inside the scrollable.
       await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.edit.save')));
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey('qa.profile.edit.save')),
-        warnIfMissed: false,
-      );
+      await tester.tap(find.byKey(const ValueKey('qa.profile.edit.save')), warnIfMissed: false);
       await tester.pump();
 
       verify(() => authController.updateUserProfile(any())).called(1);
     });
 
-    testWidgets('tapping pick image button opens image source bottom sheet', (
-      tester,
-    ) async {
+    testWidgets('tapping pick image button opens image source bottom sheet', (tester) async {
       registerController();
 
       await pumpView(tester);
@@ -242,9 +223,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
-    testWidgets('tapping date of birth field triggers selectDateOfBirth', (
-      tester,
-    ) async {
+    testWidgets('tapping date of birth field triggers selectDateOfBirth', (tester) async {
       registerController();
 
       await pumpView(tester);
@@ -264,9 +243,7 @@ void main() {
       expect(find.byType(Dialog), findsWidgets);
     });
 
-    testWidgets('save button text shows save_changes when not loading', (
-      tester,
-    ) async {
+    testWidgets('save button text shows save_changes when not loading', (tester) async {
       registerController();
 
       await pumpView(tester);
@@ -274,9 +251,7 @@ void main() {
       expect(find.text('save_changes'.tr), findsOneWidget);
     });
 
-    testWidgets('renders profile image fallback when URL is invalid', (
-      tester,
-    ) async {
+    testWidgets('renders profile image fallback when URL is invalid', (tester) async {
       final user = testUserModel(fullName: 'Bob', email: 'bob@example.com');
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
 
@@ -292,12 +267,11 @@ void main() {
     });
 
     testWidgets('loads user data into form fields on init', (tester) async {
-      final user = testUserModel(fullName: 'John Doe', email: 'john@example.com')
-          .copyWith(
-            profileImageUrl: '',
-            dateOfBirth: '1995-06-15',
-            preferences: {'location': 'Mumbai'},
-          );
+      final user = testUserModel(fullName: 'John Doe', email: 'john@example.com').copyWith(
+        profileImageUrl: '',
+        dateOfBirth: '1995-06-15',
+        preferences: {'location': 'Mumbai'},
+      );
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
 
       final controller = registerController();

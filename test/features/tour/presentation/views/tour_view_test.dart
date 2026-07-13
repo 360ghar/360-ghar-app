@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/tour_webview.dart';
 import 'package:ghar360/features/tour/presentation/views/tour_view.dart';
-
 import '../../../../helpers/fake_webview_platform.dart';
 
 void main() {
@@ -201,7 +201,9 @@ void main() {
 
     // ── WebView loading state ───────────────────────────────────────────
 
-    testWidgets('loading overlay shows CircularProgressIndicator with correct color', (tester) async {
+    testWidgets('loading overlay shows CircularProgressIndicator with correct color', (
+      tester,
+    ) async {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
       final indicator = tester.widget<CircularProgressIndicator>(
@@ -311,10 +313,7 @@ void main() {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
       final button = tester.widget<IconButton>(
-        find.ancestor(
-          of: find.byIcon(Icons.fullscreen),
-          matching: find.byType(IconButton),
-        ),
+        find.ancestor(of: find.byIcon(Icons.fullscreen), matching: find.byType(IconButton)),
       );
       expect(button.onPressed, isNotNull);
     });
@@ -323,10 +322,7 @@ void main() {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
       final button = tester.widget<IconButton>(
-        find.ancestor(
-          of: find.byIcon(Icons.share),
-          matching: find.byType(IconButton),
-        ),
+        find.ancestor(of: find.byIcon(Icons.share), matching: find.byType(IconButton)),
       );
       expect(button.onPressed, isNotNull);
     });
@@ -335,10 +331,7 @@ void main() {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
       final button = tester.widget<IconButton>(
-        find.ancestor(
-          of: find.byIcon(Icons.arrow_back),
-          matching: find.byType(IconButton),
-        ),
+        find.ancestor(of: find.byIcon(Icons.arrow_back), matching: find.byType(IconButton)),
       );
       expect(button.onPressed, isNotNull);
     });

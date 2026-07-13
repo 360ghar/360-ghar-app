@@ -124,10 +124,7 @@ void main() {
 
   group('DebugLogger.logJWTToken', () {
     test('does not throw with a valid token', () {
-      expect(
-        () => DebugLogger.logJWTToken('a'.padRight(32, 'a')),
-        returnsNormally,
-      );
+      expect(() => DebugLogger.logJWTToken('a'.padRight(32, 'a')), returnsNormally);
     });
 
     test('does not throw with expiresAt, userId, and userEmail', () {
@@ -146,10 +143,7 @@ void main() {
   group('DebugLogger.logAPIRequest', () {
     test('does not throw (no-op when shouldLogAPICalls is false)', () {
       expect(
-        () => DebugLogger.logAPIRequest(
-          method: 'GET',
-          endpoint: '/api/properties',
-        ),
+        () => DebugLogger.logAPIRequest(method: 'GET', endpoint: '/api/properties'),
         returnsNormally,
       );
     });
@@ -170,10 +164,7 @@ void main() {
   group('DebugLogger.logAPIResponse', () {
     test('does not throw (no-op when shouldLogAPICalls is false)', () {
       expect(
-        () => DebugLogger.logAPIResponse(
-          statusCode: 200,
-          endpoint: '/api/properties',
-        ),
+        () => DebugLogger.logAPIResponse(statusCode: 200, endpoint: '/api/properties'),
         returnsNormally,
       );
     });
@@ -194,10 +185,7 @@ void main() {
   group('DebugLogger.logDetailedError', () {
     test('does not throw with required parameters', () {
       expect(
-        () => DebugLogger.logDetailedError(
-          operation: 'testOperation',
-          error: StateError('boom'),
-        ),
+        () => DebugLogger.logDetailedError(operation: 'testOperation', error: StateError('boom')),
         returnsNormally,
       );
     });
@@ -218,10 +206,7 @@ void main() {
   group('DebugLogger.reportError', () {
     test('does not throw with required parameters', () {
       expect(
-        () => DebugLogger.reportError(
-          context: 'testContext',
-          error: StateError('boom'),
-        ),
+        () => DebugLogger.reportError(context: 'testContext', error: StateError('boom')),
         returnsNormally,
       );
     });

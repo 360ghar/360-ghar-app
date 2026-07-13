@@ -14,6 +14,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
@@ -29,7 +30,6 @@ import 'package:ghar360/features/profile/presentation/controllers/profile_contro
 import 'package:ghar360/features/properties/data/properties_repository.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 

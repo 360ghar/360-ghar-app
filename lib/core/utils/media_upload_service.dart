@@ -95,9 +95,7 @@ class MediaUploadService {
     }
   }
 
-  Future<MediaUploadResult?> pickAndUploadVideo({
-    required int propertyId,
-  }) async {
+  Future<MediaUploadResult?> pickAndUploadVideo({required int propertyId}) async {
     if (kIsWeb) {
       DebugLogger.warning('Video picking not supported on web sandbox');
       return null;

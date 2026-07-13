@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/property/property_details_features.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -23,8 +23,8 @@ void main() {
     );
   }
 
-  PropertyModel _propertyWithAllFeatures() {
-    return PropertyModel(
+  PropertyModel propertyWithAllFeatures() {
+    return const PropertyModel(
       id: 1,
       title: 'Test Property',
       basePrice: 5000000,
@@ -42,12 +42,8 @@ void main() {
     );
   }
 
-  testWidgets('renders feature icons and labels for a fully-featured property',
-      (tester) async {
-    await pumpWidget(
-      tester,
-      PropertyDetailsFeatures(property: _propertyWithAllFeatures()),
-    );
+  testWidgets('renders feature icons and labels for a fully-featured property', (tester) async {
+    await pumpWidget(tester, PropertyDetailsFeatures(property: propertyWithAllFeatures()));
 
     expect(find.byType(PropertyDetailsFeatures), findsOneWidget);
 
@@ -83,7 +79,7 @@ void main() {
   });
 
   testWidgets('renders only primary row when no secondary features', (tester) async {
-    final property = PropertyModel(
+    final property = const PropertyModel(
       id: 2,
       title: 'Minimal Property',
       basePrice: 3000000,
@@ -111,7 +107,7 @@ void main() {
   });
 
   testWidgets('handles empty features gracefully', (tester) async {
-    final property = PropertyModel(
+    final property = const PropertyModel(
       id: 3,
       title: 'Empty Property',
       basePrice: 1000000,
@@ -133,7 +129,7 @@ void main() {
   });
 
   testWidgets('renders partial primary features', (tester) async {
-    final property = PropertyModel(
+    final property = const PropertyModel(
       id: 4,
       title: 'Partial Property',
       basePrice: 2000000,

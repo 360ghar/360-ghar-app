@@ -9,6 +9,7 @@
 // [NavigationDecision] / loading / error state transitions.
 
 import 'package:flutter/material.dart';
+
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 
 /// Captures the most recently created fake navigation delegate so tests can
@@ -63,8 +64,7 @@ class FakeWebViewPlatform extends WebViewPlatform {
 
 /// Fake [PlatformWebViewController] that records load/run calls.
 class FakePlatformWebViewController extends PlatformWebViewController {
-  FakePlatformWebViewController(PlatformWebViewControllerCreationParams params)
-    : super.implementation(params);
+  FakePlatformWebViewController(super.params) : super.implementation();
 
   int loadHtmlStringCalls = 0;
   int loadRequestCalls = 0;
@@ -104,8 +104,7 @@ class FakePlatformWebViewController extends PlatformWebViewController {
 
   @override
   Future<void> addJavaScriptChannel(JavaScriptChannelParams javaScriptChannelParams) async {
-    javaScriptChannels[javaScriptChannelParams.name] =
-        javaScriptChannelParams.onMessageReceived;
+    javaScriptChannels[javaScriptChannelParams.name] = javaScriptChannelParams.onMessageReceived;
   }
 
   @override
@@ -139,8 +138,7 @@ class FakePlatformWebViewController extends PlatformWebViewController {
 
 /// Fake [PlatformWebViewWidget] that renders a simple placeholder widget.
 class FakePlatformWebViewWidget extends PlatformWebViewWidget {
-  FakePlatformWebViewWidget(PlatformWebViewWidgetCreationParams params)
-    : super.implementation(params);
+  FakePlatformWebViewWidget(super.params) : super.implementation();
 
   @override
   Widget build(BuildContext context) {
@@ -150,8 +148,7 @@ class FakePlatformWebViewWidget extends PlatformWebViewWidget {
 
 /// Fake [PlatformNavigationDelegate] that captures callbacks for tests.
 class FakePlatformNavigationDelegate extends PlatformNavigationDelegate {
-  FakePlatformNavigationDelegate(PlatformNavigationDelegateCreationParams params)
-    : super.implementation(params);
+  FakePlatformNavigationDelegate(super.params) : super.implementation();
 
   NavigationRequestCallback? navigationRequestCallback;
   PageEventCallback? pageStartedCallback;

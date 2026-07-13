@@ -115,10 +115,7 @@ void main() {
       await pumpPhoneEntryView(tester, controller);
 
       expect(find.byKey(const ValueKey('qa.auth.phone_entry.screen')), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('qa.auth.phone_entry.identifier_input')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('qa.auth.phone_entry.identifier_input')), findsOneWidget);
       expect(find.byKey(const ValueKey('qa.auth.phone_entry.continue')), findsOneWidget);
     });
 

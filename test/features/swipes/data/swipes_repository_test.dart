@@ -149,8 +149,11 @@ void main() {
 
     test('getSwipeHistoryProperties parses items and pagination signals', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenAnswer(
         (_) async => ApiResponse(
           statusCode: 200,
@@ -177,8 +180,11 @@ void main() {
 
     test('getSwipeHistoryProperties returns terminal page when has_more absent', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenAnswer(
         (_) async => ApiResponse(
           statusCode: 200,
@@ -197,8 +203,11 @@ void main() {
 
     test('getSwipeHistoryProperties handles non-Map body as empty result', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 'not-a-map', headers: {}));
 
       final response = await repository.getSwipeHistoryProperties(
@@ -211,17 +220,16 @@ void main() {
 
     test('getSwipeHistoryProperties skips unparseable items but keeps valid ones', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenAnswer(
         (_) async => ApiResponse(
           statusCode: 200,
           body: {
-            'items': [
-              testPropertyJson(id: 1),
-              'not-a-map',
-              testPropertyJson(id: 3),
-            ],
+            'items': [testPropertyJson(id: 1), 'not-a-map', testPropertyJson(id: 3)],
           },
           headers: {},
         ),
@@ -237,8 +245,11 @@ void main() {
 
     test('getSwipeHistoryProperties propagates AppException', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenThrow(NetworkException('Offline'));
 
       expect(
@@ -249,14 +260,13 @@ void main() {
 
     test('getSwipeHistoryProperties passes cursor and location into query params', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {'items': <dynamic>[]},
-          headers: {},
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
         ),
+      ).thenAnswer(
+        (_) async => ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: {}),
       );
 
       await repository.getSwipeHistoryProperties(
@@ -268,8 +278,11 @@ void main() {
       );
 
       final captured = verify(
-        () => mockApiClient.get('/swipes',
-            queryParams: captureAny(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: captureAny(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).captured;
 
       final params = captured.single as Map<String, dynamic>;
@@ -283,15 +296,15 @@ void main() {
 
     test('getLikedProperties returns items from history with isLiked=true', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenAnswer(
         (_) async => ApiResponse(
           statusCode: 200,
-          body: {
-            'items': testPropertyJsonList(count: 2),
-            'has_more': false,
-          },
+          body: {'items': testPropertyJsonList(count: 2), 'has_more': false},
           headers: {},
         ),
       );
@@ -301,16 +314,22 @@ void main() {
       expect(liked.length, 2);
       // Verify is_liked=true was sent.
       final captured = verify(
-        () => mockApiClient.get('/swipes',
-            queryParams: captureAny(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: captureAny(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).captured;
       expect((captured.single as Map<String, dynamic>)['is_liked'], 'true');
     });
 
     test('getPassedProperties returns items from history with isLiked=false', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenAnswer(
         (_) async => ApiResponse(
           statusCode: 200,
@@ -323,16 +342,22 @@ void main() {
 
       expect(passed.length, 1);
       final captured = verify(
-        () => mockApiClient.get('/swipes',
-            queryParams: captureAny(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: captureAny(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).captured;
       expect((captured.single as Map<String, dynamic>)['is_liked'], 'false');
     });
 
     test('getLikedProperties propagates AppException', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenThrow(ServerException('Down', statusCode: 500));
 
       expect(
@@ -343,8 +368,11 @@ void main() {
 
     test('getLikedPropertiesWithSwipeIds delegates to history with isLiked=true', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenAnswer(
         (_) async => ApiResponse(
           statusCode: 200,
@@ -362,8 +390,11 @@ void main() {
 
     test('getAllSwipedProperties omits is_liked to fetch both liked and passed', () async {
       when(
-        () => mockApiClient.get('/swipes',
-            queryParams: any(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).thenAnswer(
         (_) async => ApiResponse(
           statusCode: 200,
@@ -372,15 +403,16 @@ void main() {
         ),
       );
 
-      final response = await repository.getAllSwipedProperties(
-        filters: const UnifiedFilterModel(),
-      );
+      final response = await repository.getAllSwipedProperties(filters: const UnifiedFilterModel());
 
       expect(response.items.length, 2);
       expect(response.hasMore, isTrue);
       final captured = verify(
-        () => mockApiClient.get('/swipes',
-            queryParams: captureAny(named: 'queryParams'), useCache: any(named: 'useCache')),
+        () => mockApiClient.get(
+          '/swipes',
+          queryParams: captureAny(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
       ).captured;
       expect((captured.single as Map<String, dynamic>).containsKey('is_liked'), isFalse);
     });

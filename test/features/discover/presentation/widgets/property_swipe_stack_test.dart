@@ -9,7 +9,6 @@ import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_stack.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 
 /// Builds a richer [PropertyModel] for swipe-stack rendering tests.

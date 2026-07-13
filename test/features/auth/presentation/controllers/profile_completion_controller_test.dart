@@ -8,11 +8,11 @@
 
 import 'dart:async';
 
-import 'package:flutter_test/flutter_test.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
+import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
@@ -88,7 +88,10 @@ void main() {
       () => authRepository.recordLastMethod(any(), identifier: any(named: 'identifier')),
     ).thenAnswer((_) async {});
     when(
-      () => authRepository.addAndVerifyPhone(phone: any(named: 'phone'), token: any(named: 'token')),
+      () => authRepository.addAndVerifyPhone(
+        phone: any(named: 'phone'),
+        token: any(named: 'token'),
+      ),
     ).thenAnswer((_) async => AuthResponse());
     when(() => authRepository.startAddPhone(any())).thenAnswer((_) async {});
   });
@@ -302,10 +305,7 @@ void main() {
       expect(controller.addPhoneError.value, isEmpty);
       expect(controller.isLoading.value, isFalse);
       verify(
-        () => authRepository.addAndVerifyPhone(
-          phone: '+919876543210',
-          token: '123456',
-        ),
+        () => authRepository.addAndVerifyPhone(phone: '+919876543210', token: '123456'),
       ).called(1);
     });
 
@@ -430,8 +430,11 @@ void main() {
         permanent: true,
       );
 
-      expect(controller.showAddPhone.value, isTrue,
-          reason: 'Google user without phone should see the add-phone prompt');
+      expect(
+        controller.showAddPhone.value,
+        isTrue,
+        reason: 'Google user without phone should see the add-phone prompt',
+      );
 
       Get.delete<ProfileCompletionController>();
     });
@@ -465,8 +468,11 @@ void main() {
         permanent: true,
       );
 
-      expect(controller.showAddPhone.value, isFalse,
-          reason: 'User with an existing phone should not see the add-phone prompt');
+      expect(
+        controller.showAddPhone.value,
+        isFalse,
+        reason: 'User with an existing phone should not see the add-phone prompt',
+      );
 
       Get.delete<ProfileCompletionController>();
     });
@@ -500,8 +506,11 @@ void main() {
         permanent: true,
       );
 
-      expect(controller.showAddPhone.value, isTrue,
-          reason: 'Apple user without phone should see the add-phone prompt');
+      expect(
+        controller.showAddPhone.value,
+        isTrue,
+        reason: 'Apple user without phone should see the add-phone prompt',
+      );
 
       Get.delete<ProfileCompletionController>();
     });
@@ -653,7 +662,7 @@ void main() {
   // on FormState.validate(). Attach the controller's GlobalKeys to a live Form
   // so validate() returns true (no field validators on the Form itself).
 
-  Future<void> _withForm(
+  Future<void> withForm(
     WidgetTester tester,
     ProfileCompletionController controller, {
     required GlobalKey<FormState> formKey,
@@ -664,10 +673,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Form(
-            key: formKey,
-            child: const SizedBox.shrink(),
-          ),
+          body: Form(key: formKey, child: const SizedBox.shrink()),
         ),
       ),
     );
@@ -688,7 +694,7 @@ void main() {
       );
       controller.phoneController.text = '9876543210';
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.phoneFormKey,
@@ -708,8 +714,9 @@ void main() {
     });
 
     testWidgets('AuthException sets addPhoneError', (tester) async {
-      when(() => authRepository.startAddPhone(any()))
-          .thenThrow(const AuthException('rate limited'));
+      when(
+        () => authRepository.startAddPhone(any()),
+      ).thenThrow(const AuthException('rate limited'));
 
       final controller = Get.put<ProfileCompletionController>(
         ProfileCompletionController(),
@@ -717,7 +724,7 @@ void main() {
       );
       controller.phoneController.text = '9876543210';
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.phoneFormKey,
@@ -734,8 +741,7 @@ void main() {
     });
 
     testWidgets('unexpected exception sets otp_send_error translation key', (tester) async {
-      when(() => authRepository.startAddPhone(any()))
-          .thenThrow(Exception('socket hang up'));
+      when(() => authRepository.startAddPhone(any())).thenThrow(Exception('socket hang up'));
 
       final controller = Get.put<ProfileCompletionController>(
         ProfileCompletionController(),
@@ -743,7 +749,7 @@ void main() {
       );
       controller.phoneController.text = '9876543210';
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.phoneFormKey,
@@ -770,7 +776,7 @@ void main() {
       controller.phoneController.text = '9876543210';
       controller.canResendOtp.value = true;
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.phoneFormKey,
@@ -790,9 +796,7 @@ void main() {
   group('completeProfile — form-backed paths', () {
     testWidgets('success updates profile, preferences, and page purpose', (tester) async {
       when(() => profileRepository.updateUserProfile(any())).thenAnswer(
-        (_) async => testUserModel(
-          fullName: 'Ada Lovelace',
-        ).copyWith(dateOfBirth: '1990-12-10'),
+        (_) async => testUserModel(fullName: 'Ada Lovelace').copyWith(dateOfBirth: '1990-12-10'),
       );
       when(() => profileRepository.updateUserPreferences(any())).thenAnswer(
         (_) async => testUserModel(
@@ -815,7 +819,7 @@ void main() {
       controller.selectedPropertyPurpose.value = 'rent';
       controller.currentStep.value = 1;
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.formKey,
@@ -835,17 +839,14 @@ void main() {
           ),
         ),
       ).called(1);
-      verify(
-        () => profileRepository.updateUserPreferences({'purpose': 'rent'}),
-      ).called(1);
+      verify(() => profileRepository.updateUserPreferences({'purpose': 'rent'})).called(1);
       verify(() => pageState.setPurposeForAllPages('rent')).called(1);
 
       Get.delete<ProfileCompletionController>();
     });
 
     testWidgets('does not update preferences when profile update fails', (tester) async {
-      when(() => profileRepository.updateUserProfile(any()))
-          .thenThrow(Exception('backend down'));
+      when(() => profileRepository.updateUserProfile(any())).thenThrow(Exception('backend down'));
 
       final controller = Get.put<ProfileCompletionController>(
         ProfileCompletionController(),
@@ -854,7 +855,7 @@ void main() {
       controller.fullNameController.text = 'Bad Update';
       controller.currentStep.value = 1;
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.formKey,
@@ -872,11 +873,12 @@ void main() {
     testWidgets('handles unexpected exception without leaving loading true', (tester) async {
       // Throw from preferences path after a successful profile update so the
       // outer catch in completeProfile runs.
-      when(() => profileRepository.updateUserProfile(any())).thenAnswer(
-        (_) async => testUserModel(fullName: 'X').copyWith(dateOfBirth: '1990-01-01'),
-      );
-      when(() => profileRepository.updateUserPreferences(any()))
-          .thenThrow(Exception('prefs failed'));
+      when(
+        () => profileRepository.updateUserProfile(any()),
+      ).thenAnswer((_) async => testUserModel(fullName: 'X').copyWith(dateOfBirth: '1990-01-01'));
+      when(
+        () => profileRepository.updateUserPreferences(any()),
+      ).thenThrow(Exception('prefs failed'));
 
       final controller = Get.put<ProfileCompletionController>(
         ProfileCompletionController(),
@@ -885,7 +887,7 @@ void main() {
       controller.fullNameController.text = 'X';
       controller.selectedDateOfBirth = DateTime(1990, 1, 1);
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.formKey,
@@ -900,12 +902,12 @@ void main() {
     });
 
     testWidgets('sends null date_of_birth when none selected', (tester) async {
-      when(() => profileRepository.updateUserProfile(any())).thenAnswer(
-        (_) async => testUserModel(fullName: 'No Dob'),
-      );
-      when(() => profileRepository.updateUserPreferences(any())).thenAnswer(
-        (_) async => testUserModel(fullName: 'No Dob'),
-      );
+      when(
+        () => profileRepository.updateUserProfile(any()),
+      ).thenAnswer((_) async => testUserModel(fullName: 'No Dob'));
+      when(
+        () => profileRepository.updateUserPreferences(any()),
+      ).thenAnswer((_) async => testUserModel(fullName: 'No Dob'));
 
       final controller = Get.put<ProfileCompletionController>(
         ProfileCompletionController(),
@@ -914,7 +916,7 @@ void main() {
       controller.fullNameController.text = 'No Dob';
       controller.selectedDateOfBirth = null;
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.formKey,
@@ -923,9 +925,9 @@ void main() {
         },
       );
 
-      final captured = verify(
-        () => profileRepository.updateUserProfile(captureAny()),
-      ).captured.single as Map<String, dynamic>;
+      final captured =
+          verify(() => profileRepository.updateUserProfile(captureAny())).captured.single
+              as Map<String, dynamic>;
       expect(captured['date_of_birth'], isNull);
 
       Get.delete<ProfileCompletionController>();
@@ -939,7 +941,7 @@ void main() {
         permanent: true,
       );
 
-      await _withForm(
+      await withForm(
         tester,
         controller,
         formKey: controller.formKey,
@@ -1037,9 +1039,7 @@ void main() {
   group('_evaluateAddPhone — identities provider', () {
     test('detects google from identities when appMetadata is empty', () {
       final identityUser = FakeSupabaseUserWithIdentities(
-        identities: <UserIdentity>[
-          _FakeUserIdentity(provider: 'google'),
-        ],
+        identities: <UserIdentity>[_FakeUserIdentity(provider: 'google')],
       );
       when(() => authRepository.currentUser).thenReturn(identityUser);
 

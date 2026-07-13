@@ -230,10 +230,7 @@ void main() {
       final controller = createController();
 
       // Check all 15 items
-      final allIds = controller.categories
-          .expand((c) => c.items)
-          .map((i) => i.id)
-          .toList();
+      final allIds = controller.categories.expand((c) => c.items).map((i) => i.id).toList();
       for (final id in allIds) {
         controller.toggleItem(id);
       }
@@ -249,11 +246,7 @@ void main() {
       final controller = createController();
 
       // Check 7 items (close to half of 15)
-      final allIds = controller.categories
-          .expand((c) => c.items)
-          .map((i) => i.id)
-          .take(7)
-          .toList();
+      final allIds = controller.categories.expand((c) => c.items).map((i) => i.id).take(7).toList();
       for (final id in allIds) {
         controller.toggleItem(id);
       }
@@ -268,28 +261,30 @@ void main() {
       final controller = createController();
 
       for (final category in controller.categories) {
-        expect(category.items.length, 3,
-            reason: 'Category ${category.titleKey} should have 3 items');
+        expect(
+          category.items.length,
+          3,
+          reason: 'Category ${category.titleKey} should have 3 items',
+        );
       }
     });
 
     test('all item ids are unique', () {
       final controller = createController();
 
-      final allIds = controller.categories
-          .expand((c) => c.items)
-          .map((i) => i.id)
-          .toList();
-      expect(allIds.toSet().length, allIds.length,
-          reason: 'All item ids should be unique');
+      final allIds = controller.categories.expand((c) => c.items).map((i) => i.id).toList();
+      expect(allIds.toSet().length, allIds.length, reason: 'All item ids should be unique');
     });
 
     test('all category titleKeys are unique', () {
       final controller = createController();
 
       final titleKeys = controller.categories.map((c) => c.titleKey).toList();
-      expect(titleKeys.toSet().length, titleKeys.length,
-          reason: 'All category titleKeys should be unique');
+      expect(
+        titleKeys.toSet().length,
+        titleKeys.length,
+        reason: 'All category titleKeys should be unique',
+      );
     });
 
     // ── toggleItem toggles back and forth ─────────────────────────────────
@@ -344,8 +339,11 @@ void main() {
       for (final category in controller.categories) {
         for (final item in category.items) {
           expect(item.titleKey, isNotEmpty, reason: 'Item ${item.id} has empty titleKey');
-          expect(item.descriptionKey, isNotEmpty,
-              reason: 'Item ${item.id} has empty descriptionKey');
+          expect(
+            item.descriptionKey,
+            isNotEmpty,
+            reason: 'Item ${item.id} has empty descriptionKey',
+          );
         }
       }
     });

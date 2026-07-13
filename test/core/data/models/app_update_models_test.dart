@@ -88,10 +88,7 @@ void main() {
     });
 
     test('fromJson handles null optional fields', () {
-      final json = <String, dynamic>{
-        'update_available': false,
-        'is_mandatory': false,
-      };
+      final json = <String, dynamic>{'update_available': false, 'is_mandatory': false};
 
       final response = AppVersionCheckResponse.fromJson(json);
 

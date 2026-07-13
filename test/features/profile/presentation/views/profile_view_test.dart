@@ -70,7 +70,10 @@ void main() {
 
     testWidgets('renders profile header and menu items when user is present', (tester) async {
       final controller = _StubProfileController();
-      controller.currentUser.value = testUserModel(fullName: 'Test User', email: 'test@example.com');
+      controller.currentUser.value = testUserModel(
+        fullName: 'Test User',
+        email: 'test@example.com',
+      );
       await pumpView(tester, controller);
 
       expect(find.bySemanticsLabel('qa.profile.screen'), findsOneWidget);
@@ -105,10 +108,7 @@ void main() {
       await pumpView(tester, controller);
 
       // Scroll to the logout button first (it may be off-screen).
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('qa.profile.logout')),
-        100,
-      );
+      await tester.scrollUntilVisible(find.byKey(const ValueKey('qa.profile.logout')), 100);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.logout')));
@@ -124,10 +124,7 @@ void main() {
       await pumpView(tester, controller);
 
       // Scroll to the logout button first (it may be off-screen).
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('qa.profile.logout')),
-        100,
-      );
+      await tester.scrollUntilVisible(find.byKey(const ValueKey('qa.profile.logout')), 100);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('qa.profile.logout')));

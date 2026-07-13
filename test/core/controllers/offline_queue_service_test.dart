@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/controllers/offline_action.dart';
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
@@ -199,23 +198,27 @@ void main() {
           scheduledDate: any(named: 'scheduledDate'),
           specialRequirements: any(named: 'specialRequirements'),
         ),
-      ).thenAnswer((_) async => VisitModel(
-        id: 1,
-        propertyId: 8,
-        userId: 1,
-        status: VisitStatus.scheduled,
-        scheduledDate: DateTime.parse('2025-07-01T09:00:00.000Z'),
-        createdAt: DateTime.parse('2025-07-01T09:00:00.000Z'),
-      ));
+      ).thenAnswer(
+        (_) async => VisitModel(
+          id: 1,
+          propertyId: 8,
+          userId: 1,
+          status: VisitStatus.scheduled,
+          scheduledDate: DateTime.parse('2025-07-01T09:00:00.000Z'),
+          createdAt: DateTime.parse('2025-07-01T09:00:00.000Z'),
+        ),
+      );
 
       await queue.enqueueVisit(propertyId: 8, scheduledDate: '2025-07-01T09:00:00.000Z');
       await queue.processQueue();
 
-      verify(() => visits.scheduleVisit(
-            propertyId: 8,
-            scheduledDate: '2025-07-01T09:00:00.000Z',
-            specialRequirements: null,
-          )).called(1);
+      verify(
+        () => visits.scheduleVisit(
+          propertyId: 8,
+          scheduledDate: '2025-07-01T09:00:00.000Z',
+          specialRequirements: null,
+        ),
+      ).called(1);
       expect(queue.queueLength, 0);
     });
   });
@@ -265,10 +268,7 @@ void main() {
     });
 
     test('missing timestamp is dropped as unparseable', () {
-      expect(
-        OfflineAction.tryParse({'type': 'swipe', 'propertyId': 1, 'isLiked': true}),
-        isNull,
-      );
+      expect(OfflineAction.tryParse({'type': 'swipe', 'propertyId': 1, 'isLiked': true}), isNull);
       expect(
         OfflineAction.tryParse({
           'type': 'swipe',

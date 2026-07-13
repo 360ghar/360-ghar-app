@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/utils/webview_helper.dart';
 
@@ -103,10 +104,7 @@ void main() {
 
     test('throws for an empty URL when platform is unavailable', () {
       useNonAndroidPlatform();
-      expect(
-        () => WebViewHelper.createController(url: ''),
-        throwsA(isA<Object>()),
-      );
+      expect(() => WebViewHelper.createController(url: ''), throwsA(isA<Object>()));
     });
   });
 
@@ -115,22 +113,16 @@ void main() {
   group('WebViewHelper.createBaseController', () {
     test('throws when WebView platform is not registered (test env)', () {
       useNonAndroidPlatform();
-      expect(
-        () => WebViewHelper.createBaseController(),
-        throwsA(isA<Object>()),
-      );
+      expect(() => WebViewHelper.createBaseController(), throwsA(isA<Object>()));
     });
 
-    test('accepts an onPermissionRequest callback without crashing the call site',
-        () {
+    test('accepts an onPermissionRequest callback without crashing the call site', () {
       useNonAndroidPlatform();
       // The callback is only invoked at runtime by the platform; in the test
       // env the platform assertion fires first, so the callback is never
       // called. We pass it to verify the parameter is accepted.
       expect(
-        () => WebViewHelper.createBaseController(
-          onPermissionRequest: (_) {},
-        ),
+        () => WebViewHelper.createBaseController(onPermissionRequest: (_) {}),
         throwsA(isA<Object>()),
       );
     });
@@ -139,10 +131,7 @@ void main() {
   // ── createSafeWebView (error fallback) ───────────────────────────────────
 
   group('WebViewHelper.createSafeWebView', () {
-    Future<void> pumpWithGet(
-      WidgetTester tester,
-      WidgetBuilder builder,
-    ) async {
+    Future<void> pumpWithGet(WidgetTester tester, WidgetBuilder builder) async {
       await tester.pumpWidget(
         GetMaterialApp(
           translations: AppTranslations(),
@@ -153,14 +142,10 @@ void main() {
       );
     }
 
-    testWidgets('renders default error widget when platform unavailable',
-        (tester) async {
+    testWidgets('renders default error widget when platform unavailable', (tester) async {
       await pumpWithGet(
         tester,
-        (context) => WebViewHelper.createSafeWebView(
-          context: context,
-          url: 'https://example.com',
-        ),
+        (context) => WebViewHelper.createSafeWebView(context: context, url: 'https://example.com'),
       );
 
       // The default error widget shows the public_off icon and translated
@@ -170,8 +155,7 @@ void main() {
       expect(find.text('Virtual tour could not be loaded'), findsOneWidget);
     });
 
-    testWidgets('renders default error widget with width and height',
-        (tester) async {
+    testWidgets('renders default error widget with width and height', (tester) async {
       await pumpWithGet(
         tester,
         (context) => WebViewHelper.createSafeWebView(
@@ -205,10 +189,7 @@ void main() {
     testWidgets('error widget is returned for invalid URL too', (tester) async {
       await pumpWithGet(
         tester,
-        (context) => WebViewHelper.createSafeWebView(
-          context: context,
-          url: 'not-a-valid-url',
-        ),
+        (context) => WebViewHelper.createSafeWebView(context: context, url: 'not-a-valid-url'),
       );
 
       // Even with an invalid URL, the platform-unavailable error path is
@@ -219,17 +200,13 @@ void main() {
     testWidgets('error widget is returned for empty URL', (tester) async {
       await pumpWithGet(
         tester,
-        (context) => WebViewHelper.createSafeWebView(
-          context: context,
-          url: '',
-        ),
+        (context) => WebViewHelper.createSafeWebView(context: context, url: ''),
       );
 
       expect(find.byIcon(Icons.public_off), findsOneWidget);
     });
 
-    testWidgets('onPageStarted/onPageFinished callbacks are accepted',
-        (tester) async {
+    testWidgets('onPageStarted/onPageFinished callbacks are accepted', (tester) async {
       // These callbacks are passed to createController which throws before
       // they can be used; the error widget is returned instead.
       await pumpWithGet(

@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_visit_dialog.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
-
 import '../../../../helpers/getx_test_binding.dart';
 
 /// A lightweight fake [VisitsController] that overrides [bookVisit] to avoid
@@ -33,7 +33,7 @@ class FakeVisitsController extends VisitsController {
 }
 
 PropertyModel _testProperty() {
-  return PropertyModel(
+  return const PropertyModel(
     id: 1,
     title: 'Test Villa',
     basePrice: 5000000,

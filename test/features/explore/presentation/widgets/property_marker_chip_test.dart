@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/explore/presentation/widgets/property_marker_chip.dart';
@@ -37,12 +38,7 @@ void main() {
   testWidgets('renders the provided label text', (tester) async {
     await pumpWidget(
       tester,
-      PropertyMarkerChip(
-        property: _property(),
-        isSelected: false,
-        onTap: () {},
-        label: '₹50L',
-      ),
+      PropertyMarkerChip(property: _property(), isSelected: false, onTap: () {}, label: '₹50L'),
     );
 
     expect(find.text('₹50L'), findsOneWidget);
@@ -78,10 +74,7 @@ void main() {
     );
 
     final semantics = tester.getSemantics(find.byType(GestureDetector).first);
-    expect(
-      semantics.label,
-      contains('Sea View'),
-    );
+    expect(semantics.label, contains('Sea View'));
   });
 
   testWidgets('uses generic semantic label when title is empty', (tester) async {
@@ -96,21 +89,13 @@ void main() {
     );
 
     final semantics = tester.getSemantics(find.byType(GestureDetector).first);
-    expect(
-      semantics.label,
-      contains('Property price marker'),
-    );
+    expect(semantics.label, contains('Property price marker'));
   });
 
   testWidgets('selected chip animates the pulse circle', (tester) async {
     await pumpWidget(
       tester,
-      PropertyMarkerChip(
-        property: _property(),
-        isSelected: true,
-        onTap: () {},
-        label: '₹50L',
-      ),
+      PropertyMarkerChip(property: _property(), isSelected: true, onTap: () {}, label: '₹50L'),
     );
 
     // The pulse animation runs via an AnimatedBuilder; advance the clock so the
@@ -125,12 +110,7 @@ void main() {
   testWidgets('unselected chip does not render the pulse painter', (tester) async {
     await pumpWidget(
       tester,
-      PropertyMarkerChip(
-        property: _property(),
-        isSelected: false,
-        onTap: () {},
-        label: '₹50L',
-      ),
+      PropertyMarkerChip(property: _property(), isSelected: false, onTap: () {}, label: '₹50L'),
     );
 
     // No AnimatedBuilder-driven pulse circle for unselected chips.

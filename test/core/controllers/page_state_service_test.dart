@@ -900,10 +900,7 @@ void main() {
 
     test('getOrCreateSearchController seeds text and is reusable', () async {
       final service = await createService();
-      final first = service.getOrCreateSearchController(
-        PageType.discover,
-        seedText: 'seed',
-      );
+      final first = service.getOrCreateSearchController(PageType.discover, seedText: 'seed');
       final second = service.getOrCreateSearchController(PageType.discover);
       expect(identical(first, second), isTrue);
       expect(first.text, 'seed');
@@ -951,18 +948,10 @@ void main() {
   group('location delegates', () {
     test('updateLocation and updateLocationForPage apply location', () async {
       final service = await createService();
-      const location = LocationData(
-        name: 'Noida',
-        latitude: 28.5,
-        longitude: 77.4,
-      );
+      const location = LocationData(name: 'Noida', latitude: 28.5, longitude: 77.4);
 
       await service.updateLocation(location, source: 'manual');
-      await service.updateLocationForPage(
-        PageType.discover,
-        location,
-        source: 'manual',
-      );
+      await service.updateLocationForPage(PageType.discover, location, source: 'manual');
 
       expect(service.discoverState.value.selectedLocation?.name, 'Noida');
     });

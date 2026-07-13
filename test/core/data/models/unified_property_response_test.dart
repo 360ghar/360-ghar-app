@@ -41,7 +41,11 @@ void main() {
       expect(response.limit, 20, reason: 'limit defaults to 20');
       expect(response.nextCursor, isNull);
       expect(response.hasMore, false, reason: 'has_more defaults to false');
-      expect(response.filtersApplied, <String, dynamic>{}, reason: 'filters_applied defaults to empty map');
+      expect(
+        response.filtersApplied,
+        <String, dynamic>{},
+        reason: 'filters_applied defaults to empty map',
+      );
       expect(response.searchCenter, isNull);
       expect(response.total, isNull);
     });
@@ -57,8 +61,8 @@ void main() {
 
   group('UnifiedPropertyResponse convenience getters', () {
     test('hasMorePages is true when hasMore and nextCursor non-empty', () {
-      final response = UnifiedPropertyResponse(
-        items: const [],
+      final response = const UnifiedPropertyResponse(
+        items: [],
         hasMore: true,
         nextCursor: 'abc123',
       );
@@ -126,13 +130,13 @@ void main() {
 
   group('UnifiedPropertyResponse.toJson roundtrip', () {
     test('roundtrip preserves all fields with explicitToJson', () {
-      final original = UnifiedPropertyResponse(
-        items: const [],
+      final original = const UnifiedPropertyResponse(
+        items: [],
         limit: 15,
         nextCursor: 'cursor123',
         hasMore: true,
         filtersApplied: {'city': 'Delhi'},
-        searchCenter: const SearchCenter(latitude: 28.6, longitude: 77.2),
+        searchCenter: SearchCenter(latitude: 28.6, longitude: 77.2),
         total: 100,
       );
 

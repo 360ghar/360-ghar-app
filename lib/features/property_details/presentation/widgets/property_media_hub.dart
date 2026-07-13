@@ -184,7 +184,7 @@ class PropertyMediaHub extends StatelessWidget {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Icon(Icons.videocam_rounded, color: AppDesign.primaryYellow),
+                    const Icon(Icons.videocam_rounded, color: AppDesign.primaryYellow),
                     const SizedBox(width: 8),
                     Text(
                       'video_tour'.tr,
@@ -270,7 +270,7 @@ class _MediaExperienceCard extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: AppDesign.primaryYellow,
                           shape: BoxShape.circle,
                         ),
@@ -282,7 +282,7 @@ class _MediaExperienceCard extends StatelessWidget {
                           data.label,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: AppDesign.overlayLight,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -305,7 +305,7 @@ class _MediaExperienceCard extends StatelessWidget {
                       ),
                       child: Text(
                         data.badge!,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: AppDesign.overlayLight,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,

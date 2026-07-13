@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
@@ -27,17 +26,29 @@ class _FakeExploreController extends GetxServiceMock implements ExploreControlle
     properties.assignAll(initial);
   }
 
+  @override
   final Rx<ExploreState> state = ExploreState.loaded.obs;
+  @override
   final RxList<PropertyModel> properties = <PropertyModel>[].obs;
+  @override
   final Rxn<AppException> error = Rxn<AppException>();
+  @override
   final Rx<PropertyModel?> selectedProperty = Rx<PropertyModel?>(null);
+  @override
   final RxBool isListCollapsed = false.obs;
+  @override
   final Rx<LatLng> currentCenter = const LatLng(28.6139, 77.2090).obs;
+  @override
   final RxDouble currentZoom = 12.0.obs;
+  @override
   final RxDouble currentRadius = 5.0.obs;
+  @override
   final RxInt markersRevision = 0.obs;
+  @override
   final RxBool isMapReady = false.obs;
+  @override
   final RxString searchQuery = ''.obs;
+  @override
   final RxMap<int, bool> likedOverrides = <int, bool>{}.obs;
 
   int zoomInCalls = 0;
@@ -93,8 +104,7 @@ class _FakeExploreController extends GetxServiceMock implements ExploreControlle
   void highlightPropertyFromCard(PropertyModel property) {}
 
   @override
-  bool isPropertyLiked(PropertyModel property) =>
-      likedOverrides[property.id] ?? property.liked;
+  bool isPropertyLiked(PropertyModel property) => likedOverrides[property.id] ?? property.liked;
 
   @override
   Future<void> toggleLike(PropertyModel property) async {
@@ -142,16 +152,12 @@ PropertyModel _property({int id = 100}) {
 
 /// Finder for a [Semantics] widget whose [label] matches [label].
 Finder _findBySemanticsLabel(String label) {
-  return find.byWidgetPredicate(
-    (w) => w is Semantics && w.properties.label == label,
-  );
+  return find.byWidgetPredicate((w) => w is Semantics && w.properties.label == label);
 }
 
 /// Finder for a [Semantics] widget whose [identifier] matches [id].
 Finder _findBySemanticsIdentifier(String id) {
-  return find.byWidgetPredicate(
-    (w) => w is Semantics && w.properties.identifier == id,
-  );
+  return find.byWidgetPredicate((w) => w is Semantics && w.properties.identifier == id);
 }
 
 void main() {
@@ -183,36 +189,50 @@ void main() {
     // Stub PageStateService reactive fields
     when(() => mockPageStateService.exploreState).thenReturn(exploreState);
     when(() => mockPageStateService.currentPageType).thenReturn(currentPageType);
-    when(() => mockPageStateService.discoverState)
-        .thenReturn(PageStateModel.initial(PageType.discover).obs);
-    when(() => mockPageStateService.likesState)
-        .thenReturn(PageStateModel.initial(PageType.likes).obs);
+    when(
+      () => mockPageStateService.discoverState,
+    ).thenReturn(PageStateModel.initial(PageType.discover).obs);
+    when(
+      () => mockPageStateService.likesState,
+    ).thenReturn(PageStateModel.initial(PageType.likes).obs);
 
     // Stub PageStateService methods
     when(() => mockPageStateService.isSearchVisible(any())).thenReturn(false);
     when(() => mockPageStateService.isPageRefreshing(any())).thenReturn(false);
-    when(() => mockPageStateService.getOrCreateSearchController(any(),
-        seedText: any(named: 'seedText'))).thenReturn(searchController);
-    when(() => mockPageStateService.getCurrentPageState())
-        .thenReturn(PageStateModel.initial(PageType.explore));
+    when(
+      () =>
+          mockPageStateService.getOrCreateSearchController(any(), seedText: any(named: 'seedText')),
+    ).thenReturn(searchController);
+    when(
+      () => mockPageStateService.getCurrentPageState(),
+    ).thenReturn(PageStateModel.initial(PageType.explore));
     when(() => mockPageStateService.updatePageFilters(any(), any())).thenReturn(null);
     when(() => mockPageStateService.updatePageSearch(any(), any())).thenReturn(null);
-    when(() => mockPageStateService.loadPageData(any(),
+    when(
+      () => mockPageStateService.loadPageData(
+        any(),
         forceRefresh: any(named: 'forceRefresh'),
-        backgroundRefresh: any(named: 'backgroundRefresh'))).thenAnswer((_) async {});
+        backgroundRefresh: any(named: 'backgroundRefresh'),
+      ),
+    ).thenAnswer((_) async {});
     when(() => mockPageStateService.loadMorePageData(any())).thenAnswer((_) async {});
     when(() => mockPageStateService.loadMoreData(any())).thenAnswer((_) async {});
-    when(() => mockPageStateService.recordSwipe(
+    when(
+      () => mockPageStateService.recordSwipe(
         propertyId: any(named: 'propertyId'),
-        isLiked: any(named: 'isLiked'))).thenAnswer((_) async {});
-    when(() => mockPageStateService.updateLocationForPage(any(), any(),
-        source: any(named: 'source'))).thenAnswer((_) async {});
+        isLiked: any(named: 'isLiked'),
+      ),
+    ).thenAnswer((_) async {});
+    when(
+      () => mockPageStateService.updateLocationForPage(any(), any(), source: any(named: 'source')),
+    ).thenAnswer((_) async {});
 
     // Stub LocationController
     when(() => mockLocationController.currentPosition).thenReturn(Rxn());
     when(() => mockLocationController.hasLocation).thenReturn(false);
-    when(() => mockLocationController.getCurrentLocation(
-        forceRefresh: any(named: 'forceRefresh'))).thenAnswer((_) async {});
+    when(
+      () => mockLocationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')),
+    ).thenAnswer((_) async {});
     when(() => mockLocationController.getIpLocation()).thenAnswer((_) async => null);
     when(() => mockLocationController.getInitialLocation()).thenAnswer(
       (_) async => const LocationData(name: 'Test', latitude: 28.6139, longitude: 77.2090),
@@ -279,11 +299,11 @@ void main() {
 
     testWidgets('renders map interface in loading state with location', (tester) async {
       controller.state.value = ExploreState.loading;
-      exploreState.value = PageStateModel(
+      exploreState.value = const PageStateModel(
         pageType: PageType.explore,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
-        selectedLocation: const LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
+        selectedLocation: LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
       );
       await pumpExploreView(tester);
 
@@ -328,11 +348,11 @@ void main() {
 
     testWidgets('renders initial state with location as map', (tester) async {
       controller.state.value = ExploreState.initial;
-      exploreState.value = PageStateModel(
+      exploreState.value = const PageStateModel(
         pageType: PageType.explore,
-        filters: const UnifiedFilterModel(),
+        filters: UnifiedFilterModel(),
         properties: [],
-        selectedLocation: const LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
+        selectedLocation: LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
       );
       await pumpExploreView(tester);
 

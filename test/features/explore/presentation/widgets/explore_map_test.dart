@@ -1,10 +1,8 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
@@ -14,7 +12,6 @@ import 'package:ghar360/features/explore/presentation/controllers/explore_contro
 import 'package:ghar360/features/explore/presentation/widgets/explore_map.dart';
 import 'package:ghar360/features/explore/presentation/widgets/property_marker_chip.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
-import 'package:maplibre_gl_platform_interface/maplibre_gl_platform_interface.dart';
 
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
@@ -153,10 +150,8 @@ class _FakeMapLibrePlatform extends MapLibrePlatform {
   Future<LatLng?> requestMyLocationLatLng() async => null;
 
   @override
-  Future<LatLngBounds> getVisibleRegion() async => LatLngBounds(
-        southwest: const LatLng(0, 0),
-        northeast: const LatLng(0, 0),
-      );
+  Future<LatLngBounds> getVisibleRegion() async =>
+      LatLngBounds(southwest: const LatLng(0, 0), northeast: const LatLng(0, 0));
 
   @override
   Future<void> addImage(String name, Uint8List bytes, [bool sdf = false]) async {}
@@ -297,10 +292,7 @@ class _FakeMapLibrePlatform extends MapLibrePlatform {
   }) async {}
 
   @override
-  Future<void> setLayerProperties(
-    String layerId,
-    Map<String, dynamic> properties,
-  ) async {}
+  Future<void> setLayerProperties(String layerId, Map<String, dynamic> properties) async {}
 
   @override
   Future<void> addCircleLayer(
@@ -409,18 +401,30 @@ class _FakeExploreController extends GetxServiceMock implements ExploreControlle
   }
 
   final List<PropertyMarker> _markers = [];
+  @override
   final RxInt markersRevision = 0.obs;
 
+  @override
   final Rx<LatLng> currentCenter = const LatLng(28.6139, 77.2090).obs;
+  @override
   final RxDouble currentZoom = 12.0.obs;
+  @override
   final RxDouble currentRadius = 5.0.obs;
+  @override
   final RxBool isMapReady = false.obs;
+  @override
   final Rx<ExploreState> state = ExploreState.loaded.obs;
+  @override
   final RxList<PropertyModel> properties = <PropertyModel>[].obs;
+  @override
   final Rxn<AppException> error = Rxn<AppException>();
+  @override
   final Rx<PropertyModel?> selectedProperty = Rx<PropertyModel?>(null);
+  @override
   final RxBool isListCollapsed = false.obs;
+  @override
   final RxString searchQuery = ''.obs;
+  @override
   final RxMap<int, bool> likedOverrides = <int, bool>{}.obs;
 
   MapLibreMapController? attachedController;
@@ -524,11 +528,7 @@ PropertyModel _property({int id = 100, String title = 'Test Property'}) {
   );
 }
 
-PropertyMarker _marker({
-  int id = 100,
-  bool selected = false,
-  String label = '₹50L',
-}) {
+PropertyMarker _marker({int id = 100, bool selected = false, String label = '₹50L'}) {
   return PropertyMarker(
     property: _property(id: id),
     position: const LatLng(28.61, 77.21),
@@ -539,12 +539,12 @@ PropertyMarker _marker({
 
 void main() {
   late _FakeExploreController controller;
-  MapLibrePlatform Function()? _originalCreateInstance;
+  MapLibrePlatform Function()? originalCreateInstance;
 
   setUp(() {
     GetxTestBinding.init();
     // Override the platform factory so MapLibreMap uses our fake.
-    _originalCreateInstance = MapLibrePlatform.createInstance;
+    originalCreateInstance = MapLibrePlatform.createInstance;
     MapLibrePlatform.createInstance = () => _FakeMapLibrePlatform();
 
     controller = _FakeExploreController();
@@ -552,16 +552,13 @@ void main() {
 
   tearDown(() {
     // Restore the original platform factory.
-    if (_originalCreateInstance != null) {
-      MapLibrePlatform.createInstance = _originalCreateInstance!;
+    if (originalCreateInstance != null) {
+      MapLibrePlatform.createInstance = originalCreateInstance!;
     }
     GetxTestBinding.reset();
   });
 
-  Future<void> pumpExploreMap(
-    WidgetTester tester, {
-    Size size = const Size(400, 600),
-  }) async {
+  Future<void> pumpExploreMap(WidgetTester tester, {Size size = const Size(400, 600)}) async {
     await tester.pumpWidget(
       GetMaterialApp(
         translations: AppTranslations(),
@@ -720,11 +717,7 @@ void main() {
       await pumpExploreMap(tester);
 
       // Re-pump with no widget to trigger dispose.
-      await tester.pumpWidget(
-        GetMaterialApp(
-          home: const Scaffold(body: SizedBox.shrink()),
-        ),
-      );
+      await tester.pumpWidget(const GetMaterialApp(home: Scaffold(body: SizedBox.shrink())));
       await tester.pump();
 
       // If dispose threw, takeException would surface it.

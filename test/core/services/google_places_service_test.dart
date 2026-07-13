@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -15,28 +14,32 @@ void main() {
   /// Standard AppConfig with a non-empty API key so the service proceeds
   /// past the guard branch and makes an HTTP request (which we intercept).
   void initConfigWithKey() {
-    AppConfig.initialize(overrides: const <String, String>{
-      'API_BASE_URL': 'https://api.360ghar.com',
-      'SUPABASE_URL': 'https://example.supabase.co',
-      'SUPABASE_PUBLISHABLE_KEY': 'key',
-      'GOOGLE_PLACES_API_KEY': 'test-api-key',
-      'DEFAULT_COUNTRY': 'in',
-    });
+    AppConfig.initialize(
+      overrides: const <String, String>{
+        'API_BASE_URL': 'https://api.360ghar.com',
+        'SUPABASE_URL': 'https://example.supabase.co',
+        'SUPABASE_PUBLISHABLE_KEY': 'key',
+        'GOOGLE_PLACES_API_KEY': 'test-api-key',
+        'DEFAULT_COUNTRY': 'in',
+      },
+    );
   }
 
   void initConfigWithoutKey() {
-    AppConfig.initialize(overrides: const <String, String>{
-      'API_BASE_URL': 'https://api.360ghar.com',
-      'SUPABASE_URL': 'https://example.supabase.co',
-      'SUPABASE_PUBLISHABLE_KEY': 'key',
-      'GOOGLE_PLACES_API_KEY': '',
-      'DEFAULT_COUNTRY': 'in',
-    });
+    AppConfig.initialize(
+      overrides: const <String, String>{
+        'API_BASE_URL': 'https://api.360ghar.com',
+        'SUPABASE_URL': 'https://example.supabase.co',
+        'SUPABASE_PUBLISHABLE_KEY': 'key',
+        'GOOGLE_PLACES_API_KEY': '',
+        'DEFAULT_COUNTRY': 'in',
+      },
+    );
   }
 
   /// Builds a [MockClient] that returns canned responses for Google Places
   /// autocomplete and details endpoints based on the request URL path.
-  http.Client _buildMockClient({
+  http.Client buildMockClient({
     Map<String, String> autocompleteResponses = const {},
     Map<String, String> detailsResponses = const {},
     int autocompleteStatusCode = 200,
@@ -51,13 +54,13 @@ void main() {
 
       if (path.contains('autocomplete')) {
         final input = query['input'] ?? '';
-        body = autocompleteResponses[input] ??
+        body =
+            autocompleteResponses[input] ??
             jsonEncode(<String, dynamic>{'status': 'INVALID_REQUEST'});
         statusCode = autocompleteStatusCode;
       } else if (path.contains('details')) {
         final placeId = query['place_id'] ?? '';
-        body = detailsResponses[placeId] ??
-            jsonEncode(<String, dynamic>{'status': 'NOT_FOUND'});
+        body = detailsResponses[placeId] ?? jsonEncode(<String, dynamic>{'status': 'NOT_FOUND'});
         statusCode = detailsStatusCode;
       } else {
         body = jsonEncode(<String, dynamic>{'status': 'INVALID_REQUEST'});
@@ -243,29 +246,28 @@ void main() {
     });
 
     test('parses OK response with predictions', () async {
-      final client = _buildMockClient(autocompleteResponses: {
-        'kathmandu': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'predictions': [
-            {
-              'place_id': 'place-1',
-              'description': 'Kathmandu, Nepal',
-              'structured_formatting': {
-                'main_text': 'Kathmandu',
-                'secondary_text': 'Nepal',
+      final client = buildMockClient(
+        autocompleteResponses: {
+          'kathmandu': jsonEncode(<String, dynamic>{
+            'status': 'OK',
+            'predictions': [
+              {
+                'place_id': 'place-1',
+                'description': 'Kathmandu, Nepal',
+                'structured_formatting': {'main_text': 'Kathmandu', 'secondary_text': 'Nepal'},
               },
-            },
-            {
-              'place_id': 'place-2',
-              'description': 'Kathmandu Valley, Nepal',
-              'structured_formatting': {
-                'main_text': 'Kathmandu Valley',
-                'secondary_text': 'Nepal',
+              {
+                'place_id': 'place-2',
+                'description': 'Kathmandu Valley, Nepal',
+                'structured_formatting': {
+                  'main_text': 'Kathmandu Valley',
+                  'secondary_text': 'Nepal',
+                },
               },
-            },
-          ],
-        }),
-      });
+            ],
+          }),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceSuggestions('kathmandu'),
@@ -283,17 +285,16 @@ void main() {
     });
 
     test('parses OK response with missing structured_formatting', () async {
-      final client = _buildMockClient(autocompleteResponses: {
-        'test': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'predictions': [
-            {
-              'place_id': 'place-x',
-              'description': 'Test Place',
-            },
-          ],
-        }),
-      });
+      final client = buildMockClient(
+        autocompleteResponses: {
+          'test': jsonEncode(<String, dynamic>{
+            'status': 'OK',
+            'predictions': [
+              {'place_id': 'place-x', 'description': 'Test Place'},
+            ],
+          }),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceSuggestions('test'),
@@ -307,12 +308,14 @@ void main() {
     });
 
     test('handles ZERO_RESULTS status', () async {
-      final client = _buildMockClient(autocompleteResponses: {
-        'nowhere': jsonEncode(<String, dynamic>{
-          'status': 'ZERO_RESULTS',
-          'predictions': <dynamic>[],
-        }),
-      });
+      final client = buildMockClient(
+        autocompleteResponses: {
+          'nowhere': jsonEncode(<String, dynamic>{
+            'status': 'ZERO_RESULTS',
+            'predictions': <dynamic>[],
+          }),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceSuggestions('nowhere'),
@@ -325,11 +328,11 @@ void main() {
     });
 
     test('handles OVER_QUERY_LIMIT status', () async {
-      final client = _buildMockClient(autocompleteResponses: {
-        'query': jsonEncode(<String, dynamic>{
-          'status': 'OVER_QUERY_LIMIT',
-        }),
-      });
+      final client = buildMockClient(
+        autocompleteResponses: {
+          'query': jsonEncode(<String, dynamic>{'status': 'OVER_QUERY_LIMIT'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceSuggestions('query'),
@@ -341,11 +344,11 @@ void main() {
     });
 
     test('handles REQUEST_DENIED status', () async {
-      final client = _buildMockClient(autocompleteResponses: {
-        'denied': jsonEncode(<String, dynamic>{
-          'status': 'REQUEST_DENIED',
-        }),
-      });
+      final client = buildMockClient(
+        autocompleteResponses: {
+          'denied': jsonEncode(<String, dynamic>{'status': 'REQUEST_DENIED'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceSuggestions('denied'),
@@ -357,11 +360,11 @@ void main() {
     });
 
     test('handles INVALID_REQUEST status', () async {
-      final client = _buildMockClient(autocompleteResponses: {
-        'invalid': jsonEncode(<String, dynamic>{
-          'status': 'INVALID_REQUEST',
-        }),
-      });
+      final client = buildMockClient(
+        autocompleteResponses: {
+          'invalid': jsonEncode(<String, dynamic>{'status': 'INVALID_REQUEST'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceSuggestions('invalid'),
@@ -373,11 +376,11 @@ void main() {
     });
 
     test('handles unknown status', () async {
-      final client = _buildMockClient(autocompleteResponses: {
-        'unknown': jsonEncode(<String, dynamic>{
-          'status': 'SOME_NEW_STATUS',
-        }),
-      });
+      final client = buildMockClient(
+        autocompleteResponses: {
+          'unknown': jsonEncode(<String, dynamic>{'status': 'SOME_NEW_STATUS'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceSuggestions('unknown'),
@@ -389,9 +392,7 @@ void main() {
     });
 
     test('handles non-200 HTTP status code', () async {
-      final client = _buildMockClient(
-        autocompleteStatusCode: 500,
-      );
+      final client = buildMockClient(autocompleteStatusCode: 500);
 
       final result = await http.runWithClient(
         () => service.getPlaceSuggestions('error'),
@@ -403,23 +404,21 @@ void main() {
       expect(service.isSearchingPlaces.value, isFalse);
     });
 
-    test('includes location and radius when currentPosition is provided',
-        () async {
-      final client = _buildMockClient(autocompleteResponses: {
-        'nearby': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'predictions': [
-            {
-              'place_id': 'nearby-1',
-              'description': 'Nearby Place',
-              'structured_formatting': {
-                'main_text': 'Nearby',
-                'secondary_text': 'Place',
+    test('includes location and radius when currentPosition is provided', () async {
+      final client = buildMockClient(
+        autocompleteResponses: {
+          'nearby': jsonEncode(<String, dynamic>{
+            'status': 'OK',
+            'predictions': [
+              {
+                'place_id': 'nearby-1',
+                'description': 'Nearby Place',
+                'structured_formatting': {'main_text': 'Nearby', 'secondary_text': 'Place'},
               },
-            },
-          ],
-        }),
-      });
+            ],
+          }),
+        },
+      );
 
       final position = Position(
         latitude: 27.7172,
@@ -472,27 +471,29 @@ void main() {
     });
 
     test('parses OK response with locality and city', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-1': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'result': {
-            'name': 'Connaught Place',
-            'geometry': {
-              'location': {'lat': 28.6315, 'lng': 77.2167},
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-1': jsonEncode(<String, dynamic>{
+            'status': 'OK',
+            'result': {
+              'name': 'Connaught Place',
+              'geometry': {
+                'location': {'lat': 28.6315, 'lng': 77.2167},
+              },
+              'address_components': [
+                {
+                  'long_name': 'Connaught Place',
+                  'types': ['locality'],
+                },
+                {
+                  'long_name': 'New Delhi',
+                  'types': ['administrative_area_level_2'],
+                },
+              ],
             },
-            'address_components': [
-              {
-                'long_name': 'Connaught Place',
-                'types': ['locality'],
-              },
-              {
-                'long_name': 'New Delhi',
-                'types': ['administrative_area_level_2'],
-              },
-            ],
-          },
-        }),
-      });
+          }),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-1'),
@@ -506,18 +507,20 @@ void main() {
     });
 
     test('uses preferredName when provided', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-2': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'result': {
-            'name': 'Some Random Name',
-            'geometry': {
-              'location': {'lat': 27.0, 'lng': 85.0},
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-2': jsonEncode(<String, dynamic>{
+            'status': 'OK',
+            'result': {
+              'name': 'Some Random Name',
+              'geometry': {
+                'location': {'lat': 27.0, 'lng': 85.0},
+              },
+              'address_components': <dynamic>[],
             },
-            'address_components': <dynamic>[],
-          },
-        }),
-      });
+          }),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-2', preferredName: 'My Custom Name'),
@@ -529,18 +532,20 @@ void main() {
     });
 
     test('falls back to name when no locality or city found', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-3': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'result': {
-            'name': 'Just A Name',
-            'geometry': {
-              'location': {'lat': 27.0, 'lng': 85.0},
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-3': jsonEncode(<String, dynamic>{
+            'status': 'OK',
+            'result': {
+              'name': 'Just A Name',
+              'geometry': {
+                'location': {'lat': 27.0, 'lng': 85.0},
+              },
+              'address_components': <dynamic>[],
             },
-            'address_components': <dynamic>[],
-          },
-        }),
-      });
+          }),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-3'),
@@ -552,23 +557,25 @@ void main() {
     });
 
     test('uses city only when locality is missing', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-4': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'result': {
-            'name': 'Some Area',
-            'geometry': {
-              'location': {'lat': 27.0, 'lng': 85.0},
-            },
-            'address_components': [
-              {
-                'long_name': 'Kathmandu',
-                'types': ['administrative_area_level_2'],
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-4': jsonEncode(<String, dynamic>{
+            'status': 'OK',
+            'result': {
+              'name': 'Some Area',
+              'geometry': {
+                'location': {'lat': 27.0, 'lng': 85.0},
               },
-            ],
-          },
-        }),
-      });
+              'address_components': [
+                {
+                  'long_name': 'Kathmandu',
+                  'types': ['administrative_area_level_2'],
+                },
+              ],
+            },
+          }),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-4'),
@@ -580,23 +587,25 @@ void main() {
     });
 
     test('uses locality only when city is missing', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-5': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'result': {
-            'name': 'Some Area',
-            'geometry': {
-              'location': {'lat': 27.0, 'lng': 85.0},
-            },
-            'address_components': [
-              {
-                'long_name': 'Patan',
-                'types': ['locality'],
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-5': jsonEncode(<String, dynamic>{
+            'status': 'OK',
+            'result': {
+              'name': 'Some Area',
+              'geometry': {
+                'location': {'lat': 27.0, 'lng': 85.0},
               },
-            ],
-          },
-        }),
-      });
+              'address_components': [
+                {
+                  'long_name': 'Patan',
+                  'types': ['locality'],
+                },
+              ],
+            },
+          }),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-5'),
@@ -608,12 +617,11 @@ void main() {
     });
 
     test('returns null when result is null in OK response', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-null': jsonEncode(<String, dynamic>{
-          'status': 'OK',
-          'result': null,
-        }),
-      });
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-null': jsonEncode(<String, dynamic>{'status': 'OK', 'result': null}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-null'),
@@ -624,11 +632,11 @@ void main() {
     });
 
     test('handles ZERO_RESULTS status', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-zr': jsonEncode(<String, dynamic>{
-          'status': 'ZERO_RESULTS',
-        }),
-      });
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-zr': jsonEncode(<String, dynamic>{'status': 'ZERO_RESULTS'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-zr'),
@@ -639,11 +647,11 @@ void main() {
     });
 
     test('handles OVER_QUERY_LIMIT status', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-ql': jsonEncode(<String, dynamic>{
-          'status': 'OVER_QUERY_LIMIT',
-        }),
-      });
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-ql': jsonEncode(<String, dynamic>{'status': 'OVER_QUERY_LIMIT'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-ql'),
@@ -654,11 +662,11 @@ void main() {
     });
 
     test('handles REQUEST_DENIED status', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-rd': jsonEncode(<String, dynamic>{
-          'status': 'REQUEST_DENIED',
-        }),
-      });
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-rd': jsonEncode(<String, dynamic>{'status': 'REQUEST_DENIED'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-rd'),
@@ -669,11 +677,11 @@ void main() {
     });
 
     test('handles INVALID_REQUEST status', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-ir': jsonEncode(<String, dynamic>{
-          'status': 'INVALID_REQUEST',
-        }),
-      });
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-ir': jsonEncode(<String, dynamic>{'status': 'INVALID_REQUEST'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-ir'),
@@ -684,11 +692,11 @@ void main() {
     });
 
     test('handles NOT_FOUND status', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-nf': jsonEncode(<String, dynamic>{
-          'status': 'NOT_FOUND',
-        }),
-      });
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-nf': jsonEncode(<String, dynamic>{'status': 'NOT_FOUND'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-nf'),
@@ -699,11 +707,11 @@ void main() {
     });
 
     test('handles unknown status', () async {
-      final client = _buildMockClient(detailsResponses: {
-        'place-unknown': jsonEncode(<String, dynamic>{
-          'status': 'WEIRD_STATUS',
-        }),
-      });
+      final client = buildMockClient(
+        detailsResponses: {
+          'place-unknown': jsonEncode(<String, dynamic>{'status': 'WEIRD_STATUS'}),
+        },
+      );
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-unknown'),
@@ -714,7 +722,7 @@ void main() {
     });
 
     test('handles non-200 HTTP status code', () async {
-      final client = _buildMockClient(detailsStatusCode: 403);
+      final client = buildMockClient(detailsStatusCode: 403);
 
       final result = await http.runWithClient(
         () => service.getPlaceDetails('place-err'),

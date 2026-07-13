@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/error_handler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../helpers/getx_test_binding.dart';
 
@@ -20,71 +17,68 @@ void main() {
 
   group('ErrorHandler.handleAuthError', () {
     test('does not throw for an AuthException with otp_expired code', () {
-      final error = AuthException('Invalid OTP', code: 'otp_expired');
+      final error = const AuthException('Invalid OTP', code: 'otp_expired');
 
       // AppToast._show is a no-op when Get.overlayContext is null (unit test).
-      expect(
-        () => ErrorHandler.handleAuthError(error),
-        returnsNormally,
-      );
+      expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with otp_disabled code', () {
-      final error = AuthException('OTP disabled', code: 'otp_disabled');
+      final error = const AuthException('OTP disabled', code: 'otp_disabled');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with rate limit code', () {
-      final error = AuthException('Rate limit', code: 'over_request_rate_limit');
+      final error = const AuthException('Rate limit', code: 'over_request_rate_limit');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with sms_send_failed code', () {
-      final error = AuthException('SMS failed', code: 'sms_send_failed');
+      final error = const AuthException('SMS failed', code: 'sms_send_failed');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with bad_jwt code', () {
-      final error = AuthException('Bad JWT', code: 'bad_jwt');
+      final error = const AuthException('Bad JWT', code: 'bad_jwt');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with email_address_not_authorized code', () {
-      final error = AuthException('Not authorized', code: 'email_address_not_authorized');
+      final error = const AuthException('Not authorized', code: 'email_address_not_authorized');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with email_not_confirmed code', () {
-      final error = AuthException('Email not confirmed', code: 'email_not_confirmed');
+      final error = const AuthException('Email not confirmed', code: 'email_not_confirmed');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with invalid login credentials message', () {
-      final error = AuthException('Invalid login credentials');
+      final error = const AuthException('Invalid login credentials');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with user not found message', () {
-      final error = AuthException('User not found');
+      final error = const AuthException('User not found');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an AuthException with session not found message', () {
-      final error = AuthException('Session not found');
+      final error = const AuthException('Session not found');
 
       expect(() => ErrorHandler.handleAuthError(error), returnsNormally);
     });
 
     test('does not throw for an unrecognized AuthException message', () {
-      final error = AuthException('Some completely unknown error message');
+      final error = const AuthException('Some completely unknown error message');
 
       // Falls through to the default branch which records to Crashlytics
       // (wrapped in try-catch) and surfaces the raw message.
@@ -104,7 +98,7 @@ void main() {
     });
 
     test('does not throw with a retry callback', () {
-      final error = AuthException('Invalid login credentials');
+      final error = const AuthException('Invalid login credentials');
       var retryCalled = false;
 
       expect(
@@ -114,7 +108,7 @@ void main() {
     });
 
     test('does not throw with a stackTrace', () {
-      final error = AuthException('Token has expired', code: 'otp_expired');
+      final error = const AuthException('Token has expired', code: 'otp_expired');
 
       expect(
         () => ErrorHandler.handleAuthError(error, stackTrace: StackTrace.current),
@@ -181,10 +175,7 @@ void main() {
   group('ErrorHandler.handleValidationError', () {
     test('does not throw', () {
       // AppToast.warning is a no-op when Get.overlayContext is null.
-      expect(
-        () => ErrorHandler.handleValidationError('Email', 'Invalid email'),
-        returnsNormally,
-      );
+      expect(() => ErrorHandler.handleValidationError('Email', 'Invalid email'), returnsNormally);
     });
   });
 
@@ -223,10 +214,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: ErrorHandler.buildErrorWidget(
-              'Error',
-              onRetry: () => retryCalled = true,
-            ),
+            body: ErrorHandler.buildErrorWidget('Error', onRetry: () => retryCalled = true),
           ),
         ),
       );
@@ -243,9 +231,7 @@ void main() {
 
   group('ErrorHandler.buildLoadingWidget', () {
     testWidgets('renders a CircularProgressIndicator', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: ErrorHandler.buildLoadingWidget())),
-      );
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: ErrorHandler.buildLoadingWidget())));
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
@@ -261,9 +247,7 @@ void main() {
     });
 
     testWidgets('does not render a message when null', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: ErrorHandler.buildLoadingWidget())),
-      );
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: ErrorHandler.buildLoadingWidget())));
 
       expect(find.byType(Text), findsNothing);
     });
@@ -315,8 +299,9 @@ void main() {
       expect(find.byType(ElevatedButton), findsNothing);
     });
 
-    testWidgets('renders an action button when onAction and actionLabel are provided',
-        (tester) async {
+    testWidgets('renders an action button when onAction and actionLabel are provided', (
+      tester,
+    ) async {
       var actionCalled = false;
       await tester.pumpWidget(
         MaterialApp(

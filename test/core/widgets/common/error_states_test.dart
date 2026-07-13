@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
-
 import '../../../helpers/getx_test_binding.dart';
 
 void main() {
@@ -29,25 +29,18 @@ void main() {
 
   group('genericError', () {
     testWidgets('renders error title and message for a String error', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.genericError(error: 'Something broke'),
-      );
+      await pumpWidget(tester, ErrorStates.genericError(error: 'Something broke'));
 
       expect(find.text('Error'), findsOneWidget);
       expect(find.text('Something broke'), findsOneWidget);
       expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
     });
 
-    testWidgets('renders retry button when onRetry is provided for String error',
-        (tester) async {
+    testWidgets('renders retry button when onRetry is provided for String error', (tester) async {
       var retryCalled = false;
       await pumpWidget(
         tester,
-        ErrorStates.genericError(
-          error: 'Something broke',
-          onRetry: () => retryCalled = true,
-        ),
+        ErrorStates.genericError(error: 'Something broke', onRetry: () => retryCalled = true),
       );
 
       // String errors are retryable, so the button is shown.
@@ -62,10 +55,7 @@ void main() {
     });
 
     testWidgets('does not render retry button when onRetry is null', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.genericError(error: 'Something broke'),
-      );
+      await pumpWidget(tester, ErrorStates.genericError(error: 'Something broke'));
 
       expect(find.byType(ElevatedButton), findsNothing);
     });
@@ -73,10 +63,7 @@ void main() {
     testWidgets('renders custom message when provided', (tester) async {
       await pumpWidget(
         tester,
-        ErrorStates.genericError(
-          error: 'Something broke',
-          customMessage: 'A friendlier message',
-        ),
+        ErrorStates.genericError(error: 'Something broke', customMessage: 'A friendlier message'),
       );
 
       expect(find.text('A friendlier message'), findsOneWidget);
@@ -84,8 +71,7 @@ void main() {
       expect(find.text('Something broke'), findsNothing);
     });
 
-    testWidgets('renders NetworkException with wifi_off icon and retryable button',
-        (tester) async {
+    testWidgets('renders NetworkException with wifi_off icon and retryable button', (tester) async {
       await pumpWidget(
         tester,
         ErrorStates.genericError(
@@ -101,8 +87,9 @@ void main() {
       expect(find.byType(ElevatedButton), findsOneWidget);
     });
 
-    testWidgets('renders AuthenticationException with lock icon and no retry button',
-        (tester) async {
+    testWidgets('renders AuthenticationException with lock icon and no retry button', (
+      tester,
+    ) async {
       await pumpWidget(
         tester,
         ErrorStates.genericError(
@@ -118,14 +105,12 @@ void main() {
       expect(find.byType(ElevatedButton), findsNothing);
     });
 
-    testWidgets('renders ValidationException with warning icon and no retry button',
-        (tester) async {
+    testWidgets('renders ValidationException with warning icon and no retry button', (
+      tester,
+    ) async {
       await pumpWidget(
         tester,
-        ErrorStates.genericError(
-          error: ValidationException('Bad input'),
-          onRetry: () {},
-        ),
+        ErrorStates.genericError(error: ValidationException('Bad input'), onRetry: () {}),
       );
 
       expect(find.text('Invalid Input'), findsOneWidget);
@@ -135,24 +120,17 @@ void main() {
     });
 
     testWidgets('renders NotFoundException with search_off icon', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.genericError(error: NotFoundException('Not here')),
-      );
+      await pumpWidget(tester, ErrorStates.genericError(error: NotFoundException('Not here')));
 
       expect(find.text('Not Found'), findsOneWidget);
       expect(find.text('Not here'), findsOneWidget);
       expect(find.byIcon(Icons.search_off_rounded), findsOneWidget);
     });
 
-    testWidgets('renders ServerException with build icon and retryable button',
-        (tester) async {
+    testWidgets('renders ServerException with build icon and retryable button', (tester) async {
       await pumpWidget(
         tester,
-        ErrorStates.genericError(
-          error: ServerException('Down', statusCode: 500),
-          onRetry: () {},
-        ),
+        ErrorStates.genericError(error: ServerException('Down', statusCode: 500), onRetry: () {}),
       );
 
       expect(find.text('Server Error'), findsOneWidget);
@@ -163,10 +141,7 @@ void main() {
     });
 
     testWidgets('renders fallback for unknown error type', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.genericError(error: 42),
-      );
+      await pumpWidget(tester, ErrorStates.genericError(error: 42));
 
       expect(find.text('Error'), findsOneWidget);
       expect(find.text('Something went wrong'), findsOneWidget);
@@ -184,10 +159,7 @@ void main() {
 
     testWidgets('renders retry button when onRetry is provided', (tester) async {
       var retryCalled = false;
-      await pumpWidget(
-        tester,
-        ErrorStates.networkError(onRetry: () => retryCalled = true),
-      );
+      await pumpWidget(tester, ErrorStates.networkError(onRetry: () => retryCalled = true));
 
       final retryButton = find.byType(ElevatedButton);
       expect(retryButton, findsOneWidget);
@@ -214,11 +186,7 @@ void main() {
     testWidgets('renders custom icon when provided', (tester) async {
       await pumpWidget(
         tester,
-        ErrorStates.emptyState(
-          title: 'No Items',
-          message: 'Nothing here yet',
-          icon: Icons.search,
-        ),
+        ErrorStates.emptyState(title: 'No Items', message: 'Nothing here yet', icon: Icons.search),
       );
 
       expect(find.byIcon(Icons.search), findsOneWidget);
@@ -228,18 +196,13 @@ void main() {
     testWidgets('renders emoji when provided (overrides icon)', (tester) async {
       await pumpWidget(
         tester,
-        ErrorStates.emptyState(
-          title: 'No Items',
-          message: 'Nothing here yet',
-          emoji: '🏠',
-        ),
+        ErrorStates.emptyState(title: 'No Items', message: 'Nothing here yet', emoji: '🏠'),
       );
 
       expect(find.text('🏠'), findsOneWidget);
     });
 
-    testWidgets('renders action button when onAction and actionText provided',
-        (tester) async {
+    testWidgets('renders action button when onAction and actionText provided', (tester) async {
       var actionCalled = false;
       await pumpWidget(
         tester,
@@ -264,20 +227,14 @@ void main() {
 
   group('inlineError', () {
     testWidgets('renders message and error icon', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.inlineError(message: 'Inline failure'),
-      );
+      await pumpWidget(tester, ErrorStates.inlineError(message: 'Inline failure'));
 
       expect(find.text('Inline failure'), findsOneWidget);
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
     });
 
     testWidgets('hides icon when showIcon is false', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.inlineError(message: 'Inline failure', showIcon: false),
-      );
+      await pumpWidget(tester, ErrorStates.inlineError(message: 'Inline failure', showIcon: false));
 
       expect(find.byIcon(Icons.error_outline), findsNothing);
     });
@@ -286,10 +243,7 @@ void main() {
       var retryCalled = false;
       await pumpWidget(
         tester,
-        ErrorStates.inlineError(
-          message: 'Inline failure',
-          onRetry: () => retryCalled = true,
-        ),
+        ErrorStates.inlineError(message: 'Inline failure', onRetry: () => retryCalled = true),
       );
 
       final button = find.byType(TextButton);
@@ -316,10 +270,7 @@ void main() {
     });
 
     testWidgets('renders retry button when onRetry provided', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.errorBanner(message: 'Banner failure', onRetry: () {}),
-      );
+      await pumpWidget(tester, ErrorStates.errorBanner(message: 'Banner failure', onRetry: () {}));
 
       expect(find.text('Retry'), findsOneWidget);
     });
@@ -333,29 +284,21 @@ void main() {
       expect(find.text('No More Properties'), findsOneWidget);
     });
 
-    testWidgets('renders change filters button when onChangeFilters provided',
-        (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.swipeDeckEmpty(onChangeFilters: () {}),
-      );
+    testWidgets('renders change filters button when onChangeFilters provided', (tester) async {
+      await pumpWidget(tester, ErrorStates.swipeDeckEmpty(onChangeFilters: () {}));
 
       expect(find.byIcon(Icons.tune), findsOneWidget);
       expect(find.text('Adjust Filters'), findsOneWidget);
     });
 
     testWidgets('renders refresh button when onRefresh provided', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.swipeDeckEmpty(onRefresh: () {}),
-      );
+      await pumpWidget(tester, ErrorStates.swipeDeckEmpty(onRefresh: () {}));
 
       expect(find.byIcon(Icons.refresh), findsOneWidget);
       expect(find.text('Refresh'), findsOneWidget);
     });
 
-    testWidgets('does not render action buttons when callbacks are null',
-        (tester) async {
+    testWidgets('does not render action buttons when callbacks are null', (tester) async {
       await pumpWidget(tester, ErrorStates.swipeDeckEmpty());
 
       expect(find.byIcon(Icons.tune), findsNothing);
@@ -365,47 +308,29 @@ void main() {
 
   group('searchEmpty', () {
     testWidgets('renders search off icon and no results title', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.searchEmpty(searchQuery: 'apartment'),
-      );
+      await pumpWidget(tester, ErrorStates.searchEmpty(searchQuery: 'apartment'));
 
       expect(find.byIcon(Icons.search_off), findsOneWidget);
       expect(find.text('No Results Found'), findsOneWidget);
     });
 
-    testWidgets('renders clear search button when onClearSearch provided',
-        (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.searchEmpty(
-          searchQuery: 'test',
-          onClearSearch: () {},
-        ),
-      );
+    testWidgets('renders clear search button when onClearSearch provided', (tester) async {
+      await pumpWidget(tester, ErrorStates.searchEmpty(searchQuery: 'test', onClearSearch: () {}));
 
       expect(find.text('Clear Search'), findsOneWidget);
     });
 
-    testWidgets('renders try different search button when provided',
-        (tester) async {
+    testWidgets('renders try different search button when provided', (tester) async {
       await pumpWidget(
         tester,
-        ErrorStates.searchEmpty(
-          searchQuery: 'test',
-          onTryDifferentSearch: () {},
-        ),
+        ErrorStates.searchEmpty(searchQuery: 'test', onTryDifferentSearch: () {}),
       );
 
       expect(find.text('Try Different Search'), findsOneWidget);
     });
 
-    testWidgets('does not render buttons when callbacks are null',
-        (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.searchEmpty(searchQuery: 'test'),
-      );
+    testWidgets('does not render buttons when callbacks are null', (tester) async {
+      await pumpWidget(tester, ErrorStates.searchEmpty(searchQuery: 'test'));
 
       expect(find.text('Clear Search'), findsNothing);
       expect(find.text('Try Different Search'), findsNothing);
@@ -421,20 +346,14 @@ void main() {
     });
 
     testWidgets('renders grant permission button when provided', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.locationPermissionDenied(onRequestPermission: () {}),
-      );
+      await pumpWidget(tester, ErrorStates.locationPermissionDenied(onRequestPermission: () {}));
 
       expect(find.byIcon(Icons.location_on), findsOneWidget);
       expect(find.text('Grant Permission'), findsOneWidget);
     });
 
     testWidgets('renders open settings button when provided', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.locationPermissionDenied(onOpenSettings: () {}),
-      );
+      await pumpWidget(tester, ErrorStates.locationPermissionDenied(onOpenSettings: () {}));
 
       expect(find.text('Open Settings'), findsOneWidget);
     });
@@ -443,9 +362,7 @@ void main() {
       var permissionCalled = false;
       await pumpWidget(
         tester,
-        ErrorStates.locationPermissionDenied(
-          onRequestPermission: () => permissionCalled = true,
-        ),
+        ErrorStates.locationPermissionDenied(onRequestPermission: () => permissionCalled = true),
       );
 
       await tester.tap(find.text('Grant Permission'));
@@ -458,9 +375,7 @@ void main() {
       var settingsCalled = false;
       await pumpWidget(
         tester,
-        ErrorStates.locationPermissionDenied(
-          onOpenSettings: () => settingsCalled = true,
-        ),
+        ErrorStates.locationPermissionDenied(onOpenSettings: () => settingsCalled = true),
       );
 
       await tester.tap(find.text('Open Settings'));
@@ -479,42 +394,27 @@ void main() {
     });
 
     testWidgets('renders custom message when provided', (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.profileLoadError(customMessage: 'Custom error'),
-      );
+      await pumpWidget(tester, ErrorStates.profileLoadError(customMessage: 'Custom error'));
 
       expect(find.text('Custom error'), findsOneWidget);
     });
 
-    testWidgets('renders retry button when onRetry provided and not retrying',
-        (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.profileLoadError(onRetry: () {}),
-      );
+    testWidgets('renders retry button when onRetry provided and not retrying', (tester) async {
+      await pumpWidget(tester, ErrorStates.profileLoadError(onRetry: () {}));
 
       expect(find.byIcon(Icons.refresh), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
     });
 
-    testWidgets('shows retrying indicator when isRetrying is true',
-        (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.profileLoadError(onRetry: () {}, isRetrying: true),
-      );
+    testWidgets('shows retrying indicator when isRetrying is true', (tester) async {
+      await pumpWidget(tester, ErrorStates.profileLoadError(onRetry: () {}, isRetrying: true));
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.text('Retrying...'), findsOneWidget);
     });
 
-    testWidgets('renders sign out button when onSignOut provided',
-        (tester) async {
-      await pumpWidget(
-        tester,
-        ErrorStates.profileLoadError(onSignOut: () {}),
-      );
+    testWidgets('renders sign out button when onSignOut provided', (tester) async {
+      await pumpWidget(tester, ErrorStates.profileLoadError(onSignOut: () {}));
 
       expect(find.byIcon(Icons.logout), findsOneWidget);
       expect(find.text('Sign Out'), findsOneWidget);
@@ -522,10 +422,7 @@ void main() {
 
     testWidgets('tapping retry calls callback', (tester) async {
       var retryCalled = false;
-      await pumpWidget(
-        tester,
-        ErrorStates.profileLoadError(onRetry: () => retryCalled = true),
-      );
+      await pumpWidget(tester, ErrorStates.profileLoadError(onRetry: () => retryCalled = true));
 
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();
@@ -535,10 +432,7 @@ void main() {
 
     testWidgets('tapping sign out calls callback', (tester) async {
       var signOutCalled = false;
-      await pumpWidget(
-        tester,
-        ErrorStates.profileLoadError(onSignOut: () => signOutCalled = true),
-      );
+      await pumpWidget(tester, ErrorStates.profileLoadError(onSignOut: () => signOutCalled = true));
 
       await tester.tap(find.text('Sign Out'));
       await tester.pumpAndSettle();

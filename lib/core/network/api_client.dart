@@ -48,6 +48,7 @@ class ApiClient {
   final AuthHeaderProvider _authProvider;
   final ETagCache _etagCache;
   final int _timeoutSeconds;
+
   /// Optional override of GET retry count (tests). When null, [RetryPolicy.apiGet]
   /// is the sole budget for GET retries.
   final int? _maxGetRetriesOverride;

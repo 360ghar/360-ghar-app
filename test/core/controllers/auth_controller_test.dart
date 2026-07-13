@@ -11,16 +11,16 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ghar360/features/assistant/data/assistant_repository.dart';
-import 'package:ghar360/core/data/ports/properties_port.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
-import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
+import 'package:ghar360/core/controllers/offline_queue_service.dart';
+import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
+import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/features/assistant/data/assistant_repository.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
 import 'package:ghar360/features/profile/data/profile_repository.dart';
@@ -1308,6 +1308,5 @@ class FakeSession2 extends Fake implements Session {
   String get accessToken => 'fake-access-token-2';
 
   @override
-  int get expiresAt =>
-      DateTime.now().add(const Duration(hours: 2)).millisecondsSinceEpoch ~/ 1000;
+  int get expiresAt => DateTime.now().add(const Duration(hours: 2)).millisecondsSinceEpoch ~/ 1000;
 }

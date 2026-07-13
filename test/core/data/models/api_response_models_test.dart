@@ -67,7 +67,7 @@ void main() {
     });
 
     test('toJson roundtrip preserves all fields', () {
-      final original = ErrorResponse(
+      final original = const ErrorResponse(
         message: 'Validation failed',
         errorCode: 'VALIDATION_ERROR',
         details: {'field': 'email'},
@@ -126,7 +126,7 @@ void main() {
     });
 
     test('toJson roundtrip preserves all fields', () {
-      final original = NotificationSettings(
+      final original = const NotificationSettings(
         emailNotifications: false,
         pushNotifications: true,
         smsNotifications: true,

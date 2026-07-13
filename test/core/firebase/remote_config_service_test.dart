@@ -98,10 +98,7 @@ void main() {
     });
 
     test('iosUpdateUrl defaults to App Store URL', () {
-      expect(
-        RemoteConfigService.iosUpdateUrl,
-        'https://apps.apple.com/app/id123456789',
-      );
+      expect(RemoteConfigService.iosUpdateUrl, 'https://apps.apple.com/app/id123456789');
     });
 
     test('iosReleaseNotes defaults to empty string', () {

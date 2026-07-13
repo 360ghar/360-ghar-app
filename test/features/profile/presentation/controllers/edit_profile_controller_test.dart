@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
@@ -42,10 +41,7 @@ void main() {
 
   group('EditProfileController — initial load', () {
     test('loads user data into controllers when currentUser is set', () {
-      final user = testUserModel(
-        fullName: 'John Doe',
-        email: 'john@example.com',
-      );
+      final user = testUserModel(fullName: 'John Doe', email: 'john@example.com');
       // testUserModel doesn't expose all fields; build a full model directly.
       final fullUser = user.copyWith(
         profileImageUrl: 'https://example.com/avatar.jpg',
@@ -76,8 +72,10 @@ void main() {
     });
 
     test('handles preferences without location key', () {
-      final user = testUserModel(fullName: 'Jane', email: 'jane@example.com')
-          .copyWith(preferences: {'other': 'value'});
+      final user = testUserModel(
+        fullName: 'Jane',
+        email: 'jane@example.com',
+      ).copyWith(preferences: {'other': 'value'});
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
 
       final controller = createController();
@@ -86,8 +84,10 @@ void main() {
     });
 
     test('handles non-string location in preferences', () {
-      final user = testUserModel(fullName: 'Jane', email: 'jane@example.com')
-          .copyWith(preferences: {'location': 12345});
+      final user = testUserModel(
+        fullName: 'Jane',
+        email: 'jane@example.com',
+      ).copyWith(preferences: {'location': 12345});
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
 
       final controller = createController();
@@ -106,8 +106,10 @@ void main() {
     });
 
     test('handles invalid dateOfBirth string', () {
-      final user = testUserModel(fullName: 'Jane', email: 'jane@example.com')
-          .copyWith(dateOfBirth: 'not-a-date');
+      final user = testUserModel(
+        fullName: 'Jane',
+        email: 'jane@example.com',
+      ).copyWith(dateOfBirth: 'not-a-date');
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
 
       final controller = createController();
@@ -128,8 +130,10 @@ void main() {
 
   group('EditProfileController — clearDateOfBirth', () {
     test('sets dateOfBirth to null', () {
-      final user = testUserModel(fullName: 'Jane', email: 'jane@example.com')
-          .copyWith(dateOfBirth: '1995-06-15');
+      final user = testUserModel(
+        fullName: 'Jane',
+        email: 'jane@example.com',
+      ).copyWith(dateOfBirth: '1995-06-15');
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
 
       final controller = createController();
@@ -142,8 +146,7 @@ void main() {
   });
 
   group('EditProfileController — saveProfile', () {
-    test('throws when formKey has no attached Form (currentState is null)',
-        () async {
+    test('throws when formKey has no attached Form (currentState is null)', () async {
       final controller = createController();
 
       // formKey.currentState is null (no Form widget) → null check throws.
@@ -152,8 +155,7 @@ void main() {
       expect(controller.isSaving.value, isFalse);
     });
 
-    test('throws when currentUser is null (after form validation passes)',
-        () async {
+    test('throws when currentUser is null (after form validation passes)', () async {
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>());
 
       final controller = createController();
@@ -164,13 +166,13 @@ void main() {
       expect(controller.isSaving.value, isFalse);
     });
 
-    test('does not call updateUserProfile when form validation fails',
-        () async {
-      final user = testUserModel(fullName: 'John', email: 'john@example.com')
-          .copyWith(preferences: {'existing': 'value'});
+    test('does not call updateUserProfile when form validation fails', () async {
+      final user = testUserModel(
+        fullName: 'John',
+        email: 'john@example.com',
+      ).copyWith(preferences: {'existing': 'value'});
       when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-      when(() => authController.updateUserProfile(any()))
-          .thenAnswer((_) async => true);
+      when(() => authController.updateUserProfile(any())).thenAnswer((_) async => true);
 
       final controller = createController();
       controller.nameController.text = 'John Updated';

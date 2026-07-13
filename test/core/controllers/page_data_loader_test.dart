@@ -8,9 +8,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_data_loader.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
@@ -56,18 +54,19 @@ void main() {
     // Default stubs ---------------------------------------------------------
     // getStateForPage returns the initial (empty, no location) state unless a
     // test overrides it. Tests use `thenAnswer` to return a mutable state.
-    when(() => pageState.getStateForPage(any())).thenAnswer(
-      (inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType),
-    );
+    when(
+      () => pageState.getStateForPage(any()),
+    ).thenAnswer((inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType));
     when(() => pageState.updatePageState(any(), any())).thenReturn(null);
     when(() => pageState.notifyPageRefreshing(any(), any())).thenReturn(null);
 
     // LocationController stubs.
-    when(() => locationController.getInitialLocation()).thenAnswer(
-      (_) async => const LocationData(name: 'GPS Loc', latitude: 28.6, longitude: 77.2),
-    );
-    when(() => locationController.getAddressFromCoordinates(any(), any()))
-        .thenAnswer((_) async => 'Resolved Address');
+    when(
+      () => locationController.getInitialLocation(),
+    ).thenAnswer((_) async => const LocationData(name: 'GPS Loc', latitude: 28.6, longitude: 77.2));
+    when(
+      () => locationController.getAddressFromCoordinates(any(), any()),
+    ).thenAnswer((_) async => 'Resolved Address');
 
     loader = PageDataLoader(pageState, propertiesRepo, swipesRepo, locationController);
   });
@@ -92,8 +91,8 @@ void main() {
       nextCursor: nextCursor,
       hasMore: hasMore,
       lastFetched: lastFetched ?? DateTime.now(),
-      selectedLocation: location ??
-          const LocationData(name: 'Saved', latitude: 28.6, longitude: 77.2),
+      selectedLocation:
+          location ?? const LocationData(name: 'Saved', latitude: 28.6, longitude: 77.2),
     );
   }
 
@@ -106,30 +105,34 @@ void main() {
         nextCursor: 'cursor1',
         hasMore: true,
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => resp);
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => resp);
 
       await loader.loadPageData(PageType.explore);
 
       verify(() => pageState.updatePageState(PageType.explore, any())).called(greaterThan(0));
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
     });
 
     test('fetches first page for likes via swipes repo', () async {
@@ -138,93 +141,107 @@ void main() {
         nextCursor: null,
         hasMore: false,
       );
-      when(() => swipesRepo.getSwipeHistoryProperties(
-            filters: any(named: 'filters'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            isLiked: any(named: 'isLiked'),
-          )).thenAnswer((_) async => resp);
+      when(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((_) async => resp);
 
       await loader.loadPageData(PageType.likes);
 
-      verify(() => swipesRepo.getSwipeHistoryProperties(
-            filters: any(named: 'filters'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            isLiked: any(named: 'isLiked'),
-          )).called(1);
+      verify(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).called(1);
     });
 
     test('discover uses excludeSwiped=true and limit 20', () async {
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       await loader.loadPageData(PageType.discover);
 
-      final captured = verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: captureAny(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: captureAny(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).captured;
+      final captured = verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: captureAny(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: captureAny(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).captured;
 
       expect(captured[0], 20); // limit
       expect(captured[1], true); // excludeSwiped
     });
 
     test('sets isLoading=true then false during foreground load', () async {
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       await loader.loadPageData(PageType.explore);
 
       // At least one updatePageState call should have isLoading=true.
-      final calls = verify(() => pageState.updatePageState(PageType.explore, captureAny()))
-          .captured.cast<PageStateModel>();
+      final calls = verify(
+        () => pageState.updatePageState(PageType.explore, captureAny()),
+      ).captured.cast<PageStateModel>();
       expect(calls.any((s) => s.isLoading), true);
       expect(calls.any((s) => !s.isLoading), true);
     });
 
     test('catches repository error and sets error state', () async {
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenThrow(Exception('fetch failed'));
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenThrow(Exception('fetch failed'));
 
       await loader.loadPageData(PageType.explore);
 
-      final calls = verify(() => pageState.updatePageState(PageType.explore, captureAny()))
-          .captured.cast<PageStateModel>();
+      final calls = verify(
+        () => pageState.updatePageState(PageType.explore, captureAny()),
+      ).captured.cast<PageStateModel>();
       expect(calls.any((s) => s.error != null), true);
     });
   });
@@ -242,16 +259,18 @@ void main() {
 
       await loader.loadPageData(PageType.explore);
 
-      verifyNever(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          ));
+      verifyNever(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      );
     });
 
     test('forceRefresh triggers background refresh with cached data', () async {
@@ -261,63 +280,71 @@ void main() {
           properties: [testPropertyModel(id: 1)],
         ),
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       await loader.loadPageData(PageType.explore, forceRefresh: true);
       // Allow background unawaited future to settle.
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
       verify(() => pageState.notifyPageRefreshing(PageType.explore, true)).called(1);
       verify(() => pageState.notifyPageRefreshing(PageType.explore, false)).called(1);
     });
 
     test('backgroundRefresh triggers background refresh', () async {
-      when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => cachedState(inv.positionalArguments[0] as PageType),
-      );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => pageState.getStateForPage(any()),
+      ).thenAnswer((inv) => cachedState(inv.positionalArguments[0] as PageType));
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       await loader.loadPageData(PageType.discover, backgroundRefresh: true);
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
     });
 
     test('stale cached data triggers background refresh', () async {
@@ -327,30 +354,34 @@ void main() {
           lastFetched: DateTime.now().subtract(const Duration(minutes: 30)),
         ),
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       await loader.loadPageData(PageType.explore);
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
     });
 
     test('background refresh failure sets error on current state', () async {
@@ -360,23 +391,26 @@ void main() {
           properties: [testPropertyModel(id: 1)],
         ),
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenThrow(Exception('refresh failed'));
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenThrow(Exception('refresh failed'));
 
       await loader.loadPageData(PageType.explore, forceRefresh: true);
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       // The background catchError path updates state with isRefreshing=false.
-      final calls = verify(() => pageState.updatePageState(PageType.explore, captureAny()))
-          .captured.cast<PageStateModel>();
+      final calls = verify(
+        () => pageState.updatePageState(PageType.explore, captureAny()),
+      ).captured.cast<PageStateModel>();
       expect(calls.any((s) => s.error != null && !s.isRefreshing), true);
     });
   });
@@ -394,16 +428,18 @@ void main() {
 
       await loader.loadPageData(PageType.explore);
 
-      verifyNever(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          ));
+      verifyNever(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      );
     });
 
     test('does not load when state.isRefreshing is already true', () async {
@@ -416,16 +452,18 @@ void main() {
 
       await loader.loadPageData(PageType.explore, forceRefresh: true);
 
-      verifyNever(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          ));
+      verifyNever(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      );
     });
 
     test('heals stale loading state when no properties and old lastFetched', () async {
@@ -440,30 +478,34 @@ void main() {
           lastFetched: DateTime.now().subtract(const Duration(seconds: 30)),
         ),
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       await loader.loadPageData(PageType.explore);
 
       // The heal path calls updatePageState to reset flags, then loads.
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
     });
   });
 
@@ -479,25 +521,30 @@ void main() {
           hasMore: true,
         ),
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => UnifiedPropertyResponse(
-        items: [testPropertyModel(id: 2), testPropertyModel(id: 3)],
-        nextCursor: 'next2',
-        hasMore: true,
-      ));
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer(
+        (_) async => UnifiedPropertyResponse(
+          items: [testPropertyModel(id: 2), testPropertyModel(id: 3)],
+          nextCursor: 'next2',
+          hasMore: true,
+        ),
+      );
 
       await loader.loadMorePageData(PageType.explore);
 
-      final calls = verify(() => pageState.updatePageState(PageType.explore, captureAny()))
-          .captured.cast<PageStateModel>();
+      final calls = verify(
+        () => pageState.updatePageState(PageType.explore, captureAny()),
+      ).captured.cast<PageStateModel>();
       // Final state should contain appended properties (3 total).
       final last = calls.last;
       expect(last.properties.length, 3);
@@ -514,29 +561,35 @@ void main() {
           hasMore: true,
         ),
       );
-      when(() => swipesRepo.getSwipeHistoryProperties(
-            filters: any(named: 'filters'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            isLiked: any(named: 'isLiked'),
-          )).thenAnswer((_) async => UnifiedPropertyResponse(
-        items: [testPropertyModel(id: 2)],
-        nextCursor: null,
-        hasMore: false,
-      ));
+      when(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer(
+        (_) async => UnifiedPropertyResponse(
+          items: [testPropertyModel(id: 2)],
+          nextCursor: null,
+          hasMore: false,
+        ),
+      );
 
       await loader.loadMorePageData(PageType.likes);
 
-      verify(() => swipesRepo.getSwipeHistoryProperties(
-            filters: any(named: 'filters'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            isLiked: any(named: 'isLiked'),
-          )).called(1);
+      verify(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).called(1);
     });
 
     test('skips when isLoading is true', () async {
@@ -549,16 +602,18 @@ void main() {
 
       await loader.loadMorePageData(PageType.explore);
 
-      verifyNever(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          ));
+      verifyNever(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      );
     });
 
     test('skips when isLoadingMore is true', () async {
@@ -571,39 +626,40 @@ void main() {
 
       await loader.loadMorePageData(PageType.explore);
 
-      verifyNever(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          ));
+      verifyNever(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      );
     });
 
     test('skips when hasMore is false', () async {
       when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => cachedState(
-          inv.positionalArguments[0] as PageType,
-          nextCursor: 'next',
-          hasMore: false,
-        ),
+        (inv) =>
+            cachedState(inv.positionalArguments[0] as PageType, nextCursor: 'next', hasMore: false),
       );
 
       await loader.loadMorePageData(PageType.explore);
 
-      verifyNever(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          ));
+      verifyNever(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      );
     });
 
     test('skips and clears isLoadingMore when no location set', () async {
@@ -620,91 +676,91 @@ void main() {
 
       await loader.loadMorePageData(PageType.explore);
 
-      verifyNever(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          ));
+      verifyNever(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      );
     });
 
     test('marks terminal when nextCursor is empty', () async {
       when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => cachedState(
-          inv.positionalArguments[0] as PageType,
-          nextCursor: '',
-          hasMore: true,
-        ),
+        (inv) => cachedState(inv.positionalArguments[0] as PageType, nextCursor: '', hasMore: true),
       );
 
       await loader.loadMorePageData(PageType.explore);
 
-      final calls = verify(() => pageState.updatePageState(PageType.explore, captureAny()))
-          .captured.cast<PageStateModel>();
+      final calls = verify(
+        () => pageState.updatePageState(PageType.explore, captureAny()),
+      ).captured.cast<PageStateModel>();
       expect(calls.any((s) => s.hasMore == false && !s.isLoadingMore), true);
     });
 
     test('catches error and resets isLoadingMore', () async {
       when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => cachedState(
-          inv.positionalArguments[0] as PageType,
-          nextCursor: 'next',
-          hasMore: true,
-        ),
+        (inv) =>
+            cachedState(inv.positionalArguments[0] as PageType, nextCursor: 'next', hasMore: true),
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenThrow(Exception('load more failed'));
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenThrow(Exception('load more failed'));
 
       await loader.loadMorePageData(PageType.explore);
 
-      final calls = verify(() => pageState.updatePageState(PageType.explore, captureAny()))
-          .captured.cast<PageStateModel>();
+      final calls = verify(
+        () => pageState.updatePageState(PageType.explore, captureAny()),
+      ).captured.cast<PageStateModel>();
       expect(calls.any((s) => !s.isLoadingMore), true);
     });
 
     test('loadMoreData alias delegates to loadMorePageData', () async {
       when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => cachedState(
-          inv.positionalArguments[0] as PageType,
-          nextCursor: 'next',
-          hasMore: true,
-        ),
+        (inv) =>
+            cachedState(inv.positionalArguments[0] as PageType, nextCursor: 'next', hasMore: true),
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       await loader.loadMoreData(PageType.explore);
 
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
     });
   });
 
@@ -712,115 +768,131 @@ void main() {
 
   group('debounceRefresh', () {
     test('schedules a refresh for explore after delay', () async {
-      when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => cachedState(inv.positionalArguments[0] as PageType),
-      );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => pageState.getStateForPage(any()),
+      ).thenAnswer((inv) => cachedState(inv.positionalArguments[0] as PageType));
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       loader.debounceRefresh(PageType.explore);
       // Wait for the 500ms debounce timer to fire.
       await Future<void>.delayed(const Duration(milliseconds: 600));
 
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
     });
 
     test('cancels previous debounce timer on repeated calls', () async {
-      when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => cachedState(inv.positionalArguments[0] as PageType),
-      );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => pageState.getStateForPage(any()),
+      ).thenAnswer((inv) => cachedState(inv.positionalArguments[0] as PageType));
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       // Call twice rapidly; only the last timer should fire.
       loader.debounceRefresh(PageType.discover);
       loader.debounceRefresh(PageType.discover);
       await Future<void>.delayed(const Duration(milliseconds: 600));
 
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
     });
   });
 
   group('refreshAllPagesData', () {
     test('triggers forceRefresh for all three pages', () async {
-      when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => cachedState(inv.positionalArguments[0] as PageType),
-      );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
-      when(() => swipesRepo.getSwipeHistoryProperties(
-            filters: any(named: 'filters'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            isLiked: any(named: 'isLiked'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => pageState.getStateForPage(any()),
+      ).thenAnswer((inv) => cachedState(inv.positionalArguments[0] as PageType));
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       loader.refreshAllPagesData();
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       // explore + discover hit properties repo, likes hits swipes repo.
-      verify(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).called(2);
-      verify(() => swipesRepo.getSwipeHistoryProperties(
-            filters: any(named: 'filters'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            isLiked: any(named: 'isLiked'),
-          )).called(1);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(2);
+      verify(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).called(1);
     });
   });
 
@@ -845,16 +917,18 @@ void main() {
           selectedLocation: null,
         ),
       );
-      when(() => propertiesRepo.searchProperties(
-            filters: any(named: 'filters'),
-            cursor: any(named: 'cursor'),
-            limit: any(named: 'limit'),
-            latitude: any(named: 'latitude'),
-            longitude: any(named: 'longitude'),
-            radiusKm: any(named: 'radiusKm'),
-            excludeSwiped: any(named: 'excludeSwiped'),
-            useCache: any(named: 'useCache'),
-          )).thenAnswer((_) async => testPropertyResponse());
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) async => testPropertyResponse());
 
       await loader.loadPageData(PageType.explore);
 

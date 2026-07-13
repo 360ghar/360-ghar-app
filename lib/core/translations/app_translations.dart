@@ -274,6 +274,12 @@ class AppTranslations extends Translations {
       'using_current_location': 'Using your current location',
       'unable_to_get_current_location': 'Unable to get current location',
       'unable_to_select_location': 'Unable to select location',
+      'places_api_key_missing': 'Location search is not configured. Please contact support.',
+      'places_api_request_denied':
+          'Location search is temporarily unavailable. Please try again later or use current location.',
+      'places_api_quota_exceeded': 'Location search limit reached. Please try again later.',
+      'places_api_invalid_request': 'Invalid location search request.',
+      'places_api_timeout': 'Location search timed out. Please try again.',
 
       'dark_theme': 'Dark Theme',
       'dark_theme_desc': 'Use dark theme for the app',
@@ -1464,6 +1470,12 @@ class AppTranslations extends Translations {
       'using_current_location': 'आपका वर्तमान स्थान उपयोग कर रहे हैं',
       'unable_to_get_current_location': 'वर्तमान स्थान प्राप्त करने में असमर्थ',
       'unable_to_select_location': 'स्थान चुनने में असमर्थ',
+      'places_api_key_missing': 'स्थान खोज कॉन्फ़िगर नहीं है। कृपया सहायता से संपर्क करें।',
+      'places_api_request_denied':
+          'स्थान खोज अस्थायी रूप से उपलब्ध नहीं है। बाद में कोशिश करें या वर्तमान स्थान उपयोग करें।',
+      'places_api_quota_exceeded': 'स्थान खोज सीमा पूरी हो गई। कृपया बाद में कोशिश करें।',
+      'places_api_invalid_request': 'अमान्य स्थान खोज अनुरोध।',
+      'places_api_timeout': 'स्थान खोज समय समाप्त। कृपया फिर कोशिश करें।',
 
       'dark_theme': 'डार्क थीम',
       'dark_theme_desc': 'ऐप के लिए डार्क थीम का उपयोग करें',

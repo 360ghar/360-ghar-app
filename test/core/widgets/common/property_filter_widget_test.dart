@@ -357,7 +357,7 @@ void main() {
         fallbackLocale: const Locale('en', 'US'),
         home: Scaffold(
           body: Builder(
-            builder: (context) => Center(child: PropertyFilterWidget(pageType: 'explore')),
+            builder: (context) => const Center(child: PropertyFilterWidget(pageType: 'explore')),
           ),
         ),
       ),

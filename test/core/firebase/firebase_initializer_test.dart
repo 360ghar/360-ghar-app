@@ -1,11 +1,8 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
@@ -101,11 +98,13 @@ void main() {
       prevReady = FirebaseRuntimeState.isReady;
       // Initialize AppConfig with firebaseEnabled=false to exercise the
       // disabled-skip branch of FirebaseInitializer.init().
-      AppConfig.initialize(overrides: {
-        'SUPABASE_URL': 'https://example.supabase.co',
-        'SUPABASE_PUBLISHABLE_KEY': 'test-key',
-        'FIREBASE_ENABLED': 'false',
-      });
+      AppConfig.initialize(
+        overrides: {
+          'SUPABASE_URL': 'https://example.supabase.co',
+          'SUPABASE_PUBLISHABLE_KEY': 'test-key',
+          'FIREBASE_ENABLED': 'false',
+        },
+      );
     });
 
     tearDown(() {
@@ -119,10 +118,16 @@ void main() {
       // FirebaseRuntimeState.isReady=false, mark _initialized=true, and return.
       await FirebaseInitializer.init();
 
-      expect(FirebaseInitializer.isFirebaseEnabled, isFalse,
-          reason: 'Firebase should be disabled when FIREBASE_ENABLED=false');
-      expect(FirebaseInitializer.isFirebaseReady, isFalse,
-          reason: 'Firebase should not be ready when disabled');
+      expect(
+        FirebaseInitializer.isFirebaseEnabled,
+        isFalse,
+        reason: 'Firebase should be disabled when FIREBASE_ENABLED=false',
+      );
+      expect(
+        FirebaseInitializer.isFirebaseReady,
+        isFalse,
+        reason: 'Firebase should not be ready when disabled',
+      );
     });
 
     test('subsequent calls are idempotent (no-op)', () async {
@@ -173,75 +178,61 @@ void main() {
 
       // Mock the flutter_local_notifications channel for
       // _showBackgroundNotification.
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(flnChannel, (MethodCall call) async {
-        switch (call.method) {
-          case 'initialize':
-            return true;
-          case 'createNotificationChannel':
-            return null;
-          case 'show':
-            return null;
-          default:
-            return null;
-        }
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        flnChannel,
+        (MethodCall call) async {
+          switch (call.method) {
+            case 'initialize':
+              return true;
+            case 'createNotificationChannel':
+              return null;
+            case 'show':
+              return null;
+            default:
+              return null;
+          }
+        },
+      );
     });
 
     tearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(flnChannel, null);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        flnChannel,
+        null,
+      );
     });
 
     test('completes without throwing for a message with notification title', () async {
-      final message = RemoteMessage(
+      final message = const RemoteMessage(
         messageId: 'test-1',
-        notification: const RemoteNotification(
-          title: 'Test Title',
-          body: 'Test Body',
-        ),
+        notification: RemoteNotification(title: 'Test Title', body: 'Test Body'),
         data: <String, dynamic>{'key': 'value'},
       );
 
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
 
     test('extracts title from notification payload', () async {
-      final message = RemoteMessage(
+      final message = const RemoteMessage(
         messageId: 'test-2',
-        notification: const RemoteNotification(
-          title: 'Hello World',
-          body: 'This is a test body',
-        ),
+        notification: RemoteNotification(title: 'Hello World', body: 'This is a test body'),
       );
 
       // Should complete without throwing and display a local notification.
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
 
     test('falls back to data payload for title when notification is null', () async {
-      final message = RemoteMessage(
+      final message = const RemoteMessage(
         messageId: 'test-3',
-        data: <String, dynamic>{
-          'title': 'Data Title',
-          'body': 'Data Body',
-        },
+        data: <String, dynamic>{'title': 'Data Title', 'body': 'Data Body'},
       );
 
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
 
     test('falls back to notification_title in data payload', () async {
-      final message = RemoteMessage(
+      final message = const RemoteMessage(
         messageId: 'test-4',
         data: <String, dynamic>{
           'notification_title': 'Notif Title',
@@ -249,69 +240,39 @@ void main() {
         },
       );
 
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
 
     test('does not display notification when title is empty', () async {
-      final message = RemoteMessage(
+      final message = const RemoteMessage(
         messageId: 'test-5',
-        notification: const RemoteNotification(
-          title: '',
-          body: 'Body without title',
-        ),
+        notification: RemoteNotification(title: '', body: 'Body without title'),
       );
 
       // Should complete without throwing; no notification displayed.
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
 
-    test('does not display notification when title is null and data is empty',
-        () async {
-      final message = RemoteMessage(
-        messageId: 'test-6',
-        data: <String, dynamic>{},
-      );
+    test('does not display notification when title is null and data is empty', () async {
+      final message = const RemoteMessage(messageId: 'test-6', data: <String, dynamic>{});
 
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
 
     test('handles null messageId gracefully', () async {
-      final message = RemoteMessage(
-        notification: const RemoteNotification(title: 'No ID'),
-      );
+      final message = const RemoteMessage(notification: RemoteNotification(title: 'No ID'));
 
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
 
     test('handles message with both notification and data payload', () async {
-      final message = RemoteMessage(
+      final message = const RemoteMessage(
         messageId: 'test-7',
-        notification: const RemoteNotification(
-          title: 'Notification Title',
-          body: 'Notification Body',
-        ),
-        data: <String, dynamic>{
-          'property_id': '42',
-          'route': '/property/42',
-        },
+        notification: RemoteNotification(title: 'Notification Title', body: 'Notification Body'),
+        data: <String, dynamic>{'property_id': '42', 'route': '/property/42'},
       );
 
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
 
     test('catches errors from Firebase.initializeApp gracefully', () async {
@@ -319,15 +280,10 @@ void main() {
       // DefaultFirebaseOptions.currentPlatform.
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
 
-      final message = RemoteMessage(
-        notification: const RemoteNotification(title: 'Test'),
-      );
+      final message = const RemoteMessage(notification: RemoteNotification(title: 'Test'));
 
       // Should catch the UnsupportedError and complete without throwing.
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
   });
 
@@ -343,27 +299,26 @@ void main() {
       // Let the background handler initialize Firebase itself.
 
       // Mock FLN channel to throw for all calls.
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(flnChannel, (MethodCall call) async {
-        throw PlatformException(code: 'fln-error');
-      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        flnChannel,
+        (MethodCall call) async {
+          throw PlatformException(code: 'fln-error');
+        },
+      );
     });
 
     tearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(flnChannel, null);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        flnChannel,
+        null,
+      );
     });
 
     test('handles FLN platform exception gracefully', () async {
-      final message = RemoteMessage(
-        notification: const RemoteNotification(title: 'Error Test'),
-      );
+      final message = const RemoteMessage(notification: RemoteNotification(title: 'Error Test'));
 
       // _showBackgroundNotification catches the error internally.
-      await expectLater(
-        firebaseMessagingBackgroundHandler(message),
-        completes,
-      );
+      await expectLater(firebaseMessagingBackgroundHandler(message), completes);
     });
   });
 
@@ -374,14 +329,16 @@ void main() {
     setUp(() {
       prevEnabled = FirebaseRuntimeState.isEnabled;
       prevReady = FirebaseRuntimeState.isReady;
-      AppConfig.initialize(overrides: {
-        'SUPABASE_URL': 'https://example.supabase.co',
-        'SUPABASE_PUBLISHABLE_KEY': 'test-key',
-        'FIREBASE_ENABLED': 'false',
-        'FIREBASE_APPCHECK': 'false',
-        'FIREBASE_CRASHLYTICS': 'false',
-        'FIREBASE_ANALYTICS': 'false',
-      });
+      AppConfig.initialize(
+        overrides: {
+          'SUPABASE_URL': 'https://example.supabase.co',
+          'SUPABASE_PUBLISHABLE_KEY': 'test-key',
+          'FIREBASE_ENABLED': 'false',
+          'FIREBASE_APPCHECK': 'false',
+          'FIREBASE_CRASHLYTICS': 'false',
+          'FIREBASE_ANALYTICS': 'false',
+        },
+      );
     });
 
     tearDown(() {

@@ -70,10 +70,7 @@ class TourUrl {
       if (originValidated == null) return false;
       final originHost = Uri.tryParse(originValidated)?.host.toLowerCase();
       final navHost = Uri.tryParse(validated)?.host.toLowerCase();
-      if (originHost != null &&
-          originHost.isNotEmpty &&
-          navHost != null &&
-          navHost == originHost) {
+      if (originHost != null && originHost.isNotEmpty && navHost != null && navHost == originHost) {
         return true;
       }
     }
