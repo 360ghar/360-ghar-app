@@ -20,6 +20,11 @@ class PageDataLoader {
   final Set<PageType> _activeLoads = <PageType>{};
   static const Duration _staleLoadingGuardWindow = Duration(seconds: 20);
 
+  /// When a likes load is already in flight and the user switches liked/passed
+  /// (or otherwise force-refreshes), [loadPageData] would early-return and
+  /// leave the new segment empty. Queue one follow-up load instead.
+  bool _pendingLikesReload = false;
+
   // Debounce timers (per page)
   Timer? _exploreDebouncer;
   Timer? _discoverDebouncer;
@@ -60,7 +65,17 @@ class PageDataLoader {
         _pageState.updatePageState(pageType, state);
       }
 
-      if (state.isLoading || state.isRefreshing || _activeLoads.contains(pageType)) return;
+      if (state.isLoading || state.isRefreshing || _activeLoads.contains(pageType)) {
+        // Segment switch / force refresh while likes is already fetching: do
+        // not drop the request — reload once the in-flight call finishes.
+        // Only queue when a real in-flight load owns `_activeLoads`; orphaned
+        // isLoading flags alone would never call `_finishActiveLoad`.
+        if (pageType == PageType.likes && forceRefresh && _activeLoads.contains(pageType)) {
+          _pendingLikesReload = true;
+          DebugLogger.debug('💖 Queued likes reload while an in-flight likes fetch is active');
+        }
+        return;
+      }
 
       final hasCached = state.properties.isNotEmpty;
       final isStale = state.isDataStale;
@@ -94,8 +109,7 @@ class PageDataLoader {
                   );
                 })
                 .whenComplete(() {
-                  _activeLoads.remove(pageType);
-                  _pageState.notifyPageRefreshing(pageType, false);
+                  _finishActiveLoad(pageType);
                 }),
           );
         } else {
@@ -119,10 +133,22 @@ class PageDataLoader {
       );
     } finally {
       if (activeLoadRegistered && !launchedBackgroundLoad) {
-        _activeLoads.remove(pageType);
-        _pageState.notifyPageRefreshing(pageType, false);
+        _finishActiveLoad(pageType);
       }
     }
+  }
+
+  void _finishActiveLoad(PageType pageType) {
+    _activeLoads.remove(pageType);
+    _pageState.notifyPageRefreshing(pageType, false);
+    if (pageType != PageType.likes || !_pendingLikesReload) return;
+
+    _pendingLikesReload = false;
+    DebugLogger.debug('💖 Running queued likes reload after prior fetch completed');
+    // Defer so we never re-enter loadPageData from inside finally/whenComplete.
+    scheduleMicrotask(() {
+      loadPageData(PageType.likes, forceRefresh: true);
+    });
   }
 
   bool _shouldHealStaleLoadingState(PageType pageType, PageStateModel state) {
@@ -180,15 +206,38 @@ class PageDataLoader {
           limit: 50,
           isLiked: isLikedSegment,
         );
-        final newProperties = [...state.properties, ...response.items];
+        // Re-read after await: concurrent remove/move/segment switch must not
+        // re-append removed rows or clobber the newly selected segment.
+        final latest = _pageState.getStateForPage(pageType);
+        final stillOnSegment =
+            ((latest.getAdditionalData<String>('currentSegment') ?? 'liked') == 'liked') ==
+            isLikedSegment;
+        if (!stillOnSegment) {
+          _pageState.updatePageState(pageType, latest.copyWith(isLoadingMore: false));
+          return;
+        }
+
+        // Absorb optimistic maps for this page (clear confirmed, skip opposite)
+        // then append only ids not already visible.
+        final pageMerged = _pageState.mergeLikesServerResults(
+          response.items,
+          isLikedSegment: isLikedSegment,
+        );
+        final existingIds = latest.properties.map((p) => p.id).toSet();
+        final toAppend = pageMerged.where((p) => !existingIds.contains(p.id)).toList();
+        final newProperties = [...latest.properties, ...toAppend];
         _pageState.updatePageState(
           pageType,
-          state.copyWith(
+          latest.copyWith(
             properties: newProperties,
             nextCursor: response.nextCursor,
             hasMore: response.hasMorePages,
             isLoadingMore: false,
           ),
+        );
+        _pageState.syncLikesSegmentCacheFromVisible(
+          hasMore: response.hasMorePages,
+          nextCursor: response.nextCursor,
         );
       } else {
         final response = await _propertiesRepo.searchProperties(
@@ -319,10 +368,21 @@ class PageDataLoader {
       } else if (latest.isLoading || latest.isRefreshing) {
         // A newer load for the other segment owns loading flags.
       } else {
+        // Stale segment finished after the user switched. Loading flags are
+        // already false (resetData on segment switch). Queue a reload for the
+        // *current* segment if the visible list is still empty and no follow-up
+        // load was already requested via forceRefresh.
         _pageState.updatePageState(
           pageType,
           latest.copyWith(isLoading: false, isRefreshing: false, error: null),
         );
+        if (latest.properties.isEmpty && !_pendingLikesReload) {
+          _pendingLikesReload = true;
+          DebugLogger.debug(
+            '💖 Stale likes segment apply left empty list; queuing reload for '
+            '${latest.getAdditionalData<String>('currentSegment') ?? 'liked'}',
+          );
+        }
       }
       return;
     }

@@ -216,12 +216,14 @@ class GooglePlacesService extends GetxService {
       };
 
       // Soft location bias ranks nearby results higher. Cap radius so distant
-      // metros in the same country still appear. `strictbounds` is only added
-      // when explicitly enabled via config (default false).
+      // metros in the same country still appear. Do not floor below the
+      // configured value — tighter `PLACES_RADIUS_METERS` must still apply.
+      // `strictbounds` is only added when explicitly enabled via config
+      // (default false) so soft bias is never a hard geo trap.
       if (currentPosition != null) {
         queryParams['location'] = '${currentPosition.latitude},${currentPosition.longitude}';
         final configured = int.tryParse(config.placesRadiusMeters) ?? 25000;
-        final biasMeters = configured.clamp(25000, 200000);
+        final biasMeters = configured.clamp(1, 200000);
         queryParams['radius'] = '$biasMeters';
         if (config.placesStrictBounds) {
           queryParams['strictbounds'] = 'true';

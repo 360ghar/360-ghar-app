@@ -134,6 +134,7 @@ class PageStateService extends GetxController {
     _optimisticLiked.clear();
     _optimisticPassed.clear();
     _sessionSwipedPropertyIds.clear();
+    _discoverPreserveIds.clear();
 
     try {
       _storage.remove(_exploreStateStorageKey);
@@ -615,6 +616,7 @@ class PageStateService extends GetxController {
   }
 
   void removePropertyFromDiscover(int propertyId) {
+    _discoverPreserveIds.remove(propertyId);
     _bumpDiscoverMutation();
     final state = discoverState.value;
     final updatedList = state.properties.where((p) => p.id != propertyId).toList();
@@ -625,6 +627,12 @@ class PageStateService extends GetxController {
   /// against this set so cards do not reappear after tab switches / refresh
   /// races before `exclude_swiped` is reflected server-side.
   final Set<int> _sessionSwipedPropertyIds = <int>{};
+
+  /// Property ids explicitly reinserted by undo. [mergeDiscoverRefreshResults]
+  /// only preserves these local-only cards across an in-flight fetch — never
+  /// the whole remaining deck (which would glue old location/filter cards onto
+  /// a new server page after a mid-refresh swipe).
+  final Set<int> _discoverPreserveIds = <int>{};
 
   /// Filters [items] to drop any property swiped earlier in this session.
   List<PropertyModel> filterOutSessionSwiped(List<PropertyModel> items) {
@@ -647,6 +655,7 @@ class PageStateService extends GetxController {
   /// sees it again as the top card.
   void reinsertPropertyToDiscover(PropertyModel property) {
     _sessionSwipedPropertyIds.remove(property.id);
+    _discoverPreserveIds.add(property.id);
     _bumpDiscoverMutation();
     final state = discoverState.value;
     final exists = state.properties.any((p) => p.id == property.id);
@@ -658,27 +667,47 @@ class PageStateService extends GetxController {
   /// Merges a Discover network page with the local deck when concurrent
   /// mutations (swipe/undo) happened during the request.
   ///
-  /// Local cards that are not session-swiped and missing from the server page
-  /// are preserved at the front (undo reinsert). Session-swiped ids stay out.
+  /// Only cards explicitly reinserted via [reinsertPropertyToDiscover] are
+  /// kept when missing from the server page — and they are kept whether the
+  /// undo happened mid-flight or just before the request started. A plain
+  /// swipe must never preserve the rest of the pre-refresh deck (that would
+  /// glue old location/filter cards onto a new server page). Session-swiped
+  /// ids always stay out.
+  ///
+  /// [epochAtRequestStart] is retained for call-site compatibility and debug
+  /// context; preserve eligibility is driven solely by [_discoverPreserveIds].
   List<PropertyModel> mergeDiscoverRefreshResults({
     required List<PropertyModel> serverItems,
     required List<PropertyModel> localItems,
     required int epochAtRequestStart,
   }) {
     final filtered = filterOutSessionSwiped(serverItems);
-    if (discoverMutationEpoch == epochAtRequestStart) {
-      return filtered;
+    final serverIds = filtered.map((p) => p.id).toSet();
+
+    // Always honor undo-reinsert markers (not only when epoch advanced during
+    // the request). Epoch alone cannot distinguish "undo before fetch" from
+    // "no local cards to keep".
+    final preserve = <PropertyModel>[];
+    if (_discoverPreserveIds.isNotEmpty) {
+      for (final p in localItems) {
+        if (!_discoverPreserveIds.contains(p.id)) continue;
+        if (serverIds.contains(p.id)) continue;
+        if (_sessionSwipedPropertyIds.contains(p.id)) continue;
+        preserve.add(p);
+      }
     }
 
-    final serverIds = filtered.map((p) => p.id).toSet();
-    final preserve = localItems
-        .where((p) => !serverIds.contains(p.id) && !_sessionSwipedPropertyIds.contains(p.id))
-        .toList();
+    // Consume markers after this merge so a later page does not keep resurrecting
+    // cards that were already applied (or that the server now owns).
+    _discoverPreserveIds.clear();
+
     if (preserve.isEmpty) return filtered;
 
+    final concurrent = discoverMutationEpoch != epochAtRequestStart;
     DebugLogger.debug(
-      '👆 Preserving ${preserve.length} local Discover card'
-      '${preserve.length == 1 ? '' : 's'} after concurrent mutation during fetch',
+      '👆 Preserving ${preserve.length} undo-reinserted Discover card'
+      '${preserve.length == 1 ? '' : 's'} after fetch merge'
+      '${concurrent ? ' (concurrent mutation)' : ''}',
     );
     return [...preserve, ...filtered];
   }

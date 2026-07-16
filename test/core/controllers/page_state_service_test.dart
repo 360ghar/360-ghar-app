@@ -474,6 +474,62 @@ void main() {
       expect(merged.map((p) => p.id).toList(), [3, 1, 2]);
     });
 
+    test(
+      'mergeDiscoverRefreshResults does not keep old-query cards after mid-refresh swipe',
+      () async {
+        final service = await createService();
+        final a = testPropertyModel(id: 1);
+        final b = testPropertyModel(id: 2);
+        final c = testPropertyModel(id: 3);
+        final d = testPropertyModel(id: 4);
+        final e = testPropertyModel(id: 5);
+
+        final epoch = service.discoverMutationEpoch;
+        // Pre-refresh deck for location A.
+        service.updatePageState(
+          PageType.discover,
+          service.discoverState.value.copyWith(properties: [a, b, c]),
+        );
+
+        // User swipes A away while a location-change fetch is in flight.
+        // Epoch bumps, but only undo reinserts should be preserved — not B/C.
+        await service.recordSwipe(propertyId: 1, isLiked: true);
+        expect(service.discoverMutationEpoch, greaterThan(epoch));
+        expect(service.discoverState.value.properties.map((p) => p.id), [2, 3]);
+
+        // Server returns the new location's first page.
+        final merged = service.mergeDiscoverRefreshResults(
+          serverItems: [d, e],
+          localItems: service.discoverState.value.properties,
+          epochAtRequestStart: epoch,
+        );
+        expect(merged.map((p) => p.id).toList(), [4, 5]);
+      },
+    );
+
+    test('mergeDiscoverRefreshResults keeps undo reinsert even when epoch matches', () async {
+      final service = await createService();
+      final a = testPropertyModel(id: 1);
+      final b = testPropertyModel(id: 2);
+      final reinserted = testPropertyModel(id: 3);
+
+      // Undo happens before the fetch starts, so epoch at request start
+      // equals the post-undo epoch. Preserve markers must still win.
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [a, b]),
+      );
+      service.reinsertPropertyToDiscover(reinserted);
+      final epoch = service.discoverMutationEpoch;
+
+      final merged = service.mergeDiscoverRefreshResults(
+        serverItems: [a, b],
+        localItems: service.discoverState.value.properties,
+        epochAtRequestStart: epoch,
+      );
+      expect(merged.map((p) => p.id).toList(), [3, 1, 2]);
+    });
+
     test('liked swipe finds property in explore list too', () async {
       final service = await createService();
       final prop = testPropertyModel(id: 55);
