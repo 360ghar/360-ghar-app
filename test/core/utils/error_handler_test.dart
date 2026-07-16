@@ -99,12 +99,8 @@ void main() {
 
     test('does not throw with a retry callback', () {
       final error = const AuthException('Invalid login credentials');
-      var retryCalled = false;
 
-      expect(
-        () => ErrorHandler.handleAuthError(error, onRetry: () => retryCalled = true),
-        returnsNormally,
-      );
+      expect(() => ErrorHandler.handleAuthError(error, onRetry: () {}), returnsNormally);
     });
 
     test('does not throw with a stackTrace', () {
@@ -154,12 +150,8 @@ void main() {
 
     test('does not throw with a retry callback', () {
       final error = NetworkException('Connection failed');
-      var retryCalled = false;
 
-      expect(
-        () => ErrorHandler.handleNetworkError(error, onRetry: () => retryCalled = true),
-        returnsNormally,
-      );
+      expect(() => ErrorHandler.handleNetworkError(error, onRetry: () {}), returnsNormally);
     });
 
     test('does not throw with a stackTrace', () {

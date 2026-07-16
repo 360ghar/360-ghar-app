@@ -199,13 +199,22 @@ class PageDataLoader {
           cursor: cursor,
           limit: pageType == PageType.discover ? 20 : 50,
           excludeSwiped: pageType == PageType.discover,
-          useCache: true,
+          // Never cache discover pages — swipes must not reappear from stale cache.
+          useCache: pageType != PageType.discover,
         );
 
-        final newProperties = [...state.properties, ...response.items];
+        final pageItems = pageType == PageType.discover
+            ? _pageState.filterOutSessionSwiped(response.items)
+            : response.items;
+        // Re-read after await so concurrent swipes aren't re-appended.
+        final latest = _pageState.getStateForPage(pageType);
+        final newProperties = [
+          ...latest.properties,
+          ...pageItems.where((p) => !latest.properties.any((e) => e.id == p.id)),
+        ];
         _pageState.updatePageState(
           pageType,
-          state.copyWith(
+          latest.copyWith(
             properties: newProperties,
             nextCursor: response.nextCursor,
             hasMore: response.hasMorePages,
@@ -283,10 +292,15 @@ class PageDataLoader {
         isLiked: isLikedSegment,
       );
 
+      // Re-read state after the await — optimistic likes may have been added
+      // while the request was in flight.
+      final latest = _pageState.getStateForPage(pageType);
+      final merged = _pageState.mergeLikesServerResults(resp.items, isLikedSegment: isLikedSegment);
+
       _pageState.updatePageState(
         pageType,
-        state.copyWith(
-          properties: resp.items,
+        latest.copyWith(
+          properties: merged,
           selectedLocation: loc,
           nextCursor: resp.nextCursor,
           hasMore: resp.hasMorePages,
@@ -295,6 +309,10 @@ class PageDataLoader {
           lastFetched: DateTime.now(),
           error: null,
         ),
+      );
+      _pageState.syncLikesSegmentCacheFromVisible(
+        hasMore: resp.hasMorePages,
+        nextCursor: resp.nextCursor,
       );
       return;
     }
@@ -308,17 +326,26 @@ class PageDataLoader {
       cursor: null,
       limit: pageType == PageType.discover ? 20 : 50,
       excludeSwiped: pageType == PageType.discover,
-      useCache: true,
+      // Discover must not use HTTP cache — a stale page would re-show swiped cards.
+      useCache: pageType != PageType.discover,
     );
     DebugLogger.debug(
       '📡 [DATA_LOADER] Received ${resp.items.length} properties for '
       '${pageType.name} (hasMore=${resp.hasMorePages}, '
       'nextCursor=${resp.nextCursor != null})',
     );
+
+    // Re-read after await: swipes during the request already removed ids from
+    // the local deck; also drop any session-swiped cards the API still returns.
+    final latest = _pageState.getStateForPage(pageType);
+    final items = pageType == PageType.discover
+        ? _pageState.filterOutSessionSwiped(resp.items)
+        : resp.items;
+
     _pageState.updatePageState(
       pageType,
-      state.copyWith(
-        properties: resp.items,
+      latest.copyWith(
+        properties: items,
         selectedLocation: loc,
         nextCursor: resp.nextCursor,
         hasMore: resp.hasMorePages,

@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/location_controller.dart';
+import 'package:ghar360/core/data/models/popular_city.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/services/google_places_service.dart';
 import 'package:ghar360/features/location_search/presentation/controllers/location_search_controller.dart';
 
 class LocationSearchView extends GetView<LocationSearchController> {
@@ -102,38 +104,73 @@ class LocationSearchView extends GetView<LocationSearchController> {
 
     return Obx(() {
       if (controller.isLoading.value || locationController.isSearchingPlaces.value) {
-        return const Center(child: CircularProgressIndicator());
+        final query = controller.searchQuery.value.trim();
+        final remote = locationController.placeSuggestions.toList(growable: false);
+        final suggestions = PopularCity.mergeWithRemote(query, remote);
+        // Keep showing known results (incl. popular cities) while a network
+        // search is in flight instead of blanking the list.
+        if (suggestions.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
       }
 
       if (controller.searchError.value.isNotEmpty) {
-        return _buildErrorState(context);
+        final query = controller.searchQuery.value.trim();
+        final popular = PopularCity.suggestionsForQuery(query);
+        if (popular.isEmpty) {
+          return _buildErrorState(context);
+        }
       }
 
-      final suggestions = locationController.placeSuggestions;
+      final query = controller.searchQuery.value.trim();
+      final remote = locationController.placeSuggestions.toList(growable: false);
+      final suggestions = PopularCity.mergeWithRemote(query, remote);
+      final popularOnly = PopularCity.suggestionsForQuery(query);
+      final showPopularHeader = popularOnly.isNotEmpty && (remote.isEmpty || query.isEmpty);
 
-      if (suggestions.isEmpty && controller.searchQuery.value.isNotEmpty) {
+      if (suggestions.isEmpty && query.isNotEmpty) {
         return _buildEmptyState(context);
       }
 
-      // If there are no suggestions yet and no query, show a gentle prompt
       if (suggestions.isEmpty) {
         return _buildSearchPrompt(context);
       }
 
       return ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: suggestions.length,
+        itemCount: suggestions.length + (showPopularHeader ? 1 : 0),
         itemBuilder: (context, index) {
-          final suggestion = suggestions[index];
-          return ListTile(
-            leading: const Icon(Icons.location_on_outlined),
-            title: Text(suggestion.mainText),
-            subtitle: suggestion.secondaryText.isNotEmpty ? Text(suggestion.secondaryText) : null,
-            onTap: () => controller.selectPlace(suggestion),
-          );
+          if (showPopularHeader && index == 0) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Text(
+                'popular_cities'.tr,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: Theme.of(context).hintColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            );
+          }
+          final suggestionIndex = showPopularHeader ? index - 1 : index;
+          final suggestion = suggestions[suggestionIndex];
+          return _buildSuggestionTile(context, suggestion);
         },
       );
     });
+  }
+
+  Widget _buildSuggestionTile(BuildContext context, PlaceSuggestion suggestion) {
+    final isPopular = PopularCity.isPopularPlaceId(suggestion.placeId);
+    return ListTile(
+      leading: Icon(
+        isPopular ? Icons.location_city : Icons.location_on_outlined,
+        color: isPopular ? AppDesign.primaryYellow : null,
+      ),
+      title: Text(suggestion.mainText),
+      subtitle: suggestion.secondaryText.isNotEmpty ? Text(suggestion.secondaryText) : null,
+      onTap: () => controller.selectPlace(suggestion),
+    );
   }
 
   Widget _buildEmptyState(BuildContext context) {

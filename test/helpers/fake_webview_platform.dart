@@ -198,7 +198,6 @@ class FakeWebResourceError implements WebResourceError {
   @override
   final int errorCode;
 
-  @override
   String? get domain => 'fake';
 
   @override

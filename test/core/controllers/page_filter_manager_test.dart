@@ -177,7 +177,7 @@ void main() {
     });
 
     test('ignores seed text on subsequent calls', () {
-      final c1 = manager.getOrCreateSearchController(PageType.explore, seedText: 'hello');
+      manager.getOrCreateSearchController(PageType.explore, seedText: 'hello');
       final c2 = manager.getOrCreateSearchController(PageType.explore, seedText: 'world');
       expect(c2.text, 'hello');
     });

@@ -26,39 +26,6 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 // Firebase core mock with Crashlytics plugin constants
 // ---------------------------------------------------------------------------
 
-class _MockFirebaseAppWithConstants implements TestFirebaseCoreHostApi {
-  Map<String?, Object?> get _pluginConstants => <String?, Object?>{
-    'plugins.flutter.io/firebase_crashlytics': <String, Object?>{
-      'isCrashlyticsCollectionEnabled': true,
-    },
-  };
-
-  CoreFirebaseOptions get _options =>
-      CoreFirebaseOptions(apiKey: '123', projectId: '123', appId: '123', messagingSenderId: '123');
-
-  @override
-  Future<CoreInitializeResponse> initializeApp(
-    String appName,
-    CoreFirebaseOptions initializeAppRequest,
-  ) async {
-    return CoreInitializeResponse(
-      name: appName,
-      options: _options,
-      pluginConstants: _pluginConstants,
-    );
-  }
-
-  @override
-  Future<List<CoreInitializeResponse>> initializeCore() async {
-    // Return empty so Firebase.initializeApp() creates [DEFAULT] once via
-    // initializeApp() — pre-seeding DEFAULT here causes duplicate-app errors.
-    return <CoreInitializeResponse>[];
-  }
-
-  @override
-  Future<CoreFirebaseOptions> optionsFromResource() async => _options;
-}
-
 // ---------------------------------------------------------------------------
 // Path provider for GetStorage
 // ---------------------------------------------------------------------------
@@ -107,7 +74,6 @@ class _FakeAnalytics extends Fake
     Map<String, dynamic>? webOptions,
   }) => this;
 
-  @override
   FirebaseAnalyticsPlatform setInitialValues({required Map<dynamic, dynamic> pluginConstants}) =>
       this;
 

@@ -199,7 +199,7 @@ void main() {
       expect(find.text('Gamma Villa'), findsNothing);
     });
 
-    testWidgets('action buttons are below the fold until card is scrolled', (tester) async {
+    testWidgets('does not show like/pass/info action buttons', (tester) async {
       final properties = [_property(id: 1, title: 'Alpha Home')];
       await pumpStack(
         tester,
@@ -212,21 +212,10 @@ void main() {
       );
       await tester.pump();
 
-      final likeKey = find.byKey(const ValueKey('qa.discover.action.like'));
-      final passKey = find.byKey(const ValueKey('qa.discover.action.pass'));
-      final detailsKey = find.byKey(const ValueKey('qa.discover.action.details'));
-
-      // Present in the tree (end of scroll) but not in the first viewport.
-      expect(likeKey, findsOneWidget);
-      expect(passKey, findsOneWidget);
-      expect(detailsKey, findsOneWidget);
-      expect(tester.getRect(likeKey).top, greaterThanOrEqualTo(700));
+      expect(find.byKey(const ValueKey('qa.discover.action.like')), findsNothing);
+      expect(find.byKey(const ValueKey('qa.discover.action.pass')), findsNothing);
+      expect(find.byKey(const ValueKey('qa.discover.action.details')), findsNothing);
       expect(find.text('Swipe right to like | Swipe left to pass'), findsNothing);
-
-      // After scrolling the deck, the action bar is reachable.
-      await tester.scrollUntilVisible(likeKey, 200, scrollable: find.byType(Scrollable).first);
-      await tester.pump();
-      expect(tester.getRect(likeKey).top, lessThan(700));
     });
   });
 
@@ -436,79 +425,6 @@ void main() {
 
       // Still rendering the same top card.
       expect(find.text('Alpha Home'), findsWidgets);
-    });
-  });
-
-  group('PropertySwipeStack — action buttons', () {
-    Future<void> scrollToActions(WidgetTester tester, Finder actionFinder) async {
-      await tester.scrollUntilVisible(actionFinder, 300, scrollable: find.byType(Scrollable).first);
-      await tester.pump();
-    }
-
-    testWidgets('like action button calls onSwipeRight', (tester) async {
-      PropertyModel? liked;
-      await pumpStack(
-        tester,
-        PropertySwipeStack(
-          properties: [_property(id: 7, title: 'Like Me')],
-          onSwipeLeft: (_) {},
-          onSwipeRight: (p) => liked = p,
-          onSwipeUp: (_) {},
-        ),
-      );
-      await tester.pump();
-
-      final likeKey = find.byKey(const ValueKey('qa.discover.action.like'));
-      await scrollToActions(tester, likeKey);
-      await tester.tap(likeKey);
-      await tester.pump();
-
-      expect(liked, isNotNull);
-      expect(liked!.id, 7);
-    });
-
-    testWidgets('pass action button calls onSwipeLeft', (tester) async {
-      PropertyModel? passed;
-      await pumpStack(
-        tester,
-        PropertySwipeStack(
-          properties: [_property(id: 8, title: 'Pass Me')],
-          onSwipeLeft: (p) => passed = p,
-          onSwipeRight: (_) {},
-          onSwipeUp: (_) {},
-        ),
-      );
-      await tester.pump();
-
-      final passKey = find.byKey(const ValueKey('qa.discover.action.pass'));
-      await scrollToActions(tester, passKey);
-      await tester.tap(passKey);
-      await tester.pump();
-
-      expect(passed, isNotNull);
-      expect(passed!.id, 8);
-    });
-
-    testWidgets('details action button calls onSwipeUp', (tester) async {
-      PropertyModel? opened;
-      await pumpStack(
-        tester,
-        PropertySwipeStack(
-          properties: [_property(id: 9, title: 'Details Me')],
-          onSwipeLeft: (_) {},
-          onSwipeRight: (_) {},
-          onSwipeUp: (p) => opened = p,
-        ),
-      );
-      await tester.pump();
-
-      final detailsKey = find.byKey(const ValueKey('qa.discover.action.details'));
-      await scrollToActions(tester, detailsKey);
-      await tester.tap(detailsKey);
-      await tester.pump();
-
-      expect(opened, isNotNull);
-      expect(opened!.id, 9);
     });
   });
 

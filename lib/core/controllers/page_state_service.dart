@@ -130,6 +130,10 @@ class PageStateService extends GetxController {
     exploreState.value = PageStateModel.initial(PageType.explore);
     discoverState.value = PageStateModel.initial(PageType.discover);
     likesState.value = PageStateModel.initial(PageType.likes);
+    _likesSegmentCache.clear();
+    _optimisticLiked.clear();
+    _optimisticPassed.clear();
+    _sessionSwipedPropertyIds.clear();
 
     try {
       _storage.remove(_exploreStateStorageKey);
@@ -538,15 +542,45 @@ class PageStateService extends GetxController {
   // ──────────────────────────────────────────────────────────────────
 
   Future<void> recordSwipe({required int propertyId, required bool isLiked}) async {
-    // Maintain likes list optimistically
+    // Maintain liked/passed segment caches AND the visible list so the Likes
+    // tab reflects Discover swipes immediately, regardless of which segment
+    // is currently selected.
+    final prop = _findPropertyInAnyList(propertyId);
     if (isLiked) {
-      final prop = _findPropertyInAnyList(propertyId);
-      if (prop != null) addPropertyToLikes(prop);
+      if (prop != null) {
+        _trackOptimisticLike(prop);
+        _upsertLikesSegmentCache('liked', prop);
+        if (currentLikesSegment == 'liked') {
+          _prependToVisibleLikesList(prop);
+        }
+      }
+      _removeFromLikesSegmentCache('passed', propertyId);
+      if (currentLikesSegment == 'passed') {
+        removePropertyFromLikes(propertyId);
+      }
     } else {
-      removePropertyFromLikes(propertyId);
+      // Pass: drop from liked, add to passed.
+      if (prop != null) {
+        _trackOptimisticPass(prop);
+      } else {
+        // Still drop any pending like for this id.
+        _optimisticLiked.remove(propertyId);
+      }
+      _removeFromLikesSegmentCache('liked', propertyId);
+      if (currentLikesSegment == 'liked') {
+        removePropertyFromLikes(propertyId);
+      }
+      if (prop != null) {
+        _upsertLikesSegmentCache('passed', prop);
+        if (currentLikesSegment == 'passed') {
+          _prependToVisibleLikesList(prop);
+        }
+      }
     }
 
-    // Also remove from discover deck optimistically
+    // Also remove from discover deck optimistically and remember the id so
+    // a later discover refresh (cache / server lag) cannot reintroduce it.
+    _sessionSwipedPropertyIds.add(propertyId);
     removePropertyFromDiscover(propertyId);
 
     // Network sync — await so failures propagate to callers, which revert the
@@ -573,10 +607,32 @@ class PageStateService extends GetxController {
     updatePageState(PageType.discover, state.copyWith(properties: updatedList));
   }
 
+  /// Property ids swiped this session. Discover fetch results are filtered
+  /// against this set so cards do not reappear after tab switches / refresh
+  /// races before `exclude_swiped` is reflected server-side.
+  final Set<int> _sessionSwipedPropertyIds = <int>{};
+
+  /// Filters [items] to drop any property swiped earlier in this session.
+  List<PropertyModel> filterOutSessionSwiped(List<PropertyModel> items) {
+    if (_sessionSwipedPropertyIds.isEmpty || items.isEmpty) return items;
+    final filtered = items.where((p) => !_sessionSwipedPropertyIds.contains(p.id)).toList();
+    final removed = items.length - filtered.length;
+    if (removed > 0) {
+      DebugLogger.debug(
+        '👆 Filtered $removed session-swiped propert'
+        '${removed == 1 ? 'y' : 'ies'} from discover results',
+      );
+    }
+    return filtered;
+  }
+
+  bool isSessionSwiped(int propertyId) => _sessionSwipedPropertyIds.contains(propertyId);
+
   /// Re-inserts a property at the front of the discover deck. Used by the
   /// undo-swipe flow to restore the previously-swiped property so the user
   /// sees it again as the top card.
   void reinsertPropertyToDiscover(PropertyModel property) {
+    _sessionSwipedPropertyIds.remove(property.id);
     final state = discoverState.value;
     final exists = state.properties.any((p) => p.id == property.id);
     if (exists) return;
@@ -590,13 +646,21 @@ class PageStateService extends GetxController {
   /// reverses the likes list mutation from the original swipe and fires the
   /// background network sync with the opposite action.
   Future<void> undoSwipe({required int propertyId, required bool originalIsLiked}) async {
-    // Reverse ONLY the likes list mutation that the original swipe made:
-    // - Original LIKE added the property to likes → undo removes it.
-    // - Original PASS did not touch likes (the property was in discover,
-    //   not likes) → undo leaves likes unchanged. We do NOT add to likes
-    //   because the user's intent is to re-swipe, not auto-like.
+    // Reverse ONLY the likes/passed mutations that the original swipe made:
+    // - Original LIKE added to liked → undo removes from liked (and its cache).
+    // - Original PASS added to passed → undo removes from passed cache only.
     if (originalIsLiked) {
-      removePropertyFromLikes(propertyId);
+      _optimisticLiked.remove(propertyId);
+      _removeFromLikesSegmentCache('liked', propertyId);
+      if (currentLikesSegment == 'liked') {
+        removePropertyFromLikes(propertyId);
+      }
+    } else {
+      _optimisticPassed.remove(propertyId);
+      _removeFromLikesSegmentCache('passed', propertyId);
+      if (currentLikesSegment == 'passed') {
+        removePropertyFromLikes(propertyId);
+      }
     }
 
     // Network sync with the REVERSED action. Without a delete-swipe API,
@@ -606,29 +670,128 @@ class PageStateService extends GetxController {
   }
 
   void removePropertyFromLikes(int propertyId) {
+    // User explicitly removed from the visible segment — drop pending too.
+    if (currentLikesSegment == 'liked') {
+      _optimisticLiked.remove(propertyId);
+    } else {
+      _optimisticPassed.remove(propertyId);
+    }
     final state = likesState.value;
     final updatedList = state.properties.where((p) => p.id != propertyId).toList();
     updatePageState(PageType.likes, state.copyWith(properties: updatedList));
+    // Keep whichever segment is currently loaded in sync with its cache.
+    _removeFromLikesSegmentCache(currentLikesSegment, propertyId);
   }
 
   void addPropertyToLikes(PropertyModel property) {
+    // Always keep the liked segment cache fresh so switching tabs / revisiting
+    // Likes shows the property even if the user was on "passed" when swiping.
+    _trackOptimisticLike(property);
+    _upsertLikesSegmentCache('liked', property);
+    _removeFromLikesSegmentCache('passed', property.id);
     if (currentLikesSegment != 'liked') return;
-    final state = likesState.value;
-    final exists = state.properties.any((p) => p.id == property.id);
-    if (!exists) {
-      final updatedList = [property, ...state.properties];
-      updatePageState(PageType.likes, state.copyWith(properties: updatedList));
-    }
+    _prependToVisibleLikesList(property);
   }
 
   void addPropertyToPassed(PropertyModel property) {
+    _trackOptimisticPass(property);
+    _upsertLikesSegmentCache('passed', property);
+    _removeFromLikesSegmentCache('liked', property.id);
     if (currentLikesSegment != 'passed') return;
+    _prependToVisibleLikesList(property);
+  }
+
+  // ── Optimistic likes/pass that survive server refresh races ──
+
+  /// Properties liked/passed locally but not yet returned by history API.
+  /// Prevents background refresh from flash-removing a just-swiped card.
+  final Map<int, PropertyModel> _optimisticLiked = {};
+  final Map<int, PropertyModel> _optimisticPassed = {};
+
+  void _trackOptimisticLike(PropertyModel property) {
+    _optimisticLiked[property.id] = property;
+    _optimisticPassed.remove(property.id);
+  }
+
+  void _trackOptimisticPass(PropertyModel property) {
+    _optimisticPassed[property.id] = property;
+    _optimisticLiked.remove(property.id);
+  }
+
+  /// Merges a server history page with still-pending optimistic swipes.
+  ///
+  /// Pending items that the server now includes are cleared. Remaining
+  /// pending items are prepended so a racey refresh cannot wipe them.
+  List<PropertyModel> mergeLikesServerResults(
+    List<PropertyModel> serverItems, {
+    required bool isLikedSegment,
+  }) {
+    final optimistic = isLikedSegment ? _optimisticLiked : _optimisticPassed;
+    final opposite = isLikedSegment ? _optimisticPassed : _optimisticLiked;
+    final serverIds = <int>{};
+    final merged = <PropertyModel>[];
+
+    for (final p in serverItems) {
+      serverIds.add(p.id);
+      optimistic.remove(p.id);
+      opposite.remove(p.id);
+      merged.add(p);
+    }
+
+    final pending = optimistic.values.where((p) => !serverIds.contains(p.id)).toList();
+    if (pending.isEmpty) return merged;
+
+    DebugLogger.debug(
+      '💖 Preserving ${pending.length} optimistic '
+      '${isLikedSegment ? 'liked' : 'passed'} properties after server merge',
+    );
+    return [...pending, ...merged];
+  }
+
+  /// Snapshots the current likes list into the per-segment cache after a fetch.
+  void syncLikesSegmentCacheFromVisible({required bool hasMore, String? nextCursor}) {
+    final segment = currentLikesSegment;
+    final ps = likesState.value;
+    _likesSegmentCache[segment] = _LikesSegmentCache(
+      properties: List.of(ps.properties),
+      lastFetched: ps.lastFetched ?? DateTime.now(),
+      hasMore: hasMore,
+      nextCursor: nextCursor,
+    );
+  }
+
+  /// Prepends [property] to the currently visible likes list (no segment check).
+  void _prependToVisibleLikesList(PropertyModel property) {
     final state = likesState.value;
     final exists = state.properties.any((p) => p.id == property.id);
-    if (!exists) {
-      final updatedList = [property, ...state.properties];
-      updatePageState(PageType.likes, state.copyWith(properties: updatedList));
-    }
+    if (exists) return;
+    updatePageState(PageType.likes, state.copyWith(properties: [property, ...state.properties]));
+  }
+
+  void _upsertLikesSegmentCache(String segment, PropertyModel property) {
+    final existing = _likesSegmentCache[segment];
+    final list = List<PropertyModel>.of(existing?.properties ?? const []);
+    list.removeWhere((p) => p.id == property.id);
+    list.insert(0, property);
+    _likesSegmentCache[segment] = _LikesSegmentCache(
+      properties: list,
+      lastFetched: existing?.lastFetched ?? DateTime.now(),
+      hasMore: existing?.hasMore ?? true,
+      nextCursor: existing?.nextCursor,
+    );
+  }
+
+  void _removeFromLikesSegmentCache(String segment, int propertyId) {
+    final existing = _likesSegmentCache[segment];
+    if (existing == null) return;
+    final list = existing.properties.where((p) => p.id != propertyId).toList();
+    if (list.length == existing.properties.length) return;
+    _likesSegmentCache[segment] = _LikesSegmentCache(
+      properties: list,
+      lastFetched: existing.lastFetched,
+      hasMore: existing.hasMore,
+      nextCursor: existing.nextCursor,
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────

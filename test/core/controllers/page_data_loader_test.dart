@@ -59,6 +59,18 @@ void main() {
     ).thenAnswer((inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType));
     when(() => pageState.updatePageState(any(), any())).thenReturn(null);
     when(() => pageState.notifyPageRefreshing(any(), any())).thenReturn(null);
+    when(
+      () => pageState.filterOutSessionSwiped(any()),
+    ).thenAnswer((inv) => List<PropertyModel>.from(inv.positionalArguments[0] as List));
+    when(
+      () => pageState.mergeLikesServerResults(any(), isLikedSegment: any(named: 'isLikedSegment')),
+    ).thenAnswer((inv) => List<PropertyModel>.from(inv.positionalArguments[0] as List));
+    when(
+      () => pageState.syncLikesSegmentCacheFromVisible(
+        hasMore: any(named: 'hasMore'),
+        nextCursor: any(named: 'nextCursor'),
+      ),
+    ).thenReturn(null);
 
     // LocationController stubs.
     when(

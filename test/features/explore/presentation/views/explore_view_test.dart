@@ -150,11 +150,6 @@ PropertyModel _property({int id = 100}) {
   );
 }
 
-/// Finder for a [Semantics] widget whose [label] matches [label].
-Finder _findBySemanticsLabel(String label) {
-  return find.byWidgetPredicate((w) => w is Semantics && w.properties.label == label);
-}
-
 /// Finder for a [Semantics] widget whose [identifier] matches [id].
 Finder _findBySemanticsIdentifier(String id) {
   return find.byWidgetPredicate((w) => w is Semantics && w.properties.identifier == id);

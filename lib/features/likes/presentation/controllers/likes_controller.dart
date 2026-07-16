@@ -100,6 +100,9 @@ class LikesController extends GetxController {
         return;
       }
 
+      // Prefer optimistic + cached data. Only network-refresh when empty or
+      // stale — a refresh-on-every-visit races the swipe POST and used to
+      // flash-remove just-liked properties before the history API had them.
       if (ps.properties.isEmpty) {
         DebugLogger.debug('💖 [LIKES_CONTROLLER] No properties, loading data');
         _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
@@ -107,7 +110,9 @@ class LikesController extends GetxController {
         DebugLogger.debug('💖 [LIKES_CONTROLLER] Data is stale, refreshing in background');
         _pageStateService.loadPageData(PageType.likes, backgroundRefresh: true);
       } else {
-        DebugLogger.debug('💖 [LIKES_CONTROLLER] Data is current, no action needed');
+        DebugLogger.debug(
+          '💖 [LIKES_CONTROLLER] Data is current (${ps.properties.length} items), no refresh',
+        );
       }
     } catch (e, stackTrace) {
       DebugLogger.error('❌ [LIKES_CONTROLLER] Error in activatePage: $e');

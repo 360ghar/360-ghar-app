@@ -85,16 +85,7 @@ void main() {
     // infinite animation.
     await tester.pump();
 
-    // The typing indicator renders 3 small dot containers.
-    final dots = tester.widgetList<Container>(
-      find.ancestor(
-        of: find.byWidgetPredicate(
-          (w) => w is Container && (w.constraints?.maxWidth == 7 || false),
-        ),
-        matching: find.byType(Container),
-      ),
-    );
-    // Verify the typing indicator is shown (3 dots in a Row).
+    // Verify the typing indicator is shown (animated dots).
     expect(find.byType(AnimatedBuilder), findsWidgets);
   });
 

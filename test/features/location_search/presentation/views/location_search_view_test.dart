@@ -114,12 +114,14 @@ void main() {
       expect(find.byKey(const ValueKey('qa.location_search.search_input')), findsOneWidget);
     });
 
-    testWidgets('shows search prompt when no query and no suggestions', (tester) async {
+    testWidgets('shows popular cities when no query and no remote suggestions', (tester) async {
       await tester.pumpApp(const LocationSearchView());
       await tester.pump();
 
-      expect(find.byIcon(Icons.search), findsWidgets);
-      expect(find.text('search_city_or_area_hint'.tr), findsWidgets);
+      expect(find.text('popular_cities'.tr), findsOneWidget);
+      expect(find.text('Gurgaon'), findsOneWidget);
+      expect(find.text('Noida'), findsOneWidget);
+      expect(find.text('Delhi'), findsOneWidget);
     });
 
     testWidgets('shows clear button when query is non-empty and clears on tap', (tester) async {
@@ -180,22 +182,29 @@ void main() {
       expect(find.text('location_found'.tr), findsOneWidget);
     });
 
-    testWidgets('shows loading indicator when searching places', (tester) async {
+    testWidgets('shows loading indicator when searching with no local matches', (tester) async {
+      // Query that matches no popular city and no remote results.
+      searchController.searchQuery.value = 'Zzqx';
+      locationController.suggestions.clear();
       locationController.searching.value = true;
 
       await tester.pumpApp(const LocationSearchView());
       await tester.pump();
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 600));
     });
 
-    testWidgets('shows loading indicator when controller isLoading', (tester) async {
-      searchController.isLoading.value = true;
+    testWidgets('keeps popular cities visible while remote search is in flight', (tester) async {
+      locationController.searching.value = true;
 
       await tester.pumpApp(const LocationSearchView());
       await tester.pump();
 
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      // Empty query still has popular cities — no full-screen spinner.
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('Gurgaon'), findsOneWidget);
     });
 
     testWidgets('shows empty state when query non-empty and no suggestions', (tester) async {
@@ -212,14 +221,18 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
     });
 
-    testWidgets('shows error state when searchError is set', (tester) async {
+    testWidgets('shows error state when searchError is set and no local matches', (tester) async {
+      searchController.searchQuery.value = 'Zzqx';
       searchController.searchError.value = 'Something went wrong';
+      locationController.suggestions.clear();
 
       await tester.pumpApp(const LocationSearchView());
       await tester.pump();
 
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
       expect(find.text('Something went wrong'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 600));
     });
 
     testWidgets('renders suggestion list and tapping a suggestion calls selectPlace', (

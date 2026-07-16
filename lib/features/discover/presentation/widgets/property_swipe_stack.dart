@@ -12,7 +12,6 @@ import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
-import 'package:ghar360/features/discover/presentation/widgets/swipe_card_action_buttons.dart';
 
 /// Immutable drag state for the swipe gesture, driven by a [ValueNotifier]
 /// so only the transform wrapper rebuilds during drag — not the card content.
@@ -39,10 +38,12 @@ class _SwipeDragState {
 /// Gesture map:
 /// - Horizontal drag (stack) → like / pass
 /// - Hero tap / View details → [onSwipeUp] (property details)
-/// - Vertical scroll → full card details (actions stay pinned on first viewport)
-/// - Pass/Details/Like → floating bar at bottom of the deck viewport
+/// - Vertical scroll → full card details
 /// - Gallery chevrons (hero) → change photo only
 /// - 360 interaction → block stack gestures via [onInteractionStart]
+///
+/// Like / Pass / Info action buttons were removed — swipe gestures cover
+/// those actions without cluttering the deck.
 class PropertySwipeStack extends StatefulWidget {
   final List<PropertyModel> properties;
   final Function(PropertyModel) onSwipeLeft;
@@ -92,7 +93,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   bool _blockGestures = false;
   bool _isExiting = false;
 
-  /// True while the stack must ignore pan / button swipes (exit, drag block, anim).
+  /// True while the stack must ignore pan gestures (exit, drag block, anim).
   bool get _gesturesLocked => _blockGestures || _isExiting || _swipeAnimationController.isAnimating;
 
   @override
@@ -269,31 +270,6 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     controller.forward();
   }
 
-  /// Programmatic like/pass from action buttons — same exit path as drag.
-  void _animateSwipeOff({required bool isRight, required double cardWidth}) {
-    if (_properties.isEmpty || _gesturesLocked || _dragNotifier.value.isDragging) {
-      return;
-    }
-
-    final dx = isRight ? cardWidth * 0.4 : -cardWidth * 0.4;
-    _dragNotifier.value = _SwipeDragState(
-      position: Offset(dx, 0),
-      rotation: isRight ? 0.22 : -0.22,
-      isDragging: false,
-    );
-
-    if (isRight) {
-      _isSwipingRight = true;
-      _showSparkles = true;
-      _sparklesAnimationController.forward();
-      widget.onSwipeRight(_properties[0]);
-    } else {
-      widget.onSwipeLeft(_properties[0]);
-    }
-    setState(() => _isExiting = true);
-    _swipeAnimationController.forward();
-  }
-
   void _openDetails() {
     if (_properties.isEmpty || _gesturesLocked) {
       return;
@@ -455,21 +431,6 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                     },
                   ),
                 ),
-
-              // Pin Like/Pass/Details on the first viewport so users never have
-              // to scroll past the full card to find primary actions.
-              if (!_isExiting)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: SwipeCardActionButtons(
-                    onPass: () => _animateSwipeOff(isRight: false, cardWidth: cardWidth),
-                    onDetails: _openDetails,
-                    onLike: () => _animateSwipeOff(isRight: true, cardWidth: cardWidth),
-                    enabled: !_gesturesLocked,
-                  ),
-                ),
             ],
           ),
         );
@@ -477,12 +438,10 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     );
   }
 
-  /// Scrollable card chrome. Bottom inset keeps details clear of the floating
-  /// action bar. Opaque fill prevents stacked cards showing through gaps.
+  /// Scrollable card chrome. Opaque fill prevents stacked cards showing
+  /// through gaps. Card fills the deck viewport for a cleaner swipe UI.
   Widget _buildScrollableDeck({required double cardWidth, required double deckHeight}) {
     final trayColor = AppDesign.scaffoldBackground;
-    // Room for the floating action bar (~56px buttons + vertical padding).
-    const floatingActionsInset = 96.0;
 
     return SingleChildScrollView(
       // Keyed so scroll position resets when the top property changes.
@@ -490,32 +449,24 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
       physics: _blockGestures
           ? const NeverScrollableScrollPhysics()
           : const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: (deckHeight - floatingActionsInset).clamp(1.0, double.infinity),
-            ),
-            child: ColoredBox(
-              color: trayColor,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: PropertySwipeCard(
-                  property: _properties[0],
-                  onTap: _openDetails,
-                  onInteractionStart: () {
-                    setState(() => _blockGestures = true);
-                  },
-                  onInteractionEnd: () {
-                    setState(() => _blockGestures = false);
-                  },
-                ),
-              ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: deckHeight),
+        child: ColoredBox(
+          color: trayColor,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: PropertySwipeCard(
+              property: _properties[0],
+              onTap: _openDetails,
+              onInteractionStart: () {
+                setState(() => _blockGestures = true);
+              },
+              onInteractionEnd: () {
+                setState(() => _blockGestures = false);
+              },
             ),
           ),
-          const SizedBox(height: floatingActionsInset),
-        ],
+        ),
       ),
     );
   }
