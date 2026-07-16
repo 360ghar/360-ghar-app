@@ -20,10 +20,19 @@ class PageDataLoader {
   final Set<PageType> _activeLoads = <PageType>{};
   static const Duration _staleLoadingGuardWindow = Duration(seconds: 20);
 
-  /// When a likes load is already in flight and the user switches liked/passed
-  /// (or otherwise force-refreshes), [loadPageData] would early-return and
-  /// leave the new segment empty. Queue one follow-up load instead.
-  bool _pendingLikesReload = false;
+  /// Per-page request generation. Bumped when a newer load supersedes an
+  /// in-flight one so stale completions never mutate current UI/cache state.
+  final Map<PageType, int> _requestGeneration = <PageType, int>{
+    PageType.explore: 0,
+    PageType.discover: 0,
+    PageType.likes: 0,
+  };
+
+  /// Pages that should force-reload once the current in-flight first-page
+  /// fetch finishes (segment switch, filter change, pull-to-refresh).
+  final Set<PageType> _pendingForceReload = <PageType>{};
+
+  bool _disposed = false;
 
   // Debounce timers (per page)
   Timer? _exploreDebouncer;
@@ -37,16 +46,29 @@ class PageDataLoader {
   PageDataLoader(this._pageState, this._propertiesRepo, this._swipesRepo, this._locationController);
 
   void dispose() {
+    _disposed = true;
+    _pendingForceReload.clear();
     _exploreDebouncer?.cancel();
     _discoverDebouncer?.cancel();
     _likesDebouncer?.cancel();
   }
+
+  int _bumpGeneration(PageType pageType) {
+    final next = (_requestGeneration[pageType] ?? 0) + 1;
+    _requestGeneration[pageType] = next;
+    return next;
+  }
+
+  bool _isCurrentGeneration(PageType pageType, int generation) =>
+      !_disposed && (_requestGeneration[pageType] ?? 0) == generation;
 
   Future<void> loadPageData(
     PageType pageType, {
     bool forceRefresh = false,
     bool backgroundRefresh = false,
   }) async {
+    if (_disposed) return;
+
     bool activeLoadRegistered = false;
     bool launchedBackgroundLoad = false;
     try {
@@ -66,13 +88,14 @@ class PageDataLoader {
       }
 
       if (state.isLoading || state.isRefreshing || _activeLoads.contains(pageType)) {
-        // Segment switch / force refresh while likes is already fetching: do
-        // not drop the request — reload once the in-flight call finishes.
-        // Only queue when a real in-flight load owns `_activeLoads`; orphaned
-        // isLoading flags alone would never call `_finishActiveLoad`.
-        if (pageType == PageType.likes && forceRefresh && _activeLoads.contains(pageType)) {
-          _pendingLikesReload = true;
-          DebugLogger.debug('💖 Queued likes reload while an in-flight likes fetch is active');
+        // Newer force refresh while a first-page fetch is in flight: invalidate
+        // the in-flight completion and queue one follow-up load.
+        if (forceRefresh && _activeLoads.contains(pageType)) {
+          _bumpGeneration(pageType);
+          _pendingForceReload.add(pageType);
+          DebugLogger.debug(
+            '🔁 Queued ${pageType.name} force reload while an in-flight fetch is active',
+          );
         }
         return;
       }
@@ -82,28 +105,32 @@ class PageDataLoader {
 
       // If there's no cached data at all, do a foreground load
       if (!hasCached) {
+        final generation = _bumpGeneration(pageType);
         _activeLoads.add(pageType);
         activeLoadRegistered = true;
         _pageState.updatePageState(pageType, state.copyWith(isLoading: true, error: null));
-        await _fetchAndUpdatePage(pageType);
+        await _fetchAndUpdatePage(pageType, generation: generation);
       } else {
         // We have cached data: return immediately and revalidate in
         // background when asked or stale
         if (forceRefresh || backgroundRefresh || isStale) {
+          final generation = _bumpGeneration(pageType);
           _activeLoads.add(pageType);
           activeLoadRegistered = true;
           launchedBackgroundLoad = true;
           _pageState.notifyPageRefreshing(pageType, true);
           _pageState.updatePageState(pageType, state.copyWith(isRefreshing: true, error: null));
           unawaited(
-            _fetchAndUpdatePage(pageType)
+            _fetchAndUpdatePage(pageType, generation: generation)
                 .catchError((e, stackTrace) {
+                  if (!_isCurrentGeneration(pageType, generation)) return;
                   DebugLogger.error('❌ Background refresh failed for ${pageType.name}', e);
                   final current = _pageState.getStateForPage(pageType);
                   _pageState.updatePageState(
                     pageType,
                     current.copyWith(
                       isRefreshing: false,
+                      isLoadingMore: false,
                       error: ErrorMapper.mapApiError(e, stackTrace),
                     ),
                   );
@@ -118,9 +145,11 @@ class PageDataLoader {
         }
       }
 
+      if (_disposed) return;
       final updatedCount = _pageState.getStateForPage(pageType).properties.length;
       DebugLogger.success('✅ Loaded $updatedCount properties for ${pageType.name}');
     } catch (e, stackTrace) {
+      if (_disposed) return;
       DebugLogger.error('❌ Failed to load ${pageType.name} data', e, stackTrace);
       final state = _pageState.getStateForPage(pageType);
       _pageState.updatePageState(
@@ -128,6 +157,7 @@ class PageDataLoader {
         state.copyWith(
           isLoading: false,
           isRefreshing: false,
+          isLoadingMore: false,
           error: ErrorMapper.mapApiError(e, stackTrace),
         ),
       );
@@ -140,14 +170,24 @@ class PageDataLoader {
 
   void _finishActiveLoad(PageType pageType) {
     _activeLoads.remove(pageType);
-    _pageState.notifyPageRefreshing(pageType, false);
-    if (pageType != PageType.likes || !_pendingLikesReload) return;
+    if (_disposed) return;
 
-    _pendingLikesReload = false;
-    DebugLogger.debug('💖 Running queued likes reload after prior fetch completed');
+    _pageState.notifyPageRefreshing(pageType, false);
+    // If the in-flight fetch was invalidated (generation bumped) it may have
+    // returned without clearing loading flags — heal them so a queued reload
+    // is not blocked by isLoading/isRefreshing.
+    final state = _pageState.getStateForPage(pageType);
+    if (state.isLoading || state.isRefreshing) {
+      _pageState.updatePageState(pageType, state.copyWith(isLoading: false, isRefreshing: false));
+    }
+
+    if (!_pendingForceReload.remove(pageType)) return;
+
+    DebugLogger.debug('🔁 Running queued ${pageType.name} reload after prior fetch completed');
     // Defer so we never re-enter loadPageData from inside finally/whenComplete.
     scheduleMicrotask(() {
-      loadPageData(PageType.likes, forceRefresh: true);
+      if (_disposed) return;
+      loadPageData(pageType, forceRefresh: true);
     });
   }
 
@@ -167,10 +207,14 @@ class PageDataLoader {
   }
 
   Future<void> loadMorePageData(PageType pageType) async {
+    if (_disposed) return;
     try {
       final state = _pageState.getStateForPage(pageType);
       if (state.isLoading || state.isLoadingMore || !state.hasMore) return;
 
+      // Capture generation without bumping so a concurrent force refresh
+      // (which bumps) invalidates this append.
+      final generation = _requestGeneration[pageType] ?? 0;
       _pageState.updatePageState(pageType, state.copyWith(isLoadingMore: true));
 
       final loc = state.selectedLocation;
@@ -179,7 +223,9 @@ class PageDataLoader {
           '⚠️ No location set for ${pageType.name} while loading more. '
           'Skipping.',
         );
-        _pageState.updatePageState(pageType, state.copyWith(isLoadingMore: false));
+        if (_isCurrentGeneration(pageType, generation)) {
+          _pageState.updatePageState(pageType, state.copyWith(isLoadingMore: false));
+        }
         return;
       }
 
@@ -191,7 +237,12 @@ class PageDataLoader {
           '⚠️ No next cursor for ${pageType.name} while loading more. '
           'Marking page terminal.',
         );
-        _pageState.updatePageState(pageType, state.copyWith(isLoadingMore: false, hasMore: false));
+        if (_isCurrentGeneration(pageType, generation)) {
+          _pageState.updatePageState(
+            pageType,
+            state.copyWith(isLoadingMore: false, hasMore: false),
+          );
+        }
         return;
       }
 
@@ -205,6 +256,10 @@ class PageDataLoader {
           limit: 50,
           isLiked: isLikedSegment,
         );
+        if (!_isCurrentGeneration(pageType, generation)) {
+          DebugLogger.debug('🔁 Discarded stale likes load-more completion');
+          return;
+        }
         // Re-read after await: concurrent remove/move/segment switch must not
         // re-append removed rows or clobber the newly selected segment.
         final latest = _pageState.getStateForPage(pageType);
@@ -249,6 +304,11 @@ class PageDataLoader {
           useCache: pageType != PageType.discover,
         );
 
+        if (!_isCurrentGeneration(pageType, generation)) {
+          DebugLogger.debug('🔁 Discarded stale ${pageType.name} load-more completion');
+          return;
+        }
+
         final pageItems = pageType == PageType.discover
             ? _pageState.filterOutSessionSwiped(response.items)
             : response.items;
@@ -273,6 +333,7 @@ class PageDataLoader {
       DebugLogger.success('✅ Loaded more properties for ${pageType.name} (total: $totalCount)');
     } catch (e) {
       DebugLogger.error('❌ Failed to load more ${pageType.name} data: $e');
+      if (_disposed) return;
       final state = _pageState.getStateForPage(pageType);
       _pageState.updatePageState(pageType, state.copyWith(isLoadingMore: false));
     }
@@ -282,6 +343,7 @@ class PageDataLoader {
   Future<void> loadMoreData(PageType pageType) => loadMorePageData(pageType);
 
   void debounceRefresh(PageType pageType) {
+    if (_disposed) return;
     switch (pageType) {
       case PageType.explore:
         _exploreDebouncer?.cancel();
@@ -311,7 +373,7 @@ class PageDataLoader {
   }
 
   // Internal: fetch first page of data and update state (cursor reset to null).
-  Future<void> _fetchAndUpdatePage(PageType pageType) async {
+  Future<void> _fetchAndUpdatePage(PageType pageType, {required int generation}) async {
     // Track latency for first property load analytics
     if (!_firstPropertyLoadedFired) {
       _firstLoadStartedAt ??= DateTime.now();
@@ -319,6 +381,11 @@ class PageDataLoader {
     final state = _pageState.getStateForPage(pageType);
     LocationData? loc = state.selectedLocation;
     loc ??= await _locationController.getInitialLocation();
+
+    if (!_isCurrentGeneration(pageType, generation)) {
+      DebugLogger.debug('🔁 Discarded stale ${pageType.name} fetch after location resolve');
+      return;
+    }
 
     DebugLogger.debug(
       '📡 [DATA_LOADER] _fetchAndUpdatePage ${pageType.name} '
@@ -339,6 +406,11 @@ class PageDataLoader {
         isLiked: isLikedSegment,
       );
 
+      if (!_isCurrentGeneration(pageType, generation)) {
+        DebugLogger.debug('🔁 Discarded stale likes first-page completion');
+        return;
+      }
+
       // Apply to the segment that was requested. If the user switched
       // liked/passed mid-flight, only that segment's cache is updated — the
       // visible list for the new segment is left alone.
@@ -358,6 +430,7 @@ class PageDataLoader {
             selectedLocation: loc,
             isLoading: false,
             isRefreshing: false,
+            isLoadingMore: false,
             error: null,
           ),
         );
@@ -370,10 +443,10 @@ class PageDataLoader {
         // load was already requested via forceRefresh.
         _pageState.updatePageState(
           pageType,
-          latest.copyWith(isLoading: false, isRefreshing: false, error: null),
+          latest.copyWith(isLoading: false, isRefreshing: false, isLoadingMore: false, error: null),
         );
-        if (latest.properties.isEmpty && !_pendingLikesReload) {
-          _pendingLikesReload = true;
+        if (latest.properties.isEmpty) {
+          _pendingForceReload.add(PageType.likes);
           DebugLogger.debug(
             '💖 Stale likes segment apply left empty list; queuing reload for '
             '${_pageState.currentLikesSegment}',
@@ -396,6 +469,12 @@ class PageDataLoader {
       // Discover must not use HTTP cache — a stale page would re-show swiped cards.
       useCache: pageType != PageType.discover,
     );
+
+    if (!_isCurrentGeneration(pageType, generation)) {
+      DebugLogger.debug('🔁 Discarded stale ${pageType.name} first-page completion');
+      return;
+    }
+
     DebugLogger.debug(
       '📡 [DATA_LOADER] Received ${resp.items.length} properties for '
       '${pageType.name} (hasMore=${resp.hasMorePages}, '
@@ -423,6 +502,7 @@ class PageDataLoader {
         hasMore: resp.hasMorePages,
         isLoading: false,
         isRefreshing: false,
+        isLoadingMore: false,
         lastFetched: DateTime.now(),
         error: null,
       ),

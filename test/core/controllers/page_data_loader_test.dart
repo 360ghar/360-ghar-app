@@ -681,6 +681,42 @@ void main() {
       expect(calls, 2);
     });
 
+    test('dispose prevents queued force reload from firing', () async {
+      final gate = Completer<UnifiedPropertyResponse>();
+      var calls = 0;
+      when(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((_) async {
+        calls++;
+        return gate.future;
+      });
+
+      final first = loader.loadPageData(PageType.likes);
+      await Future<void>.delayed(Duration.zero);
+      await loader.loadPageData(PageType.likes, forceRefresh: true);
+      loader.dispose();
+
+      gate.complete(
+        UnifiedPropertyResponse(
+          items: [testPropertyModel(id: 1)],
+          nextCursor: null,
+          hasMore: false,
+        ),
+      );
+      await first;
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calls, 1);
+    });
+
     test('skips when isLoading is true', () async {
       when(() => pageState.getStateForPage(any())).thenAnswer(
         (inv) => cachedState(
