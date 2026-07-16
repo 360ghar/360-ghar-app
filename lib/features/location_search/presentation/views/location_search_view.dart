@@ -103,44 +103,37 @@ class LocationSearchView extends GetView<LocationSearchController> {
     final locationController = Get.find<LocationController>();
 
     return Obx(() {
-      if (controller.isLoading.value || locationController.isSearchingPlaces.value) {
-        final query = controller.searchQuery.value.trim();
-        final remote = locationController.placeSuggestions.toList(growable: false);
-        final suggestions = PopularCity.mergeWithRemote(query, remote);
-        // Keep showing known results (incl. popular cities) while a network
-        // search is in flight instead of blanking the list.
-        if (suggestions.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
-        }
-      }
-
-      if (controller.searchError.value.isNotEmpty) {
-        final query = controller.searchQuery.value.trim();
-        final popular = PopularCity.suggestionsForQuery(query);
-        if (popular.isEmpty) {
-          return _buildErrorState(context);
-        }
-      }
-
       final query = controller.searchQuery.value.trim();
       final remote = locationController.placeSuggestions.toList(growable: false);
-      final suggestions = PopularCity.mergeWithRemote(query, remote);
-      final popularOnly = PopularCity.suggestionsForQuery(query);
-      final showPopularHeader = popularOnly.isNotEmpty && (remote.isEmpty || query.isEmpty);
+      final list = PopularCity.buildSuggestionsList(query, remote);
+      final isSearching = controller.isLoading.value || locationController.isSearchingPlaces.value;
 
-      if (suggestions.isEmpty && query.isNotEmpty) {
+      // Keep showing known results (incl. popular cities) while a network
+      // search is in flight instead of blanking the list.
+      if (isSearching && list.isEmpty) {
+        return const Center(child: CircularProgressIndicator());
+      }
+
+      // Defensive: only full-screen error when there are no remote or popular
+      // suggestions left to show (mirrors location_selector).
+      if (controller.searchError.value.isNotEmpty && list.isEmpty && query.isNotEmpty) {
+        return _buildErrorState(context);
+      }
+
+      if (list.isEmpty && query.isNotEmpty) {
         return _buildEmptyState(context);
       }
 
-      if (suggestions.isEmpty) {
+      if (list.isEmpty) {
         return _buildSearchPrompt(context);
       }
 
       return ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: suggestions.length + (showPopularHeader ? 1 : 0),
+        itemCount: list.listItemCount,
         itemBuilder: (context, index) {
-          if (showPopularHeader && index == 0) {
+          final suggestion = list.suggestionAt(index);
+          if (suggestion == null) {
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: Text(
@@ -152,8 +145,6 @@ class LocationSearchView extends GetView<LocationSearchController> {
               ),
             );
           }
-          final suggestionIndex = showPopularHeader ? index - 1 : index;
-          final suggestion = suggestions[suggestionIndex];
           return _buildSuggestionTile(context, suggestion);
         },
       );

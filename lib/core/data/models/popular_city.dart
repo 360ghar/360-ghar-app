@@ -102,4 +102,42 @@ class PopularCity {
     }
     return merged;
   }
+
+  /// Shared view-model for location pickers (modal + full-screen search).
+  static PopularSuggestionsList buildSuggestionsList(String query, List<PlaceSuggestion> remote) {
+    final popularOnly = suggestionsForQuery(query);
+    final suggestions = mergeWithRemote(query, remote);
+    final showPopularHeader = popularOnly.isNotEmpty && (remote.isEmpty || query.trim().isEmpty);
+    return PopularSuggestionsList(
+      suggestions: suggestions,
+      popularOnly: popularOnly,
+      showPopularHeader: showPopularHeader,
+    );
+  }
+}
+
+/// Result of merging popular cities with remote autocomplete for a query.
+class PopularSuggestionsList {
+  final List<PlaceSuggestion> suggestions;
+  final List<PlaceSuggestion> popularOnly;
+  final bool showPopularHeader;
+
+  const PopularSuggestionsList({
+    required this.suggestions,
+    required this.popularOnly,
+    required this.showPopularHeader,
+  });
+
+  bool get isEmpty => suggestions.isEmpty;
+
+  int get listItemCount => suggestions.length + (showPopularHeader ? 1 : 0);
+
+  /// Returns null when [index] is the popular-cities header row.
+  PlaceSuggestion? suggestionAt(int index) {
+    if (showPopularHeader) {
+      if (index == 0) return null;
+      return suggestions[index - 1];
+    }
+    return suggestions[index];
+  }
 }

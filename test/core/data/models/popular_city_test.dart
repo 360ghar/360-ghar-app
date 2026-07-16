@@ -65,5 +65,13 @@ void main() {
       expect(loc.latitude, city.latitude);
       expect(loc.longitude, city.longitude);
     });
+
+    test('buildSuggestionsList exposes header when remote empty', () {
+      final list = PopularCity.buildSuggestionsList('', const []);
+      expect(list.showPopularHeader, isTrue);
+      expect(list.suggestionAt(0), isNull);
+      expect(list.suggestionAt(1)?.mainText, isNotEmpty);
+      expect(list.listItemCount, PopularCity.defaults.length + 1);
+    });
   });
 }

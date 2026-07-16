@@ -324,12 +324,9 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                     final isSearching = locationController.isSearchingPlaces.value;
                     final query = _searchController.text.trim();
                     final hasQuery = query.isNotEmpty;
-                    final suggestions = PopularCity.mergeWithRemote(query, remote);
-                    final popularOnly = PopularCity.suggestionsForQuery(query);
-                    final showPopularHeader =
-                        popularOnly.isNotEmpty && (remote.isEmpty || !hasQuery);
+                    final list = PopularCity.buildSuggestionsList(query, remote);
 
-                    if (isSearching && suggestions.isEmpty) {
+                    if (isSearching && list.isEmpty) {
                       return const Center(
                         child: CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
@@ -337,10 +334,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                       );
                     }
 
-                    if (placesError.isNotEmpty &&
-                        suggestions.isEmpty &&
-                        hasQuery &&
-                        popularOnly.isEmpty) {
+                    if (placesError.isNotEmpty && list.isEmpty && hasQuery) {
                       return Center(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -360,7 +354,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                       );
                     }
 
-                    if (suggestions.isEmpty && hasQuery) {
+                    if (list.isEmpty && hasQuery) {
                       return Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -376,14 +370,15 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                       );
                     }
 
-                    if (suggestions.isEmpty) {
+                    if (list.isEmpty) {
                       return const SizedBox.shrink();
                     }
 
                     return ListView.builder(
-                      itemCount: suggestions.length + (showPopularHeader ? 1 : 0),
+                      itemCount: list.listItemCount,
                       itemBuilder: (context, index) {
-                        if (showPopularHeader && index == 0) {
+                        final suggestion = list.suggestionAt(index);
+                        if (suggestion == null) {
                           return Padding(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                             child: Text(
@@ -397,8 +392,6 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                             ),
                           );
                         }
-                        final suggestionIndex = showPopularHeader ? index - 1 : index;
-                        final suggestion = suggestions[suggestionIndex];
                         final isPopular = PopularCity.isPopularPlaceId(suggestion.placeId);
                         return _buildLocationTile(
                           title: suggestion.mainText,

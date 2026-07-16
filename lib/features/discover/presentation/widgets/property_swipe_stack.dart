@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import 'package:get/get.dart';
 
@@ -42,8 +43,8 @@ class _SwipeDragState {
 /// - Gallery chevrons (hero) → change photo only
 /// - 360 interaction → block stack gestures via [onInteractionStart]
 ///
-/// Like / Pass / Info action buttons were removed — swipe gestures cover
-/// those actions without cluttering the deck.
+/// Like / Pass use horizontal drag. Semantic custom actions provide a
+/// non-drag path for accessibility (screen readers / switch control).
 class PropertySwipeStack extends StatefulWidget {
   final List<PropertyModel> properties;
   final Function(PropertyModel) onSwipeLeft;
@@ -277,6 +278,28 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     widget.onSwipeUp(_properties[0]);
   }
 
+  /// Programmatic like/pass for a11y (no drag required).
+  void _commitSwipe({required bool isRight}) {
+    if (_properties.isEmpty || _gesturesLocked) return;
+    final card = _properties[0];
+    final width = MediaQuery.sizeOf(context).width;
+    _dragNotifier.value = _SwipeDragState(
+      position: Offset(isRight ? width : -width, 0),
+      rotation: isRight ? 0.35 : -0.35,
+      isDragging: false,
+    );
+    if (isRight) {
+      _isSwipingRight = true;
+      _showSparkles = true;
+      _sparklesAnimationController.forward();
+      widget.onSwipeRight(card);
+    } else {
+      widget.onSwipeLeft(card);
+    }
+    setState(() => _isExiting = true);
+    _swipeAnimationController.forward();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_properties.isEmpty) {
@@ -304,134 +327,144 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                     : MediaQuery.sizeOf(context).height)
                 .clamp(1.0, 10000.0);
 
-        return GestureDetector(
-          onHorizontalDragStart: (details) {
-            if (_gesturesLocked) return;
-            _dragNotifier.value = _dragNotifier.value.copyWith(isDragging: true);
+        final top = _properties[0];
+        return Semantics(
+          label: top.title,
+          customSemanticsActions: {
+            CustomSemanticsAction(label: 'liked'.tr): () => _commitSwipe(isRight: true),
+            CustomSemanticsAction(label: 'passed'.tr): () => _commitSwipe(isRight: false),
+            CustomSemanticsAction(label: 'view_details'.tr): _openDetails,
           },
-          onHorizontalDragUpdate: (details) {
-            if (_gesturesLocked) return;
-            final dx = details.primaryDelta ?? 0;
-            final newPos = Offset(_dragNotifier.value.position.dx + dx, 0);
-            _dragNotifier.value = _SwipeDragState(
-              position: newPos,
-              rotation: _calculateRotation(newPos, cardSize),
-              isDragging: true,
-            );
-          },
-          onHorizontalDragEnd: (details) {
-            if (_gesturesLocked && !_dragNotifier.value.isDragging) return;
-            if (_isExiting || _swipeAnimationController.isAnimating) return;
-            _handlePanEnd(details, cardSize);
-          },
-          child: Stack(
-            fit: StackFit.expand,
-            clipBehavior: Clip.hardEdge,
-            children: [
-              // Background cards (static during drag — no rebuild needed)
-              if (_properties.length > 1)
-                Positioned.fill(
-                  child: Transform.scale(
-                    scale: 0.95,
-                    child: Opacity(
-                      opacity: 0.8,
-                      child: _buildBackgroundPreviewCard(_properties[1]),
+          child: GestureDetector(
+            onHorizontalDragStart: (details) {
+              if (_gesturesLocked) return;
+              _dragNotifier.value = _dragNotifier.value.copyWith(isDragging: true);
+            },
+            onHorizontalDragUpdate: (details) {
+              if (_gesturesLocked) return;
+              final dx = details.primaryDelta ?? 0;
+              final newPos = Offset(_dragNotifier.value.position.dx + dx, 0);
+              _dragNotifier.value = _SwipeDragState(
+                position: newPos,
+                rotation: _calculateRotation(newPos, cardSize),
+                isDragging: true,
+              );
+            },
+            onHorizontalDragEnd: (details) {
+              if (_gesturesLocked && !_dragNotifier.value.isDragging) return;
+              if (_isExiting || _swipeAnimationController.isAnimating) return;
+              _handlePanEnd(details, cardSize);
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              clipBehavior: Clip.hardEdge,
+              children: [
+                // Background cards (static during drag — no rebuild needed)
+                if (_properties.length > 1)
+                  Positioned.fill(
+                    child: Transform.scale(
+                      scale: 0.95,
+                      child: Opacity(
+                        opacity: 0.8,
+                        child: _buildBackgroundPreviewCard(_properties[1]),
+                      ),
                     ),
                   ),
-                ),
-              if (_properties.length > 2)
-                Positioned.fill(
-                  child: Transform.scale(
-                    scale: 0.9,
-                    child: Opacity(
-                      opacity: 0.6,
-                      child: _buildBackgroundPreviewCard(_properties[2]),
+                if (_properties.length > 2)
+                  Positioned.fill(
+                    child: Transform.scale(
+                      scale: 0.9,
+                      child: Opacity(
+                        opacity: 0.6,
+                        child: _buildBackgroundPreviewCard(_properties[2]),
+                      ),
                     ),
                   ),
-                ),
 
-              // Top card + end-of-scroll actions, with drag/swipe transform.
-              // AnimatedBuilder rebuilds only the transform wrapper during drag;
-              // the scroll deck is passed as `child` and rebuilt only on setState.
-              Positioned.fill(
-                child: AnimatedBuilder(
-                  animation: _transformListenable,
-                  child: _buildScrollableDeck(cardWidth: cardWidth, deckHeight: deckHeight),
-                  builder: (context, cachedScroll) {
-                    final drag = _dragNotifier.value;
+                // Top card + end-of-scroll actions, with drag/swipe transform.
+                // AnimatedBuilder rebuilds only the transform wrapper during drag;
+                // the scroll deck is passed as `child` and rebuilt only on setState.
+                Positioned.fill(
+                  child: AnimatedBuilder(
+                    animation: _transformListenable,
+                    child: _buildScrollableDeck(cardWidth: cardWidth, deckHeight: deckHeight),
+                    builder: (context, cachedScroll) {
+                      final drag = _dragNotifier.value;
 
-                    final swipeOffset = drag.isDragging
-                        ? Offset(drag.position.dx, 0)
-                        : Offset(drag.position.dx * (1 + _swipeAnimation.value * 2), 0);
+                      final swipeOffset = drag.isDragging
+                          ? Offset(drag.position.dx, 0)
+                          : Offset(drag.position.dx * (1 + _swipeAnimation.value * 2), 0);
 
-                    // Rotation "flick" — extra rotation burst in last 20% of exit
-                    final double flickMultiplier;
-                    if (!drag.isDragging && _swipeAnimation.value > 0.8) {
-                      final flickProgress = (_swipeAnimation.value - 0.8) / 0.2;
-                      flickMultiplier = 1.0 + flickProgress * 0.3;
-                    } else {
-                      flickMultiplier = 1.0;
-                    }
+                      // Rotation "flick" — extra rotation burst in last 20% of exit
+                      final double flickMultiplier;
+                      if (!drag.isDragging && _swipeAnimation.value > 0.8) {
+                        final flickProgress = (_swipeAnimation.value - 0.8) / 0.2;
+                        flickMultiplier = 1.0 + flickProgress * 0.3;
+                      } else {
+                        flickMultiplier = 1.0;
+                      }
 
-                    final swipeRotation = drag.isDragging
-                        ? drag.rotation
-                        : drag.rotation * (1 + _swipeAnimation.value * 2) * flickMultiplier;
+                      final swipeRotation = drag.isDragging
+                          ? drag.rotation
+                          : drag.rotation * (1 + _swipeAnimation.value * 2) * flickMultiplier;
 
-                    final likeProgress = (drag.position.dx / dragThreshold).clamp(0.0, 1.0);
-                    final passProgress = (-drag.position.dx / dragThreshold).clamp(0.0, 1.0);
-                    final showFeedback = drag.isDragging && (likeProgress > 0 || passProgress > 0);
+                      final likeProgress = (drag.position.dx / dragThreshold).clamp(0.0, 1.0);
+                      final passProgress = (-drag.position.dx / dragThreshold).clamp(0.0, 1.0);
+                      final showFeedback =
+                          drag.isDragging && (likeProgress > 0 || passProgress > 0);
 
-                    // Card entrance scale (0.93→1.0) when becoming top card
-                    final entranceScale = _swipeAnimationController.isAnimating
-                        ? 1.0
-                        : _entranceScale.value;
+                      // Card entrance scale (0.93→1.0) when becoming top card
+                      final entranceScale = _swipeAnimationController.isAnimating
+                          ? 1.0
+                          : _entranceScale.value;
 
-                    return Transform.scale(
-                      scale: entranceScale,
-                      child: Transform.translate(
-                        offset: swipeOffset,
-                        child: Transform(
-                          alignment: Alignment.bottomCenter,
-                          transform: Matrix4.identity()
-                            ..setEntry(3, 2, 0.001)
-                            ..rotateZ(swipeRotation),
-                          child: Opacity(
-                            opacity: _swipeAnimationController.isAnimating
-                                ? (1 - _swipeAnimation.value)
-                                : 1.0,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                // Fill the deck so scroll constraints stay bounded
-                                // (avoids reassemble/layout hangs from loose stacks).
-                                Positioned.fill(child: cachedScroll!),
-                                if (showFeedback)
-                                  _buildSwipeFeedbackOverlay(
-                                    context,
-                                    likeProgress: likeProgress,
-                                    passProgress: passProgress,
-                                  ),
-                              ],
+                      return Transform.scale(
+                        scale: entranceScale,
+                        child: Transform.translate(
+                          offset: swipeOffset,
+                          child: Transform(
+                            alignment: Alignment.bottomCenter,
+                            transform: Matrix4.identity()
+                              ..setEntry(3, 2, 0.001)
+                              ..rotateZ(swipeRotation),
+                            child: Opacity(
+                              opacity: _swipeAnimationController.isAnimating
+                                  ? (1 - _swipeAnimation.value)
+                                  : 1.0,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  // Fill the deck so scroll constraints stay bounded
+                                  // (avoids reassemble/layout hangs from loose stacks).
+                                  Positioned.fill(child: cachedScroll!),
+                                  if (showFeedback)
+                                    _buildSwipeFeedbackOverlay(
+                                      context,
+                                      likeProgress: likeProgress,
+                                      passProgress: passProgress,
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              // Sparkles animation
-              if (_showSparkles && _isSwipingRight)
-                Positioned.fill(
-                  child: AnimatedBuilder(
-                    animation: _sparklesAnimation,
-                    builder: (context, child) {
-                      return IgnorePointer(child: _SparklesWidget(animation: _sparklesAnimation));
+                      );
                     },
                   ),
                 ),
-            ],
+
+                // Sparkles animation
+                if (_showSparkles && _isSwipingRight)
+                  Positioned.fill(
+                    child: AnimatedBuilder(
+                      animation: _sparklesAnimation,
+                      builder: (context, child) {
+                        return IgnorePointer(child: _SparklesWidget(animation: _sparklesAnimation));
+                      },
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       },

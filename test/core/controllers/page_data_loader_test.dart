@@ -62,9 +62,25 @@ void main() {
     when(
       () => pageState.filterOutSessionSwiped(any()),
     ).thenAnswer((inv) => List<PropertyModel>.from(inv.positionalArguments[0] as List));
+    when(() => pageState.discoverMutationEpoch).thenReturn(0);
+    when(
+      () => pageState.mergeDiscoverRefreshResults(
+        serverItems: any(named: 'serverItems'),
+        localItems: any(named: 'localItems'),
+        epochAtRequestStart: any(named: 'epochAtRequestStart'),
+      ),
+    ).thenAnswer((inv) => List<PropertyModel>.from(inv.namedArguments[#serverItems] as List));
     when(
       () => pageState.mergeLikesServerResults(any(), isLikedSegment: any(named: 'isLikedSegment')),
     ).thenAnswer((inv) => List<PropertyModel>.from(inv.positionalArguments[0] as List));
+    when(
+      () => pageState.applyLikesSegmentFetchResult(
+        isLikedSegment: any(named: 'isLikedSegment'),
+        serverItems: any(named: 'serverItems'),
+        hasMore: any(named: 'hasMore'),
+        nextCursor: any(named: 'nextCursor'),
+      ),
+    ).thenReturn(null);
     when(
       () => pageState.syncLikesSegmentCacheFromVisible(
         hasMore: any(named: 'hasMore'),

@@ -207,24 +207,25 @@ class GooglePlacesService extends GetxService {
       }
 
       final countryCode = config.defaultCountry;
+      // No `types` restriction — neighborhoods and localities both matter for
+      // property search; `(regions)` previously dropped neighborhood matches.
       final queryParams = <String, String>{
         'input': query,
         'components': 'country:$countryCode',
         'key': apiKey,
-        // Prefer geographies / cities over establishments for property search.
-        'types': '(regions)',
       };
 
-      // Soft location bias only — never strictbounds. A tight radius +
-      // strictbounds previously hid distant cities (e.g. Gurgaon when the
-      // user is elsewhere). Country filter is enough for city/area search.
-      if (currentPosition != null && !config.placesStrictBounds) {
+      // Soft location bias ranks nearby results higher. Cap radius so distant
+      // metros in the same country still appear. `strictbounds` is only added
+      // when explicitly enabled via config (default false).
+      if (currentPosition != null) {
         queryParams['location'] = '${currentPosition.latitude},${currentPosition.longitude}';
-        // Cap bias radius at 200km so nearby areas rank higher without
-        // excluding other metros in the same country.
         final configured = int.tryParse(config.placesRadiusMeters) ?? 25000;
         final biasMeters = configured.clamp(25000, 200000);
         queryParams['radius'] = '$biasMeters';
+        if (config.placesStrictBounds) {
+          queryParams['strictbounds'] = 'true';
+        }
       }
 
       final url = Uri.https(

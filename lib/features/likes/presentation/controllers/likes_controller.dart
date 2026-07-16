@@ -238,10 +238,13 @@ class LikesController extends GetxController {
   Future<void> removeFromLikes(PropertyModel property) async {
     try {
       DebugLogger.api('🗑️ Removing property from likes: ${property.title}');
-      // Optimistically update central page state
-      _pageStateService.removePropertyFromLikes(property.id);
-      // Record a "dislike" swipe to remove it from liked properties
-      await _pageStateService.recordSwipe(propertyId: property.id, isLiked: false);
+      // Pass the model so optimistic passed-cache updates still work after the
+      // card leaves the visible liked list.
+      await _pageStateService.recordSwipe(
+        propertyId: property.id,
+        isLiked: false,
+        property: property,
+      );
 
       DebugLogger.success('✅ Property successfully removed from likes');
 
@@ -264,10 +267,13 @@ class LikesController extends GetxController {
   Future<void> moveToLikes(PropertyModel property) async {
     try {
       DebugLogger.api('➕ Moving property to likes: ${property.title}');
-      // Optimistically remove from passed list
-      _pageStateService.removePropertyFromLikes(property.id);
-      // Record a "like" swipe to add it to liked properties
-      await _pageStateService.recordSwipe(propertyId: property.id, isLiked: true);
+      // Pass the model so optimistic liked-cache updates work after leaving
+      // the visible passed list.
+      await _pageStateService.recordSwipe(
+        propertyId: property.id,
+        isLiked: true,
+        property: property,
+      );
 
       DebugLogger.success('✅ Property successfully moved to likes');
 

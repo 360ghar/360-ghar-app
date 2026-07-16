@@ -541,40 +541,46 @@ class PageStateService extends GetxController {
   // Swipe recording & optimistic mutations
   // ──────────────────────────────────────────────────────────────────
 
-  Future<void> recordSwipe({required int propertyId, required bool isLiked}) async {
+  /// Bumped whenever the Discover deck is mutated locally (swipe / undo /
+  /// remove). Loaders capture the value before network await so concurrent
+  /// mutations can be merged instead of overwritten by a stale response.
+  int _discoverMutationEpoch = 0;
+
+  int get discoverMutationEpoch => _discoverMutationEpoch;
+
+  void _bumpDiscoverMutation() => _discoverMutationEpoch++;
+
+  /// [property] should be passed when the caller already holds the model
+  /// (e.g. Likes remove/move) so optimistic segment updates still work after
+  /// the card was removed from the visible list.
+  Future<void> recordSwipe({
+    required int propertyId,
+    required bool isLiked,
+    PropertyModel? property,
+  }) async {
     // Maintain liked/passed segment caches AND the visible list so the Likes
     // tab reflects Discover swipes immediately, regardless of which segment
     // is currently selected.
-    final prop = _findPropertyInAnyList(propertyId);
+    final prop = property ?? _findPropertyInAnyList(propertyId);
     if (isLiked) {
       if (prop != null) {
-        _trackOptimisticLike(prop);
-        _upsertLikesSegmentCache('liked', prop);
-        if (currentLikesSegment == 'liked') {
-          _prependToVisibleLikesList(prop);
-        }
+        // Single path for optimistic like + segment caches (shared with tests).
+        addPropertyToLikes(prop);
       }
-      _removeFromLikesSegmentCache('passed', propertyId);
       if (currentLikesSegment == 'passed') {
         removePropertyFromLikes(propertyId);
       }
     } else {
       // Pass: drop from liked, add to passed.
       if (prop != null) {
-        _trackOptimisticPass(prop);
+        addPropertyToPassed(prop);
       } else {
         // Still drop any pending like for this id.
         _optimisticLiked.remove(propertyId);
+        _removeFromLikesSegmentCache('liked', propertyId);
       }
-      _removeFromLikesSegmentCache('liked', propertyId);
       if (currentLikesSegment == 'liked') {
         removePropertyFromLikes(propertyId);
-      }
-      if (prop != null) {
-        _upsertLikesSegmentCache('passed', prop);
-        if (currentLikesSegment == 'passed') {
-          _prependToVisibleLikesList(prop);
-        }
       }
     }
 
@@ -598,10 +604,18 @@ class PageStateService extends GetxController {
     for (final p in likesState.value.properties) {
       if (p.id == propertyId) return p;
     }
-    return null;
+    // Segment caches + optimistic maps (caller may have already removed the
+    // card from the visible list).
+    for (final cache in _likesSegmentCache.values) {
+      for (final p in cache.properties) {
+        if (p.id == propertyId) return p;
+      }
+    }
+    return _optimisticLiked[propertyId] ?? _optimisticPassed[propertyId];
   }
 
   void removePropertyFromDiscover(int propertyId) {
+    _bumpDiscoverMutation();
     final state = discoverState.value;
     final updatedList = state.properties.where((p) => p.id != propertyId).toList();
     updatePageState(PageType.discover, state.copyWith(properties: updatedList));
@@ -633,11 +647,40 @@ class PageStateService extends GetxController {
   /// sees it again as the top card.
   void reinsertPropertyToDiscover(PropertyModel property) {
     _sessionSwipedPropertyIds.remove(property.id);
+    _bumpDiscoverMutation();
     final state = discoverState.value;
     final exists = state.properties.any((p) => p.id == property.id);
     if (exists) return;
     final updatedList = [property, ...state.properties];
     updatePageState(PageType.discover, state.copyWith(properties: updatedList));
+  }
+
+  /// Merges a Discover network page with the local deck when concurrent
+  /// mutations (swipe/undo) happened during the request.
+  ///
+  /// Local cards that are not session-swiped and missing from the server page
+  /// are preserved at the front (undo reinsert). Session-swiped ids stay out.
+  List<PropertyModel> mergeDiscoverRefreshResults({
+    required List<PropertyModel> serverItems,
+    required List<PropertyModel> localItems,
+    required int epochAtRequestStart,
+  }) {
+    final filtered = filterOutSessionSwiped(serverItems);
+    if (discoverMutationEpoch == epochAtRequestStart) {
+      return filtered;
+    }
+
+    final serverIds = filtered.map((p) => p.id).toSet();
+    final preserve = localItems
+        .where((p) => !serverIds.contains(p.id) && !_sessionSwipedPropertyIds.contains(p.id))
+        .toList();
+    if (preserve.isEmpty) return filtered;
+
+    DebugLogger.debug(
+      '👆 Preserving ${preserve.length} local Discover card'
+      '${preserve.length == 1 ? '' : 's'} after concurrent mutation during fetch',
+    );
+    return [...preserve, ...filtered];
   }
 
   /// Reverses a previously-recorded swipe for the undo flow. Unlike
@@ -722,6 +765,8 @@ class PageStateService extends GetxController {
   ///
   /// Pending items that the server now includes are cleared. Remaining
   /// pending items are prepended so a racey refresh cannot wipe them.
+  /// Server items still present in the *opposite* optimistic map are skipped
+  /// so a newer local reverse-swipe is not clobbered by a stale history page.
   List<PropertyModel> mergeLikesServerResults(
     List<PropertyModel> serverItems, {
     required bool isLikedSegment,
@@ -732,9 +777,12 @@ class PageStateService extends GetxController {
     final merged = <PropertyModel>[];
 
     for (final p in serverItems) {
+      if (opposite.containsKey(p.id)) {
+        // Newer opposite local swipe wins over this stale server row.
+        continue;
+      }
       serverIds.add(p.id);
       optimistic.remove(p.id);
-      opposite.remove(p.id);
       merged.add(p);
     }
 
@@ -746,6 +794,47 @@ class PageStateService extends GetxController {
       '${isLikedSegment ? 'liked' : 'passed'} properties after server merge',
     );
     return [...pending, ...merged];
+  }
+
+  /// Applies a likes history fetch to the correct segment cache, and only
+  /// updates the visible list when that segment is still selected.
+  void applyLikesSegmentFetchResult({
+    required bool isLikedSegment,
+    required List<PropertyModel> serverItems,
+    required bool hasMore,
+    String? nextCursor,
+  }) {
+    final segment = isLikedSegment ? 'liked' : 'passed';
+    final merged = mergeLikesServerResults(serverItems, isLikedSegment: isLikedSegment);
+    final now = DateTime.now();
+    _likesSegmentCache[segment] = _LikesSegmentCache(
+      properties: List.of(merged),
+      lastFetched: now,
+      hasMore: hasMore,
+      nextCursor: nextCursor,
+    );
+
+    if (currentLikesSegment != segment) {
+      DebugLogger.debug(
+        '💖 Discarded visible apply for stale likes segment=$segment '
+        '(current=$currentLikesSegment); cache updated only',
+      );
+      return;
+    }
+
+    final latest = likesState.value;
+    updatePageState(
+      PageType.likes,
+      latest.copyWith(
+        properties: merged,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+        isLoading: false,
+        isRefreshing: false,
+        lastFetched: now,
+        error: null,
+      ),
+    );
   }
 
   /// Snapshots the current likes list into the per-segment cache after a fetch.

@@ -292,32 +292,43 @@ class PageDataLoader {
         isLiked: isLikedSegment,
       );
 
-      // Re-read state after the await — optimistic likes may have been added
-      // while the request was in flight.
-      final latest = _pageState.getStateForPage(pageType);
-      final merged = _pageState.mergeLikesServerResults(resp.items, isLikedSegment: isLikedSegment);
-
-      _pageState.updatePageState(
-        pageType,
-        latest.copyWith(
-          properties: merged,
-          selectedLocation: loc,
-          nextCursor: resp.nextCursor,
-          hasMore: resp.hasMorePages,
-          isLoading: false,
-          isRefreshing: false,
-          lastFetched: DateTime.now(),
-          error: null,
-        ),
-      );
-      _pageState.syncLikesSegmentCacheFromVisible(
+      // Apply to the segment that was requested. If the user switched
+      // liked/passed mid-flight, only that segment's cache is updated — the
+      // visible list for the new segment is left alone.
+      _pageState.applyLikesSegmentFetchResult(
+        isLikedSegment: isLikedSegment,
+        serverItems: resp.items,
         hasMore: resp.hasMorePages,
         nextCursor: resp.nextCursor,
       );
+      // Keep selected location / error flags consistent when still on likes.
+      final latest = _pageState.getStateForPage(pageType);
+      final stillOnRequested =
+          ((latest.getAdditionalData<String>('currentSegment') ?? 'liked') == 'liked') ==
+          isLikedSegment;
+      if (stillOnRequested) {
+        _pageState.updatePageState(
+          pageType,
+          latest.copyWith(
+            selectedLocation: loc,
+            isLoading: false,
+            isRefreshing: false,
+            error: null,
+          ),
+        );
+      } else if (latest.isLoading || latest.isRefreshing) {
+        // A newer load for the other segment owns loading flags.
+      } else {
+        _pageState.updatePageState(
+          pageType,
+          latest.copyWith(isLoading: false, isRefreshing: false, error: null),
+        );
+      }
       return;
     }
 
     // Explore/Discover
+    final epochAtStart = pageType == PageType.discover ? _pageState.discoverMutationEpoch : 0;
     final resp = await _propertiesRepo.searchProperties(
       filters: state.filters.copyWith(searchQuery: state.searchQuery),
       latitude: loc.latitude,
@@ -337,9 +348,14 @@ class PageDataLoader {
 
     // Re-read after await: swipes during the request already removed ids from
     // the local deck; also drop any session-swiped cards the API still returns.
+    // If undo reinserted a card while the request was in flight, preserve it.
     final latest = _pageState.getStateForPage(pageType);
     final items = pageType == PageType.discover
-        ? _pageState.filterOutSessionSwiped(resp.items)
+        ? _pageState.mergeDiscoverRefreshResults(
+            serverItems: resp.items,
+            localItems: latest.properties,
+            epochAtRequestStart: epochAtStart,
+          )
         : resp.items;
 
     _pageState.updatePageState(
