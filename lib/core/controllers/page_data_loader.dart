@@ -208,13 +208,16 @@ class PageDataLoader {
 
   Future<void> loadMorePageData(PageType pageType) async {
     if (_disposed) return;
+    // Hoisted so the catch path can discard stale failures the same way
+    // success completions do (force-refresh bumps generation mid-flight).
+    int? generation;
     try {
       final state = _pageState.getStateForPage(pageType);
       if (state.isLoading || state.isLoadingMore || !state.hasMore) return;
 
       // Capture generation without bumping so a concurrent force refresh
       // (which bumps) invalidates this append.
-      final generation = _requestGeneration[pageType] ?? 0;
+      generation = _requestGeneration[pageType] ?? 0;
       _pageState.updatePageState(pageType, state.copyWith(isLoadingMore: true));
 
       final loc = state.selectedLocation;
@@ -334,6 +337,12 @@ class PageDataLoader {
     } catch (e) {
       DebugLogger.error('❌ Failed to load more ${pageType.name} data: $e');
       if (_disposed) return;
+      // Do not clear isLoadingMore for a newer load (force-refresh / later
+      // pagination) if this failure is from a superseded generation.
+      if (generation == null || !_isCurrentGeneration(pageType, generation)) {
+        DebugLogger.debug('🔁 Discarded stale ${pageType.name} load-more error');
+        return;
+      }
       final state = _pageState.getStateForPage(pageType);
       _pageState.updatePageState(pageType, state.copyWith(isLoadingMore: false));
     }
