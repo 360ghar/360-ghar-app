@@ -196,8 +196,7 @@ class PageDataLoader {
       }
 
       if (pageType == PageType.likes) {
-        final isLikedSegment =
-            (state.getAdditionalData<String>('currentSegment') ?? 'liked') == 'liked';
+        final isLikedSegment = _pageState.currentLikesSegment == 'liked';
         final response = await _swipesRepo.getSwipeHistoryProperties(
           filters: state.filters.copyWith(searchQuery: state.searchQuery),
           latitude: loc.latitude,
@@ -209,9 +208,7 @@ class PageDataLoader {
         // Re-read after await: concurrent remove/move/segment switch must not
         // re-append removed rows or clobber the newly selected segment.
         final latest = _pageState.getStateForPage(pageType);
-        final stillOnSegment =
-            ((latest.getAdditionalData<String>('currentSegment') ?? 'liked') == 'liked') ==
-            isLikedSegment;
+        final stillOnSegment = (_pageState.currentLikesSegment == 'liked') == isLikedSegment;
         if (!stillOnSegment) {
           _pageState.updatePageState(pageType, latest.copyWith(isLoadingMore: false));
           return;
@@ -330,8 +327,9 @@ class PageDataLoader {
     );
 
     if (pageType == PageType.likes) {
-      final isLikedSegment =
-          (state.getAdditionalData<String>('currentSegment') ?? 'liked') == 'liked';
+      // Capture segment at request start via the shared getter so checks stay
+      // aligned with [PageStateService.applyLikesSegmentFetchResult].
+      final isLikedSegment = _pageState.currentLikesSegment == 'liked';
       final resp = await _swipesRepo.getSwipeHistoryProperties(
         filters: state.filters.copyWith(searchQuery: state.searchQuery),
         latitude: loc.latitude,
@@ -352,9 +350,7 @@ class PageDataLoader {
       );
       // Keep selected location / error flags consistent when still on likes.
       final latest = _pageState.getStateForPage(pageType);
-      final stillOnRequested =
-          ((latest.getAdditionalData<String>('currentSegment') ?? 'liked') == 'liked') ==
-          isLikedSegment;
+      final stillOnRequested = (_pageState.currentLikesSegment == 'liked') == isLikedSegment;
       if (stillOnRequested) {
         _pageState.updatePageState(
           pageType,
@@ -380,7 +376,7 @@ class PageDataLoader {
           _pendingLikesReload = true;
           DebugLogger.debug(
             '💖 Stale likes segment apply left empty list; queuing reload for '
-            '${latest.getAdditionalData<String>('currentSegment') ?? 'liked'}',
+            '${_pageState.currentLikesSegment}',
           );
         }
       }

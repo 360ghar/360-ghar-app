@@ -53,10 +53,32 @@ void main() {
       final merged = PopularCity.mergeWithRemote('noi', remote);
       expect(merged.first.mainText, 'Noida');
       expect(PopularCity.isPopularPlaceId(merged.first.placeId), isTrue);
-      // Exact mainText de-dupe only — not substring matches.
+      // Exact mainText de-dupe only vs popular — not substring matches.
       expect(merged.where((s) => s.mainText == 'Noida'), hasLength(1));
       expect(merged.any((s) => s.mainText == 'Sector 18'), isTrue);
       expect(merged.any((s) => s.mainText == 'Greater Noida'), isTrue);
+    });
+
+    test('mergeWithRemote keeps distinct remotes that share mainText', () {
+      final remote = [
+        PlaceSuggestion(
+          placeId: 'google-a',
+          description: 'Green Park, Delhi',
+          mainText: 'Green Park',
+          secondaryText: 'Delhi',
+        ),
+        PlaceSuggestion(
+          placeId: 'google-b',
+          description: 'Green Park, Gurgaon',
+          mainText: 'Green Park',
+          secondaryText: 'Gurgaon',
+        ),
+      ];
+
+      // No popular-city collision with "Green Park".
+      final merged = PopularCity.mergeWithRemote('green', remote);
+      expect(merged.where((s) => s.mainText == 'Green Park'), hasLength(2));
+      expect(merged.map((s) => s.placeId), containsAll(['google-a', 'google-b']));
     });
 
     test('toLocationData exposes coordinates', () {

@@ -89,6 +89,7 @@ void main() {
         nextCursor: any(named: 'nextCursor'),
       ),
     ).thenReturn(null);
+    when(() => pageState.currentLikesSegment).thenReturn('liked');
 
     // LocationController stubs.
     when(

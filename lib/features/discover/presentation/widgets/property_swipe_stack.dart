@@ -223,17 +223,8 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
       } else {
         isRight = drag.rotation >= 0;
       }
-      if (isRight) {
-        _isSwipingRight = true;
-        _showSparkles = true;
-        _sparklesAnimationController.forward();
-        widget.onSwipeRight(_properties[0]);
-      } else {
-        widget.onSwipeLeft(_properties[0]);
-      }
-      // setState once to add sparkles / hide action buttons
-      setState(() => _isExiting = true);
-      _swipeAnimationController.forward();
+      // Keep the live drag position; shared exit path fires callbacks + anim.
+      _beginExitSwipe(isRight: isRight);
     } else {
       _snapBack();
     }
@@ -279,15 +270,25 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   }
 
   /// Programmatic like/pass for a11y (no drag required).
+  ///
+  /// Starts the card near the drag-commit threshold (~0.3× width) so the exit
+  /// animation still slides off-screen, matching gesture-driven swipes. A full
+  /// width seed would place the card already off-screen at animValue=0.
   void _commitSwipe({required bool isRight}) {
     if (_properties.isEmpty || _gesturesLocked) return;
-    final card = _properties[0];
     final width = MediaQuery.sizeOf(context).width;
+    final startX = width * 0.3;
     _dragNotifier.value = _SwipeDragState(
-      position: Offset(isRight ? width : -width, 0),
-      rotation: isRight ? 0.35 : -0.35,
+      position: Offset(isRight ? startX : -startX, 0),
+      rotation: isRight ? 0.15 : -0.15,
       isDragging: false,
     );
+    _beginExitSwipe(isRight: isRight);
+  }
+
+  /// Shared exit for gesture-commit and a11y-commit paths.
+  void _beginExitSwipe({required bool isRight}) {
+    final card = _properties[0];
     if (isRight) {
       _isSwipingRight = true;
       _showSparkles = true;
