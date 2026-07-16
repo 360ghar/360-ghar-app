@@ -39,11 +39,8 @@ import '../../../../helpers/mocks.dart';
 /// `isLoading`, and `errorKey` directly.
 class FakePropertyDetailsController extends PropertyDetailsController {
   @override
-  void onInit() {
-    // Intentionally do NOT call super.onInit() — avoid Get.arguments /
-    // repository resolution. Reactive fields are set by the test before
-    // pumping the widget.
-  }
+  // ignore: must_call_super — avoid Get.arguments / repository resolution.
+  void onInit() {}
 }
 
 /// Fake [LikesController] that skips the real `onInit` (which requires
@@ -56,9 +53,8 @@ class FakeLikesController extends LikesController {
   final RxInt _favouriteVersion = 0.obs;
 
   @override
-  void onInit() {
-    // Do NOT call super.onInit() — avoid PageStateService worker setup.
-  }
+  // ignore: must_call_super — avoid PageStateService worker setup.
+  void onInit() {}
 
   @override
   bool isFavourite(dynamic propertyId) {
@@ -86,9 +82,8 @@ class FakeLikesController extends LikesController {
 /// directly by tests.
 class FakeVisitsController extends VisitsController {
   @override
-  void onInit() {
-    // Do NOT call super.onInit() — avoid AuthController / repository calls.
-  }
+  // ignore: must_call_super — avoid AuthController / repository calls.
+  void onInit() {}
 }
 
 // ---------------------------------------------------------------------------

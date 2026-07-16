@@ -6,6 +6,8 @@
 // [PageStateModel] is seeded via the page-state mock so the loader's branching
 // on cached data, staleness and loading flags is exercised end-to-end.
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/page_data_loader.dart';
@@ -59,6 +61,35 @@ void main() {
     ).thenAnswer((inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType));
     when(() => pageState.updatePageState(any(), any())).thenReturn(null);
     when(() => pageState.notifyPageRefreshing(any(), any())).thenReturn(null);
+    when(
+      () => pageState.filterOutSessionSwiped(any()),
+    ).thenAnswer((inv) => List<PropertyModel>.from(inv.positionalArguments[0] as List));
+    when(() => pageState.discoverMutationEpoch).thenReturn(0);
+    when(
+      () => pageState.mergeDiscoverRefreshResults(
+        serverItems: any(named: 'serverItems'),
+        localItems: any(named: 'localItems'),
+        epochAtRequestStart: any(named: 'epochAtRequestStart'),
+      ),
+    ).thenAnswer((inv) => List<PropertyModel>.from(inv.namedArguments[#serverItems] as List));
+    when(
+      () => pageState.mergeLikesServerResults(any(), isLikedSegment: any(named: 'isLikedSegment')),
+    ).thenAnswer((inv) => List<PropertyModel>.from(inv.positionalArguments[0] as List));
+    when(
+      () => pageState.applyLikesSegmentFetchResult(
+        isLikedSegment: any(named: 'isLikedSegment'),
+        serverItems: any(named: 'serverItems'),
+        hasMore: any(named: 'hasMore'),
+        nextCursor: any(named: 'nextCursor'),
+      ),
+    ).thenReturn(null);
+    when(
+      () => pageState.syncLikesSegmentCacheFromVisible(
+        hasMore: any(named: 'hasMore'),
+        nextCursor: any(named: 'nextCursor'),
+      ),
+    ).thenReturn(null);
+    when(() => pageState.currentLikesSegment).thenReturn('liked');
 
     // LocationController stubs.
     when(
@@ -590,6 +621,100 @@ void main() {
           isLiked: any(named: 'isLiked'),
         ),
       ).called(1);
+      verify(
+        () =>
+            pageState.mergeLikesServerResults(any(), isLikedSegment: any(named: 'isLikedSegment')),
+      ).called(1);
+      verify(
+        () => pageState.syncLikesSegmentCacheFromVisible(
+          hasMore: any(named: 'hasMore'),
+          nextCursor: any(named: 'nextCursor'),
+        ),
+      ).called(1);
+    });
+
+    test('queues forceRefresh likes load while an in-flight likes fetch is active', () async {
+      final gate = Completer<UnifiedPropertyResponse>();
+      var calls = 0;
+      when(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((_) async {
+        calls++;
+        if (calls == 1) {
+          return gate.future;
+        }
+        return UnifiedPropertyResponse(
+          items: [testPropertyModel(id: 99)],
+          nextCursor: null,
+          hasMore: false,
+        );
+      });
+
+      // Foreground load (empty cache).
+      final first = loader.loadPageData(PageType.likes);
+      // Allow the first fetch to register as active.
+      await Future<void>.delayed(Duration.zero);
+
+      // Segment switch / force refresh while first fetch is still pending.
+      await loader.loadPageData(PageType.likes, forceRefresh: true);
+      expect(calls, 1); // second call blocked until first completes
+
+      gate.complete(
+        UnifiedPropertyResponse(
+          items: [testPropertyModel(id: 1)],
+          nextCursor: null,
+          hasMore: false,
+        ),
+      );
+      await first;
+      // Queued reload runs on a microtask after _finishActiveLoad.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calls, 2);
+    });
+
+    test('dispose prevents queued force reload from firing', () async {
+      final gate = Completer<UnifiedPropertyResponse>();
+      var calls = 0;
+      when(
+        () => swipesRepo.getSwipeHistoryProperties(
+          filters: any(named: 'filters'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((_) async {
+        calls++;
+        return gate.future;
+      });
+
+      final first = loader.loadPageData(PageType.likes);
+      await Future<void>.delayed(Duration.zero);
+      await loader.loadPageData(PageType.likes, forceRefresh: true);
+      loader.dispose();
+
+      gate.complete(
+        UnifiedPropertyResponse(
+          items: [testPropertyModel(id: 1)],
+          nextCursor: null,
+          hasMore: false,
+        ),
+      );
+      await first;
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calls, 1);
     });
 
     test('skips when isLoading is true', () async {

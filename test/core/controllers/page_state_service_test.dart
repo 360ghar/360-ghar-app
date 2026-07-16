@@ -322,9 +322,212 @@ void main() {
 
       // Removed from discover
       expect(service.discoverState.value.properties.any((p) => p.id == 99), isFalse);
-      // NOT added to likes
+      // NOT added to visible liked list (default segment is liked)
       expect(service.likesState.value.properties.any((p) => p.id == 99), isFalse);
       verify(() => swipesRepo.recordSwipe(propertyId: 99, isLiked: false)).called(1);
+    });
+
+    test('liked swipe updates likes even when current segment is passed', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 88);
+
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [prop]),
+      );
+      // Seed liked segment so switching away caches it, then open passed.
+      service.updatePageState(
+        PageType.likes,
+        service.likesState.value.copyWith(properties: [testPropertyModel(id: 1)]),
+      );
+      service.updateLikesSegment('passed');
+      expect(service.currentLikesSegment, 'passed');
+
+      await service.recordSwipe(propertyId: 88, isLiked: true);
+
+      // Visible list is still the passed segment (empty after switch without cache).
+      expect(service.likesState.value.properties.any((p) => p.id == 88), isFalse);
+
+      // Switching back to liked should surface the optimistically cached like.
+      service.updateLikesSegment('liked');
+      expect(service.likesState.value.properties.any((p) => p.id == 88), isTrue);
+    });
+
+    test('passed swipe appears when switching to passed segment', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 77);
+
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [prop]),
+      );
+      expect(service.currentLikesSegment, 'liked');
+
+      await service.recordSwipe(propertyId: 77, isLiked: false);
+
+      expect(service.likesState.value.properties.any((p) => p.id == 77), isFalse);
+
+      service.updateLikesSegment('passed');
+      expect(service.likesState.value.properties.any((p) => p.id == 77), isTrue);
+    });
+
+    test('session-swiped properties stay out of discover after filter', () async {
+      final service = await createService();
+      final swiped = testPropertyModel(id: 901);
+      final other = testPropertyModel(id: 902);
+
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [swiped, other]),
+      );
+
+      await service.recordSwipe(propertyId: 901, isLiked: true);
+
+      expect(service.discoverState.value.properties.any((p) => p.id == 901), isFalse);
+      expect(service.isSessionSwiped(901), isTrue);
+
+      // Simulate API refresh still returning the swiped property.
+      final filtered = service.filterOutSessionSwiped([swiped, other]);
+      expect(filtered.map((p) => p.id), [902]);
+
+      // Undo restores eligibility for the deck.
+      service.reinsertPropertyToDiscover(swiped);
+      expect(service.isSessionSwiped(901), isFalse);
+      expect(service.filterOutSessionSwiped([swiped, other]).map((p) => p.id), [901, 902]);
+    });
+
+    test('mergeLikesServerResults keeps optimistic like until server returns it', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 501);
+      final older = testPropertyModel(id: 100);
+
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [prop]),
+      );
+      await service.recordSwipe(propertyId: 501, isLiked: true);
+
+      // Server history is still missing the just-liked property (race).
+      final merged = service.mergeLikesServerResults([older], isLikedSegment: true);
+      expect(merged.map((p) => p.id), [501, 100]);
+
+      // Once server includes it, optimistic is cleared and not duplicated.
+      final merged2 = service.mergeLikesServerResults([prop, older], isLikedSegment: true);
+      expect(merged2.map((p) => p.id), [501, 100]);
+      final merged3 = service.mergeLikesServerResults([prop, older], isLikedSegment: true);
+      expect(merged3.map((p) => p.id), [501, 100]);
+    });
+
+    test('recordSwipe uses explicit property after visible list removal', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 606);
+
+      service.updatePageState(
+        PageType.likes,
+        service.likesState.value.copyWith(properties: [prop]),
+      );
+      // Caller removed from visible list first (legacy LikesController pattern).
+      service.removePropertyFromLikes(606);
+
+      await service.recordSwipe(propertyId: 606, isLiked: false, property: prop);
+
+      service.updateLikesSegment('passed');
+      expect(service.likesState.value.properties.any((p) => p.id == 606), isTrue);
+    });
+
+    test('mergeLikesServerResults skips server rows with opposite optimistic swipe', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 707);
+
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [prop]),
+      );
+      await service.recordSwipe(propertyId: 707, isLiked: false);
+
+      // Liked history still has the property; opposite pass optimistic wins.
+      final merged = service.mergeLikesServerResults([prop], isLikedSegment: true);
+      expect(merged.any((p) => p.id == 707), isFalse);
+    });
+
+    test('mergeDiscoverRefreshResults preserves undo reinsert after concurrent fetch', () async {
+      final service = await createService();
+      final a = testPropertyModel(id: 1);
+      final b = testPropertyModel(id: 2);
+      final reinserted = testPropertyModel(id: 3);
+
+      final epoch = service.discoverMutationEpoch;
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [a, b]),
+      );
+
+      // Simulate undo reinsert while a fetch (started at [epoch]) is in flight.
+      service.reinsertPropertyToDiscover(reinserted);
+      expect(service.discoverMutationEpoch, greaterThan(epoch));
+
+      final merged = service.mergeDiscoverRefreshResults(
+        serverItems: [a, b],
+        localItems: service.discoverState.value.properties,
+        epochAtRequestStart: epoch,
+      );
+      expect(merged.map((p) => p.id).toList(), [3, 1, 2]);
+    });
+
+    test(
+      'mergeDiscoverRefreshResults does not keep old-query cards after mid-refresh swipe',
+      () async {
+        final service = await createService();
+        final a = testPropertyModel(id: 1);
+        final b = testPropertyModel(id: 2);
+        final c = testPropertyModel(id: 3);
+        final d = testPropertyModel(id: 4);
+        final e = testPropertyModel(id: 5);
+
+        final epoch = service.discoverMutationEpoch;
+        // Pre-refresh deck for location A.
+        service.updatePageState(
+          PageType.discover,
+          service.discoverState.value.copyWith(properties: [a, b, c]),
+        );
+
+        // User swipes A away while a location-change fetch is in flight.
+        // Epoch bumps, but only undo reinserts should be preserved — not B/C.
+        await service.recordSwipe(propertyId: 1, isLiked: true);
+        expect(service.discoverMutationEpoch, greaterThan(epoch));
+        expect(service.discoverState.value.properties.map((p) => p.id), [2, 3]);
+
+        // Server returns the new location's first page.
+        final merged = service.mergeDiscoverRefreshResults(
+          serverItems: [d, e],
+          localItems: service.discoverState.value.properties,
+          epochAtRequestStart: epoch,
+        );
+        expect(merged.map((p) => p.id).toList(), [4, 5]);
+      },
+    );
+
+    test('mergeDiscoverRefreshResults keeps undo reinsert even when epoch matches', () async {
+      final service = await createService();
+      final a = testPropertyModel(id: 1);
+      final b = testPropertyModel(id: 2);
+      final reinserted = testPropertyModel(id: 3);
+
+      // Undo happens before the fetch starts, so epoch at request start
+      // equals the post-undo epoch. Preserve markers must still win.
+      service.updatePageState(
+        PageType.discover,
+        service.discoverState.value.copyWith(properties: [a, b]),
+      );
+      service.reinsertPropertyToDiscover(reinserted);
+      final epoch = service.discoverMutationEpoch;
+
+      final merged = service.mergeDiscoverRefreshResults(
+        serverItems: [a, b],
+        localItems: service.discoverState.value.properties,
+        epochAtRequestStart: epoch,
+      );
+      expect(merged.map((p) => p.id).toList(), [3, 1, 2]);
     });
 
     test('liked swipe finds property in explore list too', () async {

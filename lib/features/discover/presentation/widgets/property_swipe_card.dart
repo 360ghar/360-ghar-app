@@ -10,14 +10,12 @@ import 'package:ghar360/features/discover/presentation/widgets/swipe_card_hero_s
 /// and details below. Composes [SwipeCardHeroSection] and
 /// [SwipeCardDetailsSection] inside the card chrome only.
 ///
-/// Vertical scroll and Pass/Details/Like actions live in [PropertySwipeStack]
-/// so the action bar can sit **after** the card in the scroll trail without
-/// being painted inside this rounded surface.
+/// Vertical scroll is owned by [PropertySwipeStack]. Like / Pass are
+/// gesture-only (no action bar) to keep the deck uncluttered.
 ///
 /// Gesture map (see also [PropertySwipeStack]):
 /// - Hero tap / View details → [onTap] (property details)
-/// - Vertical scroll → owned by the stack (card + trailing actions)
-/// - Pass / Details / Like live **outside** this card (scroll trail)
+/// - Vertical scroll → owned by the stack
 /// - Embedded interactive children (e.g. 360 tour) signal via
 ///   [onInteractionStart]/[onInteractionEnd] so the stack can block deck swipes
 class PropertySwipeCard extends StatelessWidget {

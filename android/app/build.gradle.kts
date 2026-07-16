@@ -34,8 +34,8 @@ android {
     namespace = "com.the360ghar.ghar360"
     // Explicitly target Android 15 / API 36 to meet plugin requirements.
     compileSdk = 36
-    // maplibre_gl requires NDK 28.x; use highest required (backward compatible).
-    ndkVersion = "28.1.13356709"
+    // Align with Flutter/plugin highest requirement (jni wants 28.2.x; NDK is backward-compatible).
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21

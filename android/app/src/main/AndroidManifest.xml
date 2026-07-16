@@ -114,12 +114,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Enable Impeller rendering engine for better performance -->
-        <meta-data
-            android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="true" />
-
-
+        <!-- Impeller is the default on modern Flutter; no explicit EnableImpeller meta-data. -->
 
     </application>
 </manifest>

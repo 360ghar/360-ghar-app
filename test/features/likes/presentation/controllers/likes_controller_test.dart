@@ -46,6 +46,7 @@ void main() {
       () => mockPageStateService.recordSwipe(
         propertyId: any(named: 'propertyId'),
         isLiked: any(named: 'isLiked'),
+        property: any(named: 'property'),
       ),
     ).thenAnswer((_) async {});
     when(() => mockPageStateService.updatePageSearch(any(), any())).thenReturn(null);
@@ -314,7 +315,7 @@ void main() {
   });
 
   group('LikesController — property removal', () {
-    test('removeFromLikes calls removePropertyFromLikes and recordSwipe', () async {
+    test('removeFromLikes calls recordSwipe with property for optimistic cache', () async {
       final props = seedProperties(2);
       likesState.value = PageStateModel(
         pageType: PageType.likes,
@@ -326,9 +327,12 @@ void main() {
       final controller = createController();
       await controller.removeFromLikes(props[0]);
 
-      verify(() => mockPageStateService.removePropertyFromLikes(props[0].id)).called(1);
       verify(
-        () => mockPageStateService.recordSwipe(propertyId: props[0].id, isLiked: false),
+        () => mockPageStateService.recordSwipe(
+          propertyId: props[0].id,
+          isLiked: false,
+          property: props[0],
+        ),
       ).called(1);
     });
 
@@ -345,6 +349,7 @@ void main() {
         () => mockPageStateService.recordSwipe(
           propertyId: any(named: 'propertyId'),
           isLiked: any(named: 'isLiked'),
+          property: any(named: 'property'),
         ),
       ).thenThrow(ServerException('network error'));
 
@@ -357,7 +362,7 @@ void main() {
   });
 
   group('LikesController — moveToLikes', () {
-    test('moveToLikes calls removePropertyFromLikes and recordSwipe with isLiked true', () async {
+    test('moveToLikes calls recordSwipe with isLiked true and property', () async {
       final props = seedProperties(2);
       likesState.value = PageStateModel(
         pageType: PageType.likes,
@@ -369,9 +374,12 @@ void main() {
       final controller = createController();
       await controller.moveToLikes(props[0]);
 
-      verify(() => mockPageStateService.removePropertyFromLikes(props[0].id)).called(1);
       verify(
-        () => mockPageStateService.recordSwipe(propertyId: props[0].id, isLiked: true),
+        () => mockPageStateService.recordSwipe(
+          propertyId: props[0].id,
+          isLiked: true,
+          property: props[0],
+        ),
       ).called(1);
     });
 
@@ -388,6 +396,7 @@ void main() {
         () => mockPageStateService.recordSwipe(
           propertyId: any(named: 'propertyId'),
           isLiked: any(named: 'isLiked'),
+          property: any(named: 'property'),
         ),
       ).thenThrow(ServerException('network error'));
 

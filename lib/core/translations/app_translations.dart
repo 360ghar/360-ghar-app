@@ -331,7 +331,6 @@ class AppTranslations extends Translations {
       'no_visits': 'No visits scheduled',
 
       // Search
-      'search_properties': 'Search Properties',
       'search_hint': 'Search by location, property type...',
       'recent_searches': 'Recent Searches',
 
@@ -524,7 +523,6 @@ class AppTranslations extends Translations {
       'onboarding_chip_support': 'Concierge Support',
 
       'passed': 'Passed',
-      'my_location': 'My Location',
       'light': 'Light',
       'dark': 'Dark',
       // Common & UI
@@ -1517,7 +1515,6 @@ class AppTranslations extends Translations {
       'no_visits': 'कोई दौरा निर्धारित नहीं',
 
       // Search
-      'search_properties': 'संपत्ति खोजें',
       'search_hint': 'स्थान, संपत्ति प्रकार के द्वारा खोजें...',
       'recent_searches': 'हाल की खोजें',
 
@@ -1689,7 +1686,6 @@ class AppTranslations extends Translations {
       'switch_to_light_mode': 'लाइट मोड पर स्विच करें',
 
       'passed': 'पास',
-      'my_location': 'मेरा स्थान',
       'light': 'हल्का',
       'dark': 'गहरा',
       // Common & UI

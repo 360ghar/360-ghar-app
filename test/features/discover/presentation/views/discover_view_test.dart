@@ -69,9 +69,8 @@ class _MockPageStateService extends GetxServiceMock implements PageStateService 
 
 class _TestDiscoverController extends DiscoverController {
   @override
-  void onInit() {
-    // No state-sync worker; tests set [state] explicitly.
-  }
+  // ignore: must_call_super — skip workers; tests set [state] explicitly.
+  void onInit() {}
 
   @override
   void onReady() {
@@ -199,7 +198,7 @@ void main() {
       expect(find.byKey(const ValueKey('qa.discover.swipe_stack')), findsOneWidget);
     });
 
-    testWidgets('loaded state shows action buttons outside the swipe stack card', (tester) async {
+    testWidgets('loaded state does not show like/pass/info action buttons', (tester) async {
       pageStateService.discoverState.value = PageStateModel(
         pageType: PageType.discover,
         filters: const UnifiedFilterModel(),
@@ -211,7 +210,9 @@ void main() {
       await tester.pump();
 
       expect(find.byType(PropertySwipeStack), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.discover.action.like')), findsOneWidget);
+      expect(find.byKey(const ValueKey('qa.discover.action.like')), findsNothing);
+      expect(find.byKey(const ValueKey('qa.discover.action.pass')), findsNothing);
+      expect(find.byKey(const ValueKey('qa.discover.action.details')), findsNothing);
       expect(find.text('Swipe right to like | Swipe left to pass'), findsNothing);
     });
 

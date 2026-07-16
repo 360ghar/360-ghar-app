@@ -54,7 +54,7 @@ void main() {
         return null;
       },
     );
-    await Supabase.initialize(url: 'https://example.supabase.co', anonKey: 'anon-key');
+    await Supabase.initialize(url: 'https://example.supabase.co', publishableKey: 'anon-key');
     await GetStorage.init();
   });
 

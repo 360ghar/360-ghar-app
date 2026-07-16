@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/config/app_config.dart';
+import 'package:ghar360/core/data/models/popular_city.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:http/http.dart' as http;
@@ -145,15 +146,17 @@ class GooglePlacesService extends GetxService {
     _clearError();
 
     try {
+      List<PlaceSuggestion>? googleResults;
       if (_shouldTryGoogle) {
-        final googleResults = await _searchGooglePlaces(query, currentPosition: currentPosition);
+        googleResults = await _searchGooglePlaces(query, currentPosition: currentPosition);
         if (!_isLatestSuggestions(requestId)) return [];
-        if (googleResults != null) {
+        // Non-empty Google results are preferred; empty/null falls through to OSM.
+        if (googleResults != null && googleResults.isNotEmpty) {
           placeSuggestions.value = googleResults;
           _clearError();
           return googleResults;
         }
-        // null => Google failed (denied/missing/error) — try fallback
+        // null => Google failed; [] => zero results — try OSM for broader coverage
       }
 
       if (!_isLatestSuggestions(requestId)) return [];
@@ -204,15 +207,24 @@ class GooglePlacesService extends GetxService {
       }
 
       final countryCode = config.defaultCountry;
+      // No `types` restriction — neighborhoods and localities both matter for
+      // property search; `(regions)` previously dropped neighborhood matches.
       final queryParams = <String, String>{
         'input': query,
         'components': 'country:$countryCode',
         'key': apiKey,
       };
 
+      // Soft location bias ranks nearby results higher. Cap radius so distant
+      // metros in the same country still appear. Do not floor below the
+      // configured value — tighter `PLACES_RADIUS_METERS` must still apply.
+      // `strictbounds` is only added when explicitly enabled via config
+      // (default false) so soft bias is never a hard geo trap.
       if (currentPosition != null) {
         queryParams['location'] = '${currentPosition.latitude},${currentPosition.longitude}';
-        queryParams['radius'] = config.placesRadiusMeters;
+        final configured = int.tryParse(config.placesRadiusMeters) ?? 25000;
+        final biasMeters = configured.clamp(1, 200000);
+        queryParams['radius'] = '$biasMeters';
         if (config.placesStrictBounds) {
           queryParams['strictbounds'] = 'true';
         }
@@ -401,6 +413,22 @@ class GooglePlacesService extends GetxService {
       }
     }
 
+    // Popular cities encode lat/lng: popular:Gurgaon|28.45|77.02
+    if (PopularCity.isPopularPlaceId(placeId)) {
+      final parsed = _parsePopularPlaceId(placeId);
+      if (!_isLatestDetails(requestId)) return null;
+      if (parsed != null) {
+        _clearError();
+        return LocationData(
+          name: (preferredName != null && preferredName.isNotEmpty) ? preferredName : parsed.$3,
+          latitude: parsed.$1,
+          longitude: parsed.$2,
+        );
+      }
+      _setError('location_details_failed'.tr);
+      return null;
+    }
+
     // OSM place ids encode lat/lng: osm:node123|28.6|77.2
     if (placeId.startsWith(_osmPlaceIdPrefix)) {
       final parsed = _parseOsmPlaceId(placeId);
@@ -426,6 +454,21 @@ class GooglePlacesService extends GetxService {
   (double, double, String)? _parseOsmPlaceId(String placeId) {
     try {
       final body = placeId.substring(_osmPlaceIdPrefix.length);
+      final parts = body.split('|');
+      if (parts.length < 3) return null;
+      final lat = double.tryParse(parts[1]);
+      final lng = double.tryParse(parts[2]);
+      if (lat == null || lng == null) return null;
+      return (lat, lng, parts[0]);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Returns (lat, lng, name) for popular:Name|lat|lng ids.
+  (double, double, String)? _parsePopularPlaceId(String placeId) {
+    try {
+      final body = placeId.substring('popular:'.length);
       final parts = body.split('|');
       if (parts.length < 3) return null;
       final lat = double.tryParse(parts[1]);

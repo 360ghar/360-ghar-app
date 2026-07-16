@@ -100,6 +100,9 @@ class LikesController extends GetxController {
         return;
       }
 
+      // Prefer optimistic + cached data. Only network-refresh when empty or
+      // stale — a refresh-on-every-visit races the swipe POST and used to
+      // flash-remove just-liked properties before the history API had them.
       if (ps.properties.isEmpty) {
         DebugLogger.debug('💖 [LIKES_CONTROLLER] No properties, loading data');
         _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
@@ -107,7 +110,9 @@ class LikesController extends GetxController {
         DebugLogger.debug('💖 [LIKES_CONTROLLER] Data is stale, refreshing in background');
         _pageStateService.loadPageData(PageType.likes, backgroundRefresh: true);
       } else {
-        DebugLogger.debug('💖 [LIKES_CONTROLLER] Data is current, no action needed');
+        DebugLogger.debug(
+          '💖 [LIKES_CONTROLLER] Data is current (${ps.properties.length} items), no refresh',
+        );
       }
     } catch (e, stackTrace) {
       DebugLogger.error('❌ [LIKES_CONTROLLER] Error in activatePage: $e');
@@ -233,10 +238,13 @@ class LikesController extends GetxController {
   Future<void> removeFromLikes(PropertyModel property) async {
     try {
       DebugLogger.api('🗑️ Removing property from likes: ${property.title}');
-      // Optimistically update central page state
-      _pageStateService.removePropertyFromLikes(property.id);
-      // Record a "dislike" swipe to remove it from liked properties
-      await _pageStateService.recordSwipe(propertyId: property.id, isLiked: false);
+      // Pass the model so optimistic passed-cache updates still work after the
+      // card leaves the visible liked list.
+      await _pageStateService.recordSwipe(
+        propertyId: property.id,
+        isLiked: false,
+        property: property,
+      );
 
       DebugLogger.success('✅ Property successfully removed from likes');
 
@@ -259,10 +267,13 @@ class LikesController extends GetxController {
   Future<void> moveToLikes(PropertyModel property) async {
     try {
       DebugLogger.api('➕ Moving property to likes: ${property.title}');
-      // Optimistically remove from passed list
-      _pageStateService.removePropertyFromLikes(property.id);
-      // Record a "like" swipe to add it to liked properties
-      await _pageStateService.recordSwipe(propertyId: property.id, isLiked: true);
+      // Pass the model so optimistic liked-cache updates work after leaving
+      // the visible passed list.
+      await _pageStateService.recordSwipe(
+        propertyId: property.id,
+        isLiked: true,
+        property: property,
+      );
 
       DebugLogger.success('✅ Property successfully moved to likes');
 

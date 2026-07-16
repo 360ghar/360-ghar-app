@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
+import 'package:ghar360/core/data/models/popular_city.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/services/google_places_service.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
@@ -169,14 +170,19 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
 
   void _onSearchChanged(String query) {
     _searchDebounce?.cancel();
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
       locationController.clearPlaceSuggestions();
+      // Rebuild so popular cities reappear when the field is cleared.
+      if (mounted) setState(() {});
       return;
     }
+    // Immediate rebuild so popular-city filter updates while typing.
+    if (mounted) setState(() {});
     _searchDebounce = Timer(const Duration(milliseconds: 400), () {
       // Skip if the field was cleared/changed while the timer was pending.
-      if (!mounted || _searchController.text.trim() != query.trim()) return;
-      locationController.getPlaceSuggestions(query.trim());
+      if (!mounted || _searchController.text.trim() != trimmed) return;
+      locationController.getPlaceSuggestions(trimmed);
     });
   }
 
@@ -310,15 +316,17 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
 
                 const SizedBox(height: 8),
 
-                // Search results
+                // Search results + popular cities
                 Expanded(
                   child: Obx(() {
-                    final suggestions = locationController.placeSuggestions;
+                    final remote = locationController.placeSuggestions.toList(growable: false);
                     final placesError = locationController.placesError.value;
                     final isSearching = locationController.isSearchingPlaces.value;
-                    final hasQuery = _searchController.text.trim().isNotEmpty;
+                    final query = _searchController.text.trim();
+                    final hasQuery = query.isNotEmpty;
+                    final list = PopularCity.buildSuggestionsList(query, remote);
 
-                    if (isSearching && suggestions.isEmpty) {
+                    if (isSearching && list.isEmpty) {
                       return const Center(
                         child: CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
@@ -326,7 +334,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                       );
                     }
 
-                    if (placesError.isNotEmpty && suggestions.isEmpty && hasQuery) {
+                    if (placesError.isNotEmpty && list.isEmpty && hasQuery) {
                       return Center(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -346,7 +354,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                       );
                     }
 
-                    if (suggestions.isEmpty && hasQuery) {
+                    if (list.isEmpty && hasQuery) {
                       return Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -362,13 +370,33 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                       );
                     }
 
+                    if (list.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+
                     return ListView.builder(
-                      itemCount: suggestions.length,
+                      itemCount: list.listItemCount,
                       itemBuilder: (context, index) {
-                        final suggestion = suggestions[index];
+                        final suggestion = list.suggestionAt(index);
+                        if (suggestion == null) {
+                          return Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                            child: Text(
+                              'popular_cities'.tr,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppDesign.textSecondary,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          );
+                        }
+                        final isPopular = PopularCity.isPopularPlaceId(suggestion.placeId);
                         return _buildLocationTile(
                           title: suggestion.mainText,
                           subtitle: suggestion.secondaryText,
+                          isPopular: isPopular,
                           onTap: () => _selectPlaceSuggestion(suggestion),
                         );
                       },
@@ -482,17 +510,19 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    bool isPopular = false,
   }) {
+    final accent = isPopular ? AppDesign.primaryYellow : AppDesign.accentBlue;
     return Material(
       color: AppDesign.transparent,
       child: ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: AppDesign.accentBlue.withValues(alpha: 0.1),
+            color: accent.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Icon(Icons.location_on, color: AppDesign.accentBlue, size: 20),
+          child: Icon(isPopular ? Icons.location_city : Icons.location_on, color: accent, size: 20),
         ),
         title: Text(
           title,

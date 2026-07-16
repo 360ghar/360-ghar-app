@@ -18,8 +18,9 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.12.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.2.0" apply false
+    // AGP 8.11.1 is the max officially tested with Kotlin 2.2.20.
+    id("com.android.application") version "8.11.1" apply false
+    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
     // Google Services (Firebase)
     id("com.google.gms.google-services") version "4.4.2" apply false
     // Firebase Gradle plugins applied in app module
