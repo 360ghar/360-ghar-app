@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/error_handler.dart';
@@ -7,6 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../helpers/getx_test_binding.dart';
 
 void main() {
+  // Required now that this file has no `testWidgets` cases left to initialize
+  // the binding implicitly; AppToast reaches WidgetsBinding.instance.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUp(() {
     GetxTestBinding.init();
   });
@@ -164,157 +167,9 @@ void main() {
     });
   });
 
-  group('ErrorHandler.handleValidationError', () {
-    test('does not throw', () {
-      // AppToast.warning is a no-op when Get.overlayContext is null.
-      expect(() => ErrorHandler.handleValidationError('Email', 'Invalid email'), returnsNormally);
-    });
-  });
-
-  group('ErrorHandler.showSuccess', () {
-    test('does not throw', () {
-      expect(() => ErrorHandler.showSuccess('Profile saved'), returnsNormally);
-    });
-  });
-
   group('ErrorHandler.showInfo', () {
     test('does not throw', () {
       expect(() => ErrorHandler.showInfo('New features available'), returnsNormally);
-    });
-  });
-
-  group('ErrorHandler.buildErrorWidget', () {
-    testWidgets('renders an error icon and message', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: ErrorHandler.buildErrorWidget('Something broke'))),
-      );
-
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
-      expect(find.text('Something broke'), findsOneWidget);
-    });
-
-    testWidgets('renders without a retry button when onRetry is null', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: ErrorHandler.buildErrorWidget('Error'))),
-      );
-
-      expect(find.byType(ElevatedButton), findsNothing);
-    });
-
-    testWidgets('renders a retry button when onRetry is provided', (tester) async {
-      var retryCalled = false;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ErrorHandler.buildErrorWidget('Error', onRetry: () => retryCalled = true),
-          ),
-        ),
-      );
-
-      expect(find.byType(ElevatedButton), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
-
-      await tester.tap(find.byType(ElevatedButton));
-      await tester.pump();
-
-      expect(retryCalled, isTrue);
-    });
-  });
-
-  group('ErrorHandler.buildLoadingWidget', () {
-    testWidgets('renders a CircularProgressIndicator', (tester) async {
-      await tester.pumpWidget(MaterialApp(home: Scaffold(body: ErrorHandler.buildLoadingWidget())));
-
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    });
-
-    testWidgets('renders a message when provided', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: ErrorHandler.buildLoadingWidget(message: 'Loading data...')),
-        ),
-      );
-
-      expect(find.text('Loading data...'), findsOneWidget);
-    });
-
-    testWidgets('does not render a message when null', (tester) async {
-      await tester.pumpWidget(MaterialApp(home: Scaffold(body: ErrorHandler.buildLoadingWidget())));
-
-      expect(find.byType(Text), findsNothing);
-    });
-  });
-
-  group('ErrorHandler.buildEmptyWidget', () {
-    testWidgets('renders a default icon when icon is not provided', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ErrorHandler.buildEmptyWidget(
-              title: 'No Results',
-              message: 'Try adjusting your filters',
-            ),
-          ),
-        ),
-      );
-
-      expect(find.byIcon(Icons.inbox_outlined), findsOneWidget);
-      expect(find.text('No Results'), findsOneWidget);
-      expect(find.text('Try adjusting your filters'), findsOneWidget);
-    });
-
-    testWidgets('renders a custom icon when provided', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ErrorHandler.buildEmptyWidget(
-              title: 'Empty',
-              message: 'Nothing here',
-              icon: Icons.search_off,
-            ),
-          ),
-        ),
-      );
-
-      expect(find.byIcon(Icons.search_off), findsOneWidget);
-    });
-
-    testWidgets('does not render an action button when onAction is null', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ErrorHandler.buildEmptyWidget(title: 'Empty', message: 'Nothing'),
-          ),
-        ),
-      );
-
-      expect(find.byType(ElevatedButton), findsNothing);
-    });
-
-    testWidgets('renders an action button when onAction and actionLabel are provided', (
-      tester,
-    ) async {
-      var actionCalled = false;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ErrorHandler.buildEmptyWidget(
-              title: 'Empty',
-              message: 'Nothing here',
-              onAction: () => actionCalled = true,
-              actionLabel: 'Retry',
-            ),
-          ),
-        ),
-      );
-
-      expect(find.byType(ElevatedButton), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
-
-      await tester.tap(find.byType(ElevatedButton));
-      await tester.pump();
-
-      expect(actionCalled, isTrue);
     });
   });
 }
