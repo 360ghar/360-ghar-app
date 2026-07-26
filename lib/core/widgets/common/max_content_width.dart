@@ -10,12 +10,12 @@ import 'package:ghar360/core/utils/responsive.dart';
 /// is visually a no-op on phones. On tablet/desktop widths the content is
 /// constrained and centered, keeping line lengths readable.
 ///
-/// Modeled on [OverflowSafeContainer]. Use it to wrap list/grids, forms, or
-/// detail bodies that should not stretch edge-to-edge on wide screens.
+/// Use it to wrap lists/grids, forms, or detail bodies that should not stretch
+/// edge-to-edge on wide screens.
 ///
 /// ```dart
 /// MaxContentWidth(
-///   child: PaginatedGridView<PropertyModel>(...),
+///   child: GridView.builder(...),
 /// )
 /// ```
 class MaxContentWidth extends StatelessWidget {
