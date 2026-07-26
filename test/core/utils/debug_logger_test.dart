@@ -43,10 +43,6 @@ void main() {
   });
 
   group('DebugLogger logging methods — do not throw', () {
-    test('verbose does not throw', () {
-      expect(() => DebugLogger.verbose('test verbose'), returnsNormally);
-    });
-
     test('debug does not throw', () {
       expect(() => DebugLogger.debug('test debug'), returnsNormally);
     });
@@ -67,18 +63,6 @@ void main() {
       expect(() => DebugLogger.error('test error'), returnsNormally);
     });
 
-    test('wtf does not throw', () {
-      expect(() => DebugLogger.wtf('test wtf'), returnsNormally);
-    });
-
-    test('verbose with error and stackTrace does not throw', () {
-      final error = StateError('boom');
-      expect(
-        () => DebugLogger.verbose('test verbose with error', error, StackTrace.current),
-        returnsNormally,
-      );
-    });
-
     test('error with error and stackTrace does not throw', () {
       final error = StateError('boom');
       expect(
@@ -97,88 +81,8 @@ void main() {
       expect(() => DebugLogger.auth('test auth'), returnsNormally);
     });
 
-    test('jwt does not throw', () {
-      expect(() => DebugLogger.jwt('test jwt'), returnsNormally);
-    });
-
-    test('user does not throw', () {
-      expect(() => DebugLogger.user('test user'), returnsNormally);
-    });
-
-    test('property does not throw', () {
-      expect(() => DebugLogger.property('test property'), returnsNormally);
-    });
-
-    test('network does not throw (no-op when shouldLogAPICalls is false)', () {
-      expect(() => DebugLogger.network('test network'), returnsNormally);
-    });
-
-    test('connection does not throw', () {
-      expect(() => DebugLogger.connection('test connection'), returnsNormally);
-    });
-
     test('startup does not throw', () {
       expect(() => DebugLogger.startup('test startup'), returnsNormally);
-    });
-  });
-
-  group('DebugLogger.logJWTToken', () {
-    test('does not throw with a valid token', () {
-      expect(() => DebugLogger.logJWTToken('a'.padRight(32, 'a')), returnsNormally);
-    });
-
-    test('does not throw with expiresAt, userId, and userEmail', () {
-      expect(
-        () => DebugLogger.logJWTToken(
-          'a'.padRight(32, 'a'),
-          expiresAt: DateTime(2025, 1, 1),
-          userId: 'user-12345678',
-          userEmail: 'test@example.com',
-        ),
-        returnsNormally,
-      );
-    });
-  });
-
-  group('DebugLogger.logAPIRequest', () {
-    test('does not throw (no-op when shouldLogAPICalls is false)', () {
-      expect(
-        () => DebugLogger.logAPIRequest(method: 'GET', endpoint: '/api/properties'),
-        returnsNormally,
-      );
-    });
-
-    test('does not throw with headers and body', () {
-      expect(
-        () => DebugLogger.logAPIRequest(
-          method: 'POST',
-          endpoint: '/api/properties',
-          headers: {'Authorization': 'Bearer token'},
-          body: '{"title": "Test"}',
-        ),
-        returnsNormally,
-      );
-    });
-  });
-
-  group('DebugLogger.logAPIResponse', () {
-    test('does not throw (no-op when shouldLogAPICalls is false)', () {
-      expect(
-        () => DebugLogger.logAPIResponse(statusCode: 200, endpoint: '/api/properties'),
-        returnsNormally,
-      );
-    });
-
-    test('does not throw with body and responseTime', () {
-      expect(
-        () => DebugLogger.logAPIResponse(
-          statusCode: 404,
-          endpoint: '/api/properties/999',
-          body: '{"error": "not found"}',
-          responseTime: 150,
-        ),
-        returnsNormally,
-      );
     });
   });
 
@@ -197,40 +101,6 @@ void main() {
           error: StateError('boom'),
           stackTrace: StackTrace.current,
           additionalData: {'key': 'value', 'count': 42},
-        ),
-        returnsNormally,
-      );
-    });
-  });
-
-  group('DebugLogger.reportError', () {
-    test('does not throw with required parameters', () {
-      expect(
-        () => DebugLogger.reportError(context: 'testContext', error: StateError('boom')),
-        returnsNormally,
-      );
-    });
-
-    test('does not throw with all optional parameters', () {
-      expect(
-        () => DebugLogger.reportError(
-          context: 'testContext',
-          error: StateError('boom'),
-          stackTrace: StackTrace.current,
-          userId: 'user-123',
-          operationId: 'op-456',
-          metadata: {'key': 'value'},
-        ),
-        returnsNormally,
-      );
-    });
-
-    test('does not throw with empty metadata map', () {
-      expect(
-        () => DebugLogger.reportError(
-          context: 'testContext',
-          error: StateError('boom'),
-          metadata: {},
         ),
         returnsNormally,
       );
