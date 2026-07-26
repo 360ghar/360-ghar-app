@@ -97,7 +97,6 @@ void main() {
       when(() => mockAuthController.isAuthenticated).thenReturn(false);
       final controller = createController();
 
-      expect(controller.dashboardData, isEmpty);
       expect(controller.recentActivity, isEmpty);
       expect(controller.userStats, isEmpty);
       expect(controller.isLoading.value, false);
@@ -239,7 +238,6 @@ void main() {
       controller.recentActivity.value = [
         {'type': 'view', 'title': 'test'},
       ];
-      controller.dashboardData.value = {'total_views': 100};
 
       // Trigger logout — the ever worker should call _clearAllData
       when(() => mockAuthController.isAuthenticated).thenReturn(false);
@@ -249,7 +247,6 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       // Verify reactive state is cleared
-      expect(controller.dashboardData, isEmpty);
       expect(controller.recentActivity, isEmpty);
       expect(controller.userStats, isEmpty);
       expect(controller.error.value, isNull);
@@ -471,195 +468,6 @@ void main() {
       controller.recordActivity(type: 'search', title: 'Searched "villa"', icon: 'search');
 
       expect(controller.recentActivity.first['icon'], 'search');
-    });
-  });
-
-  group('DashboardController — engagement metrics', () {
-    test('engagementScore returns 0 when no properties viewed', () {
-      final controller = createController();
-
-      expect(controller.engagementScore, 0.0);
-    });
-
-    test('engagementScore calculates percentage correctly', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 5};
-
-      expect(controller.engagementScore, 50.0);
-    });
-
-    test('engagementScore clamps to 100', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 20};
-
-      expect(controller.engagementScore, 100.0);
-    });
-
-    test('userEngagementLevelKey returns priority_high for score >= 80', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 9};
-
-      expect(controller.userEngagementLevelKey, 'priority_high');
-    });
-
-    test('userEngagementLevelKey returns priority_medium for score >= 50', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 5};
-
-      expect(controller.userEngagementLevelKey, 'priority_medium');
-    });
-
-    test('userEngagementLevelKey returns priority_low for score >= 20', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 2};
-
-      expect(controller.userEngagementLevelKey, 'priority_low');
-    });
-
-    test('userEngagementLevelKey returns priority_very_low for score < 20', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 10, 'properties_liked': 1};
-
-      expect(controller.userEngagementLevelKey, 'priority_very_low');
-    });
-  });
-
-  group('DashboardController — time formatting', () {
-    test('timeSpentFormatted returns minutes for < 60', () {
-      final controller = createController();
-      controller.userStats.value = {'time_spent_minutes': 45};
-
-      expect(controller.timeSpentFormatted, '45m');
-    });
-
-    test('timeSpentFormatted returns hours and minutes for >= 60', () {
-      final controller = createController();
-      controller.userStats.value = {'time_spent_minutes': 125};
-
-      expect(controller.timeSpentFormatted, '2h 5m');
-    });
-
-    test('timeSpentFormatted returns 0m for zero', () {
-      final controller = createController();
-
-      expect(controller.timeSpentFormatted, '0m');
-    });
-  });
-
-  group('DashboardController — isActiveUser', () {
-    test('returns true when propertiesViewed >= 10', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 10};
-
-      expect(controller.isActiveUser, isTrue);
-    });
-
-    test('returns true when timeSpentMinutes >= 60', () {
-      final controller = createController();
-      controller.userStats.value = {'time_spent_minutes': 60};
-
-      expect(controller.isActiveUser, isTrue);
-    });
-
-    test('returns false when neither threshold met', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 5, 'time_spent_minutes': 30};
-
-      expect(controller.isActiveUser, isFalse);
-    });
-  });
-
-  group('DashboardController — data export', () {
-    test('exportDashboardData returns map with all keys', () {
-      final controller = createController();
-      controller.userStats.value = {'properties_viewed': 5};
-      controller.recentActivity.value = [
-        {'type': 'view', 'title': 'test'},
-      ];
-
-      final exported = controller.exportDashboardData();
-
-      expect(exported, containsPair('dashboard_data', controller.dashboardData));
-      expect(exported, containsPair('user_stats', controller.userStats));
-      expect(exported, containsPair('recent_activity', controller.recentActivity));
-      expect(exported, contains('export_timestamp'));
-    });
-  });
-
-  group('DashboardController — quickSummary', () {
-    test('quickSummary contains all expected keys', () {
-      final controller = createController();
-      controller.userStats.value = {
-        'properties_viewed': 10,
-        'properties_liked': 5,
-        'visits_scheduled': 2,
-        'time_spent_minutes': 30,
-        'favorite_location': 'Mumbai',
-      };
-
-      final summary = controller.quickSummary;
-
-      expect(summary, containsPair('properties_viewed', 10));
-      expect(summary, containsPair('properties_liked', 5));
-      expect(summary, containsPair('visits_scheduled', 2));
-      expect(summary, contains('engagement_level'));
-      expect(summary, contains('time_spent'));
-      expect(summary, containsPair('favorite_location', 'Mumbai'));
-    });
-  });
-
-  group('DashboardController — dashboard data getters', () {
-    test('totalViews returns 0 when dashboardData is empty', () {
-      final controller = createController();
-
-      expect(controller.totalViews, 0);
-    });
-
-    test('totalViews returns value from dashboardData', () {
-      final controller = createController();
-      controller.dashboardData.value = {'total_views': 500};
-
-      expect(controller.totalViews, 500);
-    });
-
-    test('totalLikes returns value from dashboardData', () {
-      final controller = createController();
-      controller.dashboardData.value = {'total_likes': 42};
-
-      expect(controller.totalLikes, 42);
-    });
-
-    test('conversionRate returns 0.0 by default', () {
-      final controller = createController();
-
-      expect(controller.conversionRate, 0.0);
-    });
-
-    test('preferredLocations returns empty list by default', () {
-      final controller = createController();
-
-      expect(controller.preferredLocations, isEmpty);
-    });
-
-    test('preferredLocations returns list from dashboardData', () {
-      final controller = createController();
-      controller.dashboardData.value = {
-        'preferred_locations': ['Mumbai', 'Delhi'],
-      };
-
-      expect(controller.preferredLocations, ['Mumbai', 'Delhi']);
-    });
-
-    test('topLocations returns empty list by default', () {
-      final controller = createController();
-
-      expect(controller.topLocations, isEmpty);
-    });
-
-    test('mostViewedPropertyType returns default Apartment', () {
-      final controller = createController();
-
-      expect(controller.mostViewedPropertyType, 'Apartment');
     });
   });
 

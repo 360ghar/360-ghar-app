@@ -33,7 +33,6 @@ class DashboardController extends GetxController {
   AuthController get _authController => Get.find<AuthController>();
   PageStateService get _pageStateService => Get.find<PageStateService>();
 
-  final RxMap<String, dynamic> dashboardData = <String, dynamic>{}.obs;
   final RxList<Map<String, dynamic>> recentActivity = <Map<String, dynamic>>[].obs;
   final RxMap<String, dynamic> userStats = <String, dynamic>{}.obs;
   final RxBool isLoading = false.obs;
@@ -110,9 +109,6 @@ class DashboardController extends GetxController {
 
       userStats.value = results[0] as Map<String, dynamic>;
       recentActivity.value = results[1] as List<Map<String, dynamic>>;
-
-      // Clear analytics data that's no longer available
-      dashboardData.value = {};
     } catch (e, stackTrace) {
       error.value = ErrorMapper.mapApiError('Failed to load dashboard data');
       DebugLogger.error('Error loading dashboard data', e, stackTrace);
@@ -254,7 +250,6 @@ class DashboardController extends GetxController {
   }
 
   void _clearAllData() {
-    dashboardData.clear();
     recentActivity.clear();
     userStats.clear();
     error.value = null;
@@ -266,22 +261,6 @@ class DashboardController extends GetxController {
     _storage.remove(kDashRecentActivityKey);
   }
 
-  // Analytics dashboard getters
-  int get totalViews => dashboardData['total_views'] ?? 0;
-  int get totalLikes => dashboardData['total_likes'] ?? 0;
-  int get totalVisitsScheduled => dashboardData['total_visits_scheduled'] ?? 0;
-  double get conversionRate => dashboardData['conversion_rate']?.toDouble() ?? 0.0;
-
-  List<String> get preferredLocations {
-    final locations = dashboardData['preferred_locations'];
-    if (locations is List) {
-      return List<String>.from(locations);
-    }
-    return [];
-  }
-
-  Map<String, dynamic> get activitySummary => dashboardData['activity_summary'] ?? {};
-
   // User stats getters
   int get propertiesViewed => userStats['properties_viewed'] ?? 0;
   int get propertiesLiked => userStats['properties_liked'] ?? 0;
@@ -289,75 +268,6 @@ class DashboardController extends GetxController {
   int get searchesMade => userStats['searches_made'] ?? 0;
   int get timeSpentMinutes => userStats['time_spent_minutes'] ?? 0;
   String get favoriteLocation => userStats['favorite_location'] ?? 'N/A';
-
-  // Dashboard insights
-
-  double get averagePropertyPrice {
-    final summary = activitySummary;
-    return summary['average_property_price']?.toDouble() ?? 0.0;
-  }
-
-  String get mostViewedPropertyType {
-    final summary = activitySummary;
-    return summary['most_viewed_property_type'] ?? 'Apartment';
-  }
-
-  List<Map<String, dynamic>> get topLocations {
-    final locations = dashboardData['top_locations'];
-    if (locations is List) {
-      return List<Map<String, dynamic>>.from(locations);
-    }
-    return [];
-  }
-
-  // Engagement metrics
-  double get engagementScore {
-    if (propertiesViewed == 0) return 0.0;
-    return (propertiesLiked / propertiesViewed * 100).clamp(0.0, 100.0);
-  }
-
-  /// Returns translation key for user engagement level
-  String get userEngagementLevelKey {
-    final score = engagementScore;
-    if (score >= 80) return 'priority_high';
-    if (score >= 50) return 'priority_medium';
-    if (score >= 20) return 'priority_low';
-    return 'priority_very_low';
-  }
-
-  @Deprecated('Use userEngagementLevelKey with .tr for localized text')
-  String get userEngagementLevel => userEngagementLevelKey;
-
-  // Time-based insights
-  String get timeSpentFormatted {
-    final minutes = timeSpentMinutes;
-    if (minutes < 60) return '${minutes}m';
-    final hours = minutes ~/ 60;
-    final remainingMinutes = minutes % 60;
-    return '${hours}h ${remainingMinutes}m';
-  }
-
-  bool get isActiveUser => propertiesViewed >= 10 || timeSpentMinutes >= 60;
-
-  // Data export functionality
-  Map<String, dynamic> exportDashboardData() {
-    return {
-      'dashboard_data': dashboardData,
-      'user_stats': userStats,
-      'recent_activity': recentActivity,
-      'export_timestamp': DateTime.now().toIso8601String(),
-    };
-  }
-
-  // Dashboard summary for quick overview
-  Map<String, dynamic> get quickSummary => {
-    'properties_viewed': propertiesViewed,
-    'properties_liked': propertiesLiked,
-    'visits_scheduled': visitsScheduled,
-    'engagement_level': userEngagementLevelKey,
-    'time_spent': timeSpentFormatted,
-    'favorite_location': favoriteLocation,
-  };
 
   // Navigation methods
   void changeTab(int index) {
