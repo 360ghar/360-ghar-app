@@ -28,7 +28,6 @@ abstract class AppRoutes {
   static const help = '/help';
   static const feedback = '/feedback';
   static const about = '/about';
-  static const locationSearch = '/location-search';
   // Tools and calculators
   static const tools = '/tools';
   static const areaConverter = '/tools/area-converter';

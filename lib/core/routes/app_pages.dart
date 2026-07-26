@@ -28,8 +28,6 @@ import 'package:ghar360/features/explore/presentation/bindings/explore_binding.d
 import 'package:ghar360/features/explore/presentation/views/explore_view.dart';
 import 'package:ghar360/features/likes/presentation/bindings/likes_binding.dart';
 import 'package:ghar360/features/likes/presentation/views/likes_view.dart';
-import 'package:ghar360/features/location_search/presentation/bindings/location_search_binding.dart';
-import 'package:ghar360/features/location_search/presentation/views/location_search_view.dart';
 import 'package:ghar360/features/profile/presentation/bindings/feedback_binding.dart';
 import 'package:ghar360/features/profile/presentation/bindings/profile_binding.dart';
 import 'package:ghar360/features/profile/presentation/controllers/preferences_controller.dart';
@@ -247,15 +245,6 @@ class AppPages {
       page: () => const AboutView(),
       middlewares: [AuthMiddleware()],
       transition: Transition.rightToLeft,
-      transitionDuration: _defaultTransitionDuration,
-      curve: _defaultCurve,
-    ),
-    GetPage(
-      name: AppRoutes.locationSearch,
-      page: () => const LocationSearchView(),
-      binding: LocationSearchBinding(),
-      middlewares: [AuthMiddleware()],
-      transition: Transition.downToUp,
       transitionDuration: _defaultTransitionDuration,
       curve: _defaultCurve,
     ),

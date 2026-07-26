@@ -43,7 +43,6 @@ void main() {
       AppRoutes.help,
       AppRoutes.feedback,
       AppRoutes.about,
-      AppRoutes.locationSearch,
       AppRoutes.tools,
       AppRoutes.areaConverter,
       AppRoutes.loanEligibility,
