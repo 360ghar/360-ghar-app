@@ -1,6 +1,6 @@
 # ghar360 — iOS App Store Submission Guide
 
-End-to-end checklist for shipping **ghar360** (`1.0.7+12`, bundle `com.the360ghar.ghar360`, iOS 15.0+, team `HMWGCVU4SV`) to the App Store. Work top-to-bottom. Items marked **[external]** must be done outside this repo (browser / console / backend).
+End-to-end checklist for shipping **ghar360** (`1.0.9+15`, bundle `com.the360ghar.ghar360`, iOS 15.0+, team `HMWGCVU4SV`) to the App Store. Work top-to-bottom. Items marked **[external]** must be done outside this repo (browser / console / backend).
 
 > Companion: `docs/ACCOUNT_DELETION_CONTRACT.md` (the backend endpoint the app depends on).
 
@@ -30,19 +30,19 @@ iOS cannot reuse the Web/Android OAuth client for the native redirect. In the **
 Implement `POST /api/v1/auth/delete-account` (authenticated, bearer session token). See `docs/ACCOUNT_DELETION_CONTRACT.md`. Server must hard-delete **or** soft-delete (`deleted_at` + revoke all sessions/refresh tokens + block future auth) so the account is **unusable after deletion** (Apple verifies this). Without it, deletion surfaces a 404 and the app will be rejected.
 
 ### 1.3 Universal Links — host the AASA file **[external — web/infra]**
-The app declares `applinks:` for `the360ghar.com`, `www.the360ghar.com`, `app.the360ghar.com` and `webcredentials:360ghar.com`. Each domain must serve a valid **apple-app-site-association** JSON at:
+The app declares `applinks:` for `360ghar.com` and `www.360ghar.com`, plus `webcredentials:***********`. Each domain must serve a valid **apple-app-site-association** JSON at:
 - `https://<domain>/.well-known/apple-app-site-association` **and** `https://<domain>/apple-app-site-association`
 containing team ID `HMWGCVU4SV`, bundle id `com.the360ghar.ghar360`, under `applinks` and `webcredentials`. If missing, universal links silently fail (property deep links won't open the app).
 
 ### 1.4 Restrict the Google Places API key **[external — security]**
 `GOOGLE_PLACES_API_KEY` is bundled in the client. In Google Cloud Console → **APIs & Services → Credentials**, restrict that key to **iOS** with bundle ID `com.the360ghar.ghar360` (and Android with your Android package) so it can't be abused. (Supabase anon key is public-by-design — just confirm **RLS policies** are enabled on all tables.)
 
-### 1.5 ⚠️ Firebase Analytics + ATT (tracking) — VERIFY **[external]**
-Firebase Analytics collects the **IDFA by default** on iOS. If it does, the app performs "tracking" and you MUST:
-- Add `NSUserTrackingUsageDescription` to `Info.plist` (e.g. "This identifier enables a better, personalized experience across the app and partner services."), and
-- Show the App Tracking Transparency prompt at runtime, and
-- declare "Identifiers • Advertising ID • Used for Tracking" in the App Privacy label.
-**OR** disable IDFA collection in Firebase (set `GOOGLE_ANALYTICS_COLLECTION_AD_ID_ENABLED = NO` in `ios/Runner/Info.plist`, or use the no-ad-id Firebase Analytics pod). **Decide before submission** — this affects whether ATT is required. Crashlytics and Performance are NOT tracking.
+### 1.5 ✅ No App Tracking Transparency / IDFA — RESOLVED
+The app does **NOT** use App Tracking Transparency or collect the IDFA. Firebase Analytics is disabled by default and does not require ATT. Therefore:
+- `NSUserTrackingUsageDescription` must **NOT** be present in `Info.plist` — its presence caused an App Store submission rejection because it contradicted the "no tracking" App Privacy declaration.
+- No ATT prompt is shown at runtime, and the App Privacy label must **not** declare "Advertising ID / Used for Tracking".
+- `PrivacyInfo.xcprivacy` declares `NSPrivacyTracking = false` with empty tracking domains — keep it that way. Crashlytics and Performance are NOT tracking.
+- If App Store Connect still reports `NSUserTrackingUsageDescription`, the selected build is stale. Do not change the App Privacy answer to tracking; run `./tool/verify_ios_release.sh`, rebuild from the current branch with a new build number, and upload that new archive.
 
 ---
 
@@ -52,8 +52,8 @@ Create the app record (My Apps → + → New App, iOS, bundle `com.the360ghar.gh
 
 - **Name**: `360 Ghar` (or the final brand name; must be unique). **Subtitle** (30 chars): e.g. `Swipe, tour & find your home`.
 - **Description** + **Keywords** (100 chars, comma-separated) + **Promotional text**.
-- **Support URL** + **Marketing URL** (must be live HTTPS pages — can be `the360ghar.com` pages).
-- **Privacy Policy URL** (required): the app loads it from `api.360ghar.com/pages/privacy-policy/public`; App Store Connect still needs a **public web URL** — host the same content at e.g. `https://the360ghar.com/privacy-policy`.
+- **Support URL** + **Marketing URL** (must be live HTTPS pages — can be `360ghar.com` pages).
+- **Privacy Policy URL** (required): the app loads it from `api.360ghar.com/pages/privacy-policy/public`; App Store Connect still needs a **public web URL** — host the same content at e.g. `https://360ghar.com/privacy-policy`.
 - **Category**: Primary `Lifestyle` (or `Real Estate` if available), Secondary optional.
 - **Age rating**: answer the questionnaire — unrestricted web access = No (the WebView only opens 360° tour URLs, not general browsing), no UGC/gambling/violence → **4+**.
 - **Copyright**: `© <year> 360ghar` (or your entity).
@@ -73,8 +73,8 @@ Declare, per data type, whether it is **Collected** and the purposes. Based on t
 | User Content | Photos or Videos | Yes (property uploads) | App Functionality | Yes |
 | Identifiers | Device ID | Yes (push token / package_info) | Analytics / Other | Yes |
 | Usage Data | Product Interaction | Yes (Firebase Analytics) | Analytics | Yes |
-| Diagnostics | Crash / Performance | Yes (Crashlytics, Performance) | App Functionality | No (or per your config) |
-| Identifiers | Advertising ID | **Only if §1.5 ATT path is taken** | Tracking | — |
+| Diagnostics | Crash / Performance | Yes (Crashlytics, Performance) | App Functionality | Yes |
+| Identifiers | Advertising ID | **No — not collected (no ATT, see §1.5)** | — | — |
 
 **Third-party SDKs** ( disclose in the SDK section): Supabase, Firebase (Analytics/Crashlytics/Messaging/Remote Config/Performance), MapLibre, Cloudinary (via backend), Google Places/Sign-In.
 
@@ -102,16 +102,43 @@ Recommended shots: Discover swipe deck, Explore map, Property details + 360° to
 flutter clean
 flutter pub get
 
-# 2. Build the release (Dart + native compile check)
+# 2. ⚠️ SwiftPM minimum-platform guard: `flutter pub get` resets the generated
+#    FlutterGeneratedPluginSwiftPackage to iOS 13.0 (Flutter's hardcoded default),
+#    which breaks the build because Firebase requires iOS 15.0 ("The package product
+#    'firebase-*' requires minimum platform version 15.0 ... but this target supports
+#    13.0"). Re-running the config step re-patches it to the project's 15.0.
+flutter build ios --config-only
+
+# 3. Verify source privacy settings + deployment-target consistency before building
+./tool/verify_ios_release.sh
+
+# 4. Build the release (Dart + native compile check)
 flutter build ios --release
 
-# 3. Open Xcode and archive
+# 5. Verify the built app bundle before archiving
+./tool/verify_ios_release.sh build/ios/iphoneos/Runner.app
+
+# 6. Open Xcode and archive
 open ios/Runner.xcworkspace
 #   Xcode: select the "Runner" scheme, device target = "Any iOS Device (arm64)"
 #   Product → Archive
 #   In Organizer: Distribute App → App Store Connect → Upload
 #     (automatic signing, team HMWGCVU4SV; matches ios/ExportOptions.plist
 #      method=app-store-connect, uploadSymbols=true)
+#
+#   After archiving (or any time you want to backfill Crashlytics):
+#   ./tool/upload_ios_symbols.sh            # uploads every available dSYM to Crashlytics + coverage report
+#   ./tool/upload_ios_symbols.sh --dry-run  # coverage report only
+#     - Expected: 6 "Upload Symbols Failed" warnings from App Store Connect for
+#       prebuilt SwiftPM frameworks (FirebaseAnalytics, GoogleAppMeasurement,
+#       GoogleAppMeasurementIdentitySupport, MapLibre, RecaptchaEnterpriseSDK,
+#       GoogleAdsOnDeviceConversion). Their vendors ship no dSYMs — non-fatal,
+#       crashes in those frameworks just won't be symbolized. See
+#       docs/dSYM_UPLOAD_RCA.md.
+#
+#   CLI alternative (single command, same result):
+#   flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+#   → artifact at build/ios/ipa/ghar360.ipa
 ```
 - After upload: **TestFlight** → add internal testers, smoke-test on a real iPhone (sign-in, swipe, map, 360° tour, delete account) and an iPad.
 - When green: App Store Connect → the build → **Add for Review → Submit for Review**. Answer **Export Compliance** (ITSAppUsesNonExemptEncryption=false → "Does not use encryption / exempt").
@@ -119,7 +146,7 @@ open ios/Runner.xcworkspace
 ## 7. Verification checklist (before "Submit for Review")
 
 - [ ] `flutter analyze lib` clean (only the known orphan `feature_flags.dart` error, which isn't compiled).
-- [ ] Release build archives & uploads without errors/warnings.
+- [ ] Release build archives & uploads without errors/warnings (known exception: the six "Upload Symbols Failed" dSYM warnings for prebuilt SwiftPM frameworks — expected, non-fatal; see `docs/dSYM_UPLOAD_RCA.md`).
 - [ ] Sign in via **Phone OTP** and **Apple** on a physical iPhone.
 - [ ] Google button hidden on iOS (expected for v1) — or, if §1.1 done, Google sign-in works.
 - [ ] **Account create → Delete Account → confirm the account cannot log back in** (requires §1.2 backend).
@@ -127,7 +154,7 @@ open ios/Runner.xcworkspace
 - [ ] Deep link / universal link opens a property (requires §1.3 AASA).
 - [ ] Privacy Policy + Terms reachable in-app (Profile → Privacy).
 - [ ] App Privacy label, screenshots, demo OTP, and review notes all filled in App Store Connect.
-- [ ] ATT decision resolved (§1.5).
+- [ ] No ATT/IDFA — confirm `NSUserTrackingUsageDescription` is absent from `Info.plist` (§1.5).
 
 ---
 
@@ -135,5 +162,7 @@ open ios/Runner.xcworkspace
 
 - `lib/core/utils/feature_flags.dart` references `RemoteConfigService.getFlag` which doesn't exist — pre-existing WIP; fix or remove.
 - `test/` contains broken scaffolding (`mocktail` references, `DebugLogger.setContext`, `test/helpers/mocks.dart`) — 105 analyze errors; not compiled into release. Clean up before enabling CI test gates.
+- **SwiftPM minimum-platform footgun**: `flutter pub get` (or `flutter clean` + `pub get`) regenerates `FlutterGeneratedPluginSwiftPackage/Package.swift` with `.iOS("13.0")` (Flutter's hardcoded default). Firebase plugins require `.iOS("15.0")`, so the next Xcode-only build/archive fails with "The package product 'firebase-*' requires minimum platform version 15.0 ... but this target supports 13.0" until you re-run `flutter build ios --config-only` (patches the generated package to the project's 15.0). `tool/verify_ios_release.sh` now fails fast if this regresses.
+- **Missing dSYMs for prebuilt SwiftPM frameworks**: App Store Connect reports "Upload Symbols Failed" for FirebaseAnalytics, GoogleAppMeasurement, GoogleAppMeasurementIdentitySupport, MapLibre, RecaptchaEnterpriseSDK and GoogleAdsOnDeviceConversion — their binary artifacts ship without dSYMs (expected, non-fatal; crashes there won't be symbolized). Full RCA + tooling in `docs/dSYM_UPLOAD_RCA.md`; `tool/upload_ios_symbols.sh` uploads every dSYM that does exist. Track upstream: firebase/firebase-ios-sdk, maplibre/maplibre-gl-native, GoogleCloudPlatform/recaptcha-enterprise-mobile-sdk, googleads/google-ads-on-device-conversion-ios-sdk.
 - No iOS CI/Fastlane (out of scope this cycle; manual build per §6).
 - Re-enable real Google sign-in on iOS when ready (§1.1).
