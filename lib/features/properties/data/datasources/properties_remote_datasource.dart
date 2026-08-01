@@ -50,8 +50,17 @@ class PropertiesRemoteDatasource {
   }
 
   /// Fetches a single property by ID.
+  ///
+  /// Optional auth: the endpoint is public (shared `/p/:id` deep links must
+  /// work signed out) but still enriches liked-status for signed-in users.
+  /// Caching is off because the ETag cache keys on URL alone, so one entry
+  /// would otherwise serve a signed-in user's liked-status to a guest.
   Future<PropertyModel> fetchPropertyById(String propertyId) async {
-    final response = await _apiClient.get(ApiPaths.propertyById(propertyId), useCache: true);
+    final response = await _apiClient.get(
+      ApiPaths.propertyById(propertyId),
+      useCache: false,
+      requireAuth: false,
+    );
     final payload = ResponseParser.unwrapObject(response.body);
     if (payload.isEmpty) {
       throw const FormatException('Unexpected property response format');
@@ -64,12 +73,16 @@ class PropertiesRemoteDatasource {
   /// Uses repeated `ids` query params (e.g. `?ids=1&ids=2`) to batch-fetch.
   /// Falls back to
   /// individual fetches if the batch endpoint fails.
+  ///
+  /// Caching is off for the same reason as [fetchPropertyById]: the response
+  /// carries per-user liked-status but the ETag cache keys on URL alone, so one
+  /// entry would serve one account's liked-status to the next.
   Future<List<PropertyModel>> fetchPropertiesByIds(List<int> ids) async {
     DebugLogger.debug('📦 Batch-fetching ${ids.length} properties by IDs');
     final response = await _apiClient.get(
       ApiPaths.properties,
       queryParams: {'ids': ids},
-      useCache: true,
+      useCache: false,
     );
     return _parsePropertiesResponse(response.body).items;
   }

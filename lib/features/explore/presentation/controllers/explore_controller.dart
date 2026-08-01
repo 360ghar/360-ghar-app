@@ -359,6 +359,9 @@ class ExploreController extends GetxController {
   }
 
   bool _isInitializing = false;
+  int _initializationGeneration = 0;
+  int _locationRequestGeneration = 0;
+  final Map<int, int> _likeRequestGenerations = <int, int>{};
 
   // New combined initialization method
   Future<void> _initializeMapAndLoadProperties() async {
@@ -366,6 +369,7 @@ class ExploreController extends GetxController {
       DebugLogger.debug('⏳ _initializeMapAndLoadProperties already in progress; skipping');
       return;
     }
+    final generation = ++_initializationGeneration;
     _isInitializing = true;
     try {
       DebugLogger.info('🗺️ Initializing map and loading properties...');
@@ -429,6 +433,10 @@ class ExploreController extends GetxController {
         '🎯 Final initialization parameters: center=$initialCenter, zoom=$initialZoom',
       );
 
+      // A newer initialization request supersedes this one while location was
+      // being resolved. Do not let stale location or results overwrite it.
+      if (generation != _initializationGeneration) return;
+
       // Update map and filters with the determined location
       _updateMapCenter(initialCenter, initialZoom);
 
@@ -446,10 +454,12 @@ class ExploreController extends GetxController {
       DebugLogger.info('🚀 Triggering page data load through PageStateService');
       state.value = ExploreState.loading;
       await _pageStateService.loadPageData(PageType.explore, forceRefresh: true);
+      if (generation != _initializationGeneration) return;
       // Sync properties from page state
       properties.assignAll(_pageStateService.exploreState.value.properties);
       state.value = properties.isEmpty ? ExploreState.empty : ExploreState.loaded;
     } catch (e, stackTrace) {
+      if (generation != _initializationGeneration) return;
       DebugLogger.error('❌ CRITICAL: Failed during initialization', e, stackTrace);
       state.value = ExploreState.error;
       error.value = ErrorMapper.mapApiError(
@@ -461,9 +471,11 @@ class ExploreController extends GetxController {
   }
 
   Future<void> _useCurrentLocation() async {
+    final requestGeneration = ++_locationRequestGeneration;
     try {
       DebugLogger.info('📍 Getting current location...');
       await _locationController.getCurrentLocation();
+      if (requestGeneration != _locationRequestGeneration) return;
       final position = _locationController.currentPosition.value;
       if (position != null) {
         DebugLogger.success(
@@ -509,6 +521,7 @@ class ExploreController extends GetxController {
         );
       }
     } catch (e) {
+      if (requestGeneration != _locationRequestGeneration) return;
       DebugLogger.warning('⚠️ Could not get current location: $e');
       // Always fallback to default location
       DebugLogger.info(
@@ -664,17 +677,29 @@ class ExploreController extends GetxController {
     final current = isPropertyLiked(property);
     final next = !current;
 
-    // Optimistic update
+    // Optimistic update. Only the latest request for a property may settle its
+    // visual state; an older response must not undo a newer tap.
+    final requestGeneration = (_likeRequestGenerations[property.id] ?? 0) + 1;
+    _likeRequestGenerations[property.id] = requestGeneration;
     likedOverrides[property.id] = next;
 
     try {
       await _pageStateService.recordSwipe(propertyId: property.id, isLiked: next);
+      if (_likeRequestGenerations[property.id] != requestGeneration) return;
       DebugLogger.success('✅ Updated like: ${property.title} -> $next');
     } catch (e) {
+      if (_likeRequestGenerations[property.id] != requestGeneration) return;
       DebugLogger.error('❌ Failed to toggle like: $e');
       // Revert on failure
       likedOverrides[property.id] = current;
       AppToast.error('action_failed'.tr, 'like_update_failed'.tr);
+    } finally {
+      // Prune the generation entry once the latest request settles so the map
+      // does not grow for the whole session. Only the newest request may
+      // remove it: an older response must leave the newer entry untouched.
+      if (_likeRequestGenerations[property.id] == requestGeneration) {
+        _likeRequestGenerations.remove(property.id);
+      }
     }
   }
 

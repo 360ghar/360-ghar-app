@@ -153,41 +153,70 @@ class LikesController extends GetxController {
     DebugLogger.api('🔍 Search query updated: "$query"');
   }
 
-  // Favorite management methods (moved from PropertyController)
-  bool isFavourite(dynamic propertyId) {
-    final id = propertyId.toString();
-    final likedProperties = _pageStateService.likesState.value.properties;
-    return likedProperties.any((property) => property.id.toString() == id);
-  }
+  // ── Favourite state ──
+  //
+  // Authoritative value is [PropertyModel.liked] (set per swipe by the swipe
+  // history endpoint), with an optimistic override on top for swipes made this
+  // session. Same contract as ExploreController.isPropertyLiked/toggleLike.
+  // It must NOT be derived from the loaded likes list: that list is whichever
+  // SEGMENT is showing, so every passed property read as favourited.
+  final RxMap<int, bool> likedOverrides = <int, bool>{}.obs;
+  final RxSet<int> _pendingFavouriteUpdates = <int>{}.obs;
 
-  Future<void> addToFavourites(dynamic propertyId) async {
+  bool isFavourite(PropertyModel property) => likedOverrides[property.id] ?? property.liked;
+
+  bool isFavouriteUpdating(PropertyModel property) =>
+      _pendingFavouriteUpdates.contains(property.id);
+
+  Future<void> addToFavourites(PropertyModel property) => _setFavourite(property, true);
+
+  Future<void> removeFromFavourites(PropertyModel property) => _setFavourite(property, false);
+
+  Future<void> _setFavourite(PropertyModel property, bool liked) async {
+    if (_pendingFavouriteUpdates.contains(property.id)) return;
+
+    final previous = isFavourite(property);
+    _pendingFavouriteUpdates.add(property.id);
+    // Optimistic — recordSwipe already updates the likes list and segment
+    // caches, so no page refetch is needed (and refetching here raced the
+    // swipe POST; see activatePage).
+    likedOverrides[property.id] = liked;
     try {
-      DebugLogger.info('💖 Adding property $propertyId to favorites');
+      DebugLogger.info('${liked ? '💖 Adding' : '💔 Removing'} property ${property.id}');
       await _pageStateService.recordSwipe(
-        propertyId: int.parse(propertyId.toString()),
-        isLiked: true,
+        propertyId: property.id,
+        isLiked: liked,
+        property: property,
       );
-      // Refresh the liked properties to reflect the change
-      await _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
-      DebugLogger.success('✅ Property $propertyId added to favorites');
+      DebugLogger.success('✅ Property ${property.id} favourite -> $liked');
     } catch (e) {
-      DebugLogger.error('❌ Failed to add property $propertyId to favorites: $e');
+      DebugLogger.error('❌ Failed to update favourite for ${property.id}: $e');
+      likedOverrides[property.id] = previous;
+      await _reverseFailedSwipe(property.id, liked);
+      AppToast.error('action_failed'.tr, 'like_update_failed'.tr);
+    } finally {
+      _pendingFavouriteUpdates.remove(property.id);
     }
   }
 
-  Future<void> removeFromFavourites(dynamic propertyId) async {
-    try {
-      DebugLogger.info('💔 Removing property $propertyId from favorites');
-      await _pageStateService.recordSwipe(
-        propertyId: int.parse(propertyId.toString()),
-        isLiked: false,
-      );
-      // Refresh the liked properties to reflect the change
-      await _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
-      DebugLogger.success('✅ Property $propertyId removed from favorites');
-    } catch (e) {
-      DebugLogger.error('❌ Failed to remove property $propertyId from favorites: $e');
-    }
+  /// [recordSwipe] applies its likes/passed mutation BEFORE the network call,
+  /// so a failed swipe leaves the property sitting in the wrong segment while
+  /// the heart says the opposite. Reverses exactly that mutation.
+  ///
+  /// [attemptedIsLiked] is the swipe being reversed — [undoSwipe]'s
+  /// `originalIsLiked` names the action it is undoing, not the prior state
+  /// (see DiscoverController._revertUnsavedSwipe, same path). `notifyServer`
+  /// is false because the swipe never reached the server.
+  ///
+  /// The discover-deck removal is deliberately NOT reversed: reinserting would
+  /// jump the card to the top of Discover, which the undo flow wants and a
+  /// failed heart tap does not.
+  Future<void> _reverseFailedSwipe(int propertyId, bool attemptedIsLiked) {
+    // Awaited by callers, but with catchError attached so a second failure is
+    // logged instead of replacing the error the user is about to be shown.
+    return _pageStateService
+        .undoSwipe(propertyId: propertyId, originalIsLiked: attemptedIsLiked, notifyServer: false)
+        .catchError((Object e) => DebugLogger.error('❌ Failed to reverse optimistic swipe: $e'));
   }
 
   void clearSearch() {
@@ -238,6 +267,9 @@ class LikesController extends GetxController {
   Future<void> removeFromLikes(PropertyModel property) async {
     try {
       DebugLogger.api('🗑️ Removing property from likes: ${property.title}');
+      // Keep the heart in sync: the same (now stale) model is handed to
+      // property details, where `liked` would still read true.
+      likedOverrides[property.id] = false;
       // Pass the model so optimistic passed-cache updates still work after the
       // card leaves the visible liked list.
       await _pageStateService.recordSwipe(
@@ -255,7 +287,11 @@ class LikesController extends GetxController {
     } catch (e) {
       DebugLogger.error('❌ Failed to remove from likes: $e');
 
-      // Revert optimistic update
+      // Revert optimistic update (heart + the list mutation recordSwipe
+      // already applied locally; the refresh below cannot clear it because
+      // the optimistic pass is merged back over server results).
+      likedOverrides[property.id] = true;
+      await _reverseFailedSwipe(property.id, false);
       AppToast.error('error'.tr, 'remove_failed'.tr);
 
       // Refresh to restore correct state
@@ -267,6 +303,7 @@ class LikesController extends GetxController {
   Future<void> moveToLikes(PropertyModel property) async {
     try {
       DebugLogger.api('➕ Moving property to likes: ${property.title}');
+      likedOverrides[property.id] = true;
       // Pass the model so optimistic liked-cache updates work after leaving
       // the visible passed list.
       await _pageStateService.recordSwipe(
@@ -281,6 +318,8 @@ class LikesController extends GetxController {
     } catch (e) {
       DebugLogger.error('❌ Failed to move to likes: $e');
 
+      likedOverrides[property.id] = false;
+      await _reverseFailedSwipe(property.id, true);
       AppToast.error('error'.tr, 'move_failed'.tr);
 
       // Refresh to restore correct state

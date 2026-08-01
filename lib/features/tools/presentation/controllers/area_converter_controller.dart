@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:get/get.dart';
+import 'package:ghar360/core/utils/formatters.dart';
 
 enum AreaUnit { sqFt, sqM, sqYards, acres, gaj, bigha }
 
@@ -45,7 +46,7 @@ class AreaConverterController extends GetxController {
 
   void convert() {
     final input = double.tryParse(inputController.text) ?? 0;
-    if (input <= 0) {
+    if (!Formatters.isPositiveFinite(input)) {
       conversions.clear();
       return;
     }
@@ -63,6 +64,7 @@ class AreaConverterController extends GetxController {
 
   void clear() {
     inputController.clear();
+    selectedUnit.value = AreaUnit.sqFt;
     conversions.clear();
   }
 

@@ -181,8 +181,9 @@ void main() {
     );
 
     expect(find.text('Cozy Studio'), findsOneWidget);
-    // monthlyRent=15000, purpose=rent -> effectivePrice=15000 -> ₹15000
-    expect(find.text('₹15000'), findsOneWidget);
+    // monthlyRent=15000, purpose=rent -> effectivePrice=15000 -> ₹15,000
+    // (Indian digit grouping)
+    expect(find.text('₹15,000'), findsOneWidget);
   });
 
   testWidgets('renders studio type badge uppercased', (tester) async {

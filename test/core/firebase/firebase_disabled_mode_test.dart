@@ -66,7 +66,7 @@ void main() {
       expect(RemoteConfigService.androidReleaseNotes, '');
       expect(
         RemoteConfigService.androidUpdateUrl,
-        'https://play.google.com/store/apps/details?id=com.ghar360.app',
+        'https://play.google.com/store/apps/details?id=com.the360ghar.ghar360',
       );
     });
 
@@ -75,7 +75,7 @@ void main() {
       expect(RemoteConfigService.iosMinVersion, '1.0.0');
       expect(RemoteConfigService.iosForceUpdate, isFalse);
       expect(RemoteConfigService.iosReleaseNotes, '');
-      expect(RemoteConfigService.iosUpdateUrl, 'https://apps.apple.com/app/id123456789');
+      expect(RemoteConfigService.iosUpdateUrl, 'https://apps.apple.com/app/id6794866216');
     });
 
     test('Analytics all event methods are no-ops when Firebase not ready', () async {

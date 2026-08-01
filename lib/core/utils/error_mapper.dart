@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show IconData, Icons;
@@ -30,10 +31,7 @@ class ErrorMapper {
         if (kDebugMode) {
           NullCheckTrap.captureStringOccurrence(error, source: 'ErrorMapper.mapApiError(String)');
         }
-        return NetworkException(
-          'A data processing error occurred. Please try again.',
-          details: error,
-        );
+        return NetworkException('something_went_wrong'.tr, details: error);
       }
       // Return as a generic network exception for string errors
       return NetworkException(error, details: error);
@@ -42,23 +40,19 @@ class ErrorMapper {
     // Map common platform/network exceptions
     if (error is SocketException) {
       return NetworkException(
-        'Unable to connect to server. Please check your internet connection.',
+        'error_no_connection'.tr,
         code: 'CONNECTION_ERROR',
         details: error.message,
       );
     }
 
     if (error is TimeoutException) {
-      return NetworkException(
-        'Connection timeout. Please check your internet connection and try again.',
-        code: 'TIMEOUT',
-        details: error.message,
-      );
+      return NetworkException('error_timeout'.tr, code: 'TIMEOUT', details: error.message);
     }
 
     if (error is HttpException) {
       return NetworkException(
-        'Network error occurred. Please try again.',
+        'error_network_generic'.tr,
         code: 'HTTP_EXCEPTION',
         details: error.message,
       );
@@ -79,7 +73,7 @@ class ErrorMapper {
         final statusCode = int.tryParse(match.group(2)!);
         return _mapHttpStatusCode(statusCode, message);
       }
-      return NetworkException('API error occurred. Please try again.', details: error.toString());
+      return NetworkException('something_went_wrong'.tr, details: error.toString());
     }
 
     if (error is AppException) {
@@ -87,10 +81,7 @@ class ErrorMapper {
     }
 
     // Generic error
-    return NetworkException(
-      'An unexpected error occurred. Please try again.',
-      details: error.toString(),
-    );
+    return NetworkException('something_went_wrong'.tr, details: error.toString());
   }
 
   // Note: Previously mapped DioException. Since Dio is not used,
@@ -108,7 +99,7 @@ class ErrorMapper {
     switch (statusCode) {
       case 400:
         return ValidationException(
-          'Invalid request. Please check your input and try again.',
+          'error_bad_request'.tr,
           code: 'BAD_REQUEST',
           details: responseData,
           fieldErrors: _extractFieldErrors(responseData),
@@ -116,35 +107,35 @@ class ErrorMapper {
 
       case 401:
         return AuthenticationException(
-          'Your session has expired. Please log in again.',
-          code: 'UNAUTHORIZED',
+          'session_expired_signin'.tr,
+          code: AppException.unauthorizedCode,
           details: responseData,
         );
 
       case 403:
         return AuthenticationException(
-          'You don\'t have permission to access this resource.',
+          'error_forbidden'.tr,
           code: 'FORBIDDEN',
           details: responseData,
         );
 
       case 404:
         return NotFoundException(
-          'The requested resource was not found.',
+          'error_not_found_body'.tr,
           code: 'NOT_FOUND',
           details: responseData,
         );
 
       case 405:
         return ValidationException(
-          'This operation is not supported. Please try a different action.',
+          'error_method_not_allowed'.tr,
           code: 'METHOD_NOT_ALLOWED',
           details: responseData,
         );
 
       case 422:
         return ValidationException(
-          _extractValidationMessage(responseData) ?? 'Please check your input and try again.',
+          _extractValidationMessage(responseData) ?? 'error_validation_body'.tr,
           code: 'VALIDATION_ERROR',
           details: responseData,
           fieldErrors: _extractFieldErrors(responseData),
@@ -152,14 +143,14 @@ class ErrorMapper {
 
       case 429:
         return NetworkException(
-          'Too many requests. Please wait a moment and try again.',
+          'too_many_attempts'.tr,
           code: 'RATE_LIMITED',
           details: responseData,
         );
 
       case 500:
         return ServerException(
-          'Server error occurred. Our team has been notified.',
+          'error_server_500'.tr,
           code: 'SERVER_ERROR',
           statusCode: 500,
           details: responseData,
@@ -169,7 +160,7 @@ class ErrorMapper {
       case 503:
       case 504:
         return ServerException(
-          'Server is temporarily unavailable. Please try again later.',
+          'error_server_unavailable'.tr,
           code: 'SERVER_UNAVAILABLE',
           statusCode: statusCode,
           details: responseData,
@@ -177,7 +168,7 @@ class ErrorMapper {
 
       default:
         return ServerException(
-          'An error occurred on the server. Please try again.',
+          'error_server_generic'.tr,
           code: 'UNKNOWN_HTTP_ERROR',
           statusCode: statusCode,
           details: responseData,
@@ -186,7 +177,14 @@ class ErrorMapper {
   }
 
   static String? _extractValidationMessage(dynamic responseData) {
-    if (responseData is Map<String, dynamic>) {
+    if (responseData is String) {
+      try {
+        responseData = jsonDecode(responseData);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (responseData is Map) {
       // Try different message fields
       if (responseData['message'] is String) {
         return responseData['message'];
@@ -214,15 +212,23 @@ class ErrorMapper {
   }
 
   static Map<String, List<String>>? _extractFieldErrors(dynamic responseData) {
-    if (responseData is Map<String, dynamic> && responseData['errors'] is Map) {
-      final errors = responseData['errors'] as Map<String, dynamic>;
+    if (responseData is String) {
+      try {
+        responseData = jsonDecode(responseData);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (responseData is Map && responseData['errors'] is Map) {
+      final errors = Map<dynamic, dynamic>.from(responseData['errors'] as Map);
       final fieldErrors = <String, List<String>>{};
 
       errors.forEach((field, error) {
+        final fieldName = field.toString();
         if (error is List) {
-          fieldErrors[field] = error.cast<String>();
+          fieldErrors[fieldName] = error.map((value) => value.toString()).toList();
         } else if (error is String) {
-          fieldErrors[field] = [error];
+          fieldErrors[fieldName] = [error];
         }
       });
 
@@ -278,7 +284,7 @@ class ErrorMapper {
 
   // Check if error should trigger authentication flow
   static bool shouldTriggerReauth(AppException error) {
-    return error is AuthenticationException && error.code == 'UNAUTHORIZED';
+    return error is AuthenticationException && error.code == AppException.unauthorizedCode;
   }
 
   // Check if error is retryable

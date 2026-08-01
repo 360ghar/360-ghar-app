@@ -111,8 +111,10 @@ class PageDataLoader {
         _pageState.updatePageState(pageType, state.copyWith(isLoading: true, error: null));
         await _fetchAndUpdatePage(pageType, generation: generation);
       } else {
-        // We have cached data: return immediately and revalidate in
-        // background when asked or stale
+        // We have cached data: keep it on screen and revalidate. Explicit
+        // background callers are fire-and-forget; everyone else (pull-to-
+        // refresh, retry, filter change) awaits the revalidation so their
+        // spinner tracks the real fetch.
         if (forceRefresh || backgroundRefresh || isStale) {
           final generation = _bumpGeneration(pageType);
           _activeLoads.add(pageType);
@@ -120,25 +122,31 @@ class PageDataLoader {
           launchedBackgroundLoad = true;
           _pageState.notifyPageRefreshing(pageType, true);
           _pageState.updatePageState(pageType, state.copyWith(isRefreshing: true, error: null));
-          unawaited(
-            _fetchAndUpdatePage(pageType, generation: generation)
-                .catchError((e, stackTrace) {
-                  if (!_isCurrentGeneration(pageType, generation)) return;
-                  DebugLogger.error('❌ Background refresh failed for ${pageType.name}', e);
-                  final current = _pageState.getStateForPage(pageType);
-                  _pageState.updatePageState(
-                    pageType,
-                    current.copyWith(
-                      isRefreshing: false,
-                      isLoadingMore: false,
-                      error: ErrorMapper.mapApiError(e, stackTrace),
-                    ),
-                  );
-                })
-                .whenComplete(() {
-                  _finishActiveLoad(pageType);
-                }),
-          );
+          final refresh = _fetchAndUpdatePage(pageType, generation: generation)
+              .catchError((e, stackTrace) {
+                if (!_isCurrentGeneration(pageType, generation)) return;
+                DebugLogger.error('❌ Background refresh failed for ${pageType.name}', e);
+                final current = _pageState.getStateForPage(pageType);
+                _pageState.updatePageState(
+                  pageType,
+                  current.copyWith(
+                    isRefreshing: false,
+                    isLoadingMore: false,
+                    error: ErrorMapper.mapApiError(e, stackTrace),
+                  ),
+                );
+              })
+              .whenComplete(() {
+                _finishActiveLoad(pageType);
+              });
+          // Caveat: awaits only this fetch. If a newer force refresh
+          // supersedes it, the queued reload from _finishActiveLoad still runs
+          // unawaited; chaining onto that would mean restructuring the queue.
+          if (backgroundRefresh) {
+            unawaited(refresh);
+          } else {
+            await refresh;
+          }
         } else {
           // Fresh enough; nothing to do
           return;

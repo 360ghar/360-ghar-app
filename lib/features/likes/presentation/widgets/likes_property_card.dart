@@ -12,12 +12,14 @@ import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 class LikesPropertyCard extends StatelessWidget {
   final PropertyModel property;
   final bool isFavourite;
+  final bool isUpdating;
   final VoidCallback onFavouriteToggle;
 
   const LikesPropertyCard({
     super.key,
     required this.property,
     required this.isFavourite,
+    this.isUpdating = false,
     required this.onFavouriteToggle,
   });
 
@@ -131,13 +133,19 @@ class LikesPropertyCard extends StatelessWidget {
                         shape: BoxShape.circle,
                       ),
                       padding: const EdgeInsets.all(AppSpacing.sm),
-                      child: AnimatedFavoriteIcon(
-                        isFavorite: isFavourite,
-                        onToggle: onFavouriteToggle,
-                        size: 18,
-                        activeColor: AppDesign.favoriteActive,
-                        inactiveColor: colorScheme.onPrimary,
-                      ),
+                      child: isUpdating
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : AnimatedFavoriteIcon(
+                              isFavorite: isFavourite,
+                              onToggle: onFavouriteToggle,
+                              size: 18,
+                              activeColor: AppDesign.favoriteActive,
+                              inactiveColor: colorScheme.onPrimary,
+                            ),
                     ),
                   ),
                 ],

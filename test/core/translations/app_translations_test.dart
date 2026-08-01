@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/core/translations/app_translations.dart';
@@ -67,5 +69,58 @@ void main() {
         );
       }
     }
+  });
+
+  // The two tests below are structural rather than a hand-maintained key list.
+  // A hand-maintained list only catches keys someone remembered to add to it,
+  // which is why 24 auth/onboarding keys silently existed in en_US only, and
+  // why 'property_purpose' and 'complete' were rendered to users as raw keys.
+  test('en_US and hi_IN define exactly the same keys', () {
+    final keys = AppTranslations().keys;
+    final en = keys['en_US']!.keys.toSet();
+    final hi = keys['hi_IN']!.keys.toSet();
+
+    expect(
+      en.difference(hi).toList()..sort(),
+      isEmpty,
+      reason: 'Defined in en_US but missing from hi_IN, so Hindi falls back to English',
+    );
+    expect(
+      hi.difference(en).toList()..sort(),
+      isEmpty,
+      reason: 'Defined in hi_IN but missing from en_US, so English users see the raw key',
+    );
+  });
+
+  test('every translation key referenced in lib/ is defined in both locales', () {
+    final keys = AppTranslations().keys;
+    final en = keys['en_US']!;
+    final hi = keys['hi_IN']!;
+
+    // Matches `'some_key'.tr` and `'some_key'.trParams({...})`. Keys composed
+    // at runtime (e.g. 'doc_$id') are not literals and are correctly skipped.
+    final pattern = RegExp(r"'([a-z0-9_]+)'\s*\.tr(Params)?\b");
+    final referenced = <String, String>{};
+
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      for (final match in pattern.allMatches(entity.readAsStringSync())) {
+        referenced.putIfAbsent(match.group(1)!, () => entity.path);
+      }
+    }
+
+    expect(referenced, isNotEmpty, reason: 'Scanner found no keys; the regex is broken');
+
+    final undefined = <String>[];
+    referenced.forEach((key, path) {
+      if (!en.containsKey(key)) undefined.add('$key (en_US) used in $path');
+      if (!hi.containsKey(key)) undefined.add('$key (hi_IN) used in $path');
+    });
+
+    expect(
+      undefined..sort(),
+      isEmpty,
+      reason: 'GetX renders the key itself when a lookup misses, so these show as raw text',
+    );
   });
 }

@@ -32,7 +32,11 @@ class LocalizationController extends GetxController {
     String? countryCode = _storage.read('country_code');
 
     if (languageCode != null && countryCode != null) {
-      _currentLocale.value = Locale(languageCode, countryCode);
+      final savedLocale = Locale(languageCode, countryCode);
+      _currentLocale.value = supportedLocales.firstWhere(
+        (locale) => locale == savedLocale,
+        orElse: () => _normalizeToSupported(savedLocale),
+      );
       Get.updateLocale(_currentLocale.value);
     } else {
       // No saved preference: normalize device locale to a supported one
@@ -58,12 +62,16 @@ class LocalizationController extends GetxController {
   }
 
   void changeLanguage(String languageCode, String countryCode) {
-    Locale newLocale = Locale(languageCode, countryCode);
+    final requestedLocale = Locale(languageCode, countryCode);
+    final newLocale = supportedLocales.firstWhere(
+      (locale) => locale == requestedLocale,
+      orElse: () => _normalizeToSupported(requestedLocale),
+    );
     _currentLocale.value = newLocale;
 
-    // Save to storage
-    _storage.write('language_code', languageCode);
-    _storage.write('country_code', countryCode);
+    // Persist the effective locale, not an unsupported request.
+    _storage.write('language_code', newLocale.languageCode);
+    _storage.write('country_code', newLocale.countryCode);
 
     // Update GetX locale
     Get.updateLocale(newLocale);

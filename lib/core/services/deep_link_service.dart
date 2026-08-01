@@ -51,6 +51,12 @@ class DeepLinkService extends GetxService {
   void _handleDeepLink(Uri uri) {
     DebugLogger.info('🔗 Received Deep Link: $uri');
 
+    // Only accept property links from the app's verified web domains. This
+    // prevents an arbitrary third-party URI delivered to the link stream from
+    // being turned into an in-app navigation request.
+    final host = uri.host.toLowerCase();
+    final isVerifiedWebHost = host == '360ghar.com' || host == 'www.360ghar.com';
+
     // OAuth redirect (Supabase Google redirect flow): exchange for a session.
     // Supabase is initialized with detectSessionInUri: false, so we do this
     // explicitly here. The onAuthStateChange listener then drives routing.
@@ -64,8 +70,8 @@ class DeepLinkService extends GetxService {
 
     // Parse path segments to find property ID
     // Supports:
-    // 1. https://the360ghar.com/p/123 (short link from _redirects)
-    // 2. https://the360ghar.com/property/123
+    // 1. https://360ghar.com/p/123 (short link from _redirects)
+    // 2. https://360ghar.com/property/123
 
     String? propertyId;
 
@@ -74,6 +80,11 @@ class DeepLinkService extends GetxService {
       if (firstSegment == 'p' || firstSegment == 'property') {
         propertyId = uri.pathSegments[1];
       }
+    }
+
+    if (!isVerifiedWebHost) {
+      DebugLogger.warning('🔗 Ignoring property link from unverified host: $uri');
+      return;
     }
 
     if (propertyId != null && propertyId.isNotEmpty) {

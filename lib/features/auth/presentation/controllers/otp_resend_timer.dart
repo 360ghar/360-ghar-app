@@ -32,9 +32,11 @@ mixin OtpResendTimer on GetxController {
       }
       if (otpCountdown.value > 0) {
         otpCountdown.value--;
-      } else {
+      }
+      if (otpCountdown.value <= 0) {
         canResendOtp.value = true;
         timer.cancel();
+        _otpTimer = null;
       }
     });
   }

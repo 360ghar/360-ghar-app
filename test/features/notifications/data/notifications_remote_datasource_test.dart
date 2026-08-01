@@ -58,6 +58,36 @@ void main() {
       expect(result, isFalse);
     });
 
+    test('trims token and user id before registration', () async {
+      when(
+        () => apiClient.post(ApiPaths.notificationsDeviceRegister, body: any(named: 'body')),
+      ).thenAnswer((_) async => successResponse());
+
+      final result = await datasource.registerDeviceToken(
+        token: '  fcm-token-abc  ',
+        userId: '  user-123  ',
+      );
+
+      expect(result, isTrue);
+      final captured =
+          verify(
+                () => apiClient.post(
+                  ApiPaths.notificationsDeviceRegister,
+                  body: captureAny(named: 'body'),
+                ),
+              ).captured.single
+              as Map<String, dynamic>;
+      expect(captured['token'], 'fcm-token-abc');
+      expect(captured['user_id'], 'user-123');
+    });
+
+    test('returns false when token is empty', () async {
+      final result = await datasource.registerDeviceToken(token: '  ', userId: 'user-123');
+
+      expect(result, isFalse);
+      verifyNever(() => apiClient.post(any(), body: any(named: 'body')));
+    });
+
     test('returns false when userId is null', () async {
       final result = await datasource.registerDeviceToken(token: 'fcm-token-abc', userId: null);
 
@@ -88,6 +118,32 @@ void main() {
   });
 
   group('unregisterDeviceToken', () {
+    test('returns false when token is empty', () async {
+      final result = await datasource.unregisterDeviceToken('  ');
+
+      expect(result, isFalse);
+      verifyNever(() => apiClient.delete(any(), queryParams: any(named: 'queryParams')));
+    });
+
+    test('trims token before unregistration', () async {
+      when(
+        () => apiClient.delete(
+          ApiPaths.notificationsDeviceUnregister,
+          queryParams: any(named: 'queryParams'),
+        ),
+      ).thenAnswer((_) async => successResponse());
+
+      final result = await datasource.unregisterDeviceToken('  fcm-token-abc  ');
+
+      expect(result, isTrue);
+      verify(
+        () => apiClient.delete(
+          ApiPaths.notificationsDeviceUnregister,
+          queryParams: {'token': 'fcm-token-abc'},
+        ),
+      ).called(1);
+    });
+
     test('returns true on successful unregistration', () async {
       when(
         () => apiClient.delete(

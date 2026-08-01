@@ -127,6 +127,19 @@ void main() {
       expect(mockThemeController.currentThemeMode, AppThemeMode.light);
     });
 
+    test('savePreferences exposes saving state and clears it when complete', () async {
+      final controller = createController();
+      when(() => mockProfileRepository.updateUserPreferences(any())).thenAnswer((_) async {
+        expect(controller.isSaving.value, isTrue);
+        return testUserModel();
+      });
+
+      final save = controller.savePreferences();
+      expect(controller.isSaving.value, isTrue);
+      await save;
+      expect(controller.isSaving.value, isFalse);
+    });
+
     test('savePreferences syncs notification toggles to backend', () async {
       final controller = createController();
 

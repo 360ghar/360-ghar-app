@@ -199,6 +199,14 @@ class DiscoverView extends GetView<DiscoverController> {
                       onSwipeLeft: controller.swipeLeft,
                       onSwipeRight: controller.swipeRight,
                       onSwipeUp: (property) => controller.viewPropertyDetails(property),
+                      // isPrefetching (not state == prefetching): on a failed
+                      // load-more, state stays `prefetching` while this flag
+                      // clears, so the deck-empty state can still be reached.
+                      isLoadingMore: controller.isPrefetching.value,
+                      // Mirrors the duplicate-swipe guard in _handleSwipe: a
+                      // card missing from the deck would have its swipe
+                      // dropped, so reject it before it animates away.
+                      canSwipe: (property) => controller.deck.any((item) => item.id == property.id),
                       onRefresh: controller.refreshDeck,
                       onChangeFilters: () => showPropertyFilterBottomSheet(
                         Get.context ?? context,

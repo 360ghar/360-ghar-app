@@ -43,6 +43,7 @@ class DashboardController extends GetxController {
   final RxInt currentIndex = 2.obs; // Default to Discover tab (index 2)
   final Set<int> visitedTabs = {2}; // Lazy tab initialization tracking
   Worker? _authStatusWorker;
+  int _loadGeneration = 0;
 
   final GetStorage _storage = GetStorage();
 
@@ -97,25 +98,27 @@ class DashboardController extends GetxController {
   }
 
   Future<void> loadDashboardData() async {
-    if (isLoading.value) return; // Guard against concurrent execution
-    if (!_authController.isAuthenticated) return;
+    if (isLoading.value || !_authController.isAuthenticated) return;
 
+    final generation = ++_loadGeneration;
     try {
       isLoading.value = true;
       error.value = null;
 
       // Load dashboard data (analytics removed)
       final results = await Future.wait([_loadUserStats(), _loadRecentActivity()]);
+      if (generation != _loadGeneration || !_authController.isAuthenticated) return;
 
       userStats.value = results[0] as Map<String, dynamic>;
       recentActivity.value = results[1] as List<Map<String, dynamic>>;
     } catch (e, stackTrace) {
+      if (generation != _loadGeneration || !_authController.isAuthenticated) return;
       error.value = ErrorMapper.mapApiError('Failed to load dashboard data');
       DebugLogger.error('Error loading dashboard data', e, stackTrace);
 
       AppToast.error('dashboard_error_title'.tr, 'dashboard_error_message'.tr);
     } finally {
-      isLoading.value = false;
+      if (generation == _loadGeneration) isLoading.value = false;
     }
   }
 
@@ -250,6 +253,11 @@ class DashboardController extends GetxController {
   }
 
   void _clearAllData() {
+    // Invalidate any in-flight load so a previous user cannot repopulate state
+    // after logout or account switching.
+    _loadGeneration++;
+    isLoading.value = false;
+    isRefreshing.value = false;
     recentActivity.clear();
     userStats.clear();
     error.value = null;

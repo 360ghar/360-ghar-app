@@ -444,6 +444,162 @@ void main() {
       ).captured.cast<PageStateModel>();
       expect(calls.any((s) => s.error != null && !s.isRefreshing), true);
     });
+
+    test('forceRefresh with cached data does not complete until the fetch does', () async {
+      // RefreshIndicator awaits this future; it must track the real fetch and
+      // not resolve one frame later.
+      final gate = Completer<UnifiedPropertyResponse>();
+      when(() => pageState.getStateForPage(any())).thenAnswer(
+        (inv) => cachedState(
+          inv.positionalArguments[0] as PageType,
+          properties: [testPropertyModel(id: 1)],
+        ),
+      );
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) => gate.future);
+
+      var completed = false;
+      final refresh = loader
+          .loadPageData(PageType.explore, forceRefresh: true)
+          .then((_) => completed = true);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(completed, false, reason: 'pull-to-refresh resolved before the fetch finished');
+
+      gate.complete(testPropertyResponse());
+      await refresh;
+
+      expect(completed, true);
+    });
+
+    test('failing forceRefresh does not throw out of loadPageData', () async {
+      when(() => pageState.getStateForPage(any())).thenAnswer(
+        (inv) => cachedState(
+          inv.positionalArguments[0] as PageType,
+          properties: [testPropertyModel(id: 1)],
+        ),
+      );
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenThrow(Exception('refresh failed'));
+
+      // Completes normally (no throw into the caller) and, by the time it
+      // completes, the failure is already recorded in page state.
+      await expectLater(loader.loadPageData(PageType.explore, forceRefresh: true), completes);
+
+      final calls = verify(
+        () => pageState.updatePageState(PageType.explore, captureAny()),
+      ).captured.cast<PageStateModel>();
+      expect(calls.any((s) => s.error != null && !s.isRefreshing), true);
+    });
+
+    test('backgroundRefresh returns without waiting for the fetch', () async {
+      final gate = Completer<UnifiedPropertyResponse>();
+      when(() => pageState.getStateForPage(any())).thenAnswer(
+        (inv) => cachedState(
+          inv.positionalArguments[0] as PageType,
+          properties: [testPropertyModel(id: 1)],
+        ),
+      );
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) => gate.future);
+
+      // Would time out if a background caller became blocking.
+      await loader.loadPageData(PageType.discover, backgroundRefresh: true);
+
+      expect(gate.isCompleted, false);
+      verify(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).called(1);
+
+      // Settle the in-flight fetch before tearDown.
+      gate.complete(testPropertyResponse());
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+
+    test('stale generation refresh failure never writes error state', () async {
+      final gate = Completer<UnifiedPropertyResponse>();
+      var calls = 0;
+      when(() => pageState.getStateForPage(any())).thenAnswer(
+        (inv) => cachedState(
+          inv.positionalArguments[0] as PageType,
+          properties: [testPropertyModel(id: 1)],
+        ),
+      );
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) {
+        calls++;
+        return calls == 1 ? gate.future : Future.value(testPropertyResponse());
+      });
+
+      final first = loader.loadPageData(PageType.explore, forceRefresh: true);
+      await Future<void>.delayed(Duration.zero);
+      // Supersedes the in-flight fetch: bumps generation, queues a reload.
+      await loader.loadPageData(PageType.explore, forceRefresh: true);
+
+      gate.completeError(Exception('stale failure'));
+      await first;
+      // Let the queued reload run to completion.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(calls, 2);
+      final updates = verify(
+        () => pageState.updatePageState(PageType.explore, captureAny()),
+      ).captured.cast<PageStateModel>();
+      expect(
+        updates.every((s) => s.error == null),
+        true,
+        reason: 'a superseded generation wrote error state',
+      );
+    });
   });
 
   // ── loadPageData: guards ─────────────────────────────────────────────

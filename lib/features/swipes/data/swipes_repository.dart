@@ -36,13 +36,14 @@ class SwipesRepository extends GetxService implements SwipesPort {
       await _apiClient.post(
         ApiPaths.swipes,
         body: {'property_id': propertyId, 'is_liked': isLiked},
+        idempotent: true,
       );
 
       DebugLogger.success('✅ Swipe recorded successfully');
     } on AppException catch (e) {
-      // If it's a network error, enqueue for retry instead of failing hard
-      if (e is NetworkException) {
-        DebugLogger.warning('🌐 Network error, queuing swipe for retry: ${e.message}');
+      // If the device is offline, enqueue for retry instead of failing hard
+      if (e.isRetryableOffline) {
+        DebugLogger.warning('🌐 Offline, queuing swipe for retry: ${e.message}');
         try {
           final queue = _queue;
           if (queue == null) {

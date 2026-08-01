@@ -8,6 +8,7 @@ import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/utils/tour_url.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_section_header.dart';
 import 'package:photo_view/photo_view.dart';
@@ -114,9 +115,11 @@ class PropertyMediaHub extends StatelessWidget {
       case _MediaKind.photos:
         _openFullscreenGallery(context, _images, 0);
       case _MediaKind.tour:
-        final url = property.virtualTourUrl;
-        if (url != null && url.isNotEmpty) {
+        final url = TourUrl.validate(property.virtualTourUrl);
+        if (url != null) {
           Get.toNamed(AppRoutes.tour, arguments: url);
+        } else {
+          DebugLogger.warning('Property media hub rejected invalid virtual tour URL');
         }
       case _MediaKind.video:
         final video = property.primaryVideoUrl ?? property.mediaVideoUrls.firstOrNull;
@@ -137,8 +140,13 @@ class PropertyMediaHub extends StatelessWidget {
   Future<void> _openStreetView() async {
     final urlString = property.streetViewLaunchUrl;
     if (urlString == null) return;
-    final uri = Uri.tryParse(urlString);
-    if (uri != null && await canLaunchUrl(uri)) {
+    final validated = TourUrl.validate(urlString);
+    if (validated == null) {
+      DebugLogger.warning('Property media hub rejected invalid street view URL');
+      return;
+    }
+    final uri = Uri.parse(validated);
+    if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
@@ -337,6 +345,7 @@ class _LazyVideoPlayerState extends State<_LazyVideoPlayer> {
   ChewieController? _chewieController;
   bool _loading = true;
   String? _error;
+  int _initializationGeneration = 0;
 
   @override
   void initState() {
@@ -346,39 +355,60 @@ class _LazyVideoPlayerState extends State<_LazyVideoPlayer> {
 
   @override
   void dispose() {
+    _initializationGeneration++;
     _chewieController?.dispose();
     _controller?.dispose();
     super.dispose();
   }
 
   Future<void> _initialize() async {
+    final generation = ++_initializationGeneration;
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final uri = Uri.parse(widget.videoUrl);
-      final controller = VideoPlayerController.networkUrl(uri);
+      final validated = TourUrl.validate(widget.videoUrl);
+      if (validated == null) {
+        throw const FormatException('Unsupported video URL scheme');
+      }
+      final controller = VideoPlayerController.networkUrl(Uri.parse(validated));
       await controller.initialize();
-      _chewieController = ChewieController(
+      if (!mounted || generation != _initializationGeneration) {
+        await controller.dispose();
+        return;
+      }
+      final chewieController = ChewieController(
         videoPlayerController: controller,
         autoPlay: false,
         looping: false,
         allowMuting: true,
         allowPlaybackSpeedChanging: true,
       );
+      _chewieController?.dispose();
+      _controller?.dispose();
+      _chewieController = chewieController;
       _controller = controller;
     } catch (e) {
+      if (!mounted || generation != _initializationGeneration) return;
       DebugLogger.error('Video player init failed', e);
       _error = 'video_load_failed'.tr;
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _initializationGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _openExternal(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
+    final validated = TourUrl.validate(url);
+    if (validated == null) {
+      DebugLogger.warning('Property video link rejected invalid URL');
+      return;
+    }
+    final uri = Uri.parse(validated);
+    if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }

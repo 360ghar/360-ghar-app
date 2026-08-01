@@ -246,14 +246,20 @@ class DiscoverController extends GetxController {
       // (optimistic update) and fires a background network call.
       // Because the swiped property is removed, the next card naturally
       // becomes deck[currentIndex] — no index increment needed.
+      // Only the newest optimistic swipe may restore the deck. If an older
+      // request fails after another swipe, restoring it would clobber the
+      // newer card state; its failure is reported without reinserting it.
+      _pendingSwipes.clear();
+      _pendingSwipes[property.id] = (property: property, isLiked: isLiked);
       _pageStateService
           .recordSwipe(propertyId: property.id, isLiked: isLiked)
-          .catchError(
-            (e) => DebugLogger.error('❌ Failed to record swipe for property ${property.id}: $e'),
-          );
-
-      // Track for undo
-      _lastSwipe = (property: property, isLiked: isLiked);
+          .then((_) {
+            _pendingSwipes.remove(property.id);
+          })
+          .catchError((e) {
+            DebugLogger.error('❌ Failed to record swipe for property ${property.id}: $e');
+            _revertUnsavedSwipe(property, isLiked);
+          });
 
       // After optimistic removal, check deck state
       if (deck.isEmpty) {
@@ -304,14 +310,16 @@ class DiscoverController extends GetxController {
 
       DebugLogger.api('🔄 Prefetching more properties...');
       await _pageStateService.loadMoreData(PageType.discover);
-
-      if (state.value == DiscoverState.prefetching) {
-        state.value = DiscoverState.loaded;
-      }
     } catch (e) {
       DebugLogger.error('❌ Prefetch failed: $e');
     } finally {
       isPrefetching.value = false;
+      // In finally, not after the await: a load-more that threw used to leave
+      // state pinned at `prefetching` (isLoaded false) until the next
+      // discoverState emission, because the reset sat inside the try.
+      if (state.value == DiscoverState.prefetching) {
+        state.value = DiscoverState.loaded;
+      }
     }
   }
 
@@ -326,68 +334,77 @@ class DiscoverController extends GetxController {
     await _loadInitialDeck();
   }
 
-  // ── Undo ──
+  // ── Failed-swipe recovery ──
 
-  /// Tracks the last swiped property so it can be restored by [undoLastSwipe].
-  /// Cleared after a successful undo or overwritten by the next swipe.
-  ({PropertyModel property, bool isLiked})? _lastSwipe;
+  /// Tracks the last swiped property so a failed persist can restore it.
+  /// Replaced by the next swipe, cleared once a revert has run.
+  final Map<int, ({PropertyModel property, bool isLiked})> _pendingSwipes = {};
 
-  bool get canUndo => _lastSwipe != null;
-
-  Future<void> undoLastSwipe() async {
-    final last = _lastSwipe;
-    if (last == null) {
-      AppToast.info('undo_unavailable'.tr, 'undo_no_previous_property'.tr);
+  /// Called when [PageStateService.recordSwipe]'s network call fails after
+  /// the optimistic swipe already moved the card off the deck (fire-and-forget
+  /// from [_handleSwipe]). Reverts the local optimistic state,
+  /// with notifyServer: false since the swipe never reached the server —
+  /// there's nothing to reverse remotely, only the local optimistic UI.
+  void _revertUnsavedSwipe(PropertyModel property, bool isLiked) {
+    // A newer swipe has already superseded this one —
+    // reverting now would clobber state that no longer belongs to this swipe.
+    // The swipe is still lost though: the property left the deck and never
+    // reached the server, so say so rather than dropping it in silence.
+    if (!_pendingSwipes.containsKey(property.id)) {
+      // Not 'swipe_save_failed': that promises the property is back in the
+      // deck, which is exactly what this branch does not do.
+      AppToast.error('error'.tr, 'swipe_not_saved'.tr);
       return;
     }
 
+    _restorePropertyAfterSwipe(property: property, isLiked: isLiked);
+    _pendingSwipes.remove(property.id);
+
+    if (state.value != DiscoverState.loaded && state.value != DiscoverState.prefetching) {
+      state.value = DiscoverState.loaded;
+    }
+
+    AppToast.error('error'.tr, 'swipe_save_failed'.tr);
+  }
+
+  /// Revert logic for [_revertUnsavedSwipe]:
+  /// restores [property] to the front of the deck and reverses the
+  /// session/dashboard stats [_recordSwipeStats]/[_recordDashboardActivity]
+  /// recorded for the original swipe.
+  void _restorePropertyAfterSwipe({required PropertyModel property, required bool isLiked}) {
+    // Restore the property to the front of the discover deck so the user
+    // sees it again as the top card.
+    _pageStateService.reinsertPropertyToDiscover(property);
+
+    // Reverse the likes list adjustment; notifyServer stays false because the
+    // swipe never reached the server (see _revertUnsavedSwipe). Uses undoSwipe
+    // (not recordSwipe) so the property is NOT removed from the discover deck
+    // again.
+    unawaited(
+      _pageStateService
+          .undoSwipe(propertyId: property.id, originalIsLiked: isLiked, notifyServer: false)
+          .catchError((e) => DebugLogger.error('❌ Undo reverse-swipe failed: $e')),
+    );
+
+    // Update session stats
+    totalSwipesInSession.value = (totalSwipesInSession.value - 1).clamp(0, 1 << 31);
+    if (isLiked) {
+      likesInSession.value = (likesInSession.value - 1).clamp(0, 1 << 31);
+    } else {
+      passesInSession.value = (passesInSession.value - 1).clamp(0, 1 << 31);
+    }
+
+    // Reverse the persisted dashboard stats that the original swipe recorded
+    // via [_recordDashboardActivity]. Keeps persisted counters in sync so
+    // reverting does not leave dashboard stats permanently inflated.
     try {
-      // Restore the property to the front of the discover deck so the user
-      // sees it again as the top card.
-      _pageStateService.reinsertPropertyToDiscover(last.property);
-
-      // Reverse the server-side swipe state and adjust likes list.
-      // Uses undoSwipe (not recordSwipe) so the property is NOT removed from
-      // the discover deck again.
-      unawaited(
-        _pageStateService
-            .undoSwipe(propertyId: last.property.id, originalIsLiked: last.isLiked)
-            .catchError((e) => DebugLogger.error('❌ Undo reverse-swipe failed: $e')),
-      );
-
-      // Update session stats
-      totalSwipesInSession.value = (totalSwipesInSession.value - 1).clamp(0, 1 << 31);
-      if (last.isLiked) {
-        likesInSession.value = (likesInSession.value - 1).clamp(0, 1 << 31);
-      } else {
-        passesInSession.value = (passesInSession.value - 1).clamp(0, 1 << 31);
+      if (Get.isRegistered<DashboardController>()) {
+        final dash = Get.find<DashboardController>();
+        dash.decrementStat(kDashPropertiesViewedKey);
+        if (isLiked) dash.decrementStat(kDashPropertiesLikedKey);
       }
-
-      // Reverse the persisted dashboard stats that the original swipe recorded
-      // via [_recordDashboardActivity]. Keeps persisted counters in sync so
-      // undo does not leave dashboard stats permanently inflated.
-      try {
-        if (Get.isRegistered<DashboardController>()) {
-          final dash = Get.find<DashboardController>();
-          dash.decrementStat(kDashPropertiesViewedKey);
-          if (last.isLiked) dash.decrementStat(kDashPropertiesLikedKey);
-        }
-      } catch (e) {
-        DebugLogger.warning('Failed to reverse dashboard stats on undo: $e');
-      }
-
-      // Clear so a second undo does nothing
-      _lastSwipe = null;
-
-      // Ensure the controller reflects the restored deck
-      if (state.value != DiscoverState.loaded && state.value != DiscoverState.prefetching) {
-        state.value = DiscoverState.loaded;
-      }
-
-      AppToast.success('undo_success'.tr, 'undo_previous_property'.tr);
     } catch (e) {
-      DebugLogger.error('❌ Failed to undo last swipe: $e');
-      AppToast.error('action_failed'.tr, 'undo_failed'.tr);
+      DebugLogger.warning('Failed to reverse dashboard stats: $e');
     }
   }
 

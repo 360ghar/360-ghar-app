@@ -1,10 +1,26 @@
 // Custom exception classes for better error handling
 abstract class AppException implements Exception {
+  /// Authentication code meaning the session is no longer valid (server 401).
+  static const String unauthorizedCode = 'UNAUTHORIZED';
+
+  /// Authentication code meaning the SDK could not mint a token at all
+  /// (dead refresh token). Treated as session-fatal in [AuthController], and
+  /// as offline-retryable in repositories that persist actions locally.
+  static const String missingAuthHeaderCode = 'MISSING_AUTH_HEADER';
+
   final String message;
   final String? code;
   final dynamic details;
 
   AppException(this.message, {this.code, this.details});
+
+  /// True when a later retry could plausibly recover from this failure, i.e.
+  /// the device is offline. Being offline with an expired cached token
+  /// surfaces as [missingAuthHeaderCode] (ApiClient throws before opening a
+  /// socket), so it must queue too, or the action is lost.
+  bool get isRetryableOffline =>
+      this is NetworkException ||
+      (this is AuthenticationException && code == missingAuthHeaderCode);
 
   @override
   String toString() => 'AppException: $message';

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:get/get.dart';
+import 'package:ghar360/core/utils/formatters.dart';
 
 class CarpetAreaController extends GetxController {
   final TextEditingController superBuiltUpController = TextEditingController();
@@ -16,7 +17,7 @@ class CarpetAreaController extends GetxController {
   void calculate() {
     final superBuiltUp = double.tryParse(superBuiltUpController.text) ?? 0;
 
-    if (superBuiltUp <= 0) {
+    if (!Formatters.isPositiveFinite(superBuiltUp)) {
       validationError.value = 'please_enter_valid_amounts'.tr;
       hasCalculated.value = false;
       return;

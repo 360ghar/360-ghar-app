@@ -324,8 +324,8 @@ void main() {
     await tester.pumpAndSettle();
     restore();
 
-    // "India" only appears in the suggestion tile (not the search field).
-    expect(find.text('India'), findsOneWidget);
+    // "India" appears in the popular Delhi tile's subtitle ("Delhi, India").
+    expect(find.textContaining('India'), findsOneWidget);
     // "Delhi" appears in both the text field and the suggestion tile.
     expect(find.text('Delhi'), findsNWidgets(2));
   });
@@ -408,8 +408,10 @@ void main() {
     locationController.isSearchingPlaces.value = true;
     await tester.pump();
 
-    // One in the search field's suffix icon, one in the results area.
-    expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
+    // With an empty query the popular-cities list is visible, so only the
+    // search-field suffix spinner renders (the results-area spinner is gated
+    // on an empty suggestion list).
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     locationController.isSearchingPlaces.value = false;
     await tester.pump();
@@ -458,6 +460,9 @@ void main() {
     await tester.pumpAndSettle();
     restore();
 
-    expect(find.text('Mumbai'), findsOneWidget);
+    // Mumbai renders below the popular-cities header in the lazy list; it is
+    // built but offstage, so query the full tree to assert the empty-subtitle
+    // tile is present.
+    expect(find.text('Mumbai', skipOffstage: false), findsOneWidget);
   });
 }

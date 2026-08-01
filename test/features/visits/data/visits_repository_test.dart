@@ -90,6 +90,70 @@ void main() {
         ),
       ).called(1);
     });
+
+    test('enqueues and rethrows on AuthenticationException(MISSING_AUTH_HEADER)', () async {
+      // Offline + expired cached token: ApiClient throws before any socket is
+      // opened, so the booking must still reach the offline queue.
+      when(
+        () => remote.scheduleVisit(
+          propertyId: 10,
+          scheduledDate: '2024-06-01T00:00:00.000Z',
+          specialRequirements: 'notes',
+        ),
+      ).thenThrow(
+        AuthenticationException(
+          'Authentication required but no auth header available',
+          code: 'MISSING_AUTH_HEADER',
+        ),
+      );
+      when(
+        () => queue.enqueueVisit(
+          propertyId: 10,
+          scheduledDate: '2024-06-01T00:00:00.000Z',
+          specialRequirements: 'notes',
+        ),
+      ).thenAnswer((_) async {});
+
+      await expectLater(
+        () => repository.scheduleVisit(
+          propertyId: 10,
+          scheduledDate: '2024-06-01T00:00:00.000Z',
+          specialRequirements: 'notes',
+        ),
+        throwsA(isA<AuthenticationException>()),
+      );
+
+      verify(
+        () => queue.enqueueVisit(
+          propertyId: 10,
+          scheduledDate: '2024-06-01T00:00:00.000Z',
+          specialRequirements: 'notes',
+        ),
+      ).called(1);
+    });
+
+    test('rethrows AuthenticationException with a non-offline code without enqueueing', () async {
+      when(
+        () => remote.scheduleVisit(
+          propertyId: 10,
+          scheduledDate: '2024-06-01T00:00:00.000Z',
+          specialRequirements: null,
+        ),
+      ).thenThrow(AuthenticationException('Unauthorized', code: 'UNAUTHORIZED'));
+
+      await expectLater(
+        () => repository.scheduleVisit(propertyId: 10, scheduledDate: '2024-06-01T00:00:00.000Z'),
+        throwsA(isA<AuthenticationException>()),
+      );
+
+      verifyNever(
+        () => queue.enqueueVisit(
+          propertyId: any(named: 'propertyId'),
+          scheduledDate: any(named: 'scheduledDate'),
+          specialRequirements: any(named: 'specialRequirements'),
+        ),
+      );
+    });
   });
 
   group('VisitsRepository.fetchVisitsSummary', () {

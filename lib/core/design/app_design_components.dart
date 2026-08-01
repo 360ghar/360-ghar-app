@@ -137,11 +137,12 @@ class AppDesignComponents {
   static OutlinedButtonThemeData outlinedButtonTheme(Brightness brightness) {
     final bool isDark = brightness == Brightness.dark;
     final Color fg = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
+    final Color border = isDark ? AppDesignTokens.brandGoldLight : AppDesignTokens.brandGoldDark;
 
     return OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: fg,
-        side: const BorderSide(color: AppDesignTokens.brandGold, width: 1.4),
+        side: BorderSide(color: border, width: 1.4),
         minimumSize: const Size(0, 50),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppBorderRadius.button)),

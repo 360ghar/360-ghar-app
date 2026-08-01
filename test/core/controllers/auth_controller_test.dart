@@ -64,7 +64,6 @@ void main() {
         method: 'GET',
         endpoint: '/test',
         statusCode: 401,
-        isSessionCritical: true,
       ),
     );
   });
@@ -101,6 +100,45 @@ void main() {
   AuthController createController() {
     final c = AuthController();
     Get.put<AuthController>(c);
+    return c;
+  }
+
+  /// Drives a fresh controller all the way to [AuthStatus.authenticated], with
+  /// signOut wired to emit a signed-out event the way Supabase does.
+  Future<AuthController> createAuthenticatedController() async {
+    when(
+      () => authRepo.waitForAccessToken(
+        timeout: any(named: 'timeout'),
+        minTtlSeconds: any(named: 'minTtlSeconds'),
+      ),
+    ).thenAnswer((_) async => 'valid-token');
+    when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
+      (_) async => UserModel(
+        id: 1,
+        supabaseUserId: 'fake-uid-123',
+        email: 'test@example.com',
+        fullName: 'Test User',
+        dateOfBirth: '1990-01-01',
+        isActive: true,
+        isVerified: false,
+        createdAt: DateTime(2024, 1, 1),
+      ),
+    );
+    when(() => authRepo.signOut()).thenAnswer((_) async {
+      when(() => authRepo.currentUser).thenReturn(null);
+      when(() => authRepo.currentSession).thenReturn(null);
+      authStreamController.add(null);
+    });
+
+    final c = createController();
+    await Future.delayed(Duration.zero);
+
+    when(() => authRepo.currentUser).thenReturn(FakeUser());
+    when(() => authRepo.currentSession).thenReturn(FakeSession());
+    authStreamController.add(FakeUser());
+    await Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(seconds: 1));
+    expect(c.authStatus.value, AuthStatus.authenticated);
     return c;
   }
 
@@ -476,7 +514,6 @@ void main() {
           method: 'GET',
           endpoint: '/api/v1/profile',
           statusCode: 401,
-          isSessionCritical: true,
         ),
       );
 
@@ -485,53 +522,62 @@ void main() {
       expect(c.authStatus.value, AuthStatus.unauthenticated);
     });
 
-    test('ignores non-critical unauthorized event', () async {
-      final user = FakeUser();
-      final session = FakeSession();
+    test('signs out on a 401 from a non-profile endpoint', () async {
+      // Regression: a genuine 401 on /properties, /swipes or /visits used to be
+      // ignored because only /users/profile was allow-listed as session-fatal,
+      // leaving the app "signed in" with every screen empty forever.
+      final c = await createAuthenticatedController();
 
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-      expect(c.authStatus.value, AuthStatus.authenticated);
-
-      // Fire with non-critical event
-      final handler = ApiClient.onUnauthorized;
-      await handler!(
+      await ApiClient.onUnauthorized!(
         UnauthorizedEvent(
           error: AuthenticationException('UNAUTHORIZED', code: 'UNAUTHORIZED'),
           method: 'GET',
-          endpoint: '/api/v1/some-resource',
+          endpoint: '/api/v1/properties/',
           statusCode: 401,
-          isSessionCritical: false,
         ),
       );
+      await Future.delayed(const Duration(milliseconds: 500));
 
-      // Should remain authenticated
-      expect(c.authStatus.value, AuthStatus.authenticated);
+      verify(() => authRepo.signOut()).called(1);
+      expect(c.authStatus.value, AuthStatus.unauthenticated);
+    });
+
+    test('signs out when the refresh token is dead (MISSING_AUTH_HEADER)', () async {
+      // Password changed on another device → the SDK can no longer mint a
+      // token, so ApiClient throws MISSING_AUTH_HEADER instead of seeing a 401.
+      final c = await createAuthenticatedController();
+
+      await ApiClient.onUnauthorized!(
+        UnauthorizedEvent(
+          error: AuthenticationException(
+            'Authentication required but no auth header available',
+            code: 'MISSING_AUTH_HEADER',
+          ),
+          method: 'GET',
+          endpoint: '/api/v1/properties/',
+          statusCode: 401,
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      verify(() => authRepo.signOut()).called(1);
+      expect(c.authStatus.value, AuthStatus.unauthenticated);
+    });
+
+    test('concurrent unauthorized events trigger exactly one sign-out', () async {
+      final c = await createAuthenticatedController();
+
+      final event = UnauthorizedEvent(
+        error: AuthenticationException('UNAUTHORIZED', code: 'UNAUTHORIZED'),
+        method: 'GET',
+        endpoint: '/api/v1/properties/',
+        statusCode: 401,
+      );
+      await Future.wait(List.generate(8, (_) => ApiClient.onUnauthorized!(event)));
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      verify(() => authRepo.signOut()).called(1);
+      expect(c.authStatus.value, AuthStatus.unauthenticated);
     });
 
     test('ignores non-UNAUTHORIZED error code', () async {
@@ -545,7 +591,6 @@ void main() {
           method: 'GET',
           endpoint: '/api/v1/admin',
           statusCode: 403,
-          isSessionCritical: true,
         ),
       );
 
@@ -996,7 +1041,6 @@ void main() {
           method: 'GET',
           endpoint: '/api/v1/profile',
           statusCode: 401,
-          isSessionCritical: true,
         ),
       );
 
@@ -1046,7 +1090,6 @@ void main() {
           method: 'GET',
           endpoint: '/api/v1/profile',
           statusCode: 401,
-          isSessionCritical: true,
         ),
       );
 
@@ -1098,7 +1141,6 @@ void main() {
         method: 'GET',
         endpoint: '/api/v1/profile',
         statusCode: 401,
-        isSessionCritical: true,
       );
 
       await handler(event);

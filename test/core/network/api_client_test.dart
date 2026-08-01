@@ -20,6 +20,9 @@ void main() {
   });
 
   setUp(() {
+    // The notification cooldown is a static; reset it so tests that assert a
+    // notification fired are not suppressed by an earlier test's.
+    ApiClient.resetUnauthorizedCooldown();
     authProvider = _FakeAuthHeaderProvider();
     etagCache = MockETagCache();
     when(() => etagCache.getETag(any())).thenReturn(null);
@@ -496,7 +499,9 @@ void main() {
       expect(unauthorizedCalls, 1);
     });
 
-    test('does not fire onUnauthorized for non-session-critical 401', () async {
+    test('fires onUnauthorized for a 401 on any authenticated endpoint', () async {
+      // The forced-refresh retry already filters transient cases, so a 401 that
+      // survives it means the session is dead no matter which endpoint saw it.
       authProvider.throwOnRefresh = true;
       var unauthorizedCalls = 0;
       ApiClient.onUnauthorized = (_) async {
@@ -510,6 +515,87 @@ void main() {
 
       await expectLater(
         client.get('/properties', useCache: false),
+        throwsA(isA<AuthenticationException>()),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(unauthorizedCalls, 1);
+    });
+
+    test('fires onUnauthorized when no auth header can be built', () async {
+      // Dead refresh token: the request never leaves the device, so the only
+      // signal the app gets is MISSING_AUTH_HEADER.
+      authProvider.header = null;
+      UnauthorizedEvent? captured;
+      ApiClient.onUnauthorized = (event) async {
+        captured = event;
+      };
+
+      var dispatched = 0;
+      final client = buildClient(
+        dispatcher: (method, url, {body, required headers}) async {
+          dispatched++;
+          return _okResponse({'ok': true});
+        },
+      );
+
+      await expectLater(
+        client.get('/properties', useCache: false),
+        throwsA(
+          isA<AuthenticationException>().having((e) => e.code, 'code', 'MISSING_AUTH_HEADER'),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(dispatched, 0, reason: 'request must not leave the device');
+      expect(captured?.error.code, 'MISSING_AUTH_HEADER');
+    });
+
+    test('does not fire onUnauthorized when the refresh is unreachable', () async {
+      // Offline with an expired token. The session may be perfectly valid; we
+      // simply could not reach the auth server, so signing out would strand the
+      // user with no way back in.
+      authProvider.headerError = NetworkException(
+        'Could not reach the authentication service.',
+        code: AuthHeaderProvider.refreshUnreachableCode,
+      );
+      var unauthorizedCalls = 0;
+      ApiClient.onUnauthorized = (_) async {
+        unauthorizedCalls++;
+      };
+
+      final client = buildClient(
+        dispatcher: (method, url, {body, required headers}) async => _okResponse({'ok': true}),
+      );
+
+      await expectLater(
+        client.get('/properties', useCache: false),
+        throwsA(
+          isA<NetworkException>().having(
+            (e) => e.code,
+            'code',
+            AuthHeaderProvider.refreshUnreachableCode,
+          ),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(unauthorizedCalls, 0, reason: 'losing signal must never sign the user out');
+    });
+
+    test('does not fire onUnauthorized for a 401 on an optional-auth request', () async {
+      var unauthorizedCalls = 0;
+      ApiClient.onUnauthorized = (_) async {
+        unauthorizedCalls++;
+      };
+
+      final client = buildClient(
+        dispatcher: (method, url, {body, required headers}) async =>
+            _response(401, {'detail': 'unauthorized'}),
+      );
+
+      await expectLater(
+        client.get('/properties/42', useCache: false, requireAuth: false),
         throwsA(isA<AuthenticationException>()),
       );
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -564,6 +650,41 @@ void main() {
       // Note: if a previous test already triggered the cooldown, both calls
       // may be suppressed (0). The key assertion is that we never get 2.
       expect(unauthorizedCalls, lessThanOrEqualTo(1));
+    });
+  });
+
+  group('ApiClient optional auth (requireAuth: false)', () {
+    test('guest sends no Authorization header and never refreshes', () async {
+      authProvider.cachedHeader = null;
+      Map<String, String>? capturedHeaders;
+      final client = buildClient(
+        dispatcher: (method, url, {body, required headers}) async {
+          capturedHeaders = headers;
+          return _okResponse({'id': 42});
+        },
+      );
+
+      final res = await client.get('/properties/42', useCache: false, requireAuth: false);
+
+      expect(res.statusCode, 200);
+      expect(capturedHeaders!.containsKey('Authorization'), isFalse);
+      expect(authProvider.getAuthHeaderCalls, 0, reason: 'must not await a doomed refresh');
+    });
+
+    test('signed-in user still sends the Authorization header', () async {
+      authProvider.cachedHeader = {'Authorization': 'Bearer fresh-token'};
+      Map<String, String>? capturedHeaders;
+      final client = buildClient(
+        dispatcher: (method, url, {body, required headers}) async {
+          capturedHeaders = headers;
+          return _okResponse({'id': 42});
+        },
+      );
+
+      await client.get('/properties/42', useCache: false, requireAuth: false);
+
+      expect(capturedHeaders!['Authorization'], 'Bearer fresh-token');
+      expect(authProvider.getAuthHeaderCalls, 0);
     });
   });
 
@@ -721,15 +842,30 @@ getx.Response<dynamic> _response(int statusCode, Map<String, dynamic> body) {
 class _FakeAuthHeaderProvider extends AuthHeaderProvider {
   _FakeAuthHeaderProvider() : super();
   Map<String, String>? header = {'Authorization': 'Bearer test-token'};
+
+  /// The non-refreshing header used by optional-auth requests. Null models a
+  /// guest (or an expired session), which must not trigger a refresh.
+  Map<String, String>? cachedHeader;
   bool throwOnRefresh = false;
+  int getAuthHeaderCalls = 0;
+
+  /// Thrown from every [getAuthHeader] call, modelling a transient refresh
+  /// failure that must propagate rather than degrade to a null header.
+  Object? headerError;
 
   @override
   Future<Map<String, String>?> getAuthHeader({bool forceRefresh = false}) async {
+    getAuthHeaderCalls++;
+    final error = headerError;
+    if (error != null) throw error;
     if (forceRefresh && throwOnRefresh) {
       throw Exception('refresh failed');
     }
     return header;
   }
+
+  @override
+  Map<String, String>? get cachedAuthHeader => cachedHeader;
 }
 
 /// Mocktail mock for [ETagCache] (a concrete class).

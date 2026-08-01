@@ -61,7 +61,7 @@ void main() {
             return Scaffold(
               body: Center(
                 child: ElevatedButton(
-                  onPressed: () => showBookVisitDialog(context, _testProperty(), controller),
+                  onPressed: () => showBookVisitDialog(_testProperty(), controller),
                   child: const Text('Open Dialog'),
                 ),
               ),

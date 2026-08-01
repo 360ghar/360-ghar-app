@@ -54,38 +54,45 @@ class SegmentedControl extends StatelessWidget {
     required SegmentItem segment,
     required bool isSelected,
   }) {
-    return GestureDetector(
-      onTap: () => onSegmentChanged?.call(index),
-      child: AnimatedContainer(
-        duration: AppDurations.tabPill,
-        curve: AppCurves.tabPill,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppDesign.primaryYellow : AppDesign.transparent,
-          borderRadius: BorderRadius.circular(AppBorderRadius.button - 2),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppDesign.primaryYellow.withValues(alpha: 0.25),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : null,
-        ),
-        child: Semantics(
-          label: segment.semanticsLabel,
-          identifier: segment.semanticsIdentifier,
+    return Semantics(
+      button: onSegmentChanged != null,
+      selected: isSelected,
+      label: segment.semanticsLabel ?? segment.label,
+      identifier: segment.semanticsIdentifier,
+      child: InkWell(
+        onTap: onSegmentChanged == null ? null : () => onSegmentChanged!.call(index),
+        borderRadius: BorderRadius.circular(AppBorderRadius.button - 2),
+        child: AnimatedContainer(
+          duration: AppDurations.tabPill,
+          curve: AppCurves.tabPill,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppDesign.primaryYellow : AppDesign.transparent,
+            borderRadius: BorderRadius.circular(AppBorderRadius.button - 2),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: AppDesign.primaryYellow.withValues(alpha: 0.25),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                segment.label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color: isSelected ? AppDesign.buttonText : AppDesign.textSecondary,
-                  letterSpacing: 0.3,
+              Flexible(
+                child: Text(
+                  segment.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: isSelected ? AppDesign.buttonText : AppDesign.textSecondary,
+                    letterSpacing: 0.3,
+                  ),
                 ),
               ),
               if (segment.badge != null && segment.badge! > 0) ...[

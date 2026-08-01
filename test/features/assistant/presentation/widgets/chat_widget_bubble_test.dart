@@ -294,6 +294,28 @@ void main() {
 
   // ── ChatWidgetBubble interactive WebView lifecycle ────────────────────
 
+  group('ChatWidgetBubble MCP host wrapper', () {
+    testWidgets('posts to the widget iframe with a wildcard targetOrigin', (tester) async {
+      await pumpBubble(
+        tester,
+        ChatWidgetBubble(message: _widgetMessage(widgetName: 'PropertySearchWidget')),
+      );
+
+      final html = lastWebViewController?.lastLoadedHtml ?? '';
+      expect(html, isNotEmpty);
+      // The iframe is sandboxed without allow-same-origin, so its document has
+      // an opaque origin. Only '*' can ever be delivered to it — anything else
+      // silently drops the ui/initialize reply and the tool result, leaving the
+      // widget stuck on its own "loading" fallback forever.
+      expect(html, contains('sandbox="allow-scripts"'));
+      expect(html, contains("postMessage(msg,'*')"));
+      expect(html, isNot(contains('location.origin')));
+      // A reload must clear the handshake state, or the tool result is posted
+      // into a document that has not run the bridge yet.
+      expect(html, contains('ready=false;pendingResult=null;'));
+    });
+  });
+
   group('ChatWidgetBubble page lifecycle', () {
     testWidgets('shows error fallback for invalid widget name after page finish', (tester) async {
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage(widgetName: '../bad')));

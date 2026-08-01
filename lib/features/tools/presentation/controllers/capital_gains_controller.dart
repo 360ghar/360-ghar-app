@@ -1,14 +1,28 @@
 import 'package:flutter/material.dart';
 
 import 'package:get/get.dart';
+import 'package:ghar360/core/utils/formatters.dart';
 
 class CapitalGainsController extends GetxController {
   final TextEditingController purchasePriceController = TextEditingController();
   final TextEditingController salePriceController = TextEditingController();
   final TextEditingController improvementCostController = TextEditingController();
 
-  final RxInt purchaseYear = (DateTime.now().year - 2).obs;
-  final RxInt saleYear = DateTime.now().year.obs;
+  /// Earliest selectable date: the CII table starts at 2001.
+  static final DateTime firstSelectableDate = DateTime(2001);
+
+  static DateTime get _today => DateUtils.dateOnly(DateTime.now());
+
+  /// A property cannot be bought or sold in the future.
+  static DateTime get lastSelectableDate => _today;
+
+  static DateTime get _defaultPurchaseDate {
+    final today = _today;
+    return DateTime(today.year - 2, today.month, today.day);
+  }
+
+  final Rx<DateTime> purchaseDate = _defaultPurchaseDate.obs;
+  final Rx<DateTime> saleDate = _today.obs;
   final RxBool hasCalculated = false.obs;
   final RxString validationError = ''.obs;
 
@@ -48,38 +62,49 @@ class CapitalGainsController extends GetxController {
     2025: 363, // Using 2024 value as 2025 not yet announced
   };
 
-  // Span 2001 through the current year so the default saleYear (current year)
-  // always has a matching dropdown item. CII lookups fall back for years > 2025.
-  List<int> get availableYears => List.generate(DateTime.now().year - 2000, (i) => 2001 + i);
+  /// Long-term iff the asset was held for STRICTLY MORE than 24 months, by
+  /// real date arithmetic. `DateTime` normalises month overflow, so
+  /// `month + 24` rolls the year over correctly.
+  ///
+  /// Boundary: bought 15 Jan 2023, sold 15 Jan 2025 = exactly 24 months =
+  /// short-term; sold 16 Jan 2025 = long-term.
+  static bool isLongTermHolding(DateTime purchase, DateTime sale) {
+    final boundary = DateTime(purchase.year, purchase.month + 24, purchase.day);
+    return DateUtils.dateOnly(sale).isAfter(boundary);
+  }
+
+  void setPurchaseDate(DateTime date) => purchaseDate.value = DateUtils.dateOnly(date);
+
+  void setSaleDate(DateTime date) => saleDate.value = DateUtils.dateOnly(date);
 
   void calculate() {
     final purchasePrice = double.tryParse(purchasePriceController.text) ?? 0;
     final salePrice = double.tryParse(salePriceController.text) ?? 0;
     final improvementCost = double.tryParse(improvementCostController.text) ?? 0;
 
-    if (purchasePrice <= 0 || salePrice <= 0) {
+    if (!Formatters.isPositiveFinite(purchasePrice) ||
+        !Formatters.isPositiveFinite(salePrice) ||
+        !improvementCost.isFinite ||
+        improvementCost < 0) {
       validationError.value = 'please_enter_valid_amounts'.tr;
       hasCalculated.value = false;
       return;
     }
 
-    if (saleYear.value < purchaseYear.value) {
-      validationError.value = 'sale_year_must_be_after_purchase_year'.tr;
+    if (saleDate.value.isBefore(purchaseDate.value)) {
+      validationError.value = 'sale_date_must_be_after_purchase_date'.tr;
       hasCalculated.value = false;
       return;
     }
 
     validationError.value = '';
 
-    // Check if long-term (held for more than 24 months)
-    // Note: Holding period is an approximation based on year difference only
-    final holdingMonths = (saleYear.value - purchaseYear.value) * 12;
-    isLongTerm.value = holdingMonths > 24;
+    isLongTerm.value = isLongTermHolding(purchaseDate.value, saleDate.value);
 
     if (isLongTerm.value) {
-      // Long-term capital gains calculation
-      final purchaseCii = ciiValues[purchaseYear.value] ?? 301;
-      final saleCii = ciiValues[saleYear.value] ?? 363;
+      // Long-term capital gains calculation. CII is keyed by the YEAR of each date.
+      final purchaseCii = ciiValues[purchaseDate.value.year] ?? 301;
+      final saleCii = ciiValues[saleDate.value.year] ?? 363;
 
       // Indexed cost = Purchase price * (Sale CII / Purchase CII)
       final indexedPurchase = purchasePrice * saleCii / purchaseCii;
@@ -117,8 +142,8 @@ class CapitalGainsController extends GetxController {
     purchasePriceController.clear();
     salePriceController.clear();
     improvementCostController.clear();
-    purchaseYear.value = DateTime.now().year - 2;
-    saleYear.value = DateTime.now().year;
+    purchaseDate.value = _defaultPurchaseDate;
+    saleDate.value = _today;
     hasCalculated.value = false;
     validationError.value = '';
     isLongTerm.value = false;

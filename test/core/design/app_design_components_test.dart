@@ -199,7 +199,7 @@ void main() {
       expect(style.foregroundColor?.resolve({}), AppDesignTokens.neutral900);
       expect(
         style.side?.resolve({}),
-        const BorderSide(color: AppDesignTokens.brandGold, width: 1.4),
+        const BorderSide(color: AppDesignTokens.brandGoldDark, width: 1.4),
       );
       expect(style.minimumSize?.resolve({}), const Size(0, 50));
       expect(style.padding?.resolve({}), const EdgeInsets.symmetric(horizontal: 20, vertical: 12));
@@ -212,7 +212,7 @@ void main() {
       expect(style.foregroundColor?.resolve({}), AppDesignTokens.darkTextPrimary);
       expect(
         style.side?.resolve({}),
-        const BorderSide(color: AppDesignTokens.brandGold, width: 1.4),
+        const BorderSide(color: AppDesignTokens.brandGoldLight, width: 1.4),
       );
       expect(style.minimumSize?.resolve({}), const Size(0, 50));
     });

@@ -14,6 +14,14 @@ String _encodeMap(Map<String, dynamic> map) => jsonEncode(map);
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // ErrorMapper now returns localized bodies via `.tr`. Without translations
+  // registered, GetX echoes the key back, so these assertions must run against
+  // a loaded locale to check the string a user would actually read.
+  setUpAll(() {
+    Get.addTranslations(AppTranslations().keys);
+    Get.locale = const Locale('en', 'US');
+  });
+
   group('ErrorMapper.mapApiError', () {
     test('maps String error to NetworkException', () {
       final result = ErrorMapper.mapApiError('Something went wrong');
@@ -28,7 +36,7 @@ void main() {
         final result = ErrorMapper.mapApiError('Null check operator used on a null value');
 
         expect(result, isA<NetworkException>());
-        expect(result.message, contains('data processing error'));
+        expect(result.message, 'Something went wrong');
       },
     );
 
@@ -91,7 +99,7 @@ void main() {
       final result = ErrorMapper.mapApiError(42);
 
       expect(result, isA<NetworkException>());
-      expect(result.message, contains('unexpected error'));
+      expect(result.message, 'Something went wrong');
     });
 
     test('maps wrapped ApiException (Exception with ApiException in toString)', () {
@@ -130,9 +138,10 @@ void main() {
         ),
       );
       expect(result, isA<ValidationException>());
-      // response is a String so _extractFieldErrors won't parse it
       final ve = result as ValidationException;
-      expect(ve.fieldErrors, isNull);
+      expect(ve.fieldErrors, {
+        'email': ['Invalid email'],
+      });
     });
 
     test('403 returns AuthenticationException with FORBIDDEN', () {
@@ -168,8 +177,7 @@ void main() {
         ),
       );
       expect(result, isA<ValidationException>());
-      // response is String, so _extractValidationMessage returns null
-      expect(result.message, 'Please check your input and try again.');
+      expect(result.message, 'Email is required');
     });
 
     test('422 with error field JSON returns ValidationException with default message', () {
@@ -181,7 +189,7 @@ void main() {
         ),
       );
       expect(result, isA<ValidationException>());
-      expect(result.message, 'Please check your input and try again.');
+      expect(result.message, 'Phone is required');
     });
 
     test('422 with detail field JSON returns ValidationException with default message', () {
@@ -193,7 +201,7 @@ void main() {
         ),
       );
       expect(result, isA<ValidationException>());
-      expect(result.message, 'Please check your input and try again.');
+      expect(result.message, 'Name is required');
     });
 
     test('422 with errors map (list value) returns ValidationException with default message', () {
@@ -209,7 +217,7 @@ void main() {
         ),
       );
       expect(result, isA<ValidationException>());
-      expect(result.message, 'Please check your input and try again.');
+      expect(result.message, 'Name too short');
     });
 
     test('422 with errors map (string value) returns ValidationException with default message', () {
@@ -223,7 +231,7 @@ void main() {
         ),
       );
       expect(result, isA<ValidationException>());
-      expect(result.message, 'Please check your input and try again.');
+      expect(result.message, 'Invalid name');
     });
 
     test('422 with field errors string returns ValidationException with null fieldErrors', () {
@@ -238,7 +246,9 @@ void main() {
       );
       expect(result, isA<ValidationException>());
       final ve = result as ValidationException;
-      expect(ve.fieldErrors, isNull);
+      expect(ve.fieldErrors, {
+        'email': ['Invalid'],
+      });
     });
 
     test('429 returns NetworkException with RATE_LIMITED', () {
@@ -535,7 +545,7 @@ void main() {
       // Exception is not String, so it falls through to generic mapping after
       // the debug null-check analysis branch.
       expect(result, isA<NetworkException>());
-      expect(result.message, contains('unexpected error'));
+      expect(result.message, 'Something went wrong');
     });
 
     test('maps Error with null-check message and stack frames', () {
@@ -552,7 +562,7 @@ void main() {
       );
 
       expect(result, isA<NetworkException>());
-      expect(result.message, contains('data processing error'));
+      expect(result.message, 'Something went wrong');
       expect(result.details, contains('Null check'));
     });
   });

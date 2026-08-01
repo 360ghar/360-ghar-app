@@ -217,9 +217,10 @@ void main() {
       expect(controller.tenureController.text, '20');
     });
 
-    testWidgets('formats currency in L for lakh range EMI values', (tester) async {
+    testWidgets('sub-lakh EMI renders Indian-grouped, never with a K suffix', (tester) async {
       await pumpView(tester);
 
+      // ₹50L @ 8.5% over 20 years -> EMI ₹43,391.16 (below a lakh).
       controller.principalController.text = '5000000';
       controller.rateController.text = '8.5';
       controller.tenureController.text = '20';
@@ -227,8 +228,12 @@ void main() {
 
       await tapCalculate(tester);
 
-      // Total payment should be in lakhs
-      expect(find.textContaining('L'), findsWidgets);
+      // Was "43.4K" before the shared formatter; Indian grouping now.
+      expect(find.text('\u20B943,391'), findsOneWidget);
+      expect(find.textContaining('K'), findsNothing);
+      // Larger figures still compact to lakh/crore.
+      expect(find.text('\u20B954.14 L'), findsOneWidget); // total interest
+      expect(find.text('\u20B91.04 Cr'), findsOneWidget); // total payment
     });
 
     testWidgets('formats currency in Cr for large total payment', (tester) async {
@@ -241,8 +246,10 @@ void main() {
 
       await tapCalculate(tester);
 
-      // Total payment should be in crores
-      expect(find.textContaining('Cr'), findsWidgets);
+      // ₹5Cr @ 10% over 30 years.
+      expect(find.text('\u20B94.39 L'), findsOneWidget); // monthly EMI
+      expect(find.text('\u20B910.80 Cr'), findsOneWidget); // total interest
+      expect(find.text('\u20B915.80 Cr'), findsOneWidget); // total payment
     });
 
     testWidgets('shows validation error with only principal entered', (tester) async {
@@ -270,6 +277,77 @@ void main() {
 
       expect(controller.hasCalculated.value, isTrue);
       expect(controller.monthlyEmi.value, greaterThan(0));
+    });
+
+    // ── P1: NaN must never reach build() ──────────────────────────────────
+    testWidgets('tenure 999999 months renders a validation error, not a crash', (tester) async {
+      await pumpView(tester);
+      controller.principalController.text = '5000000';
+      controller.rateController.text = '8.5';
+      controller.tenureInYears.value = false;
+      controller.tenureController.text = '999999';
+      await tester.pump();
+
+      await tapCalculate(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('NaN'), findsNothing);
+      expect(controller.hasCalculated.value, isFalse);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      // trParams must actually substitute; a bad key would leave "@years" on screen.
+      expect(find.text('Tenure cannot exceed 50 years'), findsOneWidget);
+      expect(find.textContaining('@'), findsNothing);
+    });
+
+    testWidgets('tenure field caps input at 3 digits', (tester) async {
+      await pumpView(tester);
+      final tenureField = find.byType(TextField).at(2);
+      await tester.ensureVisible(tenureField);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(tenureField, '999999');
+
+      expect(controller.tenureController.text, '999');
+    });
+
+    // ── P1: hero EMI colour contrast in both themes ───────────────────────
+    Future<double> heroContrast(WidgetTester tester, ThemeData theme) async {
+      await tester.pumpApp(const EmiCalculatorView(), theme: theme);
+      await tester.pump();
+      controller.principalController.text = '1000000';
+      controller.rateController.text = '8.5';
+      controller.tenureController.text = '20';
+      await tester.pump();
+      await tapCalculate(tester);
+      final hero = tester.widget<Text>(
+        find.byWidgetPredicate((w) => w is Text && w.style?.fontSize == 32),
+      );
+      final card = tester.widget<Card>(find.byType(Card).last);
+      final fg = hero.style!.color!;
+      final bg = card.color!;
+      final la = fg.computeLuminance();
+      final lb = bg.computeLuminance();
+      final hi = la > lb ? la : lb;
+      final lo = la > lb ? lb : la;
+      return (hi + 0.05) / (lo + 0.05);
+    }
+
+    testWidgets('hero EMI text clears 3:1 in LIGHT mode', (tester) async {
+      final ratio = await heroContrast(tester, ThemeData.light());
+      expect(
+        ratio,
+        greaterThanOrEqualTo(3.0),
+        reason: 'light contrast is ${ratio.toStringAsFixed(2)}:1',
+      );
+    });
+
+    testWidgets('hero EMI text clears 3:1 in DARK mode', (tester) async {
+      final ratio = await heroContrast(tester, ThemeData.dark());
+      expect(
+        ratio,
+        greaterThanOrEqualTo(3.0),
+        reason: 'dark contrast is ${ratio.toStringAsFixed(2)}:1',
+      );
     });
   });
 }

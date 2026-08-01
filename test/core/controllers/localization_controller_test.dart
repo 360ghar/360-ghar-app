@@ -236,13 +236,17 @@ void main() {
 
     // ── getCurrentLanguageName fallback ───────────────────────────────
 
-    testWidgets('getCurrentLanguageName returns English for unknown locale key', (tester) async {
+    testWidgets('unsupported language requests normalize to English and persist safely', (
+      tester,
+    ) async {
       await withController(tester, (c) async {
-        // Switch to a locale that has no entry in languageNames.
         await tester.runAsync(() async {
           c.changeLanguage('fr', 'FR');
         });
+        expect(c.currentLocale, const Locale('en', 'US'));
         expect(c.getCurrentLanguageName(), 'English');
+        expect(GetStorage().read('language_code'), 'en');
+        expect(GetStorage().read('country_code'), 'US');
       });
     });
   });

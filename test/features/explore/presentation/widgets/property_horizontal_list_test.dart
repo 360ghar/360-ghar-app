@@ -83,11 +83,15 @@ void main() {
 
   Future<void> pumpWidget(WidgetTester tester, Widget child) async {
     // Suppress RenderFlex overflow errors from the fixed-width property cards.
+    // Restore the binding's handler on tear-down so its exception bookkeeping
+    // (and thus test completion) stays intact if a real assertion fails later.
+    final originalError = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
       if (!details.toString().contains('RenderFlex overflowed')) {
         FlutterError.presentError(details);
       }
     };
+    addTearDown(() => FlutterError.onError = originalError);
     await tester.pumpWidget(
       GetMaterialApp(
         translations: AppTranslations(),
@@ -131,7 +135,7 @@ void main() {
       PropertyHorizontalList(controller: controller, direction: Axis.horizontal),
     );
 
-    expect(find.text('No Properties Found'), findsNothing);
+    expect(find.text('No Properties Found'), findsOneWidget);
   });
 
   testWidgets('tapping the favorite icon toggles like via the controller', (tester) async {

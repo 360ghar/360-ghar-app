@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/responsive.dart';
@@ -518,17 +519,26 @@ class _VisitsContentState extends State<_VisitsContent> {
                 ListTile(
                   leading: const Icon(Icons.calendar_today, color: AppDesign.primaryYellow),
                   title: Text('date'.tr),
-                  subtitle: Text(
-                    '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
-                  ),
+                  subtitle: Text(formatDisplayDate(selectedDate)),
                   onTap: isLoading
                       ? null
                       : () async {
+                          // showDatePicker asserts firstDate <= initialDate <=
+                          // lastDate. `selectedDate` can sit outside the default
+                          // 30-day window (a visit booked further out, or a
+                          // stale `now` captured when the dialog opened), so
+                          // clamp the start and widen the end to always contain
+                          // it instead of throwing.
+                          final DateTime firstDate = DateUtils.dateOnly(DateTime.now());
+                          final DateTime initialDate = selectedDate.isBefore(firstDate)
+                              ? firstDate
+                              : selectedDate;
+                          final DateTime windowEnd = firstDate.add(const Duration(days: 30));
                           final DateTime? picked = await showDatePicker(
                             context: context,
-                            initialDate: selectedDate,
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(const Duration(days: 30)),
+                            initialDate: initialDate,
+                            firstDate: firstDate,
+                            lastDate: initialDate.isAfter(windowEnd) ? initialDate : windowEnd,
                           );
                           if (picked != null) {
                             setState(() {

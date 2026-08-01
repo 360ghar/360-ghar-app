@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
+import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/features/tools/presentation/controllers/emi_calculator_controller.dart';
 
@@ -67,6 +69,7 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
                             label: 'tenure'.tr,
                             controller: controller.tenureController,
                             keyboardType: TextInputType.number,
+                            inputFormatters: [LengthLimitingTextInputFormatter(3)],
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -154,11 +157,11 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '₹${_formatCurrency(controller.monthlyEmi.value)}',
-                              style: const TextStyle(
+                              IndianCurrency.compact(controller.monthlyEmi.value),
+                              style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.bold,
-                                color: AppDesign.primaryYellow,
+                                color: AppDesign.textPrimary,
                               ),
                             ),
                           ],
@@ -169,12 +172,12 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
                       const SizedBox(height: 16),
                       _buildResultRow(
                         'total_interest'.tr,
-                        '₹${_formatCurrency(controller.totalInterest.value)}',
+                        IndianCurrency.compact(controller.totalInterest.value),
                       ),
                       const SizedBox(height: 12),
                       _buildResultRow(
                         'total_payment'.tr,
-                        '₹${_formatCurrency(controller.totalPayment.value)}',
+                        IndianCurrency.compact(controller.totalPayment.value),
                       ),
                       const SizedBox(height: 16),
                       _buildBreakdownChart(),
@@ -196,6 +199,7 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
     String? suffix,
     String? hint,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,6 +216,7 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
         TextField(
           controller: controller,
           keyboardType: keyboardType ?? const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: inputFormatters,
           style: TextStyle(color: AppDesign.textPrimary),
           decoration: InputDecoration(
             hintText: hint,
@@ -331,16 +336,5 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
         Text(label, style: TextStyle(fontSize: 12, color: AppDesign.textSecondary)),
       ],
     );
-  }
-
-  String _formatCurrency(double value) {
-    if (value >= 10000000) {
-      return '${(value / 10000000).toStringAsFixed(2)} Cr';
-    } else if (value >= 100000) {
-      return '${(value / 100000).toStringAsFixed(2)} L';
-    } else if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(1)}K';
-    }
-    return value.toStringAsFixed(0);
   }
 }

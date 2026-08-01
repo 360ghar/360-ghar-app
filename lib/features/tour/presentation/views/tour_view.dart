@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
@@ -28,12 +27,6 @@ class _TourViewState extends State<TourView> {
       _isLoading = false;
       DebugLogger.warning('TourView received invalid route arguments: ${Get.arguments}');
     }
-  }
-
-  @override
-  void dispose() {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    super.dispose();
   }
 
   Widget _buildInvalidTourContent() {
@@ -109,21 +102,26 @@ class _TourViewState extends State<TourView> {
           style: TextStyle(color: AppDesign.appBarText, fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.fullscreen, color: AppDesign.appBarIcon),
-            onPressed: () {
-              SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-              AppToast.info('fullscreen_mode'.tr, 'tap_back_to_exit_fullscreen'.tr);
-            },
-          ),
-          IconButton(
-            icon: Icon(Icons.share, color: AppDesign.appBarIcon),
-            onPressed: () {
-              final url = _tourUrl ?? '';
-              if (url.isNotEmpty) {
-                SharePlus.instance.share(ShareParams(text: url, subject: 'virtual_tour_title'.tr));
-              }
-            },
+          Builder(
+            builder: (buttonContext) => IconButton(
+              icon: Icon(Icons.share, color: AppDesign.appBarIcon),
+              onPressed: () {
+                final url = _tourUrl ?? '';
+                if (url.isEmpty) return;
+                Rect? origin;
+                final box = buttonContext.findRenderObject() as RenderBox?;
+                if (box != null && box.hasSize) {
+                  origin = box.localToGlobal(Offset.zero) & box.size;
+                }
+                SharePlus.instance.share(
+                  ShareParams(
+                    text: url,
+                    subject: 'virtual_tour_title'.tr,
+                    sharePositionOrigin: origin,
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),

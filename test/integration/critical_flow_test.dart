@@ -109,7 +109,11 @@ void main() {
       final repo = SwipesRepository(apiClient: api, offlineQueue: queue);
 
       when(
-        () => api.post(any(), body: any(named: 'body')),
+        () => api.post(
+          any(),
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
       ).thenThrow(NetworkException('offline', code: 'CONNECTION_ERROR'));
       when(() => queue.enqueueSwipe(propertyId: 7, isLiked: true)).thenAnswer((_) async {});
 

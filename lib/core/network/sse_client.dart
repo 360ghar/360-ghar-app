@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/network/auth_header_provider.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
 /// Parsed Server-Sent Event.
@@ -74,12 +75,15 @@ class SseClient {
         request.headers.set(key, value);
       });
       request.write(jsonEncode(body));
-      response = await request.close();
+      response = await request.close().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw TimeoutException('SSE connection timed out'),
+      );
 
       if (response.statusCode == 401) {
         yield const SseEvent(
           event: 'error',
-          data: {'code': 'UNAUTHORIZED', 'message': 'Authentication failed'},
+          data: {'code': AppException.unauthorizedCode, 'message': 'Authentication failed'},
         );
         return;
       }
@@ -130,6 +134,11 @@ class SseClient {
           }
         }
       }
+    } on TimeoutException catch (e) {
+      yield SseEvent(
+        event: 'error',
+        data: {'code': 'TIMEOUT', 'message': e.message ?? 'Request timed out'},
+      );
     } on SocketException catch (e) {
       yield SseEvent(event: 'error', data: {'code': 'NETWORK_ERROR', 'message': e.message});
     } on HttpException catch (e) {

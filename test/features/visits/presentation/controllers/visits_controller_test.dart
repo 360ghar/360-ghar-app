@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
@@ -11,6 +12,7 @@ import 'package:mocktail/mocktail.dart';
 
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
+import '../../../../helpers/pump_app.dart';
 
 class MockDashboardController extends GetxServiceMock implements DashboardController {}
 
@@ -557,7 +559,7 @@ void main() {
       expect(controller.isLoadingAgent.value, isFalse);
     });
 
-    test('loadRelationshipManager sets error on failure', () async {
+    test('loadRelationshipManager sets agentError (not error) on failure', () async {
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
       authStatus.value = AuthStatus.authenticated;
 
@@ -568,8 +570,58 @@ void main() {
       final controller = createController();
       await controller.loadRelationshipManager();
 
-      expect(controller.error.value, isNotNull);
+      expect(controller.agentError.value, isNotNull);
+      expect(controller.error.value, isNull);
+      expect(controller.relationshipManager.value, isNull);
       expect(controller.isLoadingAgent.value, isFalse);
+    });
+
+    // FIX 1 regression: a new user with zero visits whose (secondary) agent
+    // fetch fails must NOT get the full-screen error state. VisitsView gates
+    // that state on `error != null && visits.isEmpty`, so the agent failure
+    // must stay out of `error`.
+    test('agent fetch failure with zero visits leaves the primary error null', () async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      when(
+        () => mockVisitsRepository.fetchVisitsSummary(
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: false));
+      when(
+        () => mockVisitsRepository.fetchRelationshipManager(),
+      ).thenThrow(ServerException('agent lookup exploded'));
+
+      final controller = createController();
+      // Let _initializeController run both the visits load and the agent load.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(controller.visits, isEmpty);
+      expect(controller.error.value, isNull, reason: 'agent failure must not mask the empty state');
+      expect(controller.agentError.value, isNotNull);
+    });
+
+    test('agentError is cleared on logout and on a successful retry', () async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      when(
+        () => mockVisitsRepository.fetchRelationshipManager(),
+      ).thenThrow(ServerException('agent error'));
+
+      final controller = createController();
+      await controller.loadRelationshipManager();
+      expect(controller.agentError.value, isNotNull);
+
+      when(
+        () => mockVisitsRepository.fetchRelationshipManager(),
+      ).thenAnswer((_) async => testAgentModel(id: 7));
+      await controller.loadRelationshipManager();
+
+      expect(controller.agentError.value, isNull);
+      expect(controller.relationshipManager.value?.id, 7);
     });
   });
 
@@ -757,6 +809,217 @@ void main() {
 
       // Should not throw
       controller.markVisitCompleted(999);
+    });
+
+    // FIX 4 regression: upcoming/past is one predicate (VisitModel.isUpcoming)
+    // and past is its exact complement, so every visit sits in exactly one
+    // bucket at all times — including after a local status mutation.
+    test('completing a visit moves it out of upcoming and into past', () async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      final now = DateTime.now();
+      final upcoming = makeVisit(id: 41, scheduledDate: now.add(const Duration(days: 3)));
+
+      when(
+        () => mockVisitsRepository.fetchVisitsSummary(
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => VisitsPayload(visits: [upcoming], hasMore: false));
+
+      final controller = createController();
+      await controller.loadVisits();
+      expect(controller.upcomingVisits.map((v) => v.id), contains(41));
+
+      controller.markVisitCompleted(41);
+
+      expect(
+        controller.upcomingVisits.map((v) => v.id),
+        isNot(contains(41)),
+        reason: 'a completed visit is no longer upcoming',
+      );
+      expect(
+        controller.pastVisits.map((v) => v.id),
+        contains(41),
+        reason: 'it must land in the other bucket, not vanish from both',
+      );
+    });
+
+    test('every loaded visit lands in exactly one of upcoming/past', () async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      final now = DateTime.now();
+      final page = [
+        makeVisit(id: 1, scheduledDate: now.add(const Duration(days: 2))),
+        makeVisit(
+          id: 2,
+          scheduledDate: now.add(const Duration(days: 2)),
+          status: VisitStatus.confirmed,
+        ),
+        makeVisit(
+          id: 3,
+          scheduledDate: now.add(const Duration(days: 2)),
+          status: VisitStatus.rescheduled,
+        ),
+        makeVisit(
+          id: 4,
+          scheduledDate: now.add(const Duration(days: 2)),
+          status: VisitStatus.cancelled,
+        ),
+        makeVisit(
+          id: 5,
+          scheduledDate: now.add(const Duration(days: 2)),
+          status: VisitStatus.completed,
+        ),
+        makeVisit(id: 6, scheduledDate: now.subtract(const Duration(days: 2))),
+      ];
+
+      when(
+        () => mockVisitsRepository.fetchVisitsSummary(
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => VisitsPayload(visits: page, hasMore: false));
+
+      final controller = createController();
+      await controller.loadVisits();
+
+      final upcomingIds = controller.upcomingVisits.map((v) => v.id).toSet();
+      final pastIds = controller.pastVisits.map((v) => v.id).toSet();
+
+      expect(upcomingIds.intersection(pastIds), isEmpty, reason: 'no visit in both tabs');
+      expect(upcomingIds.union(pastIds), page.map((v) => v.id).toSet(), reason: 'none missing');
+      expect(upcomingIds, {1, 2, 3});
+      expect(pastIds, {4, 5, 6});
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // FIX 2: cancel/reschedule must never fail silently. AppToast needs a
+  // live overlay (Get.overlayContext), so these run as widget tests.
+  // ─────────────────────────────────────────────────────────────────────
+
+  group('VisitsController — failure feedback', () {
+    Future<VisitsController> pumpWithController(WidgetTester tester) async {
+      await tester.pumpApp(const SizedBox.shrink());
+      return createController();
+    }
+
+    /// Lets the snackbar animate in, asserts [message], then tears it down so
+    /// the overlay's ticker does not leak past the test.
+    Future<void> expectToast(WidgetTester tester, String message) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text(message), findsOneWidget);
+      Get.closeAllSnackbars();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('cancelVisit toasts when the visit is not in the list', (tester) async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      final controller = await pumpWithController(tester);
+      final result = await controller.cancelVisit(404, reason: 'changed mind');
+
+      expect(result, isFalse);
+      await expectToast(tester, 'Could not cancel visit');
+    });
+
+    testWidgets('cancelVisit toasts when the visit cannot be cancelled', (tester) async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      final completed = makeVisit(
+        id: 60,
+        scheduledDate: DateTime.now().subtract(const Duration(days: 5)),
+        status: VisitStatus.completed,
+      );
+      when(
+        () => mockVisitsRepository.fetchVisitsSummary(
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => VisitsPayload(visits: [completed], hasMore: false));
+
+      final controller = await pumpWithController(tester);
+      await controller.loadVisits();
+
+      final result = await controller.cancelVisit(60, reason: 'changed mind');
+
+      expect(result, isFalse);
+      await expectToast(tester, 'Could not cancel visit');
+    });
+
+    testWidgets('rescheduleVisit toasts when the visit is not in the list', (tester) async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      final controller = await pumpWithController(tester);
+      final result = await controller.rescheduleVisit(
+        404,
+        DateTime.now().add(const Duration(days: 3)),
+      );
+
+      expect(result, isFalse);
+      await expectToast(tester, 'Could not reschedule visit');
+    });
+
+    testWidgets('rescheduleVisit toasts when the visit cannot be rescheduled', (tester) async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      final cancelled = makeVisit(
+        id: 61,
+        scheduledDate: DateTime.now().add(const Duration(days: 5)),
+        status: VisitStatus.cancelled,
+      );
+      when(
+        () => mockVisitsRepository.fetchVisitsSummary(
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => VisitsPayload(visits: [cancelled], hasMore: false));
+
+      final controller = await pumpWithController(tester);
+      await controller.loadVisits();
+
+      final result = await controller.rescheduleVisit(
+        61,
+        DateTime.now().add(const Duration(days: 8)),
+      );
+
+      expect(result, isFalse);
+      await expectToast(tester, 'Could not reschedule visit');
+    });
+
+    testWidgets('cancelVisit toasts when the repository rejects the cancellation', (tester) async {
+      when(() => mockAuthController.isAuthenticated).thenReturn(true);
+      authStatus.value = AuthStatus.authenticated;
+
+      final upcoming = makeVisit(
+        id: 62,
+        scheduledDate: DateTime.now().add(const Duration(days: 3)),
+      );
+      when(
+        () => mockVisitsRepository.fetchVisitsSummary(
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => VisitsPayload(visits: [upcoming], hasMore: false));
+      when(
+        () => mockVisitsRepository.cancelVisit(any(), reason: any(named: 'reason')),
+      ).thenAnswer((_) async => false);
+
+      final controller = await pumpWithController(tester);
+      await controller.loadVisits();
+
+      final result = await controller.cancelVisit(62, reason: 'plans changed');
+
+      expect(result, isFalse);
+      await expectToast(tester, 'Could not cancel visit');
     });
   });
 

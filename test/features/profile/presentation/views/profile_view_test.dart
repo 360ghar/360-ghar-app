@@ -76,7 +76,7 @@ void main() {
       );
       await pumpView(tester, controller);
 
-      expect(find.bySemanticsLabel('qa.profile.screen'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('qa.profile.screen'), findsOneWidget);
       expect(find.text('Test User'), findsOneWidget);
       expect(find.byKey(const ValueKey('qa.profile.menu.edit_profile')), findsOneWidget);
       expect(find.byKey(const ValueKey('qa.profile.menu.preferences')), findsOneWidget);

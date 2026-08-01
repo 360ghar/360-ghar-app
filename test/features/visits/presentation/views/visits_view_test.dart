@@ -68,12 +68,12 @@ class _TestVisitsController extends VisitsController {
 // Helpers
 // ---------------------------------------------------------------------------
 
-VisitModel _futureVisit({int id = 1, PropertyModel? property}) {
+VisitModel _futureVisit({int id = 1, PropertyModel? property, Duration? inDays}) {
   return VisitModel(
     id: id,
     propertyId: 100,
     userId: 1,
-    scheduledDate: DateTime.now().add(const Duration(days: 7)),
+    scheduledDate: DateTime.now().add(inDays ?? const Duration(days: 7)),
     status: VisitStatus.scheduled,
     createdAt: DateTime.now().subtract(const Duration(days: 1)),
     property: property,
@@ -203,7 +203,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       // The screen should be present.
-      expect(find.bySemanticsLabel('qa.visits.screen'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('qa.visits.screen'), findsOneWidget);
 
       // Empty state text "no_visits" (translated) should appear.
       // The _buildEmptyState widget renders italic text.
@@ -222,7 +222,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       // The screen should be present.
-      expect(find.bySemanticsLabel('qa.visits.screen'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('qa.visits.screen'), findsOneWidget);
 
       // VisitCard widgets should be rendered for the upcoming visits.
       expect(find.byType(VisitCard), findsNWidgets(2));
@@ -704,11 +704,11 @@ void main() {
       await tester.tap(find.text('reschedule'.tr));
       await tester.pumpAndSettle();
 
-      // Find the cancel button inside the dialog (TextButton, not the
-      // GestureDetector text in the VisitCard).
-      final dialogCancelButton = find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(TextButton),
+      // Find the cancel button inside the dialog. Scope to AlertDialog: the
+      // VisitCard behind the dialog also exposes a "cancel" TextButton.
+      final dialogCancelButton = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.ancestor(of: find.text('cancel'.tr), matching: find.byType(TextButton)),
       );
       expect(dialogCancelButton, findsOneWidget);
 
@@ -717,6 +717,8 @@ void main() {
 
       // The dialog should be closed.
       expect(find.text('reschedule_visit'.tr), findsNothing);
+      // Drain RenderFlex overflow logged by the dialog on the test canvas.
+      drainOverflowExceptions(tester);
     });
 
     testWidgets('reschedule dialog confirm calls rescheduleVisit', (tester) async {
@@ -1094,15 +1096,36 @@ void main() {
 
       expect(controller.rescheduleCallCount, 1);
       expect(find.text('reschedule_visit'.tr), findsOneWidget);
-      // Close dialog to avoid leftover overlay/tickers.
-      final cancelBtn = find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(TextButton),
+
+      // Dialog state must be left usable: spinner gone, button re-enabled.
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<ElevatedButton>(
+              find.ancestor(of: find.text('reschedule'.tr), matching: find.byType(ElevatedButton)),
+            )
+            .onPressed,
+        isNotNull,
+      );
+
+      // Close dialog to avoid leftover overlay/tickers. Scope to AlertDialog:
+      // the VisitCard behind the dialog also exposes a "cancel" TextButton.
+      final cancelBtn = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.ancestor(of: find.text('cancel'.tr), matching: find.byType(TextButton)),
       );
       if (cancelBtn.evaluate().isNotEmpty) {
         await tester.tap(cancelBtn);
         await tester.pump(const Duration(milliseconds: 300));
       }
+      // Drain RenderFlex overflow logged by the reschedule dialog on the test canvas.
+      drainOverflowExceptions(tester);
     });
 
     testWidgets('cancel failure keeps dialog open', (tester) async {
@@ -1133,6 +1156,158 @@ void main() {
 
       expect(controller.cancelCallCount, 1);
       expect(find.text('cancel_visit'.tr), findsOneWidget);
+
+      // Dialog state must be left usable: spinner gone, submit re-enabled
+      // (the reason text is still there, so canSubmit is true again).
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<ElevatedButton>(
+              find.ancestor(of: find.text('yes_cancel'.tr), matching: find.byType(ElevatedButton)),
+            )
+            .onPressed,
+        isNotNull,
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // FIX 3: the reschedule date picker must accept a visit scheduled beyond the
+  // default 30-day window. showDatePicker asserts
+  // firstDate <= initialDate <= lastDate, so an unclamped initialDate throws.
+  //
+  // NOTE: these tests deliberately do NOT use drainOverflowExceptions — its
+  // filter swallows 'FAILED ASSERTION', which is exactly the failure under
+  // test. Layout noise is drained with the local overflow-only helper below.
+  // -------------------------------------------------------------------------
+
+  group('VisitsView reschedule date-picker bounds', () {
+    /// Drains ONLY RenderFlex overflow noise from the constrained test canvas.
+    /// Unlike the shared helper, a framework assertion is re-thrown.
+    void drainLayoutOverflowOnly(WidgetTester tester) {
+      while (true) {
+        final Object? exception = tester.takeException();
+        if (exception == null) break;
+        final str = exception.toString();
+        if (!str.contains('overflow') && !str.contains('RenderFlex')) {
+          throw exception;
+        }
+      }
+    }
+
+    /// Dismisses the Material date picker. Scoped to [DatePickerDialog] — the
+    /// reschedule dialog behind it also carries a "Cancel" label.
+    Future<void> closePicker(WidgetTester tester) async {
+      await tester.tap(
+        find.descendant(of: find.byType(DatePickerDialog), matching: find.text('Cancel')),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      drainLayoutOverflowOnly(tester);
+    }
+
+    Future<void> openRescheduleDialogFor(WidgetTester tester, VisitModel visit) async {
+      final controller = _TestVisitsController();
+      controller.isLoading.value = false;
+      controller.hasLoadedVisits.value = true;
+      controller.upcomingVisitsList.assignAll([visit]);
+      Get.put<VisitsController>(controller);
+
+      await tester.pumpApp(const VisitsView());
+      await tester.pump(const Duration(seconds: 1));
+      drainLayoutOverflowOnly(tester);
+
+      await tester.tap(find.text('reschedule'.tr));
+      await tester.pump(const Duration(milliseconds: 400));
+      drainLayoutOverflowOnly(tester);
+    }
+
+    testWidgets('opens the date picker for a visit 60 days out without throwing', (tester) async {
+      await openRescheduleDialogFor(tester, _futureVisit(id: 1, inDays: const Duration(days: 60)));
+
+      await tester.tap(find.byIcon(Icons.calendar_today));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // No assertion may have escaped: initialDate must sit inside the range.
+      expect(tester.takeException(), isNull);
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+
+      await closePicker(tester);
+    });
+
+    testWidgets('opens the date picker for a visit 400 days out without throwing', (tester) async {
+      await openRescheduleDialogFor(tester, _futureVisit(id: 1, inDays: const Duration(days: 400)));
+
+      await tester.tap(find.byIcon(Icons.calendar_today));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+
+      await closePicker(tester);
+    });
+
+    testWidgets('opens the date picker for a visit already in the past', (tester) async {
+      // scheduledDate before "now" → initialDate must be clamped up to firstDate.
+      await openRescheduleDialogFor(tester, _futureVisit(id: 1, inDays: const Duration(days: -3)));
+
+      await tester.tap(find.byIcon(Icons.calendar_today));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+
+      await closePicker(tester);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // FIX 1 (view half): a failed agent lookup lands in `agentError`, never in
+  // `error`, so a user with zero visits still sees the friendly empty state.
+  // Regression guard — the fail-before lives in the controller test.
+  // -------------------------------------------------------------------------
+
+  group('VisitsView agent-failure degradation', () {
+    testWidgets('zero visits + failed agent fetch shows the empty state, not the error', (
+      tester,
+    ) async {
+      final controller = _TestVisitsController();
+      controller.isLoading.value = false;
+      controller.hasLoadedVisits.value = true;
+      controller.agentError.value = ServerException('Failed to load agent');
+      controller.relationshipManager.value = null;
+      // error stays null: only the secondary call failed.
+      Get.put<VisitsController>(controller);
+
+      await tester.pumpApp(const VisitsView());
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.text('no_visits'.tr), findsOneWidget);
+      expect(find.text('no_upcoming_visits_subtitle'.tr), findsOneWidget);
+      // The agent card degrades to nothing rather than blocking the screen.
+      expect(find.byType(AgentCard), findsNothing);
+      expect(find.text('Failed to load agent'), findsNothing);
+    });
+
+    testWidgets('visit list still renders when the agent fetch failed', (tester) async {
+      final controller = _TestVisitsController();
+      controller.isLoading.value = false;
+      controller.hasLoadedVisits.value = true;
+      controller.agentError.value = ServerException('Failed to load agent');
+      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
+      controller.visits.assignAll([_futureVisit(id: 1)]);
+      Get.put<VisitsController>(controller);
+
+      await tester.pumpApp(const VisitsView());
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(VisitCard), findsOneWidget);
+      expect(find.byType(AgentCard), findsNothing);
     });
   });
 

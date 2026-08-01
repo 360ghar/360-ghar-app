@@ -45,25 +45,41 @@ void main() {
 
     test('recordSwipe completes successfully on valid API response', () async {
       when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
+        () => mockApiClient.post(
+          '/swipes',
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
       ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: {}, headers: {}));
 
       await repository.recordSwipe(propertyId: 100, isLiked: true);
 
       verify(
-        () => mockApiClient.post('/swipes', body: {'property_id': 100, 'is_liked': true}),
+        () => mockApiClient.post(
+          '/swipes',
+          body: {'property_id': 100, 'is_liked': true},
+          idempotent: true,
+        ),
       ).called(1);
     });
 
     test('recordSwipe with isLiked=false sends correct payload', () async {
       when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
+        () => mockApiClient.post(
+          '/swipes',
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
       ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: {}, headers: {}));
 
       await repository.recordSwipe(propertyId: 200, isLiked: false);
 
       verify(
-        () => mockApiClient.post('/swipes', body: {'property_id': 200, 'is_liked': false}),
+        () => mockApiClient.post(
+          '/swipes',
+          body: {'property_id': 200, 'is_liked': false},
+          idempotent: true,
+        ),
       ).called(1);
     });
 
@@ -71,7 +87,11 @@ void main() {
 
     test('recordSwipe enqueues to offline queue on NetworkException', () async {
       when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
+        () => mockApiClient.post(
+          '/swipes',
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
       ).thenThrow(NetworkException('No internet connection'));
 
       when(
@@ -89,7 +109,11 @@ void main() {
 
     test('recordSwipe enqueues dislike on NetworkException', () async {
       when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
+        () => mockApiClient.post(
+          '/swipes',
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
       ).thenThrow(NetworkException('Connection refused'));
 
       when(
@@ -108,7 +132,11 @@ void main() {
 
     test('recordSwipe rethrows when offline queue enqueue fails', () async {
       when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
+        () => mockApiClient.post(
+          '/swipes',
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
       ).thenThrow(NetworkException('Offline'));
 
       when(
@@ -124,11 +152,68 @@ void main() {
       );
     });
 
+    // ── recordSwipe enqueues when offline with a stale token ───────────
+
+    test('recordSwipe enqueues on AuthenticationException(MISSING_AUTH_HEADER)', () async {
+      // Offline + expired cached token: ApiClient cannot mint an auth header so
+      // it throws before any socket is opened. The swipe must still be queued.
+      when(
+        () => mockApiClient.post(
+          '/swipes',
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenThrow(
+        AuthenticationException(
+          'Authentication required but no auth header available',
+          code: 'MISSING_AUTH_HEADER',
+        ),
+      );
+
+      when(
+        () => mockOfflineQueue.enqueueSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((_) async {});
+
+      // Must not throw — the swipe is queued rather than lost.
+      await repository.recordSwipe(propertyId: 100, isLiked: true);
+
+      verify(() => mockOfflineQueue.enqueueSwipe(propertyId: 100, isLiked: true)).called(1);
+    });
+
+    test('recordSwipe rethrows AuthenticationException with a non-offline code', () async {
+      when(
+        () => mockApiClient.post(
+          '/swipes',
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).thenThrow(AuthenticationException('Unauthorized', code: 'UNAUTHORIZED'));
+
+      await expectLater(
+        () => repository.recordSwipe(propertyId: 100, isLiked: true),
+        throwsA(isA<AuthenticationException>()),
+      );
+
+      verifyNever(
+        () => mockOfflineQueue.enqueueSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      );
+    });
+
     // ── recordSwipe rethrows non-network AppExceptions ─────────────────
 
     test('recordSwipe rethrows non-network AppExceptions directly', () async {
       when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
+        () => mockApiClient.post(
+          '/swipes',
+          body: any(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
       ).thenThrow(AuthenticationException('Unauthorized'));
 
       expect(

@@ -57,22 +57,22 @@ class FakeLikesController extends LikesController {
   void onInit() {}
 
   @override
-  bool isFavourite(dynamic propertyId) {
+  bool isFavourite(PropertyModel property) {
     // Touch the observable so Obx registers a dependency and rebuilds when
     // favourites change.
     _favouriteVersion.value;
-    return _favourites.contains(int.tryParse(propertyId.toString()) ?? -1);
+    return _favourites.contains(property.id);
   }
 
   @override
-  Future<void> addToFavourites(dynamic propertyId) async {
-    _favourites.add(int.tryParse(propertyId.toString()) ?? -1);
+  Future<void> addToFavourites(PropertyModel property) async {
+    _favourites.add(property.id);
     _favouriteVersion.value++;
   }
 
   @override
-  Future<void> removeFromFavourites(dynamic propertyId) async {
-    _favourites.remove(int.tryParse(propertyId.toString()) ?? -1);
+  Future<void> removeFromFavourites(PropertyModel property) async {
+    _favourites.remove(property.id);
     _favouriteVersion.value++;
   }
 }

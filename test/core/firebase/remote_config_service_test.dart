@@ -76,7 +76,7 @@ void main() {
     test('androidUpdateUrl defaults to Play Store URL', () {
       expect(
         RemoteConfigService.androidUpdateUrl,
-        'https://play.google.com/store/apps/details?id=com.ghar360.app',
+        'https://play.google.com/store/apps/details?id=com.the360ghar.ghar360',
       );
     });
 
@@ -98,7 +98,7 @@ void main() {
     });
 
     test('iosUpdateUrl defaults to App Store URL', () {
-      expect(RemoteConfigService.iosUpdateUrl, 'https://apps.apple.com/app/id123456789');
+      expect(RemoteConfigService.iosUpdateUrl, 'https://apps.apple.com/app/id6794866216');
     });
 
     test('iosReleaseNotes defaults to empty string', () {

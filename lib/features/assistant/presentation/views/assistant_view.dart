@@ -81,18 +81,24 @@ class AssistantView extends GetView<AssistantController> {
         itemBuilder: (context, index) {
           // Reverse index because list is reversed
           final msgIndex = messages.length - 1 - index;
-          return _buildMessageItem(messages[msgIndex], messages, msgIndex);
+          return _buildMessageItem(messages[msgIndex]);
         },
       );
     });
   }
 
-  Widget _buildMessageItem(ChatMessageModel message, List<ChatMessageModel> messages, int index) {
+  Widget _buildMessageItem(ChatMessageModel message) {
     switch (message.role) {
       case ChatRole.user:
         return ChatMessageBubble(message: message);
       case ChatRole.assistant:
-        if (_isFollowedByWidget(messages, index)) {
+        // Assistant text is always rendered whenever there is any. It used to
+        // be suppressed when a widget followed, on the assumption the widget
+        // showed the same information — but the text is the only render path
+        // that cannot fail, so hiding it turned any widget failure into "did
+        // not answer". Only a settled *empty* turn is skipped, so a
+        // widget-only reply does not leave a blank stub bubble.
+        if (message.content.trim().isEmpty && !message.isStreaming) {
           return const SizedBox.shrink();
         }
         return ChatMessageBubble(message: message);
@@ -103,17 +109,5 @@ class AssistantView extends GetView<AssistantController> {
       case ChatRole.error:
         return const SizedBox.shrink();
     }
-  }
-
-  /// Returns true if a widget message appears after [index] before the
-  /// next user or assistant message. Used to suppress redundant text
-  /// when an interactive widget already shows the same information.
-  bool _isFollowedByWidget(List<ChatMessageModel> messages, int index) {
-    for (int i = index + 1; i < messages.length; i++) {
-      final role = messages[i].role;
-      if (role == ChatRole.widget) return true;
-      if (role == ChatRole.user || role == ChatRole.assistant) break;
-    }
-    return false;
   }
 }

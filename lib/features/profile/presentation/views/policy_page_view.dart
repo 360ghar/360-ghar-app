@@ -33,12 +33,14 @@ class _PolicyPageViewState extends State<PolicyPageView> {
   Future<void> _loadContent() async {
     try {
       final StaticPageModel page = await _staticPageRepository.fetchPublicPage(widget.uniqueName);
+      if (!mounted) return;
 
       setState(() {
         _markdownContent = page.content.trim().isNotEmpty ? page.content : 'content_unavailable'.tr;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = 'failed_to_load_content'.tr;
         _isLoading = false;

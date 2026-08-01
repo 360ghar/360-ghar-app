@@ -33,6 +33,9 @@ class _StubPreferencesController extends GetxServiceMock implements PreferencesC
   @override
   final Rx<AppThemeMode> themeMode = AppThemeMode.system.obs;
 
+  @override
+  final RxBool isSaving = false.obs;
+
   /// Observable backing [getCurrentLanguage] so the Obx wrapper in the view
   /// detects an observable read (the real controller reads a reactive locale).
   final RxString currentLanguageName = 'English'.obs;
@@ -43,7 +46,7 @@ class _StubPreferencesController extends GetxServiceMock implements PreferencesC
   AppThemeMode? updatedTheme;
 
   @override
-  void savePreferences() {
+  Future<void> savePreferences() async {
     saveCalled = true;
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -33,8 +34,14 @@ const String _wrapperHtml = '''
 var w=document.getElementById('w'),ready=false,theme='light',pendingResult=null;
 var MAX_ACTION_LEN=500;
 
+// targetOrigin MUST be '*'. The iframe is sandboxed without allow-same-origin,
+// so its document has an opaque origin that no concrete targetOrigin can ever
+// match — any other value silently drops every host->widget frame. Safe here:
+// the iframe content is injected locally by us, never fetched cross-origin, and
+// the inbound listener below still verifies e.source.
 function postToWidget(msg){
-  try{w.contentWindow.postMessage(msg,location.origin||'*');}catch(x){}
+  try{w.contentWindow.postMessage(msg,'*');}
+  catch(x){console.warn('[360Ghar] postToWidget failed',x);}
 }
 
 window.addEventListener('message',function(e){
@@ -65,8 +72,14 @@ window.addEventListener('message',function(e){
 
 window.loadWidget=function(html){
   if(typeof html!=='string')return;
+  // The new document has not run bridge.ts yet, so it has not handshaked.
+  // Without this reset a reload would post the tool result into a dead
+  // document and buffer nothing, leaving the widget stuck on its fallback.
+  ready=false;pendingResult=null;
   w.srcdoc=html;
 };
+
+window.isReady=function(){return ready;};
 
 window.injectToolResult=function(data){
   var msg={jsonrpc:'2.0',method:'ui/notifications/tool-result',
@@ -101,9 +114,17 @@ class _ChatWidgetBubbleState extends State<ChatWidgetBubble> with AutomaticKeepA
   late final WebViewController _controller;
   bool _isLoading = true;
   bool _hasError = false;
+  bool _wrapperInitialized = false;
+  Timer? _handshakeTimer;
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void dispose() {
+    _handshakeTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -139,6 +160,10 @@ class _ChatWidgetBubbleState extends State<ChatWidgetBubble> with AutomaticKeepA
   /// Fetches the widget HTML and injects it + data into the iframe.
   Future<void> _onWrapperLoaded() async {
     if (!mounted) return;
+    // onPageFinished can fire more than once; injecting twice would post the
+    // tool result into a document that has not handshaked yet.
+    if (_wrapperInitialized) return;
+    _wrapperInitialized = true;
 
     final widgetName = widget.message.widgetName;
     if (widgetName == null || !AssistantRepository.isValidWidgetName(widgetName)) {
@@ -173,10 +198,39 @@ class _ChatWidgetBubbleState extends State<ChatWidgetBubble> with AutomaticKeepA
       if (!mounted) return;
 
       setState(() => _isLoading = false);
+      _scheduleHandshakeCheck();
     } catch (e) {
       DebugLogger.error('Failed to load widget', e);
       if (mounted) setState(() => _hasError = true);
     }
+  }
+
+  /// The widget renders its own "loading" fallback until the bridge handshake
+  /// completes and the tool result lands. If that never happens it would sit
+  /// there forever, so fall back to the error state instead.
+  void _scheduleHandshakeCheck({int attempt = 1}) {
+    // Generous, and retried once: a cold mid-range device parsing a ~150KB
+    // srcdoc bundle can legitimately take several seconds, and flipping a
+    // healthy widget to the error state would be worse than a slow render.
+    _handshakeTimer?.cancel();
+    _handshakeTimer = Timer(Duration(seconds: attempt == 1 ? 6 : 8), () async {
+      if (!mounted) return;
+      try {
+        final ready = await _controller.runJavaScriptReturningResult('isReady()');
+        // JS booleans serialize as bool | 'true' | 1 depending on the platform
+        // WebView; accept all three rather than normalising per-platform.
+        if (ready == true || ready == 'true' || ready == 1) return;
+        if (attempt == 1) {
+          _scheduleHandshakeCheck(attempt: 2);
+          return;
+        }
+        DebugLogger.warning('Widget bridge handshake did not complete: $ready');
+      } catch (e) {
+        DebugLogger.warning('Widget bridge handshake check failed', e);
+        return; // Can't tell — don't blank out a widget that may be fine.
+      }
+      if (mounted) setState(() => _hasError = true);
+    });
   }
 
   @override

@@ -27,10 +27,10 @@ Work top to bottom; every box should be checked before you hit **Submit for Revi
 | App name | **360 Ghar** |
 | Bundle ID | `com.the360ghar.ghar360` |
 | Apple Team ID | `HMWGCVU4SV` |
-| Current version | `1.0.7+12` (marketing `1.0.7`, build `12`) |
+| Current version | `1.0.9+15` (marketing `1.0.9`, build `15`) |
 | Minimum iOS | `15.0` |
 | Firebase project | `ghar-3c690` |
-| Universal Link domains | `the360ghar.com`, `www.the360ghar.com`, `app.the360ghar.com` |
+| Universal Link domains | `360ghar.com`, `www.360ghar.com` |
 | Bitcode | Disabled (`ENABLE_BITCODE = NO`) |
 
 **Tech that drives review/privacy answers:** Firebase (FCM / Crashlytics / Analytics /
@@ -73,20 +73,19 @@ production APNs path must exist or push will silently fail.
 
 ## 4. Universal Links
 
-Entitlements declare `applinks:the360ghar.com`, `applinks:www.the360ghar.com`, and `applinks:app.the360ghar.com`. Apple validates the
+Entitlements declare `applinks:360ghar.com`, `applinks:www.360ghar.com`, and `webcredentials:360ghar.com` (see `ios/Runner/Runner.entitlements`). Apple validates the
 `apple-app-site-association` (AASA) file hosted on those domains — it is **not** in this repo and
-must be hosted by the web/infra team.
+must be hosted by the web/infra team (template: `ios/.well-known/apple-app-site-association.template`).
 
 - [ ] Host the AASA file at **both**:
-  - `https://the360ghar.com/.well-known/apple-app-site-association`
-  - `https://www.the360ghar.com/.well-known/apple-app-site-association`
-  - `https://app.the360ghar.com/.well-known/apple-app-site-association`
+  - `https://360ghar.com/.well-known/apple-app-site-association`
+  - `https://www.360ghar.com/.well-known/apple-app-site-association`
 - [ ] Requirements for each:
   - [ ] Filename is exactly `apple-app-site-association` (**no** `.json` extension).
   - [ ] Served over **HTTPS** with `Content-Type: application/json`.
   - [ ] **No redirects** (return `200` directly, not a 301/302 to another URL).
   - [ ] Valid JSON; `appID` = `HMWGCVU4SV.com.the360ghar.ghar360` (TeamID.BundleID).
-- [ ] Validate after deploy with Apple's CDN-cached fetch (`https://app-site-association.cdn-apple.com/a/v1/the360ghar.com`) and by tapping a real `https://the360ghar.com/...` link on a device with the app installed.
+- [ ] Validate after deploy with Apple's CDN-cached fetch (`https://app-site-association.cdn-apple.com/a/v1/360ghar.com`) and by tapping a real `https://360ghar.com/...` link on a device with the app installed.
 
 **Example AASA JSON (`applinks` section):**
 
@@ -113,7 +112,7 @@ must be hosted by the web/infra team.
 ### 5a. Privacy policy URL (REQUIRED)
 
 - [ ] A **public, live privacy-policy URL** is entered in App Store Connect → App Privacy → **Privacy Policy URL** (App Store Connect requires a publicly reachable URL; it does not accept an in-app-only policy).
-- [ ] Note: the in-app policy is fetched **dynamically from the backend** (see `lib/features/profile/.../privacy_view.dart` and `policy_page_view.dart`), so confirm a corresponding **public web URL** (e.g. `https://the360ghar.com/privacy`) is live and returns the same content.
+- [ ] Note: the in-app policy is fetched **dynamically from the backend** (see `lib/features/profile/.../privacy_view.dart` and `policy_page_view.dart`), so confirm a corresponding **public web URL** (e.g. `https://360ghar.com/privacy`) is live and returns the same content.
 
 ### 5b. App Privacy "nutrition label"
 
@@ -150,7 +149,7 @@ For every type below: **Linked to user = No**, **Used for tracking = No**.
 
 - [ ] `flutter clean && flutter pub get`
 - [ ] Confirm iOS uses Swift Package Manager (no `pod install`; plugins resolve via SPM)
-- [ ] Confirm `pubspec.yaml` version is `1.0.7+12` (or bumped — see policy below).
+- [ ] Confirm `pubspec.yaml` version is `1.0.9+15` (or bumped — see policy below).
 
 ### Build the IPA
 
@@ -174,9 +173,9 @@ flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 
 ### Build-number policy
 
-- [ ] Current build is `+12`. **Every subsequent upload must bump the build number** (`+13`, `+14`, …)
+- [ ] Current build is `+15`. **Every subsequent upload must bump the build number** (`+16`, `+17`, …)
       in `pubspec.yaml` — App Store Connect rejects a re-upload that reuses a build number for the same marketing version.
-- [ ] Bump the marketing version (`1.0.7` → `1.0.8` / `1.1.0`) when shipping a new user-facing release.
+- [ ] Bump the marketing version (`1.0.9` → `1.0.10` / `1.1.0`) when shipping a new user-facing release.
 
 ### After upload
 
@@ -193,7 +192,7 @@ flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 - [ ] **Promotional text** (optional, editable without resubmission).
 - [ ] **Description:** full marketing copy (features: swipe discovery, 360° virtual tours, map exploration, visit scheduling).
 - [ ] **Keywords:** comma-separated, ≤ 100 chars (e.g. `real estate,property,360 tour,home,rent,buy,virtual tour,flat`).
-- [ ] **Support URL** (required) and **Marketing URL** (optional) — point to live pages on `the360ghar.com`.
+- [ ] **Support URL** (required) and **Marketing URL** (optional) — point to live pages on `360ghar.com`.
 - [ ] **Category:** Primary **Lifestyle** (Real Estate is not a top-level App Store category; choose Lifestyle, optionally secondary **Utilities**/**Travel**).
 - [ ] **Age rating:** complete the questionnaire (no objectionable content expected → likely **4+**).
 - [ ] **Screenshots:** produce per the existing spec — see [`docs/app-store-screenshots.md`](./app-store-screenshots.md). Do not duplicate that spec here.
@@ -215,7 +214,7 @@ flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 - [ ] **Photo upload:** triggering image picker shows the new **photo library** permission prompt string (and there is **no** camera prompt).
 - [ ] **Location:** location feature shows the **when-in-use** ("while using the app") prompt — confirm there is **no** "Always Allow" option/string.
 - [ ] **Push notifications:** receive a **production** push on a TestFlight build (validates the production aps-environment + APNs .p8).
-- [ ] **Deep link:** tapping a `https://the360ghar.com/...` link opens the app to the correct screen (Universal Link / AASA working).
+- [ ] **Deep link:** tapping a `https://360ghar.com/...` link opens the app to the correct screen (Universal Link / AASA working).
 - [ ] **360 tour:** webview tour loads over **HTTPS** and renders correctly (no ATS / mixed-content failures).
 - [ ] **Cold start:** splash screen shows correct branding; app reaches the auth/home flow without crashing.
 - [ ] **Run quality gates:** `flutter analyze` clean; `dart format .` applied; `flutter test` passing.

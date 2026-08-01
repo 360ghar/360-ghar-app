@@ -36,10 +36,17 @@ class ConversationModel {
 
     return ConversationModel(
       id: id,
-      title: json['title'] as String?,
+      title: json['title']?.toString(),
       createdAt: createdAtStr != null ? DateTime.tryParse(createdAtStr) : null,
       updatedAt: updatedAtStr != null ? DateTime.tryParse(updatedAtStr) : null,
-      messageCount: json['message_count'] as int? ?? 0,
+      messageCount: _parseMessageCount(json['message_count']),
     );
+  }
+
+  static int _parseMessageCount(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
   }
 }

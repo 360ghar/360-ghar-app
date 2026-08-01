@@ -40,6 +40,9 @@ jobs:
             exit 1
           fi
 
+      - name: Verify iOS release privacy configuration
+        run: ./tool/verify_ios_release.sh
+
       - name: Get dependencies
         run: flutter pub get
 

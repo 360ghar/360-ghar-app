@@ -46,7 +46,7 @@ class TourUrl {
   ///
   /// Allows WebView bootstrap URLs used by [loadHtmlString] (`about:blank`,
   /// `about:srcdoc`), hosts on [embedHostAllowlist] / Kuula, and (when
-  /// [allowedOriginUrl] is set) the same host as the initially validated tour.
+  /// [allowedOriginUrl] is set) the same full origin as the initially validated tour.
   /// Rejects arbitrary third-party https redirects, `javascript:`, `data:`,
   /// `file:`, and credentialed URLs.
   static bool isAllowedNavigation(String url, {String? allowedOriginUrl}) {
@@ -68,15 +68,22 @@ class TourUrl {
     if (origin != null && origin.isNotEmpty) {
       final originValidated = validate(origin);
       if (originValidated == null) return false;
-      final originHost = Uri.tryParse(originValidated)?.host.toLowerCase();
-      final navHost = Uri.tryParse(validated)?.host.toLowerCase();
-      if (originHost != null && originHost.isNotEmpty && navHost != null && navHost == originHost) {
+      final originUri = Uri.tryParse(originValidated);
+      final navUri = Uri.tryParse(validated);
+      if (originUri == null || navUri == null) return false;
+      final originPort = originUri.hasPort ? originUri.port : _defaultPort(originUri.scheme);
+      final navPort = navUri.hasPort ? navUri.port : _defaultPort(navUri.scheme);
+      if (originUri.scheme.toLowerCase() == navUri.scheme.toLowerCase() &&
+          originUri.host.toLowerCase() == navUri.host.toLowerCase() &&
+          originPort == navPort) {
         return true;
       }
     }
 
     return false;
   }
+
+  static int _defaultPort(String scheme) => scheme.toLowerCase() == 'https' ? 443 : 80;
 
   /// Restricts CSS/JS color interpolation to safe hex tokens.
   static String sanitizeCssColor(String color, {String fallback = '#f0f0f0'}) {
@@ -110,15 +117,49 @@ class TourUrl {
   /// HTML-attribute-safe encoding for embedding a URL in `src="..."`.
   static String htmlAttributeEscape(String url) => htmlEscape.convert(url);
 
+  /// Posted as the embed document parses, before the iframe does anything.
+  /// Its arrival proves the JS channel itself works on this device.
+  static const String embedReadyMessage = 'ready';
+
+  /// Message posted by the embed shell once the iframe has loaded.
+  static const String embedLoadedMessage = 'loaded';
+
+  /// Message posted by the embed shell when the iframe fails to load.
+  static const String embedFailedMessage = 'failed';
+
+  /// The channel name is interpolated into an HTML attribute and an inline
+  /// script, so only a bare JS identifier is accepted; anything else is
+  /// dropped entirely rather than emitted raw.
+  static String? _safeChannelName(String? channelName) {
+    if (channelName == null) return null;
+    return RegExp(r'^[A-Za-z_$][A-Za-z0-9_$]*$').hasMatch(channelName) ? channelName : null;
+  }
+
   /// Builds the Kuula-style iframe shell used by all embed surfaces.
+  ///
+  /// When [loadSignalChannel] is set, the document posts [embedReadyMessage] as
+  /// it parses and the iframe reports its load outcome to the same JS channel.
+  /// The wrapper document itself always finishes loading, so the iframe signal
+  /// is the only thing that distinguishes a live tour from a dead embed — and
+  /// the ready probe is the only thing that distinguishes a dead embed from a
+  /// channel that does not work on this device.
   static String buildIframeEmbedHtml({
     required String tourUrl,
     String bodyBackground = '#f0f0f0',
     bool silenceConsole = false,
+    String? loadSignalChannel,
   }) {
     final sanitizedUrl = htmlAttributeEscape(tourUrl);
     final safeBg = sanitizeCssColor(bodyBackground);
     final consoleSilencer = silenceConsole ? _consoleSilencer : '';
+    final channel = _safeChannelName(loadSignalChannel);
+    final loadSignal = channel == null
+        ? ''
+        : '\n          onload="$channel.postMessage(\'$embedLoadedMessage\')"'
+              '\n          onerror="$channel.postMessage(\'$embedFailedMessage\')"';
+    final readyProbe = channel == null
+        ? ''
+        : "\n    try { $channel.postMessage('$embedReadyMessage'); } catch (e) {}";
     return '''
 <!DOCTYPE html>
 <html>
@@ -129,7 +170,7 @@ class TourUrl {
     iframe { width: 100vw; height: 100vh; border: none; display: block; }
   </style>
   <script type="text/javascript">
-    $consoleSilencer
+    $consoleSilencer$readyProbe
   </script>
 </head>
 <body>
@@ -137,7 +178,7 @@ class TourUrl {
           frameborder="0"
           allow="xr-spatial-tracking; gyroscope; accelerometer"
           allowfullscreen
-          scrolling="no"
+          scrolling="no"$loadSignal
           src="$sanitizedUrl">
   </iframe>
 </body>

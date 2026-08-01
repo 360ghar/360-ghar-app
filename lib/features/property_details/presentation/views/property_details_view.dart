@@ -202,25 +202,7 @@ class _PropertyContentViewState extends State<_PropertyContentView> {
             onPressed: Get.back,
           ),
           actions: [
-            Obx(
-              () => _buildEditorialAppBarButton(
-                icon: Icon(
-                  likesController.isFavourite(safeProperty.id)
-                      ? Icons.favorite
-                      : Icons.favorite_border,
-                  color: likesController.isFavourite(safeProperty.id)
-                      ? AppDesign.favoriteActive
-                      : AppDesign.textPrimary,
-                ),
-                onPressed: () {
-                  if (likesController.isFavourite(safeProperty.id)) {
-                    likesController.removeFromFavourites(safeProperty.id);
-                  } else {
-                    likesController.addToFavourites(safeProperty.id);
-                  }
-                },
-              ),
-            ),
+            _buildFavouriteButton(likesController, safeProperty),
             _buildEditorialAppBarButton(
               icon: Icon(Icons.share, color: AppDesign.textPrimary),
               onPressed: () => ShareUtils.shareProperty(safeProperty, context: context),
@@ -286,25 +268,7 @@ class _PropertyContentViewState extends State<_PropertyContentView> {
                           onPressed: Get.back,
                         ),
                         const Spacer(),
-                        Obx(
-                          () => _buildEditorialAppBarButton(
-                            icon: Icon(
-                              likesController.isFavourite(safeProperty.id)
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              color: likesController.isFavourite(safeProperty.id)
-                                  ? AppDesign.favoriteActive
-                                  : AppDesign.textPrimary,
-                            ),
-                            onPressed: () {
-                              if (likesController.isFavourite(safeProperty.id)) {
-                                likesController.removeFromFavourites(safeProperty.id);
-                              } else {
-                                likesController.addToFavourites(safeProperty.id);
-                              }
-                            },
-                          ),
-                        ),
+                        _buildFavouriteButton(likesController, safeProperty),
                         _buildEditorialAppBarButton(
                           icon: Icon(Icons.share, color: AppDesign.textPrimary),
                           onPressed: () => ShareUtils.shareProperty(safeProperty, context: context),
@@ -542,6 +506,23 @@ class _PropertyContentViewState extends State<_PropertyContentView> {
         ),
       ),
     );
+  }
+
+  /// Single heart, shared by the compact (SliverAppBar) and expanded (two-pane)
+  /// layouts — only one of those branches ever builds.
+  Widget _buildFavouriteButton(LikesController likesController, PropertyModel property) {
+    return Obx(() {
+      final isFavourite = likesController.isFavourite(property);
+      return _buildEditorialAppBarButton(
+        icon: Icon(
+          isFavourite ? Icons.favorite : Icons.favorite_border,
+          color: isFavourite ? AppDesign.favoriteActive : AppDesign.textPrimary,
+        ),
+        onPressed: () => isFavourite
+            ? likesController.removeFromFavourites(property)
+            : likesController.addToFavourites(property),
+      );
+    });
   }
 
   Widget _buildEditorialAppBarButton({required Widget icon, required VoidCallback onPressed}) {

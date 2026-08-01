@@ -17,6 +17,7 @@ class PreferencesController extends GetxController {
   final RxBool similarProperties = true.obs;
 
   final Rx<AppThemeMode> themeMode = AppThemeMode.system.obs;
+  final RxBool isSaving = false.obs;
 
   @override
   void onInit() {
@@ -49,11 +50,13 @@ class PreferencesController extends GetxController {
     return _localizationController.getCurrentLanguageName();
   }
 
-  void savePreferences() async {
+  Future<void> savePreferences() async {
+    if (isSaving.value) return;
+    isSaving.value = true;
     try {
-      _storage.write('pushNotifications', pushNotifications.value);
-      _storage.write('emailNotifications', emailNotifications.value);
-      _storage.write('similarProperties', similarProperties.value);
+      await _storage.write('pushNotifications', pushNotifications.value);
+      await _storage.write('emailNotifications', emailNotifications.value);
+      await _storage.write('similarProperties', similarProperties.value);
 
       _themeController.setThemeMode(themeMode.value);
 
@@ -72,6 +75,8 @@ class PreferencesController extends GetxController {
       AppToast.success('success'.tr, 'preferences_saved'.tr);
     } catch (e) {
       AppToast.error('error'.tr, 'preferences_save_error'.tr);
+    } finally {
+      isSaving.value = false;
     }
   }
 

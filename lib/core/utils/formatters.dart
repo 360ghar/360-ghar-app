@@ -4,6 +4,11 @@
 ///
 /// Keep helpers pure and deterministic. Avoid side effects and UI concerns.
 class Formatters {
+  /// Whether [value] is usable as a positive amount: finite and strictly
+  /// greater than zero. Shared by the calculator controllers for their
+  /// `please_enter_valid_amounts` validation.
+  static bool isPositiveFinite(num value) => value.isFinite && value > 0;
+
   /// Normalize Indian mobile numbers to E.164 where possible.
   ///
   /// Rules (conservative to match current behavior):

@@ -17,14 +17,12 @@ class UnauthorizedEvent {
   final String method;
   final String endpoint;
   final int statusCode;
-  final bool isSessionCritical;
 
   const UnauthorizedEvent({
     required this.error,
     required this.method,
     required this.endpoint,
     required this.statusCode,
-    required this.isSessionCritical,
   });
 }
 
@@ -56,8 +54,8 @@ class ApiClient {
   final RequestDispatcher? _requestDispatcher;
   getx.GetConnect? _client;
 
-  /// In-flight GET requests keyed by full URL. Prevents duplicate network
-  /// calls when multiple controllers request the same endpoint concurrently.
+  /// In-flight GET requests keyed by request URL and auth/request semantics.
+  /// Prevents duplicate calls without sharing one user's response with another.
   final Map<String, Future<ApiResponse>> _inflightGets = {};
 
   ApiClient({
@@ -103,7 +101,10 @@ class ApiClient {
       );
     }
 
-    final dedupeKey = _buildUrl(endpoint, queryParams);
+    final requestUrl = _buildUrl(endpoint, queryParams);
+    final dedupeKey =
+        '$requestUrl|scope=${_authProvider.requestScope}|auth=$requireAuth|'
+        'cache=$useCache|unauthorized=$notifyUnauthorized';
     final inflight = _inflightGets[dedupeKey];
     if (inflight != null) {
       DebugLogger.debug('🔗 Deduplicating GET $dedupeKey');
@@ -252,9 +253,28 @@ class ApiClient {
     bool notifyUnauthorized = true,
   }) async {
     final fullEndpoint = _buildUrl(endpoint, queryParams);
-    var headers = await _buildHeaders(requireAuth: requireAuth, forceRefresh: false);
-    final cacheKey = useCache ? _buildCacheKey(method, fullEndpoint) : null;
-    final sessionCritical = isSessionCriticalEndpoint(fullEndpoint);
+    Map<String, String> headers;
+    try {
+      headers = await _buildHeaders(requireAuth: requireAuth, forceRefresh: false);
+    } on AuthenticationException catch (e) {
+      // A dead refresh token surfaces here (MISSING_AUTH_HEADER) instead of as
+      // a 401, so it must reach the unauthorized handler too; otherwise the
+      // app stays "signed in" with every screen empty and never recovers.
+      if (notifyUnauthorized) {
+        await _notifyUnauthorized(
+          UnauthorizedEvent(
+            error: e,
+            method: method.toUpperCase(),
+            endpoint: fullEndpoint,
+            statusCode: 401,
+          ),
+        );
+      }
+      rethrow;
+    }
+    final cacheKey = useCache
+        ? _buildCacheKey(method, fullEndpoint, requireAuth: requireAuth)
+        : null;
     var authRefreshRetryPerformed = false;
 
     // Add ETag header if cached
@@ -326,22 +346,26 @@ class ApiClient {
                   refreshError,
                   refreshStackTrace,
                 );
+                // The refresh never reached the server, so the 401 proves
+                // nothing about the session. Surface it as a network failure
+                // rather than falling through to a sign-out.
+                if (refreshError is NetworkException) rethrow;
               }
             }
 
             final mappedError = _mapHttpError(response);
+            // Any 401 that survives the forced-refresh retry above means the
+            // session is unusable, whatever endpoint produced it.
             if (mappedError is AuthenticationException &&
-                mappedError.code == 'UNAUTHORIZED' &&
+                mappedError.code == AppException.unauthorizedCode &&
                 requireAuth &&
-                notifyUnauthorized &&
-                sessionCritical) {
+                notifyUnauthorized) {
               await _notifyUnauthorized(
                 UnauthorizedEvent(
                   error: mappedError,
                   method: method.toUpperCase(),
                   endpoint: fullEndpoint,
                   statusCode: response.statusCode ?? 401,
-                  isSessionCritical: sessionCritical,
                 ),
               );
             }
@@ -352,7 +376,7 @@ class ApiClient {
               idempotent: idempotent,
             )) {
               attempt++;
-              await _retryBackoffDelay(attempt);
+              await _retryBackoffDelay(attempt, method: method);
               continue;
             }
             throw mappedError;
@@ -376,14 +400,14 @@ class ApiClient {
             idempotent: idempotent,
           )) {
             attempt++;
-            await _retryBackoffDelay(attempt);
+            await _retryBackoffDelay(attempt, method: method);
             continue;
           }
           throw NetworkException('Request timed out after $_timeoutSeconds seconds');
         } catch (e) {
           if (_shouldRetry(method: method, error: e, attempt: attempt, idempotent: idempotent)) {
             attempt++;
-            await _retryBackoffDelay(attempt);
+            await _retryBackoffDelay(attempt, method: method);
             continue;
           }
 
@@ -473,6 +497,10 @@ class ApiClient {
     };
 
     if (!requireAuth) {
+      // Optional auth: attach an already-valid token so the backend can still
+      // enrich the response for signed-in users, but never block or refresh.
+      final cached = _authProvider.cachedAuthHeader;
+      if (cached != null) headers.addAll(cached);
       return headers;
     }
 
@@ -480,26 +508,25 @@ class ApiClient {
     final authHeader = await _authProvider.getAuthHeader(forceRefresh: forceRefresh);
     if (authHeader != null) {
       headers.addAll(authHeader);
-      final authValue = authHeader['Authorization'] ?? '';
-      final hasBearer = authValue.startsWith('Bearer ');
-      final tokenPreview = hasBearer && authValue.length > 20
-          ? '${authValue.substring(7, 15)}...${authValue.substring(authValue.length - 8)}'
-          : 'invalid format';
-      DebugLogger.api('🔐 Auth header added (token: $tokenPreview, length: ${authValue.length})');
+      DebugLogger.debug('🔐 Auth header added for authenticated request');
     } else {
       // CRITICAL: Block request if auth is required but header is not available
       DebugLogger.error('🔐 CRITICAL: No auth header available for authenticated request');
       throw AuthenticationException(
         'Authentication required but no auth header available',
-        code: 'MISSING_AUTH_HEADER',
+        code: AppException.missingAuthHeaderCode,
       );
     }
 
     return headers;
   }
 
-  String? _buildCacheKey(String method, String url) {
-    return method.toUpperCase() == 'GET' ? url : null;
+  /// Cache keys are scoped like the in-flight dedupe keys: GET responses
+  /// carry per-user data (e.g. liked-status), so one account's cached entry
+  /// must never be served to another user — or to a guest — for the same URL.
+  String? _buildCacheKey(String method, String url, {required bool requireAuth}) {
+    if (method.toUpperCase() != 'GET') return null;
+    return '$url|scope=${_authProvider.requestScope}|auth=$requireAuth';
   }
 
   Future<getx.Response> _dispatchRequest(
@@ -550,10 +577,12 @@ class ApiClient {
     return policy.shouldRetry(attempt + 1, error);
   }
 
-  Future<void> _retryBackoffDelay(int attempt) async {
+  Future<void> _retryBackoffDelay(int attempt, {required String method}) async {
     // [attempt] is 1-based after increment in the request loop.
-    final delay = RetryPolicy.apiGet().delayForAttempt(attempt);
-    await Future.delayed(delay);
+    final policy = method.toUpperCase() == 'GET'
+        ? RetryPolicy.apiGet()
+        : RetryPolicy.idempotentMutation();
+    await Future.delayed(policy.delayForAttempt(attempt));
   }
 
   static String _normalizeBaseUrl(String baseUrl) {
@@ -598,7 +627,7 @@ class ApiClient {
       DebugLogger.error('🔐 Authentication failed: $statusCode');
       return AuthenticationException(
         'Your session has expired. Please sign in again.',
-        code: 'UNAUTHORIZED',
+        code: AppException.unauthorizedCode,
         details: bodyString,
       );
     }
@@ -642,24 +671,8 @@ class ApiClient {
     }
   }
 
-  /// Returns true only for endpoints that represent auth/session validity.
-  static bool isSessionCriticalEndpoint(String endpointOrUrl) {
-    final uri = Uri.tryParse(endpointOrUrl);
-    var path = (uri?.hasScheme == true ? uri!.path : ApiPaths.normalize(endpointOrUrl)).trim();
-    if (path.isEmpty) return false;
-    if (path.length > 1 && path.endsWith('/')) {
-      path = path.substring(0, path.length - 1);
-    }
-
-    const criticalPaths = <String>{'/api/v1/users/profile'};
-
-    for (final critical in criticalPaths) {
-      if (path == critical || path.startsWith('$critical/')) {
-        return true;
-      }
-    }
-    return false;
-  }
+  @visibleForTesting
+  static void resetUnauthorizedCooldown() => _lastUnauthorizedNotificationAt = null;
 
   /// Clears the ETag cache.
   void clearCache() => _etagCache.clear();

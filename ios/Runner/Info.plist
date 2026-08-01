@@ -34,13 +34,6 @@
 					<string>ghar360</string>
 				</array>
 			</dict>
-			<!--
-			  Google Sign-In: REVERSED iOS client id URL scheme.
-			  Replace the placeholder below with the reversed iOS OAuth client id
-			  from Google Cloud Console (Phase 0), e.g.
-			  com.googleusercontent.apps.1234567890-abcdefg.
-			  This is required for the native Google sign-in redirect on iOS.
-			-->
 			<dict>
 				<key>CFBundleTypeRole</key>
 				<string>Editor</string>
@@ -48,7 +41,7 @@
 				<string>google-sign-in</string>
 				<key>CFBundleURLSchemes</key>
 				<array>
-					<string>com.googleusercontent.apps.REPLACE_WITH_REVERSED_IOS_CLIENT_ID</string>
+					<string>com.googleusercontent.apps.585762962816-vc49hjfapm680mj0kc9c5a5ubmc66fce</string>
 				</array>
 			</dict>
 		</array>
@@ -60,6 +53,8 @@
 		<string>This app needs location access to show nearby properties on the map.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
 		<string>360 Ghar needs access to your photos and videos so you can upload images and video tours for your property listings.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>360 Ghar needs camera access so you can take a new photo for your profile picture.</string>
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>
 		<key>LSApplicationQueriesSchemes</key>

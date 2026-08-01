@@ -25,6 +25,10 @@ class LastAuthMethodStore {
       _storage.write(_atKey, DateTime.now().toIso8601String());
       if (identifier != null && identifier.trim().isNotEmpty) {
         _storage.write(_hintKey, IdentifierUtils.mask(identifier));
+      } else {
+        // Do not leave a previous account hint visible after a provider-only
+        // sign-in or any auth flow that has no identifier to persist.
+        _storage.remove(_hintKey);
       }
       DebugLogger.auth('💾 Saved last_auth_method=${method.wireValue}');
     } catch (e, st) {

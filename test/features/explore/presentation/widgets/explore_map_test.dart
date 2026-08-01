@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
@@ -24,6 +25,26 @@ import '../../../../helpers/mocks.dart';
 
 class _FakeMapLibrePlatform extends MapLibrePlatform {
   bool _viewCreated = false;
+
+  /// Simulated camera state: every projected point lands at
+  /// (screenOffset, screenOffset). Changing it stands in for a camera move.
+  double screenOffset = 0;
+
+  /// When true, [toScreenLocation] resolves after a delay that DECREASES as
+  /// [screenOffset] grows, so an older camera state resolves *after* a newer
+  /// one. This mirrors real platform-channel jitter and is what lets a stale
+  /// overlay pass win whenever two passes are allowed to run concurrently.
+  bool simulateProjectionLatency = false;
+
+  /// Highest number of [toScreenLocation] futures in flight at once. An
+  /// overlay pass projects its markers sequentially, so anything above 1 means
+  /// two passes overlapped.
+  int maxConcurrentToScreen = 0;
+  int _inFlightToScreen = 0;
+
+  /// While true, [toScreenLocation] throws, standing in for a projection that
+  /// fails because the surface is being recreated or the style swapped.
+  bool failProjection = false;
 
   @override
   Widget buildView(
@@ -203,7 +224,24 @@ class _FakeMapLibrePlatform extends MapLibrePlatform {
   Future<dynamic> getFilter(String layerId) async => null;
 
   @override
-  Future<math.Point> toScreenLocation(LatLng latLng) async => const math.Point(0.0, 0.0);
+  Future<math.Point> toScreenLocation(LatLng latLng) async {
+    // Thrown before the in-flight counter moves so it stays balanced.
+    if (failProjection) {
+      throw PlatformException(code: 'surfaceDestroyed', message: 'no surface');
+    }
+    // Capture the camera state at call time so a pass that started earlier
+    // keeps projecting against the camera it saw.
+    final captured = screenOffset;
+    _inFlightToScreen++;
+    if (_inFlightToScreen > maxConcurrentToScreen) {
+      maxConcurrentToScreen = _inFlightToScreen;
+    }
+    if (simulateProjectionLatency) {
+      await Future<void>.delayed(Duration(milliseconds: math.max(1, 200 - captured.round())));
+    }
+    _inFlightToScreen--;
+    return math.Point(captured, captured);
+  }
 
   @override
   Future<List<math.Point>> toScreenLocationBatch(Iterable<LatLng> latLngs) async => [];
@@ -540,12 +578,15 @@ PropertyMarker _marker({int id = 100, bool selected = false, String label = '₹
 void main() {
   late _FakeExploreController controller;
   MapLibrePlatform Function()? originalCreateInstance;
+  // The fake created for the map under test, so tests can drive camera events.
+  _FakeMapLibrePlatform? platform;
 
   setUp(() {
     GetxTestBinding.init();
+    platform = null;
     // Override the platform factory so MapLibreMap uses our fake.
     originalCreateInstance = MapLibrePlatform.createInstance;
-    MapLibrePlatform.createInstance = () => _FakeMapLibrePlatform();
+    MapLibrePlatform.createInstance = () => platform = _FakeMapLibrePlatform();
 
     controller = _FakeExploreController();
   });
@@ -709,6 +750,83 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.byType(ExploreMap), findsOneWidget);
+    });
+  });
+
+  group('ExploreMap — camera event burst', () {
+    // Fires [count] camera moves, each at a new simulated camera state, then a
+    // final move at [finalOffset]. Returns after everything has drained.
+    Future<void> driveCameraBurst(
+      WidgetTester tester, {
+      int count = 8,
+      double finalOffset = 190,
+    }) async {
+      final fake = platform!;
+      fake.simulateProjectionLatency = true;
+      fake.maxConcurrentToScreen = 0;
+      const move = CameraPosition(target: LatLng(28.61, 77.21), zoom: 12);
+      for (var i = 1; i <= count; i++) {
+        fake.screenOffset = i * 10.0;
+        fake.onCameraMovePlatform(move);
+      }
+      fake.screenOffset = finalOffset;
+      fake.onCameraMovePlatform(move);
+      // Well past the largest simulated projection latency (200ms per marker).
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    testWidgets('chips settle on the LAST camera state after a rapid burst', (tester) async {
+      controller = _FakeExploreController(markers: [_marker(id: 1)]);
+      await pumpExploreMap(tester);
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await driveCameraBurst(tester);
+
+      final positioned = tester.widget<Positioned>(
+        find.ancestor(of: find.byType(PropertyMarkerChip), matching: find.byType(Positioned)).first,
+      );
+      // Chip is centred on the projected point (chip box is 120x56).
+      expect(positioned.left, 190 - 120 / 2);
+      expect(positioned.top, 190 - 56 / 2);
+    });
+
+    testWidgets('overlay computation is never re-entered concurrently', (tester) async {
+      controller = _FakeExploreController(markers: [_marker(id: 1), _marker(id: 2)]);
+      await pumpExploreMap(tester);
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await driveCameraBurst(tester, count: 12);
+
+      expect(platform!.maxConcurrentToScreen, 1);
+    });
+
+    testWidgets('a throwing pass is contained and the next event still syncs', (tester) async {
+      controller = _FakeExploreController(markers: [_marker(id: 1)]);
+      await pumpExploreMap(tester);
+      await tester.pump(const Duration(milliseconds: 200));
+
+      final fake = platform!;
+      const move = CameraPosition(target: LatLng(28.61, 77.21), zoom: 12);
+
+      fake.failProjection = true;
+      fake.screenOffset = 100;
+      fake.onCameraMovePlatform(move);
+      await tester.pump(const Duration(milliseconds: 200));
+      // Fire-and-forget callers cannot catch it, so the pass must not let it
+      // escape as an unhandled async error.
+      expect(tester.takeException(), isNull);
+
+      // Latch released despite the throw: the next event syncs normally.
+      fake.failProjection = false;
+      fake.screenOffset = 150;
+      fake.onCameraMovePlatform(move);
+      await tester.pump(const Duration(milliseconds: 200));
+
+      final positioned = tester.widget<Positioned>(
+        find.ancestor(of: find.byType(PropertyMarkerChip), matching: find.byType(Positioned)).first,
+      );
+      expect(positioned.left, 150 - 120 / 2);
     });
   });
 

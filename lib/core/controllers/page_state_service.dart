@@ -717,7 +717,15 @@ class PageStateService extends GetxController {
   /// (it was just reinserted by [reinsertPropertyToDiscover]). It only
   /// reverses the likes list mutation from the original swipe and fires the
   /// background network sync with the opposite action.
-  Future<void> undoSwipe({required int propertyId, required bool originalIsLiked}) async {
+  ///
+  /// Pass [notifyServer]: false when the original swipe never reached the
+  /// server (e.g. [recordSwipe]'s network call failed) — there is nothing to
+  /// reverse remotely in that case, only the local optimistic state.
+  Future<void> undoSwipe({
+    required int propertyId,
+    required bool originalIsLiked,
+    bool notifyServer = true,
+  }) async {
     // Reverse ONLY the likes/passed mutations that the original swipe made:
     // - Original LIKE added to liked → undo removes from liked (and its cache).
     // - Original PASS added to passed → undo removes from passed cache only.
@@ -734,6 +742,8 @@ class PageStateService extends GetxController {
         removePropertyFromLikes(propertyId);
       }
     }
+
+    if (!notifyServer) return;
 
     // Network sync with the REVERSED action. Without a delete-swipe API,
     // recording the opposite is the best reversal we can do. Await so failures

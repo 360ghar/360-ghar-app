@@ -9,7 +9,7 @@ class VisitsBinding extends Bindings {
     RepositoryRegistration.ensureVisitsRepository();
 
     if (!Get.isRegistered<VisitsController>()) {
-      Get.lazyPut<VisitsController>(() => VisitsController());
+      Get.lazyPut<VisitsController>(() => VisitsController(), fenix: true);
     }
   }
 }

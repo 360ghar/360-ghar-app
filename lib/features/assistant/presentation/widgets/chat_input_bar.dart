@@ -69,7 +69,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   focusNode: _focusNode,
                   maxLines: 4,
                   minLines: 1,
+                  enabled: !widget.isStreaming,
                   textInputAction: TextInputAction.newline,
+                  onSubmitted: (_) {
+                    if (widget.isStreaming || !_hasText) return;
+                    _send();
+                  },
                   style: TextStyle(fontSize: 14, color: palette.textPrimary),
                   decoration: InputDecoration(
                     hintText: 'assistant_input_hint'.tr,

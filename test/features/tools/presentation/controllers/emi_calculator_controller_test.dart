@@ -7,6 +7,8 @@
 // - clear() resets all state
 // - Edge case: very long tenure
 
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/features/tools/presentation/controllers/emi_calculator_controller.dart';
@@ -346,6 +348,114 @@ void main() {
 
       expect(controller.hasCalculated.value, isTrue);
       expect(controller.monthlyEmi.value, lessThan(10000));
+    });
+
+    // ── Overflow guards (P1) ──────────────────────────────────────────────
+    //
+    // pow(1+r, n) overflows to Infinity for an absurd n, and Infinity/Infinity
+    // is NaN. NaN.round() then throws UnsupportedError inside build().
+
+    test('tenure 999999 months is rejected, never publishing NaN', () {
+      final controller = createController();
+      controller.principalController.text = '5000000';
+      controller.rateController.text = '8.5';
+      controller.tenureInYears.value = false;
+      controller.tenureController.text = '999999';
+
+      controller.calculate();
+
+      expect(controller.validationError.value, isNotEmpty);
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.monthlyEmi.value.isNaN, isFalse);
+      expect(controller.monthlyEmi.value.isFinite, isTrue);
+      expect(controller.totalPayment.value.isFinite, isTrue);
+      expect(controller.totalInterest.value.isFinite, isTrue);
+    });
+
+    test('tenure 999999 years is rejected too', () {
+      final controller = createController();
+      controller.principalController.text = '5000000';
+      controller.rateController.text = '8.5';
+      controller.tenureController.text = '999999'; // years
+
+      controller.calculate();
+
+      expect(controller.validationError.value, isNotEmpty);
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.monthlyEmi.value.isNaN, isFalse);
+    });
+
+    test('tenure exactly at the cap is accepted, one month past it is not', () {
+      final controller = createController();
+      controller.principalController.text = '5000000';
+      controller.rateController.text = '8.5';
+      controller.tenureInYears.value = false;
+
+      controller.tenureController.text = '${EmiCalculatorController.maxTenureMonths}';
+      controller.calculate();
+      expect(controller.hasCalculated.value, isTrue);
+      expect(controller.validationError.value, isEmpty);
+      expect(controller.monthlyEmi.value.isFinite, isTrue);
+
+      controller.tenureController.text = '${EmiCalculatorController.maxTenureMonths + 1}';
+      controller.calculate();
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.validationError.value, isNotEmpty);
+    });
+
+    test('an absurd interest rate is rejected by the non-finite guard', () {
+      final controller = createController();
+      controller.principalController.text = '5000000';
+      controller.rateController.text = '1e308'; // pow() overflows -> NaN
+      controller.tenureController.text = '20';
+
+      controller.calculate();
+
+      expect(controller.validationError.value, isNotEmpty);
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.monthlyEmi.value.isNaN, isFalse);
+    });
+
+    test('toggling the unit past the cap surfaces a validation error, not NaN', () {
+      final controller = createController();
+      controller.principalController.text = '5000000';
+      controller.rateController.text = '8.5';
+      controller.tenureInYears.value = false;
+      controller.tenureController.text = '600'; // 600 months = at the cap
+      controller.calculate();
+      expect(controller.hasCalculated.value, isTrue);
+
+      controller.toggleTenureUnit(); // 600 YEARS = 7200 months, past the cap
+
+      expect(controller.validationError.value, isNotEmpty);
+      expect(controller.hasCalculated.value, isFalse);
+      expect(controller.monthlyEmi.value.isNaN, isFalse);
+    });
+
+    // ── The EMI formula itself is correct and must stay that way ──────────
+
+    test('EMI matches P*r*(1+r)^n / ((1+r)^n - 1) exactly', () {
+      final controller = createController();
+      const principal = 5000000.0;
+      const annualRate = 8.5;
+      const years = 20;
+      controller.principalController.text = '$principal';
+      controller.rateController.text = '$annualRate';
+      controller.tenureController.text = '$years';
+
+      controller.calculate();
+
+      const months = years * 12;
+      const r = annualRate / 12 / 100;
+      final factor = pow(1 + r, months);
+      final expected = principal * r * factor / (factor - 1);
+
+      expect(controller.hasCalculated.value, isTrue);
+      // ₹50L @ 8.5% over 20 years = ₹43,391.16/month.
+      expect(expected, closeTo(43391.16, 0.01));
+      expect(controller.monthlyEmi.value, closeTo(expected, 1e-6));
+      expect(controller.totalPayment.value, closeTo(expected * months, 1e-6));
+      expect(controller.totalInterest.value, closeTo(expected * months - principal, 1e-6));
     });
   });
 }

@@ -132,6 +132,50 @@ void main() {
       await tester.pumpAndSettle();
       expect(refreshCalled, isTrue);
     });
+
+    testWidgets('shows the loading skeleton, not the empty state, while loading more', (
+      tester,
+    ) async {
+      // An empty deck during pagination is "waiting for the next page", not
+      // "catalogue exhausted" — showing "No More Properties" + Change Filters
+      // here makes users reset a session that was about to continue.
+      await pumpStack(
+        tester,
+        PropertySwipeStack(
+          properties: const [],
+          onSwipeLeft: (_) {},
+          onSwipeRight: (_) {},
+          onSwipeUp: (_) {},
+          onRefresh: () {},
+          onChangeFilters: () {},
+          isLoadingMore: true,
+        ),
+      );
+      // No pumpAndSettle: the shimmer animation never settles.
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Loading more properties...'), findsOneWidget);
+      expect(find.text('No More Properties'), findsNothing);
+      expect(find.byIcon(Icons.tune), findsNothing);
+    });
+
+    testWidgets('still shows the empty state when not loading more', (tester) async {
+      await pumpStack(
+        tester,
+        PropertySwipeStack(
+          properties: const [],
+          onSwipeLeft: (_) {},
+          onSwipeRight: (_) {},
+          onSwipeUp: (_) {},
+          isLoadingMore: false,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('No More Properties'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
   });
 
   group('PropertySwipeStack — rendering with properties', () {
@@ -301,6 +345,144 @@ void main() {
       expect(swipedLeft, isFalse);
       // The top card is still present.
       expect(find.byType(PropertySwipeCard), findsOneWidget);
+    });
+
+    testWidgets('snaps back, keeps the card and toasts when canSwipe rejects it', (tester) async {
+      // A background refresh (filter change / GPS update) landed mid-drag, so
+      // the frozen top card is no longer in the controller's deck. Committing
+      // the swipe would fly the card off while the swipe is silently dropped —
+      // no POST, no toast, no stats. It must bounce back instead.
+      final properties = [
+        _property(id: 1, title: 'Alpha Home'),
+        _property(id: 2, title: 'Beta House'),
+      ];
+      PropertyModel? swipedRight;
+      PropertyModel? swipedLeft;
+
+      await pumpStack(
+        tester,
+        PropertySwipeStack(
+          properties: properties,
+          onSwipeLeft: (p) => swipedLeft = p,
+          onSwipeRight: (p) => swipedRight = p,
+          onSwipeUp: (_) {},
+          canSwipe: (p) => p.id != 1,
+        ),
+      );
+      await tester.pump();
+
+      await tester.drag(find.byType(PropertySwipeStack), const Offset(180, 0));
+      // Past both the 300ms snap-back and the 400ms exit animation: if the
+      // card had been committed it would be gone by now.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(swipedRight, isNull);
+      expect(swipedLeft, isNull);
+      // The rejected card is still the top card, not animated off.
+      expect(find.text('Alpha Home'), findsWidgets);
+      // And the bounce is explained rather than silent.
+      expect(
+        find.text('Your swipe could not be saved. The property is back in your deck.'),
+        findsOneWidget,
+      );
+
+      Get.closeAllSnackbars();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    });
+
+    testWidgets('adopts the deck that landed mid-drag when the stale card is rejected', (
+      tester,
+    ) async {
+      // The end-to-end shape of the bug: a refresh lands *during* the drag, so
+      // didUpdateWidget parks the new list in _pendingProperties — which is
+      // normally drained only by the exit animation, and that animation never
+      // runs on the reject path. Without adopting it here the stale card stays
+      // on top and every later swipe is rejected the same way, forever.
+      final initial = [
+        _property(id: 1, title: 'Alpha Home'),
+        _property(id: 2, title: 'Beta House'),
+      ];
+      final refreshed = [_property(id: 3, title: 'Gamma Villa')];
+      PropertyModel? swipedRight;
+
+      Widget buildStack(List<PropertyModel> props) => GetMaterialApp(
+        translations: AppTranslations(),
+        locale: const Locale('en', 'US'),
+        fallbackLocale: const Locale('en', 'US'),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 400,
+              height: 700,
+              child: PropertySwipeStack(
+                key: const ValueKey('stack'),
+                properties: props,
+                onSwipeLeft: (_) {},
+                onSwipeRight: (p) => swipedRight = p,
+                onSwipeUp: (_) {},
+                canSwipe: (p) => refreshed.any((e) => e.id == p.id),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(buildStack(initial));
+      await tester.pump();
+
+      // Drag past the 100px threshold but keep the finger down.
+      final gesture = await tester.startGesture(tester.getCenter(find.byType(PropertySwipeStack)));
+      await tester.pump();
+      for (int i = 0; i < 14; i++) {
+        await gesture.moveBy(const Offset(10, 0));
+        await tester.pump();
+      }
+
+      // Background refresh lands mid-drag — Alpha is gone from the real deck.
+      await tester.pumpWidget(buildStack(refreshed));
+      await tester.pump();
+
+      await gesture.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(swipedRight, isNull);
+      expect(find.text('Alpha Home'), findsNothing);
+      expect(find.text('Gamma Villa'), findsWidgets);
+
+      Get.closeAllSnackbars();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    });
+
+    testWidgets('still swipes normally when canSwipe accepts the card', (tester) async {
+      final properties = [
+        _property(id: 1, title: 'Alpha Home'),
+        _property(id: 2, title: 'Beta House'),
+      ];
+      PropertyModel? swipedRight;
+
+      await pumpStack(
+        tester,
+        PropertySwipeStack(
+          properties: properties,
+          onSwipeLeft: (_) {},
+          onSwipeRight: (p) => swipedRight = p,
+          onSwipeUp: (_) {},
+          canSwipe: (_) => true,
+        ),
+      );
+      await tester.pump();
+
+      await tester.drag(find.byType(PropertySwipeStack), const Offset(180, 0));
+      await tester.pump();
+
+      expect(swipedRight, isNotNull);
+      expect(swipedRight!.id, 1);
     });
 
     testWidgets('removes the top card after a completed swipe right', (tester) async {

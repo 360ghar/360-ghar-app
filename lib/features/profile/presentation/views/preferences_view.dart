@@ -63,21 +63,31 @@ class PreferencesView extends GetView<PreferencesController> with ThemeMixin {
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  key: const ValueKey('qa.profile.preferences.save'),
-                  onPressed: controller.savePreferences,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppDesign.primaryYellow,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Text(
-                    'save_preferences'.tr,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                // Observed so the disabled state and spinner render while
+                // preferences are being saved.
+                child: Obx(
+                  () => ElevatedButton(
+                    key: const ValueKey('qa.profile.preferences.save'),
+                    onPressed: controller.isSaving.value ? null : controller.savePreferences,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppDesign.primaryYellow,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
+                    child: controller.isSaving.value
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            'save_preferences'.tr,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
                   ),
                 ),
               ),

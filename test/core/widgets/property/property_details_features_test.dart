@@ -48,7 +48,7 @@ void main() {
     expect(find.byType(PropertyDetailsFeatures), findsOneWidget);
 
     // Primary row icons.
-    expect(find.byIcon(Icons.bed), findsOneWidget);
+    expect(find.byIcon(Icons.bed_rounded), findsOneWidget);
     expect(find.byIcon(Icons.bathtub_outlined), findsOneWidget);
     expect(find.byIcon(Icons.square_foot), findsOneWidget);
 
@@ -66,7 +66,7 @@ void main() {
     // Secondary row icons (only rendered when balconies/parking/floor present).
     expect(find.byIcon(Icons.balcony), findsOneWidget);
     expect(find.byIcon(Icons.local_parking), findsOneWidget);
-    expect(find.byIcon(Icons.layers), findsOneWidget);
+    expect(find.byIcon(Icons.layers_outlined), findsOneWidget);
 
     // Floor value "3/10".
     expect(find.text('3/10'), findsOneWidget);
@@ -95,14 +95,14 @@ void main() {
     await pumpWidget(tester, PropertyDetailsFeatures(property: property));
 
     // Primary row present.
-    expect(find.byIcon(Icons.bed), findsOneWidget);
+    expect(find.byIcon(Icons.bed_rounded), findsOneWidget);
     expect(find.byIcon(Icons.bathtub_outlined), findsOneWidget);
     expect(find.byIcon(Icons.square_foot), findsOneWidget);
 
     // Secondary row absent — no Divider.
     expect(find.byIcon(Icons.balcony), findsNothing);
     expect(find.byIcon(Icons.local_parking), findsNothing);
-    expect(find.byIcon(Icons.layers), findsNothing);
+    expect(find.byIcon(Icons.layers_outlined), findsNothing);
     expect(find.byType(Divider), findsNothing);
   });
 
@@ -122,7 +122,7 @@ void main() {
     // The container is still rendered.
     expect(find.byType(PropertyDetailsFeatures), findsOneWidget);
     // No feature icons at all.
-    expect(find.byIcon(Icons.bed), findsNothing);
+    expect(find.byIcon(Icons.bed_rounded), findsNothing);
     expect(find.byIcon(Icons.bathtub_outlined), findsNothing);
     expect(find.byIcon(Icons.square_foot), findsNothing);
     expect(find.byType(Divider), findsNothing);
@@ -143,7 +143,7 @@ void main() {
     await pumpWidget(tester, PropertyDetailsFeatures(property: property));
 
     // Only bedrooms icon/value present.
-    expect(find.byIcon(Icons.bed), findsOneWidget);
+    expect(find.byIcon(Icons.bed_rounded), findsOneWidget);
     expect(find.text('4'), findsOneWidget);
     expect(find.text('Bedrooms'), findsOneWidget);
 

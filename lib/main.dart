@@ -117,9 +117,14 @@ void main() async {
 /// Minimal error shell with no GetX / Supabase dependencies so startup failures
 /// always replace the native splash with a recoverable UI.
 class BootstrapErrorApp extends StatelessWidget {
-  const BootstrapErrorApp({super.key, required this.error});
+  const BootstrapErrorApp({super.key, required this.error, this.showDevHelp = kDebugMode});
 
   final String error;
+
+  /// Shows build-tool instructions and the raw error dump. Defaults to
+  /// [kDebugMode]; overridable only so the release rendering stays testable
+  /// (the test process always runs with `kDebugMode == true`).
+  final bool showDevHelp;
 
   @override
   Widget build(BuildContext context) {
@@ -162,17 +167,24 @@ class BootstrapErrorApp extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'The app could not finish startup.\n\n'
-                      'Local dev:\n'
-                      '1) Fill .env.development\n'
-                      '2) dart run tool/sync_dev_env.dart\n'
-                      '3) flutter run\n\n'
-                      'Or: ./tool/run_with_env.sh',
+                    Text(
+                      showDevHelp
+                          ? 'The app could not finish startup.\n\n'
+                                'Local dev:\n'
+                                '1) Fill .env.development\n'
+                                '2) dart run tool/sync_dev_env.dart\n'
+                                '3) flutter run\n\n'
+                                'Or: ./tool/run_with_env.sh'
+                          // Bootstrap failure is usually a dead/captive network.
+                          // Mirrors the `connection_error_message` translation
+                          // key, but hardcoded: this shell is a plain
+                          // MaterialApp built before GetMaterialApp, so GetX
+                          // translations are unset and `.tr` renders the raw key.
+                          : 'Please check your internet connection and try again.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, height: 1.45, color: Color(0xFF6C757D)),
+                      style: const TextStyle(fontSize: 14, height: 1.45, color: Color(0xFF6C757D)),
                     ),
-                    if (kDebugMode) ...[
+                    if (showDevHelp) ...[
                       const SizedBox(height: 20),
                       Container(
                         width: double.infinity,

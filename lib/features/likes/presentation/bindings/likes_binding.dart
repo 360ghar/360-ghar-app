@@ -8,6 +8,6 @@ class LikesBinding extends Bindings {
     // Repositories and core services are registered in DashboardBinding
 
     // Screen controller
-    Get.lazyPut<LikesController>(() => LikesController());
+    Get.lazyPut<LikesController>(() => LikesController(), fenix: true);
   }
 }

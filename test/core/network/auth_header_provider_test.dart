@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/network/auth_header_provider.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
@@ -35,22 +37,91 @@ void main() {
       expect(header!['Authorization'], equals('Bearer ${refreshedSession.accessToken}'));
     });
 
-    test('returns null when refresh fails and token remains stale', () async {
+    // -----------------------------------------------------------------------
+    // Refresh failure classification.
+    //
+    // Only a demonstrable server rejection may look like a dead session (null
+    // header → MISSING_AUTH_HEADER → sign-out). Every other failure is
+    // transient and must surface as a NetworkException, because signing a user
+    // out for losing signal is unrecoverable without a network.
+    // -----------------------------------------------------------------------
+    AuthHeaderProvider providerFailingWith(Object error) {
       final user = _testUser();
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final staleSession = _sessionWithExpiry(
         token: _jwtWithExp(now - 10, subject: user.id),
         user: user,
       );
-
-      final provider = AuthHeaderProvider(
+      return AuthHeaderProvider(
         currentSessionProvider: () => staleSession,
-        refreshSession: () async => throw Exception('refresh failed'),
+        refreshSession: () async => throw error,
+      );
+    }
+
+    test('returns null when the server rejects the refresh token', () async {
+      // Password changed on another device: the real session-fatal case.
+      final provider = providerFailingWith(
+        const AuthApiException('Invalid Refresh Token', statusCode: '400'),
       );
 
-      final header = await provider.getAuthHeader();
+      expect(await provider.getAuthHeader(), isNull);
+    });
 
-      expect(header, isNull);
+    for (final entry in <String, Object>{
+      'transport failure': AuthRetryableFetchException(message: 'Failed host lookup'),
+      'server 5xx': AuthRetryableFetchException(message: 'boom', statusCode: '503'),
+      'raw timeout': TimeoutException('no route to host'),
+      'captive portal (unparseable body)': AuthUnknownException(
+        message: 'Failed to decode error response',
+        originalError: 'Received an empty response with status code 511',
+      ),
+      'unknown error': Exception('something we have never seen'),
+    }.entries) {
+      test('throws a transient NetworkException on ${entry.key}', () async {
+        final provider = providerFailingWith(entry.value);
+
+        await expectLater(
+          provider.getAuthHeader(),
+          throwsA(
+            isA<NetworkException>().having(
+              (e) => e.code,
+              'code',
+              AuthHeaderProvider.refreshUnreachableCode,
+            ),
+          ),
+        );
+      });
+    }
+
+    test('concurrent callers on one coalesced refresh all see the transient error', () async {
+      var refreshCalls = 0;
+      final user = _testUser();
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final staleSession = _sessionWithExpiry(
+        token: _jwtWithExp(now - 10, subject: user.id),
+        user: user,
+      );
+      final provider = AuthHeaderProvider(
+        currentSessionProvider: () => staleSession,
+        refreshSession: () async {
+          refreshCalls++;
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+          throw AuthRetryableFetchException(message: 'Failed host lookup');
+        },
+      );
+
+      final results = await Future.wait(
+        List.generate(
+          4,
+          (_) => provider.getAuthHeader().then<Object?>((h) => h).catchError((Object e) => e),
+        ),
+      );
+
+      expect(refreshCalls, 1, reason: 'the refresh must still coalesce');
+      for (final result in results) {
+        expect(result, isA<NetworkException>());
+        expect((result! as NetworkException).code, AuthHeaderProvider.refreshUnreachableCode);
+      }
     });
 
     test('coalesces concurrent refreshes into one request', () async {
@@ -105,6 +176,54 @@ void main() {
       expect(refreshCalls, 0);
       expect(header, isNotNull);
       expect(header!['Authorization'], 'Bearer ${freshSession.accessToken}');
+    });
+
+    test('cachedAuthHeader returns the bearer header for a fresh session', () {
+      final user = _testUser();
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final freshSession = _sessionWithExpiry(
+        token: _jwtWithExp(now + 3600, subject: user.id),
+        user: user,
+      );
+
+      var refreshCalls = 0;
+      final provider = AuthHeaderProvider(
+        currentSessionProvider: () => freshSession,
+        refreshSession: () async {
+          refreshCalls++;
+          return AuthResponse(session: freshSession);
+        },
+      );
+
+      expect(provider.cachedAuthHeader, {'Authorization': 'Bearer ${freshSession.accessToken}'});
+      expect(refreshCalls, 0, reason: 'cachedAuthHeader must never refresh');
+    });
+
+    test('cachedAuthHeader returns null for a guest and never refreshes', () {
+      var refreshCalls = 0;
+      final provider = AuthHeaderProvider(
+        currentSessionProvider: () => null,
+        refreshSession: () async {
+          refreshCalls++;
+          throw Exception('refresh must not be attempted for a guest');
+        },
+      );
+
+      expect(provider.cachedAuthHeader, isNull);
+      expect(refreshCalls, 0);
+    });
+
+    test('cachedAuthHeader returns null for an expired session', () {
+      final user = _testUser();
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final expiredSession = _sessionWithExpiry(
+        token: _jwtWithExp(now - 10, subject: user.id),
+        user: user,
+      );
+
+      final provider = AuthHeaderProvider(currentSessionProvider: () => expiredSession);
+
+      expect(provider.cachedAuthHeader, isNull);
     });
 
     test('returns null when session is null and no refresh configured', () async {

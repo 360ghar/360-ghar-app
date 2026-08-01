@@ -47,7 +47,10 @@ class ToolCallIndicator extends StatelessWidget {
   String _humanizeToolName(String tool) {
     // Convert snake_case tool names to readable labels
     final mapping = {
-      'owner_properties_list': 'assistant_tool_searching_properties'.tr,
+      'discovery_search': 'assistant_tool_searching_properties'.tr,
+      'discovery_property_get': 'assistant_tool_fetching_property'.tr,
+      'discovery_recommendations': 'assistant_tool_searching_properties'.tr,
+      'owner_properties_list': 'assistant_tool_loading_my_properties'.tr,
       'owner_properties_get': 'assistant_tool_fetching_property'.tr,
       'owner_properties_create': 'assistant_tool_creating_property'.tr,
       'owner_properties_update': 'assistant_tool_fetching_property'.tr,

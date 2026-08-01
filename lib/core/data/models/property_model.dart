@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/property_image_model.dart';
+import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:json_annotation/json_annotation.dart';
 
 part 'property_model.g.dart';
@@ -371,16 +372,11 @@ class PropertyModel {
 
   Map<String, dynamic> toJson() => _$PropertyModelToJson(this);
 
-  String get formattedPrice {
-    final price = getEffectivePrice();
-    if (price >= 10000000) {
-      return '₹${(price / 10000000).toStringAsFixed(1)} Cr';
-    } else if (price >= 100000) {
-      return '₹${(price / 100000).toStringAsFixed(1)} L';
-    } else {
-      return '₹${price.toStringAsFixed(0)}';
-    }
-  }
+  /// Compact Indian-format price (e.g. `₹2.5 Cr`, `₹50.0 L`, `₹50,000`).
+  ///
+  /// Single-digit precision for crore/lakh forms, matching the previous
+  /// hand-rolled formatter; smaller amounts get Indian digit grouping.
+  String get formattedPrice => IndianCurrency.compact(getEffectivePrice(), fractionDigits: 1);
 
   double getEffectivePrice() {
     switch (purpose) {

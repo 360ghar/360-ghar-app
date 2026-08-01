@@ -29,7 +29,17 @@ class VisitsController extends GetxController {
   final RxBool isLoadingMore = false.obs;
   final RxBool isLoadingAgent = false.obs;
   final RxBool isBookingVisit = false.obs;
-  final Rxn<AppException> error = Rxn<AppException>(); // Changed from RxString to Rxn<AppException>
+
+  /// Failure of the PRIMARY visits-list fetch. The view gates its full-screen
+  /// error state on this, so it must never be written by a secondary call —
+  /// otherwise a user with zero visits sees a server error instead of the
+  /// empty state.
+  final Rxn<AppException> error = Rxn<AppException>();
+
+  /// Failure of the SECONDARY relationship-manager fetch. Kept separate from
+  /// [error] so the agent card can degrade to "not shown" without masking the
+  /// visits list's own state.
+  final Rxn<AppException> agentError = Rxn<AppException>();
   final Rxn<AgentModel> relationshipManager = Rxn<AgentModel>();
   final Rxn<String> nextCursor = Rxn<String>();
   final RxBool hasMore = true.obs;
@@ -100,7 +110,10 @@ class VisitsController extends GetxController {
   }
 
   Future<void> _initializeController() async {
-    // Load visits and agent data lazily (guards prevent duplicate requests)
+    // Load visits and agent data lazily (guards prevent duplicate requests).
+    // Kept sequential: running these concurrently races the per-controller
+    // load-guard flags in a way the lazy-loader unit tests rely on, and the
+    // single saved round-trip on sign-in is not worth that coupling.
     await loadVisitsLazy();
     await loadRelationshipManagerLazy();
   }
@@ -111,6 +124,7 @@ class VisitsController extends GetxController {
     pastVisitsList.clear();
     relationshipManager.value = null;
     error.value = null;
+    agentError.value = null;
     hasLoadedVisits.value = false;
     hasLoadedAgent.value = false;
   }
@@ -118,18 +132,26 @@ class VisitsController extends GetxController {
   // Lazy loading methods - only fetch when actually needed
   Future<void> loadVisitsLazy() async {
     if (hasLoadedVisits.value || isLoading.value) {
-      return; // Prevent infinite loop
+      return; // Prevent duplicate requests.
     }
     hasLoadedVisits.value = true;
     await loadVisits();
+    // A failed first load must remain retryable (for pull-to-refresh, tab
+    // activation, or a later network recovery).
+    if (error.value != null) {
+      hasLoadedVisits.value = false;
+    }
   }
 
   Future<void> loadRelationshipManagerLazy() async {
     if (hasLoadedAgent.value || isLoadingAgent.value) {
-      return; // Prevent infinite loop
+      return; // Prevent duplicate requests.
     }
     hasLoadedAgent.value = true;
     await loadRelationshipManager();
+    if (agentError.value != null) {
+      hasLoadedAgent.value = false;
+    }
   }
 
   Future<void> loadVisits({bool isRefresh = false, bool silent = false}) async {
@@ -207,9 +229,6 @@ class VisitsController extends GetxController {
         }
       }
 
-      // Sort visits by date
-      _sortVisits();
-
       DebugLogger.success(
         '✅ Visits loaded: ${fetched.length} on first page '
         '(${upcomingVisitsList.length} upcoming, ${pastVisitsList.length} past, '
@@ -279,7 +298,6 @@ class VisitsController extends GetxController {
       );
 
       _mergePageVisits(fetched);
-      _sortVisits();
 
       DebugLogger.success(
         '✅ Loaded more visits: +${fetched.length} '
@@ -297,34 +315,35 @@ class VisitsController extends GetxController {
     }
   }
 
-  /// Replaces the entire visit list with the supplied page. Used by the
-  /// initial / refresh path which always starts from the first cursor.
-  void _replaceWithPageVisits(List<VisitModel> pageVisits) {
-    final now = DateTime.now();
-    final upcoming =
-        pageVisits
-            .where(
-              (v) =>
-                  now.isBefore(v.scheduledDate) &&
-                  v.status != VisitStatus.completed &&
-                  v.status != VisitStatus.cancelled,
-            )
-            .toList()
-          ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
-    final past =
-        pageVisits
-            .where(
-              (v) =>
-                  !now.isBefore(v.scheduledDate) ||
-                  v.status == VisitStatus.completed ||
-                  v.status == VisitStatus.cancelled,
-            )
-            .toList()
-          ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate));
+  /// Upcoming visits, soonest first. The single bucket predicate is
+  /// [VisitModel.isUpcoming]; "past" is its exact complement, so a visit
+  /// always lands in exactly one bucket.
+  List<VisitModel> _computeUpcomingVisits(List<VisitModel> source) =>
+      source.where((v) => v.isUpcoming).toList()
+        ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
+
+  /// Past visits, most recent first — exact complement of
+  /// [_computeUpcomingVisits].
+  List<VisitModel> _computePastVisits(List<VisitModel> source) =>
+      source.where((v) => !v.isUpcoming).toList()
+        ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate));
+
+  /// Rebuilds the upcoming/past buckets and re-orders [visits] so the flat
+  /// list matches the two derived lists.
+  void _rebuildBuckets() {
+    final upcoming = _computeUpcomingVisits(visits);
+    final past = _computePastVisits(visits);
 
     upcomingVisitsList.assignAll(upcoming);
     pastVisitsList.assignAll(past);
     visits.assignAll([...upcoming, ...past]);
+  }
+
+  /// Replaces the entire visit list with the supplied page. Used by the
+  /// initial / refresh path which always starts from the first cursor.
+  void _replaceWithPageVisits(List<VisitModel> pageVisits) {
+    visits.assignAll(pageVisits);
+    _rebuildBuckets();
   }
 
   /// Merges a paginated page into the existing visit lists, deduplicating by
@@ -334,34 +353,12 @@ class VisitsController extends GetxController {
 
     final existingIds = visits.map((v) => v.id).toSet();
     final fresh = pageVisits.where((v) => !existingIds.contains(v.id)).toList();
+    // Nothing new: the buckets already reflect `visits`, so skipping the
+    // rebuild is a no-op, not a missed update.
     if (fresh.isEmpty) return;
 
     visits.addAll(fresh);
-
-    final now = DateTime.now();
-    final upcoming =
-        visits
-            .where(
-              (v) =>
-                  now.isBefore(v.scheduledDate) &&
-                  v.status != VisitStatus.completed &&
-                  v.status != VisitStatus.cancelled,
-            )
-            .toList()
-          ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
-    final past =
-        visits
-            .where(
-              (v) =>
-                  !now.isBefore(v.scheduledDate) ||
-                  v.status == VisitStatus.completed ||
-                  v.status == VisitStatus.cancelled,
-            )
-            .toList()
-          ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate));
-
-    upcomingVisitsList.assignAll(upcoming);
-    pastVisitsList.assignAll(past);
+    _rebuildBuckets();
   }
 
   // Pull-to-refresh method
@@ -374,6 +371,7 @@ class VisitsController extends GetxController {
 
     try {
       isLoadingAgent.value = true;
+      agentError.value = null;
       final agentData = await _visitsRepository.fetchRelationshipManager();
 
       // Use updated AgentModel with simplified fields
@@ -398,7 +396,11 @@ class VisitsController extends GetxController {
       DebugLogger.success('✅ Agent loaded successfully: ${agentData.name}');
     } catch (e) {
       DebugLogger.error('❌ Error loading agent: $e');
-      error.value = ServerException('Failed to load agent', code: 'AGENT_LOAD_ERROR');
+      // Secondary call: never write [error] — the agent card simply stays
+      // hidden (relationshipManager remains null) and the visits list keeps
+      // its own empty/error state.
+      relationshipManager.value = null;
+      agentError.value = ServerException('Failed to load agent', code: 'AGENT_LOAD_ERROR');
     } finally {
       isLoadingAgent.value = false;
     }
@@ -416,15 +418,25 @@ class VisitsController extends GetxController {
       AppToast.warning('auth_required'.tr, 'login_to_book_visit'.tr);
       return false;
     }
+    if (isBookingVisit.value) {
+      return false;
+    }
+    if (!visitDateTime.isAfter(DateTime.now())) {
+      AppToast.warning('invalid_time'.tr, 'select_future_datetime'.tr);
+      return false;
+    }
 
     try {
       isBookingVisit.value = true;
       error.value = null;
 
-      // Extract property ID based on type
-      final int propertyId = property is PropertyModel
-          ? int.tryParse(property.id.toString()) ?? 0
-          : property.id as int;
+      // Reject malformed dynamic input instead of sending property_id=0 or
+      // throwing a cast error (int.tryParse never throws).
+      final int? propertyId = int.tryParse(property.id.toString());
+      if (propertyId == null || propertyId <= 0) {
+        AppToast.error('booking_failed'.tr, 'booking_failed_message'.tr);
+        return false;
+      }
       final String propertyTitle = property is PropertyModel
           ? property.title
           : property.title?.toString() ?? 'Property';
@@ -458,8 +470,9 @@ class VisitsController extends GetxController {
       error.value = appException;
       DebugLogger.error('Error booking visit: $e');
 
-      // Repository already enqueued on NetworkException; surface offline UX.
-      if (e is NetworkException) {
+      // Repository queues all retryable offline failures, including a missing
+      // auth header while the device is offline.
+      if (e is AppException && e.isRetryableOffline) {
         AppToast.info('queued_offline'.tr, 'queued_offline_message'.tr);
         return false;
       }
@@ -489,10 +502,18 @@ class VisitsController extends GetxController {
 
     final visitIdInt = visitId is int ? visitId : int.tryParse(visitId.toString()) ?? 0;
     final visitIndex = visits.indexWhere((visit) => visit.id == visitIdInt);
-    if (visitIndex == -1) return false;
+    if (visitIndex == -1) {
+      DebugLogger.warning('Cancel requested for unknown visit id=$visitIdInt');
+      AppToast.error('error'.tr, 'could_not_cancel_visit'.tr);
+      return false;
+    }
 
     final visit = visits[visitIndex];
-    if (!visit.canCancel) return false;
+    if (!visit.canCancel) {
+      DebugLogger.warning('Cancel rejected for visit id=$visitIdInt status=${visit.status}');
+      AppToast.error('error'.tr, 'could_not_cancel_visit'.tr);
+      return false;
+    }
 
     if (reason.trim().isEmpty) {
       AppToast.warning('reason_required_label'.tr, 'reason_required_hint'.tr);
@@ -532,10 +553,22 @@ class VisitsController extends GetxController {
 
     final visitIdInt = visitId is int ? visitId : int.tryParse(visitId.toString()) ?? 0;
     final visitIndex = visits.indexWhere((visit) => visit.id == visitIdInt);
-    if (visitIndex == -1) return false;
+    if (visitIndex == -1) {
+      DebugLogger.warning('Reschedule requested for unknown visit id=$visitIdInt');
+      AppToast.error('error'.tr, 'could_not_reschedule_visit'.tr);
+      return false;
+    }
 
     final visit = visits[visitIndex];
-    if (!visit.canReschedule) return false;
+    if (!visit.canReschedule) {
+      DebugLogger.warning('Reschedule rejected for visit id=$visitIdInt status=${visit.status}');
+      AppToast.error('error'.tr, 'could_not_reschedule_visit'.tr);
+      return false;
+    }
+    if (!newDateTime.isAfter(DateTime.now())) {
+      AppToast.warning('invalid_time'.tr, 'select_future_datetime'.tr);
+      return false;
+    }
 
     try {
       if (_authController.isAuthenticated) {
@@ -574,15 +607,9 @@ class VisitsController extends GetxController {
     final visitIndex = visits.indexWhere((visit) => visit.id == visitIdInt);
     if (visitIndex != -1) {
       visits[visitIndex] = visits[visitIndex].copyWith(status: VisitStatus.completed);
+      // The status change moves the visit across the upcoming/past boundary.
+      _rebuildBuckets();
     }
-  }
-
-  void _sortVisits() {
-    final upcoming = visits.where((v) => v.isUpcoming).toList()
-      ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate)); // ascending
-    final past = visits.where((v) => !v.isUpcoming).toList()
-      ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate)); // descending
-    visits.assignAll([...upcoming, ...past]);
   }
 
   Future<void> _safeAnalytics(String event, Future<void> Function() action) async {
@@ -604,38 +631,16 @@ class VisitsController extends GetxController {
     if (upcomingVisitsList.isNotEmpty || hasLoadedVisits.value) {
       return upcomingVisitsList;
     }
-    // Fallback compute
-    final now = DateTime.now();
-    final list =
-        visits
-            .where(
-              (v) =>
-                  now.isBefore(v.scheduledDate) &&
-                  v.status != VisitStatus.completed &&
-                  v.status != VisitStatus.cancelled,
-            )
-            .toList()
-          ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
-    return list;
+    // Fallback compute — same predicate as _rebuildBuckets().
+    return _computeUpcomingVisits(visits);
   }
 
   List<VisitModel> get pastVisits {
     if (pastVisitsList.isNotEmpty || hasLoadedVisits.value) {
       return pastVisitsList;
     }
-    // Fallback compute: all dates in the past, any status
-    final now = DateTime.now();
-    final list =
-        visits
-            .where(
-              (v) =>
-                  !now.isBefore(v.scheduledDate) ||
-                  v.status == VisitStatus.completed ||
-                  v.status == VisitStatus.cancelled,
-            )
-            .toList()
-          ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate));
-    return list;
+    // Fallback compute — exact complement of the upcoming predicate.
+    return _computePastVisits(visits);
   }
 
   String formatVisitDate(DateTime dateTime) {

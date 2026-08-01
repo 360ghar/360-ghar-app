@@ -11,6 +11,7 @@ import 'package:mocktail/mocktail.dart';
 
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
+import '../../../../helpers/toast_host.dart';
 
 class MockPageStateService extends GetxServiceMock implements PageStateService {}
 
@@ -63,6 +64,7 @@ void main() {
       () => mockPageStateService.undoSwipe(
         propertyId: any(named: 'propertyId'),
         originalIsLiked: any(named: 'originalIsLiked'),
+        notifyServer: any(named: 'notifyServer'),
       ),
     ).thenAnswer((_) async {});
     when(() => mockPageStateService.reinsertPropertyToDiscover(any())).thenReturn(null);
@@ -335,30 +337,6 @@ void main() {
       expect(controller.passesInSession.value, 0);
     });
 
-    test('swipeRight sets canUndo to true', () async {
-      final props = seedProperties(3);
-      seedDeck(props);
-
-      final controller = createController();
-      expect(controller.canUndo, isFalse);
-
-      await controller.swipeRight(props[0]);
-
-      expect(controller.canUndo, isTrue);
-    });
-
-    test('swipeLeft sets canUndo to true', () async {
-      final props = seedProperties(3);
-      seedDeck(props);
-
-      final controller = createController();
-      expect(controller.canUndo, isFalse);
-
-      await controller.swipeLeft(props[0]);
-
-      expect(controller.canUndo, isTrue);
-    });
-
     test('swiping last property with no more pages sets empty state', () async {
       final props = seedProperties(1);
       discoverState.value = PageStateModel(
@@ -389,6 +367,104 @@ void main() {
       expect(controller.state.value, DiscoverState.empty);
     });
 
+    test('swipeRight reverts the card and toasts when the swipe fails to persist', () async {
+      final props = seedProperties(3);
+      seedDeck(props);
+
+      when(
+        () => mockPageStateService.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((_) async {
+        // Simulate real network latency — the rejection must land after
+        // swipeRight's own synchronous stat recording, exactly as a real
+        // failed HTTP call would (never faster than the caller returning).
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        throw ServerException('boom');
+      });
+
+      final controller = createController();
+      await controller.swipeRight(props[0]);
+
+      // Let the fire-and-forget recordSwipe future reject and run .catchError.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      // Session stats recorded optimistically are rolled back.
+      expect(controller.totalSwipesInSession.value, 0);
+      expect(controller.likesInSession.value, 0);
+
+      verify(() => mockPageStateService.reinsertPropertyToDiscover(props[0])).called(1);
+      verify(
+        () => mockPageStateService.undoSwipe(
+          propertyId: props[0].id,
+          originalIsLiked: true,
+          notifyServer: false,
+        ),
+      ).called(1);
+    });
+
+    testWidgets('a superseded failed swipe still tells the user it was not saved', (tester) async {
+      // Slow network: the user swipes again while the first POST is still in
+      // flight, then that POST fails. The deck-restore is correctly skipped
+      // (restoring a superseded card would clobber newer state) — but the
+      // property is gone having never reached the server, so staying silent
+      // loses the swipe invisibly.
+      final props = seedProperties(3);
+      seedDeck(props);
+
+      when(
+        () => mockPageStateService.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((invocation) async {
+        if (invocation.namedArguments[#propertyId] == props[0].id) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          throw ServerException('boom');
+        }
+      });
+
+      final controller = createController();
+
+      await pumpToastHost(tester);
+      // First swipe fails (slowly); the second supersedes it before it lands.
+      await controller.swipeRight(props[0]);
+      await controller.swipeRight(props[1]);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(find.text('Error'), findsOneWidget);
+      expect(find.text('One of your swipes could not be saved.'), findsOneWidget);
+
+      // The superseded card is still NOT restored — that guard must survive.
+      verifyNever(() => mockPageStateService.reinsertPropertyToDiscover(props[0]));
+
+      await settleToasts(tester);
+    });
+
+    test('a failed prefetch does not leave the controller stuck in prefetching', () async {
+      // The reset to `loaded` sat after the await inside try, so a load-more
+      // that threw left state == prefetching forever while isPrefetching
+      // cleared in finally — isLoaded stayed false until the next emission.
+      final props = seedProperties(1);
+      discoverState.value = PageStateModel(
+        pageType: PageType.discover,
+        filters: const UnifiedFilterModel(),
+        properties: props,
+        hasMore: true,
+      );
+      when(() => mockPageStateService.loadMoreData(any())).thenThrow(ServerException('boom'));
+
+      final controller = createController();
+      await controller.swipeRight(props[0]);
+
+      expect(controller.state.value, isNot(DiscoverState.prefetching));
+      expect(controller.isLoaded, isTrue);
+      expect(controller.isPrefetching.value, isFalse);
+    });
+
     test('swiping last property with hasMore triggers prefetch', () async {
       final props = seedProperties(1);
       discoverState.value = PageStateModel(
@@ -403,80 +479,6 @@ void main() {
 
       // loadMoreData should be called for prefetch
       verify(() => mockPageStateService.loadMoreData(PageType.discover)).called(1);
-    });
-  });
-
-  group('DiscoverController — undo', () {
-    test('undoLastSwipe with no previous swipe does nothing', () async {
-      final controller = createController();
-
-      await controller.undoLastSwipe();
-
-      expect(controller.canUndo, isFalse);
-    });
-
-    test('undoLastSwipe restores property and reverses stats', () async {
-      final props = seedProperties(3);
-      seedDeck(props);
-
-      final controller = createController();
-      await controller.swipeRight(props[0]);
-
-      expect(controller.totalSwipesInSession.value, 1);
-      expect(controller.likesInSession.value, 1);
-      expect(controller.canUndo, isTrue);
-
-      await controller.undoLastSwipe();
-
-      // Stats should be reversed
-      expect(controller.totalSwipesInSession.value, 0);
-      expect(controller.likesInSession.value, 0);
-      expect(controller.canUndo, isFalse);
-      // reinsertPropertyToDiscover should be called
-      verify(() => mockPageStateService.reinsertPropertyToDiscover(props[0])).called(1);
-    });
-
-    test('undoLastSwipe after pass reverses pass stats', () async {
-      final props = seedProperties(3);
-      seedDeck(props);
-
-      final controller = createController();
-      await controller.swipeLeft(props[0]);
-
-      expect(controller.passesInSession.value, 1);
-
-      await controller.undoLastSwipe();
-
-      expect(controller.passesInSession.value, 0);
-    });
-
-    test('undoLastSwipe calls undoSwipe on page state', () async {
-      final props = seedProperties(3);
-      seedDeck(props);
-
-      final controller = createController();
-      await controller.swipeRight(props[0]);
-
-      await controller.undoLastSwipe();
-
-      verify(
-        () => mockPageStateService.undoSwipe(propertyId: props[0].id, originalIsLiked: true),
-      ).called(1);
-    });
-
-    test('undoLastSwipe twice only undoes once', () async {
-      final props = seedProperties(3);
-      seedDeck(props);
-
-      final controller = createController();
-      await controller.swipeRight(props[0]);
-
-      await controller.undoLastSwipe();
-      // Second undo should be a no-op
-      await controller.undoLastSwipe();
-
-      // reinsertPropertyToDiscover called only once
-      verify(() => mockPageStateService.reinsertPropertyToDiscover(props[0])).called(1);
     });
   });
 
@@ -855,31 +857,6 @@ void main() {
           icon: 'favorite',
         ),
       ).called(1);
-
-      Get.delete<DashboardController>();
-    });
-
-    test('undoLastSwipe reverses dashboard stats when registered', () async {
-      final mockDash = MockDashboardController();
-      when(() => mockDash.incrementStat(any(), by: any(named: 'by'))).thenReturn(null);
-      when(() => mockDash.decrementStat(any(), by: any(named: 'by'))).thenReturn(null);
-      when(
-        () => mockDash.recordActivity(
-          type: any(named: 'type'),
-          title: any(named: 'title'),
-          icon: any(named: 'icon'),
-        ),
-      ).thenReturn(null);
-      Get.put<DashboardController>(mockDash, permanent: true);
-
-      final props = seedProperties(3);
-      seedDeck(props);
-      final controller = createController();
-      await controller.swipeRight(props[0]);
-      await controller.undoLastSwipe();
-
-      verify(() => mockDash.decrementStat(kDashPropertiesViewedKey)).called(1);
-      verify(() => mockDash.decrementStat(kDashPropertiesLikedKey)).called(1);
 
       Get.delete<DashboardController>();
     });

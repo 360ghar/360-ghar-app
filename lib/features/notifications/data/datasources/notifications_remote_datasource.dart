@@ -18,8 +18,10 @@ class NotificationsRemoteDatasource {
   /// Endpoint: POST /api/v1/notifications/devices/register
   /// If the caller is authenticated, the token will be associated with the user.
   Future<bool> registerDeviceToken({required String token, String? userId}) async {
-    if (userId == null || userId.isEmpty) {
-      DebugLogger.warning('🔑 Skipping device token registration: no authenticated user id');
+    final normalizedToken = token.trim();
+    final normalizedUserId = userId?.trim();
+    if (normalizedToken.isEmpty || normalizedUserId == null || normalizedUserId.isEmpty) {
+      DebugLogger.warning('🔑 Skipping device token registration: missing token or user id');
       return false;
     }
 
@@ -50,13 +52,13 @@ class NotificationsRemoteDatasource {
       final locale = Platform.localeName;
 
       final body = <String, dynamic>{
-        'token': token,
+        'token': normalizedToken,
         'platform': platform,
         'app_version': appVersion,
         'locale': locale,
       };
 
-      body['user_id'] = userId;
+      body['user_id'] = normalizedUserId;
 
       DebugLogger.info('🔑 Registering device token with backend...');
       DebugLogger.debug('🔑 Platform: $platform, Version: $appVersion, Locale: $locale');
@@ -79,12 +81,18 @@ class NotificationsRemoteDatasource {
   /// Unregisters a device token from the backend.
   /// Call this on logout to stop receiving notifications for the user.
   Future<bool> unregisterDeviceToken(String token) async {
+    final normalizedToken = token.trim();
+    if (normalizedToken.isEmpty) {
+      DebugLogger.warning('🔑 Skipping device token unregistration: missing token');
+      return false;
+    }
+
     try {
       DebugLogger.info('🔑 Unregistering device token...');
 
       final response = await _apiClient.delete(
         ApiPaths.notificationsDeviceUnregister,
-        queryParams: {'token': token},
+        queryParams: {'token': normalizedToken},
       );
 
       if (response.isSuccess) {

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/utils/api_date_time.dart';
+import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/features/tools/presentation/controllers/capital_gains_controller.dart';
 
@@ -81,15 +83,12 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                       prefix: '₹',
                     ),
                     const SizedBox(height: 16),
-                    _buildYearDropdown(label: 'purchase_year'.tr, value: controller.purchaseYear),
-                    const SizedBox(height: 8),
-                    Text(
-                      'holding_period_approximation_note'.tr,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppDesign.textTertiary,
-                        fontStyle: FontStyle.italic,
-                      ),
+                    _buildDateField(
+                      context: context,
+                      label: 'purchase_date'.tr,
+                      fieldKey: 'qa.tools.capital_gains.purchase_date',
+                      value: controller.purchaseDate,
+                      onPicked: controller.setPurchaseDate,
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
@@ -126,7 +125,13 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                       prefix: '₹',
                     ),
                     const SizedBox(height: 16),
-                    _buildYearDropdown(label: 'sale_year'.tr, value: controller.saleYear),
+                    _buildDateField(
+                      context: context,
+                      label: 'sale_date'.tr,
+                      fieldKey: 'qa.tools.capital_gains.sale_date',
+                      value: controller.saleDate,
+                      onPicked: controller.setSaleDate,
+                    ),
                   ],
                 ),
               ),
@@ -205,7 +210,15 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
     );
   }
 
-  Widget _buildYearDropdown({required String label, required RxInt value}) {
+  /// A tap target styled exactly like the number inputs above it, opening
+  /// Flutter's built-in [showDatePicker].
+  Widget _buildDateField({
+    required BuildContext context,
+    required String label,
+    required String fieldKey,
+    required Rx<DateTime> value,
+    required ValueChanged<DateTime> onPicked,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -219,26 +232,38 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
         ),
         const SizedBox(height: 8),
         Obx(
-          () => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: AppDesign.inputBackground,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: DropdownButton<int>(
-              value: value.value,
-              isExpanded: true,
-              underline: const SizedBox(),
-              dropdownColor: AppDesign.cardBackground,
-              style: TextStyle(color: AppDesign.textPrimary, fontSize: 16),
-              items: controller.availableYears
-                  .map((year) => DropdownMenuItem(value: year, child: Text(year.toString())))
-                  .toList(),
-              onChanged: (newValue) {
-                if (newValue != null) {
-                  value.value = newValue;
-                }
-              },
+          () => InkWell(
+            key: ValueKey(fieldKey),
+            borderRadius: BorderRadius.circular(12),
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: value.value,
+                firstDate: CapitalGainsController.firstSelectableDate,
+                lastDate: CapitalGainsController.lastSelectableDate,
+              );
+              if (picked != null) {
+                onPicked(picked);
+              }
+            },
+            child: Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: AppDesign.inputBackground,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      formatDisplayDate(value.value),
+                      style: TextStyle(color: AppDesign.textPrimary, fontSize: 16),
+                    ),
+                  ),
+                  Icon(Icons.calendar_today_outlined, size: 18, color: AppDesign.textSecondary),
+                ],
+              ),
             ),
           ),
         ),
@@ -270,7 +295,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: controller.isLongTerm.value
-                        ? AppDesign.accentGreen.withValues(alpha: 0.1)
+                        ? AppDesign.successGreen.withValues(alpha: 0.1)
                         : AppDesign.accentOrange.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -280,7 +305,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: controller.isLongTerm.value
-                          ? AppDesign.accentGreen
+                          ? AppDesign.successGreen
                           : AppDesign.accentOrange,
                     ),
                   ),
@@ -288,11 +313,14 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildResultRow('indexed_cost'.tr, '₹${_formatCurrency(controller.indexedCost.value)}'),
+            _buildResultRow(
+              'indexed_cost'.tr,
+              IndianCurrency.compact(controller.indexedCost.value),
+            ),
             const SizedBox(height: 8),
             _buildResultRow(
               'capital_gain_amount'.tr,
-              '₹${_formatCurrency(controller.capitalGain.value)}',
+              IndianCurrency.compact(controller.capitalGain.value),
             ),
             const Divider(height: 24),
             if (controller.isLongTerm.value) ...[
@@ -321,7 +349,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
             ] else ...[
               _buildResultRow(
                 'estimated_tax'.tr,
-                '₹${_formatCurrency(controller.taxWithIndexation.value)}',
+                IndianCurrency.compact(controller.taxWithIndexation.value),
                 isHighlight: true,
               ),
               const SizedBox(height: 8),
@@ -372,7 +400,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
           style: TextStyle(
             fontSize: isHighlight ? 20 : 16,
             fontWeight: FontWeight.w600,
-            color: isHighlight ? AppDesign.primaryYellow : AppDesign.textPrimary,
+            color: AppDesign.textPrimary,
           ),
         ),
       ],
@@ -384,7 +412,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         border: Border.all(
-          color: isRecommended ? AppDesign.accentGreen : AppDesign.border,
+          color: isRecommended ? AppDesign.successGreen : AppDesign.border,
           width: isRecommended ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(12),
@@ -414,7 +442,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                     'recommended'.tr,
                     style: const TextStyle(
                       fontSize: 11,
-                      color: AppDesign.accentGreen,
+                      color: AppDesign.successGreen,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -422,26 +450,15 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
             ),
           ),
           Text(
-            '₹${_formatCurrency(amount)}',
+            IndianCurrency.compact(amount),
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: isRecommended ? AppDesign.accentGreen : AppDesign.textPrimary,
+              color: isRecommended ? AppDesign.successGreen : AppDesign.textPrimary,
             ),
           ),
         ],
       ),
     );
-  }
-
-  String _formatCurrency(double value) {
-    if (value >= 10000000) {
-      return '${(value / 10000000).toStringAsFixed(2)} Cr';
-    } else if (value >= 100000) {
-      return '${(value / 100000).toStringAsFixed(2)} L';
-    } else if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(1)}K';
-    }
-    return value.toStringAsFixed(0);
   }
 }

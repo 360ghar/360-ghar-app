@@ -241,13 +241,13 @@ class ErrorStates {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
-                    if (onClearSearch != null) ...[
+                    if (onClearSearch != null)
                       ElevatedButton(onPressed: onClearSearch, child: Text('clear_search'.tr)),
-                      const SizedBox(width: 12),
-                    ],
                     if (onTryDifferentSearch != null)
                       OutlinedButton(
                         onPressed: onTryDifferentSearch,
@@ -380,17 +380,17 @@ class ErrorStates {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 16,
+                  runSpacing: 12,
                   children: [
-                    if (onChangeFilters != null) ...[
+                    if (onChangeFilters != null)
                       ElevatedButton.icon(
                         onPressed: onChangeFilters,
                         icon: const Icon(Icons.tune),
                         label: Text('change_filters'.tr),
                       ),
-                      const SizedBox(width: 16),
-                    ],
                     if (onRefresh != null)
                       OutlinedButton.icon(
                         onPressed: onRefresh,

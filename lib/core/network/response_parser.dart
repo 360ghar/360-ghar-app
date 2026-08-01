@@ -27,7 +27,7 @@ class ResponseParser {
   /// found, otherwise throws [FormatException].
   static List unwrapList(dynamic body, {List<String> fallbackKeys = const []}) {
     if (body is List) return body;
-    if (body is Map<String, dynamic>) {
+    if (body is Map) {
       final items = body['items'];
       if (items is List) return items;
       final data = body['data'];
@@ -53,7 +53,7 @@ class ResponseParser {
   /// Reads `body['has_more']` (uniform cursor envelope). Returns `false` when
   /// absent or non-bool so callers can safely treat the page as terminal.
   static bool extractHasMore(dynamic body) {
-    if (body is Map<String, dynamic>) {
+    if (body is Map) {
       final value = body['has_more'];
       if (value is bool) return value;
     }
@@ -64,7 +64,7 @@ class ResponseParser {
   /// response envelope. Returns `null` on terminal pages or missing keys.
   /// The token is opaque; callers MUST NOT decode it.
   static String? extractNextCursor(dynamic body) {
-    if (body is Map<String, dynamic>) {
+    if (body is Map) {
       final value = body['next_cursor'];
       if (value is String && value.isNotEmpty) return value;
     }
@@ -77,7 +77,7 @@ class ResponseParser {
   /// Tolerates `null`/missing values (returns [listLength]) for callers that
   /// still reference totals during the cursor migration.
   static int extractTotal(dynamic body, {int listLength = 0}) {
-    if (body is Map<String, dynamic>) {
+    if (body is Map) {
       if (body['total'] is num) return (body['total'] as num).toInt();
       if (body['count'] is num) return (body['count'] as num).toInt();
     }

@@ -10,6 +10,7 @@ import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
@@ -53,6 +54,22 @@ class PropertySwipeStack extends StatefulWidget {
   final VoidCallback? onChangeFilters;
   final VoidCallback? onRefresh;
 
+  /// True while the next page of properties is in flight. An empty deck then
+  /// means "waiting for more", not "catalogue exhausted", so the empty state
+  /// must not be shown — it would tell the user there is nothing left and
+  /// offer to reset their filters moments before more cards arrive.
+  final bool isLoadingMore;
+
+  /// Synchronous last-chance check that the card is still swipeable before the
+  /// exit animation commits it. [properties] is copied locally and frozen for
+  /// the duration of a drag, so a background refresh landing mid-gesture can
+  /// leave the top card absent from the real deck — the swipe would then be
+  /// dropped on the floor while the card visibly flies off as a like.
+  ///
+  /// Must stay synchronous: the exit path runs from gesture callbacks, and
+  /// awaiting here would strand the card mid-air with gestures unlocked.
+  final bool Function(PropertyModel)? canSwipe;
+
   const PropertySwipeStack({
     super.key,
     required this.properties,
@@ -61,6 +78,8 @@ class PropertySwipeStack extends StatefulWidget {
     required this.onSwipeUp,
     this.onChangeFilters,
     this.onRefresh,
+    this.isLoadingMore = false,
+    this.canSwipe,
   });
 
   @override
@@ -289,6 +308,15 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   /// Shared exit for gesture-commit and a11y-commit paths.
   void _beginExitSwipe({required bool isRight}) {
     final card = _properties[0];
+    // Last-chance check before the card is committed: if it is no longer in
+    // the real deck the swipe would be rejected downstream and lost with no
+    // POST, no stats and no feedback, while the card flew off as a like.
+    // Bounce it back instead — deliberately before any exit state is set, so
+    // gestures stay unlocked and the user can swipe the actual top card.
+    if (widget.canSwipe?.call(card) == false) {
+      _rejectSwipe();
+      return;
+    }
     if (isRight) {
       _isSwipingRight = true;
       _showSparkles = true;
@@ -301,9 +329,56 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     _swipeAnimationController.forward();
   }
 
+  /// Bounces a card that can no longer be swiped back into the deck.
+  ///
+  /// The deck only changes under a drag by way of [didUpdateWidget] parking the
+  /// new list in [_pendingProperties] (it is drained by the exit animation,
+  /// which never runs here). Adopt it now, or the stale card stays on top and
+  /// every further swipe attempt is rejected the same way.
+  void _rejectSwipe() {
+    _snapBack();
+    if (_pendingProperties != null) {
+      setState(() {
+        _properties = _pendingProperties!;
+        _pendingProperties = null;
+      });
+    }
+    AppToast.error('error'.tr, 'swipe_save_failed'.tr);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_properties.isEmpty) {
+      // Mid-pagination the deck empties for a moment before the next page
+      // lands. Showing "No More Properties" + "Change Filters" here tells the
+      // user the catalogue is exhausted and invites them to reset a session
+      // that is about to continue.
+      // A centered spinner rather than LoadingStates.swipeCardSkeleton(): the
+      // card skeleton's fixed internals overflow this slot (it sits inside the
+      // deck's 16px padding) on shorter screens. Mirrors the "loading more"
+      // row DiscoverView already shows during the initial load.
+      if (widget.isLoadingMore) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'loading_more_properties'.tr,
+                style: TextStyle(fontSize: 14, color: AppDesign.textSecondary),
+              ),
+            ],
+          ),
+        );
+      }
       return ErrorStates.swipeDeckEmpty(
         onRefresh: widget.onRefresh,
         onChangeFilters: widget.onChangeFilters,

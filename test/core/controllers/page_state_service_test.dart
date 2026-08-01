@@ -838,6 +838,29 @@ void main() {
       // Network sync called with reversed action (liked=true)
       verify(() => swipesRepo.recordSwipe(propertyId: 99, isLiked: true)).called(1);
     });
+
+    test('notifyServer:false reverts locally but skips the network reversal', () async {
+      final service = await createService();
+      final prop = testPropertyModel(id: 42);
+
+      service.updatePageState(
+        PageType.likes,
+        service.likesState.value.copyWith(properties: [prop]),
+      );
+
+      await service.undoSwipe(propertyId: 42, originalIsLiked: true, notifyServer: false);
+
+      // Local likes state is still reverted...
+      expect(service.likesState.value.properties.any((p) => p.id == 42), isFalse);
+      // ...but nothing is sent to the server, since the original swipe never
+      // reached it (this is the failed-persist revert path, not a real undo).
+      verifyNever(
+        () => swipesRepo.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      );
+    });
   });
 
   // -------------------------------------------------------------------------

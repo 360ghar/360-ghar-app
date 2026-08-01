@@ -113,13 +113,21 @@ class _StubLikesController extends GetxServiceMock implements LikesController {
   final RxList<PropertyModel> _properties = <PropertyModel>[].obs;
   final RxBool _isLoading = false.obs;
   final RxnString _error = RxnString();
-  final RxBool _hasMore = false.obs;
-  final RxBool _isLoadingMore = false.obs;
+
+  // hasMore + isLoadingMore share ONE Rx, mirroring the real controller where
+  // both read `PageStateService.likesState`. That coupling matters: it is what
+  // makes the synchronous `isLoadingMore = true` write inside
+  // `loadMoreCurrentSegment` notify the grid's Obx, which is the
+  // "markNeedsBuild during build" path under test.
+  final Rx<({bool hasMore, bool loadingMore})> _pagination = (
+    hasMore: false,
+    loadingMore: false,
+  ).obs;
 
   bool removeFromLikesCalled = false;
   bool moveToLikesCalled = false;
   bool refreshCalled = false;
-  bool loadMoreCalled = false;
+  int loadMoreCallCount = 0;
   bool retryCalled = false;
   bool clearSearchCalled = false;
 
@@ -139,13 +147,19 @@ class _StubLikesController extends GetxServiceMock implements LikesController {
   bool get isCurrentEmpty => !_isLoading.value && _properties.isEmpty && _error.value == null;
 
   @override
-  bool get currentHasMore => _hasMore.value;
+  bool get currentHasMore => _pagination.value.hasMore;
 
   @override
-  bool get isCurrentLoadingMore => _isLoadingMore.value;
+  bool get isCurrentLoadingMore => _pagination.value.loadingMore;
 
   @override
   bool get hasCurrentProperties => _properties.isNotEmpty;
+
+  @override
+  bool isFavourite(PropertyModel property) => currentSegment.value == LikesSegment.liked;
+
+  @override
+  bool isFavouriteUpdating(PropertyModel property) => false;
 
   @override
   bool get hasSearchQuery => searchQuery.value.isNotEmpty;
@@ -176,7 +190,12 @@ class _StubLikesController extends GetxServiceMock implements LikesController {
 
   @override
   Future<void> loadMoreCurrentSegment() async {
-    loadMoreCalled = true;
+    loadMoreCallCount++;
+    // Mirrors PageStateService.loadMorePageData: flips isLoadingMore
+    // synchronously, BEFORE the first await.
+    _pagination.value = (hasMore: _pagination.value.hasMore, loadingMore: true);
+    await Future<void>.value();
+    _pagination.value = (hasMore: _pagination.value.hasMore, loadingMore: false);
   }
 
   @override
@@ -393,6 +412,111 @@ void main() {
       // Each property card has a key 'qa.likes.card.<id>'
       expect(find.byKey(const ValueKey('qa.likes.card.1')), findsOneWidget);
       expect(find.byKey(const ValueKey('qa.likes.card.2')), findsOneWidget);
+    });
+  });
+
+  // =========================================================================
+  // Pagination / scroll behaviour
+  // =========================================================================
+
+  // The grid's Scrollable (the CustomScrollView inside the property grid).
+  Finder gridScrollable() =>
+      find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable));
+
+  ScrollPosition gridPosition(WidgetTester tester) =>
+      tester.state<ScrollableState>(gridScrollable()).position;
+
+  List<PropertyModel> manyProperties() =>
+      List.generate(20, (index) => testPropertyModel(id: index + 1));
+
+  group('LikesView pagination', () {
+    testWidgets('scrolling to the end triggers exactly one load-more, with no build-phase '
+        'setState', (tester) async {
+      likesController._properties.value = manyProperties();
+      likesController._pagination.value = (hasMore: true, loadingMore: false);
+
+      await pumpLikesView(tester);
+
+      final position = gridPosition(tester);
+      // Two scroll events inside the trigger threshold: the in-flight guard
+      // must collapse them into a single request.
+      position.jumpTo(position.maxScrollExtent - 10);
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pump();
+      // A second frame at the bottom: a rebuild-driven trigger would fire again.
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(likesController.loadMoreCallCount, 1);
+    });
+
+    testWidgets('does not load more while a page is already in flight', (tester) async {
+      likesController._properties.value = manyProperties();
+      likesController._pagination.value = (hasMore: true, loadingMore: true);
+
+      await pumpLikesView(tester);
+
+      final position = gridPosition(tester);
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pump();
+
+      expect(likesController.loadMoreCallCount, 0);
+    });
+
+    testWidgets('swapping the grid out mid-load does not throw', (tester) async {
+      likesController._properties.value = manyProperties();
+      likesController._pagination.value = (hasMore: true, loadingMore: false);
+
+      await pumpLikesView(tester);
+
+      final position = gridPosition(tester);
+      position.jumpTo(position.maxScrollExtent);
+      // A segment switch flips the view to the skeleton, disposing the grid's
+      // ScrollController while the load-more future is still in flight.
+      likesController._isLoading.value = true;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  // =========================================================================
+  // Search toggle
+  // =========================================================================
+
+  group('LikesView search toggle', () {
+    testWidgets('toggling the search field preserves the grid scroll offset', (tester) async {
+      likesController._properties.value = manyProperties();
+
+      await pumpLikesView(tester);
+
+      gridPosition(tester).jumpTo(300);
+      await tester.pump();
+      expect(gridPosition(tester).pixels, 300);
+
+      pageStateService.toggleSearch(PageType.likes);
+      await tester.pump();
+      await tester.pump();
+
+      expect(gridPosition(tester).pixels, 300);
+    });
+
+    testWidgets('showing the search field grows the app bar and renders the input', (tester) async {
+      likesController._properties.value = manyProperties();
+
+      await pumpLikesView(tester);
+
+      final collapsedHeight = tester.getSize(find.byType(AppBar)).height;
+      expect(find.byKey(const ValueKey('qa.topbar.search_input.likes')), findsNothing);
+
+      pageStateService.toggleSearch(PageType.likes);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('qa.topbar.search_input.likes')), findsOneWidget);
+      expect(tester.getSize(find.byType(AppBar)).height, collapsedHeight + 52);
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -896,44 +1020,32 @@ void main() {
     });
   });
 
+  // isFavourite is model-backed (PropertyModel.liked + optimistic override),
+  // NOT a lookup in whichever segment list happens to be loaded. Full coverage
+  // lives in likes_controller_test.dart.
   group('LikesController isFavourite', () {
-    test('isFavourite returns true when property is in likes list', () {
+    test('isFavourite is false when the property model is not liked', () {
+      final property = testPropertyModel(id: 42);
       pageStateService.likesState.value = PageStateModel(
         pageType: PageType.likes,
         filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 42)],
+        properties: [property],
       );
 
       final controller = LikesController();
       Get.put<LikesController>(controller);
 
-      expect(controller.isFavourite(42), isTrue);
+      expect(controller.isFavourite(property), isFalse);
     });
 
-    test('isFavourite returns false when property is not in likes list', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
+    test('isFavourite follows the optimistic override', () {
+      final property = testPropertyModel(id: 42);
 
       final controller = LikesController();
       Get.put<LikesController>(controller);
+      controller.likedOverrides[property.id] = true;
 
-      expect(controller.isFavourite(99), isFalse);
-    });
-
-    test('isFavourite handles string property id', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 42)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isFavourite('42'), isTrue);
+      expect(controller.isFavourite(property), isTrue);
     });
   });
 

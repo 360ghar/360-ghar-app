@@ -10,6 +10,7 @@ import 'package:mocktail/mocktail.dart';
 
 import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
+import '../../../../helpers/toast_host.dart';
 
 class MockPageStateService extends GetxServiceMock implements PageStateService {}
 
@@ -47,6 +48,13 @@ void main() {
         propertyId: any(named: 'propertyId'),
         isLiked: any(named: 'isLiked'),
         property: any(named: 'property'),
+      ),
+    ).thenAnswer((_) async {});
+    when(
+      () => mockPageStateService.undoSwipe(
+        propertyId: any(named: 'propertyId'),
+        originalIsLiked: any(named: 'originalIsLiked'),
+        notifyServer: any(named: 'notifyServer'),
       ),
     ).thenAnswer((_) async {});
     when(() => mockPageStateService.updatePageSearch(any(), any())).thenReturn(null);
@@ -102,20 +110,24 @@ void main() {
 
     test('addToFavourites calls recordSwipe with isLiked true', () async {
       final controller = createController();
+      final prop = testPropertyModel(id: 42);
 
-      await controller.addToFavourites(42);
+      await controller.addToFavourites(prop);
 
-      verify(() => mockPageStateService.recordSwipe(propertyId: 42, isLiked: true)).called(1);
-      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
+      verify(
+        () => mockPageStateService.recordSwipe(propertyId: 42, isLiked: true, property: prop),
+      ).called(1);
     });
 
     test('removeFromFavourites calls recordSwipe with isLiked false', () async {
       final controller = createController();
+      final prop = testPropertyModel(id: 42);
 
-      await controller.removeFromFavourites(42);
+      await controller.removeFromFavourites(prop);
 
-      verify(() => mockPageStateService.recordSwipe(propertyId: 42, isLiked: false)).called(1);
-      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
+      verify(
+        () => mockPageStateService.recordSwipe(propertyId: 42, isLiked: false, property: prop),
+      ).called(1);
     });
 
     test('currentProperties returns properties from page state', () {
@@ -407,41 +419,9 @@ void main() {
     });
   });
 
-  group('LikesController — isFavourite', () {
-    test('returns true when property is in liked properties', () {
-      final props = seedProperties(2);
-      likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: props,
-        additionalData: const {'currentSegment': 'liked'},
-      );
-
-      final controller = createController();
-
-      expect(controller.isFavourite(props[0].id), isTrue);
-    });
-
-    test('returns false when property is not in liked properties', () {
-      final controller = createController();
-
-      expect(controller.isFavourite(999), isFalse);
-    });
-
-    test('handles string property IDs', () {
-      final props = seedProperties(1);
-      likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: props,
-        additionalData: const {'currentSegment': 'liked'},
-      );
-
-      final controller = createController();
-
-      expect(controller.isFavourite(props[0].id.toString()), isTrue);
-    });
-  });
+  // The old `isFavourite` group asserted the segment-list lookup that made
+  // every PASSED property render as favourited. Replaced by the model-backed
+  // 'LikesController — favourite state' group at the end of this file.
 
   group('LikesController — state getters', () {
     test('currentState returns loading when page state is loading', () {
@@ -754,6 +734,265 @@ void main() {
       verify(
         () => mockPageStateService.loadPageData(PageType.likes, backgroundRefresh: true),
       ).called(1);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Favourite state is model-backed (PropertyModel.liked) with an optimistic
+  // override map, mirroring ExploreController. Previously it was derived from
+  // whichever likes SEGMENT happened to be loaded, so every property in the
+  // "Passed" segment rendered as favourited and a genuinely liked property
+  // rendered as not-favourited until the Likes tab had been visited.
+  // ─────────────────────────────────────────────────────────────────────
+
+  PropertyModel property({int id = 500, bool liked = false}) => PropertyModel(
+    id: id,
+    title: 'Property $id',
+    basePrice: 5000000,
+    images: const [],
+    isAvailable: true,
+    viewCount: 0,
+    likeCount: 0,
+    interestCount: 0,
+    liked: liked,
+  );
+
+  group('LikesController — favourite state', () {
+    test('passed property is not favourite while the passed segment is loaded', () {
+      final passed = property(id: 501);
+      when(() => mockPageStateService.currentLikesSegment).thenReturn('passed');
+      likesState.value = PageStateModel(
+        pageType: PageType.likes,
+        filters: const UnifiedFilterModel(),
+        properties: [passed],
+        additionalData: const {'currentSegment': 'passed'},
+      );
+
+      final controller = createController();
+
+      expect(controller.isFavourite(passed), isFalse);
+    });
+
+    test('liked property is favourite even when the likes tab was never opened', () {
+      final liked = property(id: 502, liked: true);
+
+      // likesState stays at its initial empty value — the Likes tab was never
+      // visited, so the answer must come from the model.
+      final controller = createController();
+
+      expect(controller.isFavourite(liked), isTrue);
+    });
+
+    test('addToFavourites records the swipe optimistically without refetching', () async {
+      final prop = property(id: 503);
+      final controller = createController();
+
+      await controller.addToFavourites(prop);
+
+      expect(controller.isFavourite(prop), isTrue);
+      verify(
+        () => mockPageStateService.recordSwipe(propertyId: 503, isLiked: true, property: prop),
+      ).called(1);
+      verifyNever(
+        () => mockPageStateService.loadPageData(
+          any(),
+          forceRefresh: any(named: 'forceRefresh'),
+          backgroundRefresh: any(named: 'backgroundRefresh'),
+        ),
+      );
+    });
+
+    test('removeFromFavourites clears favourite state without refetching', () async {
+      final prop = property(id: 504, liked: true);
+      final controller = createController();
+
+      await controller.removeFromFavourites(prop);
+
+      expect(controller.isFavourite(prop), isFalse);
+      verify(
+        () => mockPageStateService.recordSwipe(propertyId: 504, isLiked: false, property: prop),
+      ).called(1);
+      verifyNever(
+        () => mockPageStateService.loadPageData(
+          any(),
+          forceRefresh: any(named: 'forceRefresh'),
+          backgroundRefresh: any(named: 'backgroundRefresh'),
+        ),
+      );
+    });
+
+    testWidgets('successful toggle keeps the new state and shows no error toast', (tester) async {
+      final prop = property(id: 505);
+      final controller = createController();
+
+      await pumpToastHost(tester);
+      await controller.addToFavourites(prop);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(controller.isFavourite(prop), isTrue);
+      expect(find.text('Action Failed'), findsNothing);
+
+      await settleToasts(tester);
+    });
+
+    testWidgets('failed swipe reverts optimistic state and shows an error toast', (tester) async {
+      when(
+        () => mockPageStateService.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+          property: any(named: 'property'),
+        ),
+      ).thenThrow(ServerException('network error'));
+
+      final prop = property(id: 506);
+      final controller = createController();
+
+      await pumpToastHost(tester);
+      await controller.addToFavourites(prop);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(controller.isFavourite(prop), isFalse);
+      expect(find.text('Action Failed'), findsOneWidget);
+      expect(find.text('Could not update like. Please try again.'), findsOneWidget);
+
+      // Both surfaces must agree: the heart is unfilled AND the optimistic
+      // list mutation recordSwipe already applied is reversed. `originalIsLiked`
+      // is the swipe being undone (the attempted like), notifyServer false
+      // because it never reached the server. page_state_service_test.dart
+      // ':notifyServer:false reverts locally' proves this removes it from the
+      // likes list.
+      verify(
+        () => mockPageStateService.undoSwipe(
+          propertyId: 506,
+          originalIsLiked: true,
+          notifyServer: false,
+        ),
+      ).called(1);
+
+      await settleToasts(tester);
+    });
+
+    testWidgets('failed removal reverts to favourite and shows an error toast', (tester) async {
+      when(
+        () => mockPageStateService.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+          property: any(named: 'property'),
+        ),
+      ).thenThrow(ServerException('network error'));
+
+      final prop = property(id: 507, liked: true);
+      final controller = createController();
+
+      await pumpToastHost(tester);
+      await controller.removeFromFavourites(prop);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(controller.isFavourite(prop), isTrue);
+      expect(find.text('Action Failed'), findsOneWidget);
+      // Failed unlike: reverse the pass that recordSwipe already applied.
+      verify(
+        () => mockPageStateService.undoSwipe(
+          propertyId: 507,
+          originalIsLiked: false,
+          notifyServer: false,
+        ),
+      ).called(1);
+
+      await settleToasts(tester);
+    });
+
+    test('a successful toggle never reverses the list mutation', () async {
+      final prop = property(id: 510);
+      final controller = createController();
+
+      await controller.addToFavourites(prop);
+
+      verifyNever(
+        () => mockPageStateService.undoSwipe(
+          propertyId: any(named: 'propertyId'),
+          originalIsLiked: any(named: 'originalIsLiked'),
+          notifyServer: any(named: 'notifyServer'),
+        ),
+      );
+    });
+
+    test('failed removeFromLikes reverses the pass it optimistically applied', () async {
+      final prop = property(id: 511, liked: true);
+      when(
+        () => mockPageStateService.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+          property: any(named: 'property'),
+        ),
+      ).thenThrow(ServerException('network error'));
+
+      final controller = createController();
+      await controller.removeFromLikes(prop);
+
+      expect(controller.isFavourite(prop), isTrue);
+      verify(
+        () => mockPageStateService.undoSwipe(
+          propertyId: 511,
+          originalIsLiked: false,
+          notifyServer: false,
+        ),
+      ).called(1);
+    });
+
+    test('failed moveToLikes reverses the like it optimistically applied', () async {
+      final prop = property(id: 512);
+      when(
+        () => mockPageStateService.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+          property: any(named: 'property'),
+        ),
+      ).thenThrow(ServerException('network error'));
+
+      final controller = createController();
+      await controller.moveToLikes(prop);
+
+      expect(controller.isFavourite(prop), isFalse);
+      verify(
+        () => mockPageStateService.undoSwipe(
+          propertyId: 512,
+          originalIsLiked: true,
+          notifyServer: false,
+        ),
+      ).called(1);
+    });
+
+    test('removeFromLikes marks the property as no longer favourite', () async {
+      final prop = property(id: 508, liked: true);
+      likesState.value = PageStateModel(
+        pageType: PageType.likes,
+        filters: const UnifiedFilterModel(),
+        properties: [prop],
+        additionalData: const {'currentSegment': 'liked'},
+      );
+
+      final controller = createController();
+      await controller.removeFromLikes(prop);
+
+      expect(controller.isFavourite(prop), isFalse);
+    });
+
+    test('moveToLikes marks the property as favourite', () async {
+      // Deliberately NOT seeded into the loaded list: the answer must come from
+      // the override write, not from a list lookup.
+      final prop = property(id: 509);
+
+      final controller = createController();
+      await controller.moveToLikes(prop);
+
+      expect(controller.isFavourite(prop), isTrue);
     });
   });
 }

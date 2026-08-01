@@ -47,19 +47,23 @@ class ChatMessageModel {
   }
 
   factory ChatMessageModel.fromJson(Map<String, dynamic> json) {
+    final createdAt = json['created_at'];
+    final timestamp = createdAt is String ? DateTime.tryParse(createdAt) : null;
     return ChatMessageModel(
       id: json['id']?.toString() ?? '',
       role: _parseRole(json['role'] as String?),
-      content: json['content'] as String? ?? '',
-      toolName: json['tool_name'] as String?,
-      toolArgs: json['tool_args'] as Map<String, dynamic>?,
-      toolResult: json['tool_result'] as Map<String, dynamic>?,
-      widgetName: json['widget_name'] as String?,
-      widgetData: json['widget_data'] as Map<String, dynamic>?,
-      timestamp: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : DateTime.now(),
+      content: json['content']?.toString() ?? '',
+      toolName: json['tool_name']?.toString(),
+      toolArgs: _asMap(json['tool_args']),
+      toolResult: _asMap(json['tool_result']),
+      widgetName: json['widget_name']?.toString(),
+      widgetData: _asMap(json['widget_data']),
+      timestamp: timestamp ?? DateTime.now(),
     );
+  }
+
+  static Map<String, dynamic>? _asMap(dynamic value) {
+    return value is Map ? Map<String, dynamic>.from(value) : null;
   }
 
   static ChatRole _parseRole(String? role) {

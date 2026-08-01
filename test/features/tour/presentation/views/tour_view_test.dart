@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/tour_webview.dart';
 import 'package:ghar360/features/tour/presentation/views/tour_view.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+
 import '../../../../helpers/fake_webview_platform.dart';
+
+/// Mirrors the JS channel name TourWebView registers for the iframe handshake.
+const String _signalChannel = 'GharTourLoadSignal';
 
 void main() {
   setUp(() {
@@ -166,11 +169,13 @@ void main() {
       expect(find.byIcon(Icons.link_off), findsNothing);
     });
 
-    testWidgets('renders AppBar with fullscreen and share actions for valid URL', (tester) async {
+    testWidgets('renders AppBar with the share action for valid URL', (tester) async {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
-      expect(find.byIcon(Icons.fullscreen), findsOneWidget);
       expect(find.byIcon(Icons.share), findsOneWidget);
+      // The "fullscreen" action was removed: it never resized the WebView and
+      // its "tap back to exit" hint actually popped the route.
+      expect(find.byIcon(Icons.fullscreen), findsNothing);
     });
 
     testWidgets('renders back arrow in AppBar for valid URL', (tester) async {
@@ -309,13 +314,57 @@ void main() {
 
     // ── AppBar actions for valid URL ────────────────────────────────────
 
-    testWidgets('fullscreen button is present and tappable', (tester) async {
+    // TourView drives its own opaque overlay from onLoadingChanged, and on the
+    // embed path that now clears only when the iframe reports in.
+    testWidgets('loading overlay clears when the embedded iframe signals load', (tester) async {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
-      final button = tester.widget<IconButton>(
-        find.ancestor(of: find.byIcon(Icons.fullscreen), matching: find.byType(IconButton)),
-      );
-      expect(button.onPressed, isNotNull);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      lastWebViewController?.simulateJavaScriptMessage(_signalChannel, 'loaded');
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.bySemanticsLabel('qa.tour.webview'), findsOneWidget);
+    });
+
+    // Broken-channel fallback: nothing ever signals, so after the watchdog the
+    // overlay must lift onto whatever rendered rather than claiming failure.
+    testWidgets('overlay lifts with no error toast when the channel never signals', (tester) async {
+      await pumpTour(tester, arguments: 'https://kuula.co/post/example');
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      // Cleared at the short handshake deadline, not after the 20s watchdog.
+      await tester.pump(const Duration(seconds: 6));
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('Error Loading Tour'), findsNothing);
+      expect(find.bySemanticsLabel('qa.tour.webview'), findsOneWidget);
+    });
+
+    testWidgets('sub-frame resource errors raise no error toast', (tester) async {
+      await pumpTour(tester, arguments: 'https://kuula.co/post/example');
+
+      lastNavigationDelegate?.webResourceErrorCallback?.call(_FrameScopedError(false));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Error Loading Tour'), findsNothing);
+    });
+
+    testWidgets('main-frame resource errors raise an error toast', (tester) async {
+      await pumpTour(tester, arguments: 'https://kuula.co/post/example');
+
+      lastNavigationDelegate?.webResourceErrorCallback?.call(_FrameScopedError(true));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Error Loading Tour'), findsOneWidget);
+
+      // Let the snackbar auto-dismiss so its ticker is disposed before teardown.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('share button is present and tappable', (tester) async {
@@ -357,4 +406,24 @@ void main() {
       expect(edges.right, 8);
     });
   });
+}
+
+/// A [WebResourceError] whose main-frame flag the test controls.
+class _FrameScopedError implements WebResourceError {
+  _FrameScopedError(this.isForMainFrame);
+
+  @override
+  final bool? isForMainFrame;
+
+  @override
+  String get description => 'boom';
+
+  @override
+  int get errorCode => 1;
+
+  @override
+  WebResourceErrorType? get errorType => null;
+
+  @override
+  String? get url => null;
 }

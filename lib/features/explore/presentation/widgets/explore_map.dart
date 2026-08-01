@@ -91,6 +91,7 @@ class _ExploreMapState extends State<ExploreMap> {
   @override
   void dispose() {
     _mapController?.removeListener(_onCameraChanged);
+    _mapController?.onFeatureTapped.remove(_onFeatureTapped);
     for (final w in _workers) {
       w.dispose();
     }
@@ -216,6 +217,8 @@ class _ExploreMapState extends State<ExploreMap> {
     // Sources/layers must be (re)added here; this can fire again on a style
     // reload, so ready flags are reset and sync routines recreate sources.
     _styleLoaded = true;
+    final mapAtStyleLoad = _mapController;
+    if (!mounted || mapAtStyleLoad == null) return;
     _radiusCenter = null;
     _radiusKm = null;
     _radiusSourceReady = false;
@@ -241,7 +244,42 @@ class _ExploreMapState extends State<ExploreMap> {
     _updateOverlays();
   }
 
+  // Coalescing latch for overlay projection. MapLibre notifies on every camera
+  // frame, and one pass costs a platform-channel round trip per marker, so
+  // passes must not overlap (a stale pass can otherwise land last and strand
+  // the chips off their pins). Events are remembered, never dropped:
+  // INVARIANT — the last camera event always produces a final sync, because a
+  // request arriving mid-pass sets _syncQueued, which forces one more pass
+  // after the in-flight one drains.
+  bool _syncing = false;
+  bool _syncQueued = false;
+
   Future<void> _updateOverlays() async {
+    if (_syncing) {
+      _syncQueued = true;
+      return;
+    }
+    _syncing = true;
+    try {
+      do {
+        _syncQueued = false;
+        try {
+          await _computeAndSetOverlays();
+        } catch (e, st) {
+          // Every caller is fire-and-forget, so an escaping error would land in
+          // the zone handler instead of anywhere useful.
+          DebugLogger.warning('Explore overlay projection pass failed', e, st);
+          // Note: a queued event still drains, but a failed pass is not
+          // re-armed — re-arming would retry unboundedly against a destroyed
+          // surface. Recovery rides on the next camera/idle/style event.
+        }
+      } while (_syncQueued && mounted);
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  Future<void> _computeAndSetOverlays() async {
     final controller = _mapController;
     if (!mounted || controller == null || !_styleLoaded || !_mapRendered) return;
 
@@ -277,6 +315,9 @@ class _ExploreMapState extends State<ExploreMap> {
     final controller = _mapController;
     final result = <int>{};
     if (controller == null || positions.isEmpty || !_mapRendered) return result;
+    // Reached after the projection awaits: the tree may have gone away, and
+    // context.size throws on a deactivated element.
+    if (!mounted) return result;
 
     final size = context.size;
     if (size == null) return result;

@@ -131,7 +131,6 @@ lib/
 │   ├── explore/           # Map exploration feature
 │   ├── filters/           # Advanced filtering system
 │   ├── likes/             # Liked/passed properties management
-│   ├── location_search/   # Location search functionality
 │   ├── onboarding/        # App onboarding flow
 │   ├── profile/           # User profile management
 │   ├── property_details/  # Property details view
@@ -234,29 +233,35 @@ feature_name/
 ```
 
 #### 4. Swipe Mechanics (Bumble-Style)
-**Core Implementation**: Located in `lib/features/discover/widgets/`:
-- **SwipeStack**: Main swipe container with card stack management
+**Core Implementation**: Located in `lib/features/discover/presentation/widgets/`:
+- **PropertySwipeStack**: Main swipe container with card stack management
 - **PropertySwipeCard**: Individual property cards with swipe gestures
 - **DiscoverController**: Handles swipe logic and state management (integrated into main discover controller)
 
-**Swipe Actions**:
+**Swipe Actions** (these two, and only these two, are implemented):
 - **Swipe Right**: Like property (mark as favorite)
-- **Swipe Left**: Pass on property (mark as not interested)  
-- **Swipe Up**: Quick view details (navigate to property details)
-- **Double Tap**: Super like (priority interest)
+- **Swipe Left**: Pass on property (mark as not interested)
+- **Tap**: Open property details (the hero area, the "View details" CTA, and the
+  accessibility action all route here)
+
+There is deliberately **no swipe-up and no double-tap**. Only
+`onHorizontalDragStart/Update/End` are registered; vertical drag belongs to the card's
+own scroll view. A "super like" would also need a backend change, since `recordSwipe`
+takes a boolean `isLiked` and has no priority concept.
 
 **Visual Feedback**:
-- **Rotation**: ±12° during drag
-- **Scaling**: 0.98x during interaction
+- **Rotation**: up to ±45° during drag, scaled by a 0.7 factor
+- **Scaling**: 0.93 → 1.0 entrance animation (there is no interaction scale-down)
 - **Color Hints**: Green for like, red for pass
-- **Overlay Badges**: LIKE / PASS / DETAILS / SUPER using AppTheme colors
-- **Animation**: Spring curve for completion, snap-back on cancel
+- **Overlay Badges**: LIKE / PASS, using `AppDesign` colors
+- **Animation**: Spring curve for completion, snap-back on cancel or rejection
 
 **Data Integration**:
-- Records all swipe actions via `SwipesRepository.logSwipe(propertyId, action)`
+- Records swipes via `SwipesRepository.recordSwipe({required int propertyId, required bool isLiked})`,
+  reached through `PageStateService`, not called directly from the controller
 - Updates favorites through `LikesController` for like actions
-- Navigates to property details for swipe up actions
-- Supports undo functionality for last swipe action
+- A swipe whose network call fails is reverted and surfaced to the user, rather than
+  silently dropped
 
 ### Navigation System
 - **GetX routing** with named routes
@@ -275,15 +280,25 @@ feature_name/
 
 ## Theme and Design System
 
-### Bumble-Inspired Color Palette
-Defined in `lib/core/utils/theme.dart` and `lib/core/utils/app_colors.dart`:
-- **Primary**: `Color(0xFFFFBC05)` (Bumble yellow)
-- **Accent**: `Color(0xFFFF6B35)` (Real estate orange), `Color(0xFF4A90E2)` (trust blue), `Color(0xFF50C878)` (success green)
-- **Background**: `Color(0xFFFFFFFF)` and `Color(0xFFF8F9FA)`
-- **Text**: Dark `Color(0xFF2C2C2C)`, Gray `Color(0xFF666666)`, Light `Color(0xFF999999)`
-- **Status**: Success `Color(0xFF28A745)`, Warning `Color(0xFFFFC107)`, Error `Color(0xFFDC3545)`
+### Design System
+The design system lives in **`lib/core/design/`**. There is no `lib/core/utils/theme.dart`
+and no `app_colors.dart` — those paths are gone.
 
-**IMPORTANT**: Never use hardcoded `Colors.*` - always use `AppTheme`/`AppColors` constants.
+- `app_design_extensions.dart` — **`AppDesign`**, the class you almost always want.
+  Import this one. Most-used tokens: `primaryYellow`, `textPrimary`, `textSecondary`,
+  `surface`, `border`, `iconColor`, `inputBackground`, `overlayLight`, `overlayDark`,
+  `errorRed`, `buttonText`, `transparent`. Also defines `AppPalette`.
+- `app_design_tokens.dart` — `AppDesignTokens`, `AppDesignOpacity` (raw values)
+- `app_design_components.dart` — `AppDesignComponents`, including `textTheme(Brightness)`
+- `app_design_theme.dart` — `AppDesignTheme`, the assembled light/dark `ThemeData`
+
+Typography comes from the theme's `textTheme` (`Theme.of(context).textTheme.*`), which
+`AppDesignComponents.textTheme(brightness)` builds per brightness.
+
+**IMPORTANT**: Never use hardcoded `Colors.*` — always use `AppDesign` tokens, so light
+and dark both stay correct. When picking a token for text, check it actually clears
+contrast against its background in **both** themes; the brand yellow is legible on dark
+surfaces but fails against white.
 
 ### Dark Theme Support
 Complete dark theme implementation with:
@@ -354,7 +369,7 @@ LOG_API_CALLS=true
 ```
 
 ### Platform Support
-- **iOS**: Minimum deployment target iOS 14.0
+- **iOS**: Minimum deployment target iOS 15.0
 - **Android**: Minimum SDK version 21
 - **Web**: Chrome support enabled
 
@@ -441,13 +456,13 @@ LOG_API_CALLS=true
 - **Expose immutable getters** for external read; mutate only inside controller methods
 - **Initialize work in `onInit()`**; clean up in `onClose()`
 - **Use dependency injection** through bindings instead of `Get.put` in widgets
-- **Extend `SafeGetView<T>`** from `lib/core/widgets/safe_get_view.dart` for typed controller access
+- **Access controllers with `Get.find<T>()`**, registered via the feature's binding. (`SafeGetView` was removed; it had no remaining users.)
 
 #### Theme and Styling Standards
-- **Never hardcode colors**: Use `AppTheme`/`AppColors` from `lib/core/utils/theme.dart` and `lib/core/utils/app_colors.dart`
-- **Use predefined typography**: `AppTheme.headlineLarge`, `AppTheme.titleLarge`, etc.
+- **Never hardcode colors**: Use `AppDesign` tokens from `lib/core/design/app_design_extensions.dart`
+- **Use the theme's typography**: `Theme.of(context).textTheme.headlineLarge`, `.titleLarge`, etc.
 - **Consistent spacing**: Use standard paddings (8/12/16/24); avoid magic numbers
-- **Card styling**: 16px border radius, use `AppTheme.cardShadow` for shadows
+- **Card styling**: 16px border radius; take elevation from the theme's card styling rather than hand-rolled shadows
 
 #### Internationalization Standards
 - **No hardcoded user-facing strings**: Add keys in `lib/core/translations/app_translations.dart`
@@ -498,10 +513,10 @@ void loadProperties() async {
 
 ### Widget Development Standards
 - **Parameterize components** for reusability
-- **Use AppTheme colors** instead of hardcoded values
+- **Use `AppDesign` tokens** instead of hardcoded values
 - **Make widgets responsive** to different screen sizes
 - **Follow naming conventions**: PascalCase for classes, camelCase for variables
-- **Extend SafeGetView<T>** from `lib/widgets/safe_get_view.dart` for typed controller access
+- **Access controllers with `Get.find<T>()`**, registered via the feature's binding
 - **Use guard clauses** to avoid deep nesting
 - **No hardcoded strings** - use translation keys with `.tr` from `core/translations/app_translations.dart`
 
@@ -558,7 +573,7 @@ AppToast.error('Error', 'Failed to load');
 - Prefer constructor injection for repositories (`ApiClient`, datasources).
 - Register property/swipe repos via `RepositoryRegistration` so both concrete
   types and core ports (`PropertiesPort`, `SwipesPort`) are available.
-- Use GetX bindings for feature controllers; **SafeGetView** for safe disposal.
+- Use GetX bindings for feature controllers; let the binding own the lifecycle so disposal is automatic.
 
 ## Testing
 
@@ -600,7 +615,7 @@ DebugLogger.api('🔍 Searching properties with filters');
 ### Development Workflow
 1. **Hot reload** for UI changes: `r` in terminal or IDE shortcut
 2. **Hot restart** for logic changes: `R` in terminal
-3. **Check reactive state**: Use ReactiveStateMonitor for debugging GetX state
+3. **Check reactive state**: inspect controller `.obs` values directly, or use the Flutter DevTools inspector
 4. **Monitor API calls**: Check DebugLogger output for API request/response logging
 5. **Location testing**: Use device simulator location or physical device GPS
 
@@ -693,7 +708,7 @@ dart run build_runner build --delete-conflicting-outputs
 - Cache frequently accessed data
 
 ### Memory Management
-- Dispose controllers properly with SafeGetView
+- Let feature bindings own controller lifecycles so disposal happens automatically
 - Clear image cache periodically
 - Use const constructors where possible
 - Minimize widget rebuilds with GetX reactivity
@@ -736,13 +751,13 @@ flutter pub get                                          # Deps (iOS via SPM)
 - **API Service**: `lib/core/data/providers/api_service.dart`
 - **Root Router**: `lib/root.dart`
 - **Routes**: `lib/core/routes/app_routes.dart` and `app_pages.dart`
-- **Theme**: `lib/core/utils/theme.dart` and `app_colors.dart`  
+- **Design system**: `lib/core/design/` (`AppDesign` in `app_design_extensions.dart`)  
 - **Translations**: `lib/core/translations/app_translations.dart`
 - **Environment**: `.env.development` and `.env.production`
 
 ### Architecture Pattern
 ```
-Root Router → View (SafeGetView) → Controller (GetxController) → Repository → ApiService → Supabase
+Root Router → View (GetView/Obx) → Controller (GetxController) → Repository → ApiService → Supabase
                                                               (auth/session tokens via Supabase SDK)
 ```
 

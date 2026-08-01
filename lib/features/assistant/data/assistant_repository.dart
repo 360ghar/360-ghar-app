@@ -57,14 +57,18 @@ class AssistantRepository {
     // Tolerate bare-list responses too (older deployments that pre-date the
     // cursor envelope): treat a bare list as a single terminal page.
     if (body is List) {
-      final items = body.map((e) => ConversationModel.fromJson(e as Map<String, dynamic>)).toList();
+      final items = body.whereType<Map>().map((e) {
+        return ConversationModel.fromJson(Map<String, dynamic>.from(e));
+      }).toList();
       return ConversationsPage(items: items, hasMore: false, nextCursor: null);
     }
 
     if (body is Map<String, dynamic>) {
       final dynamic rawItems = body['items'] ?? body['data'];
       final items = rawItems is List
-          ? rawItems.whereType<Map<String, dynamic>>().map(ConversationModel.fromJson).toList()
+          ? rawItems.whereType<Map>().map((item) {
+              return ConversationModel.fromJson(Map<String, dynamic>.from(item));
+            }).toList()
           : const <ConversationModel>[];
 
       // Envelope-driven pagination: honour has_more / next_cursor when the

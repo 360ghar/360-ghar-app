@@ -37,8 +37,8 @@ class VisitsRepository extends GetxService {
     return _remote.fetchRelationshipManager();
   }
 
-  /// Schedules a visit. On [NetworkException], enqueues for offline replay and
-  /// rethrows so callers can show a "queued offline" message.
+  /// Schedules a visit. When the device is offline, enqueues for offline replay
+  /// and rethrows so callers can show a "queued offline" message.
   Future<VisitModel> scheduleVisit({
     required int propertyId,
     required String scheduledDate,
@@ -50,8 +50,9 @@ class VisitsRepository extends GetxService {
         scheduledDate: scheduledDate,
         specialRequirements: specialRequirements,
       );
-    } on NetworkException catch (e) {
-      DebugLogger.warning('🌐 Network error, queuing visit for retry: ${e.message}');
+    } on AppException catch (e) {
+      if (!e.isRetryableOffline) rethrow;
+      DebugLogger.warning('🌐 Offline, queuing visit for retry: ${e.message}');
       final queue = _queue;
       if (queue != null) {
         await queue.enqueueVisit(

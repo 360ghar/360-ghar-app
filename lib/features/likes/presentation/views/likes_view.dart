@@ -11,6 +11,7 @@ import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/common/paginated_scroll_mixin.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
 import 'package:ghar360/core/widgets/common/segmented_control.dart';
 import 'package:ghar360/core/widgets/common/unified_top_bar.dart';
@@ -35,9 +36,12 @@ class LikesView extends GetView<LikesController> {
     final pageStateService = Get.find<PageStateService>();
 
     return Obx(() {
-      final searchVisible = pageStateService.isSearchVisible(PageType.likes);
+      // Observed (not used) so the Scaffold re-reads LikesTopBar.preferredSize
+      // when the search field is shown or hidden — the app bar grows by 52px.
+      // It must NOT re-key the Scaffold: that threw away the grid's scroll
+      // position and every element below it on each toggle.
+      pageStateService.isSearchVisible(PageType.likes);
       return Scaffold(
-        key: ValueKey('likes_scaffold_$searchVisible'),
         backgroundColor: AppDesign.scaffoldBackground,
         appBar: LikesTopBar(
           onSearchChanged: controller.updateSearchQuery,
@@ -117,7 +121,10 @@ class LikesView extends GetView<LikesController> {
                       child = _buildEmptyState(isLiked);
                     } else {
                       key = const ValueKey('grid');
-                      child = _buildPropertyGrid(context);
+                      child = _LikesPropertyGrid(
+                        controller: controller,
+                        crossAxisCount: _getCrossAxisCount(context),
+                      );
                     }
 
                     return AnimatedSwitcher(
@@ -141,92 +148,6 @@ class LikesView extends GetView<LikesController> {
     return LoadingStates.responsiveGridSkeleton(
       crossAxisCount: crossAxisCount,
       itemCount: crossAxisCount * 2,
-    );
-  }
-
-  Widget _buildPropertyGrid(BuildContext context) {
-    final crossAxisCount = _getCrossAxisCount(context);
-
-    return RefreshIndicator(
-      onRefresh: controller.refreshCurrentSegment,
-      color: Get.theme.colorScheme.primary,
-      child: CustomScrollView(
-        slivers: [
-          if (controller.hasSearchQuery)
-            SliverToBoxAdapter(
-              child: Obx(
-                () => Container(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenPadding,
-                    AppSpacing.md,
-                    AppSpacing.screenPadding,
-                    0,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppDesign.primaryYellow.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'filtered'.tr,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AppDesign.primaryYellow,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          Obx(
-            () => SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-              sliver: SliverMasonryGrid.count(
-                crossAxisCount: crossAxisCount,
-                mainAxisSpacing: AppSpacing.listItemSpacing,
-                crossAxisSpacing: AppSpacing.listItemSpacing,
-                childCount:
-                    controller.currentProperties.length +
-                    (controller.currentHasMore || controller.isCurrentLoadingMore ? 1 : 0),
-                itemBuilder: (context, index) {
-                  final properties = controller.currentProperties;
-
-                  if (index == properties.length) {
-                    if (controller.currentHasMore && !controller.isCurrentLoadingMore) {
-                      controller.loadMoreCurrentSegment();
-                    }
-
-                    return controller.isCurrentLoadingMore
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16),
-                              child: CircularProgressIndicator(),
-                            ),
-                          )
-                        : const SizedBox();
-                  }
-
-                  final property = properties[index];
-                  final isLiked = controller.currentSegment.value == LikesSegment.liked;
-
-                  return LikesPropertyCard(
-                    property: property,
-                    isFavourite: isLiked,
-                    onFavouriteToggle: () => _handleFavoriteToggle(property, isLiked),
-                  );
-                },
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      ),
     );
   }
 
@@ -263,12 +184,130 @@ class LikesView extends GetView<LikesController> {
       actionText: 'explore_properties'.tr,
     );
   }
+}
+
+/// The scrollable property grid.
+///
+/// Stateful so pagination can be driven from a scroll listener
+/// ([PaginatedScrollMixin]) instead of from the sliver's `itemBuilder`:
+/// `loadMoreCurrentSegment` writes the likes page state synchronously, and
+/// calling it while the sliver is building marked the enclosing `Obx` dirty
+/// mid-build.
+class _LikesPropertyGrid extends StatefulWidget {
+  const _LikesPropertyGrid({required this.controller, required this.crossAxisCount});
+
+  final LikesController controller;
+  final int crossAxisCount;
+
+  @override
+  State<_LikesPropertyGrid> createState() => _LikesPropertyGridState();
+}
+
+class _LikesPropertyGridState extends State<_LikesPropertyGrid>
+    with PaginatedScrollMixin<_LikesPropertyGrid> {
+  @override
+  void initState() {
+    super.initState();
+    // Note: scroll-driven only — a first page shorter than the viewport
+    // produces no scroll events and will not auto-advance. Add a post-frame
+    // bootstrap inside the mixin (so it shares the in-flight guard) if a
+    // short first page ever happens in practice.
+    initPaginatedScroll(
+      onLoadMore: widget.controller.loadMoreCurrentSegment,
+      hasMore: () => widget.controller.currentHasMore,
+      isLoadingMore: () => widget.controller.isCurrentLoadingMore,
+    );
+  }
 
   void _handleFavoriteToggle(PropertyModel property, bool isCurrentlyLiked) {
     if (isCurrentlyLiked) {
-      controller.removeFromLikes(property);
+      widget.controller.removeFromLikes(property);
     } else {
-      controller.moveToLikes(property);
+      widget.controller.moveToLikes(property);
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+
+    return RefreshIndicator(
+      onRefresh: controller.refreshCurrentSegment,
+      color: Theme.of(context).colorScheme.primary,
+      child: CustomScrollView(
+        controller: scrollController,
+        slivers: [
+          SliverToBoxAdapter(
+            child: Obx(() {
+              if (!controller.hasSearchQuery) return const SizedBox.shrink();
+              return Container(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenPadding,
+                  AppSpacing.md,
+                  AppSpacing.screenPadding,
+                  0,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppDesign.primaryYellow.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'filtered'.tr,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AppDesign.primaryYellow,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ),
+          Obx(() {
+            final properties = controller.currentProperties;
+            final isLiked = controller.currentSegment.value == LikesSegment.liked;
+            final hasTrailingCell = controller.currentHasMore || controller.isCurrentLoadingMore;
+
+            return SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+              sliver: SliverMasonryGrid.count(
+                crossAxisCount: widget.crossAxisCount,
+                mainAxisSpacing: AppSpacing.listItemSpacing,
+                crossAxisSpacing: AppSpacing.listItemSpacing,
+                childCount: properties.length + (hasTrailingCell ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == properties.length) {
+                    return controller.isCurrentLoadingMore
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        : const SizedBox();
+                  }
+
+                  final property = properties[index];
+
+                  return LikesPropertyCard(
+                    property: property,
+                    isFavourite: controller.isFavourite(property),
+                    isUpdating: controller.isFavouriteUpdating(property),
+                    onFavouriteToggle: () => _handleFavoriteToggle(property, isLiked),
+                  );
+                },
+              ),
+            );
+          }),
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
+      ),
+    );
   }
 }

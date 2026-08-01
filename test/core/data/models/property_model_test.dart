@@ -205,7 +205,7 @@ void main() {
     });
 
     test('formattedPrice formats small values', () {
-      expect(make(basePrice: 50000).formattedPrice, '₹50000');
+      expect(make(basePrice: 50000).formattedPrice, '₹50,000');
     });
 
     test('getEffectivePrice returns monthlyRent for rent', () {
@@ -322,9 +322,9 @@ void main() {
     });
 
     test('formattedPrice handles negative price', () {
-      // Negative values fall through to the small-value branch
-      expect(make(basePrice: -1000).formattedPrice, '₹-1000');
-      expect(make(basePrice: -5000000).formattedPrice, '₹-5000000');
+      // Negative values keep the Indian sign-before-symbol convention.
+      expect(make(basePrice: -1000).formattedPrice, '-₹1,000');
+      expect(make(basePrice: -5000000).formattedPrice, '-₹50.0 L');
     });
 
     test('virtualTourUrl and hasVirtualTour getters', () {

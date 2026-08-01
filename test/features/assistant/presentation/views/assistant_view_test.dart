@@ -238,17 +238,17 @@ void main() {
     // (with no user message in between), the assistant text is suppressed
     // because the widget already displays the same information.
 
-    testWidgets('suppresses assistant message when followed by widget', (tester) async {
+    testWidgets('keeps assistant message when followed by widget', (tester) async {
       controller.messages.addAll([
         _assistantMessage(id: 'a1', content: 'Here are the results'),
         _widgetMessage(id: 'w1'),
       ]);
       await pumpView(tester);
 
-      // The ChatWidgetBubble should be rendered.
+      // Both render: the text is the only path that cannot fail, so it must
+      // never be hidden behind a widget that might not load.
       expect(find.byType(ChatWidgetBubble), findsOneWidget);
-      // The assistant ChatMessageBubble should be suppressed (SizedBox.shrink).
-      expect(find.text('Here are the results'), findsNothing);
+      expect(find.text('Here are the results'), findsOneWidget);
     });
 
     testWidgets('shows assistant message when followed by user message', (tester) async {
@@ -274,9 +274,7 @@ void main() {
       expect(find.text('Hi!'), findsOneWidget);
     });
 
-    testWidgets('suppresses assistant when tool result is between assistant and widget', (
-      tester,
-    ) async {
+    testWidgets('keeps assistant when tool result is between assistant and widget', (tester) async {
       controller.messages.addAll([
         _assistantMessage(id: 'a1', content: 'Searching...'),
         _toolResultMessage(id: 'tr1'),
@@ -284,10 +282,10 @@ void main() {
       ]);
       await pumpView(tester);
 
-      // Widget should render.
       expect(find.byType(ChatWidgetBubble), findsOneWidget);
-      // Assistant text should be suppressed.
-      expect(find.text('Searching...'), findsNothing);
+      expect(find.text('Searching...'), findsOneWidget);
+      // The tool-result row itself stays hidden.
+      expect(find.byType(ChatMessageBubble), findsOneWidget);
     });
 
     // ── Input bar ────────────────────────────────────────────────────────

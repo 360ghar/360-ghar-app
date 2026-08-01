@@ -6,6 +6,7 @@ import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
@@ -101,7 +102,7 @@ class _ScheduleRow extends StatelessWidget {
         Flexible(
           child: ElevatedButton(
             key: const ValueKey('qa.property_details.schedule_visit'),
-            onPressed: () => showBookVisitDialog(context, property, visitsController),
+            onPressed: () => showBookVisitDialog(property, visitsController),
             style: ElevatedButton.styleFrom(
               elevation: 0,
               shadowColor: AppDesign.transparent,
@@ -139,10 +140,7 @@ class _ScheduledBanner extends StatelessWidget {
   final VisitsController visitsController;
 
   String _formatDateTime(BuildContext context, DateTime date) {
-    final datePart =
-        '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
+    final datePart = formatDisplayDate(date);
     final timePart = TimeOfDay.fromDateTime(date).format(context);
     return '$datePart · $timePart';
   }
@@ -192,9 +190,7 @@ class _ScheduledBanner extends StatelessWidget {
                   leading: const Icon(Icons.calendar_today, color: AppDesign.primaryYellow),
                   title: Text('date'.tr, style: TextStyle(color: AppDesign.textPrimary)),
                   subtitle: Text(
-                    '${selectedDate.day.toString().padLeft(2, '0')}/'
-                    '${selectedDate.month.toString().padLeft(2, '0')}/'
-                    '${selectedDate.year}',
+                    formatDisplayDate(selectedDate),
                     style: TextStyle(color: AppDesign.textSecondary),
                   ),
                   onTap: isLoading

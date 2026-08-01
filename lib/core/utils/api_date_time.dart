@@ -61,3 +61,10 @@ String? toApiUtcInstant(DateTime? value) {
   if (value == null) return null;
   return value.toUtc().toIso8601String();
 }
+
+/// Formats [date] as `dd/MM/yyyy` for user-facing display (date pickers,
+/// visit cards, profile screens). The canonical form for date-picker labels.
+String formatDisplayDate(DateTime date) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${two(date.day)}/${two(date.month)}/${date.year}';
+}

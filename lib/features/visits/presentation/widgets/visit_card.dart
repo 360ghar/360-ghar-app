@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 
 class VisitCard extends StatelessWidget {
@@ -25,8 +26,7 @@ class VisitCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dt = visit.scheduledDate;
-    final dateText =
-        '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    final dateText = formatDisplayDate(dt);
     final hour = dt.hour;
     final minute = dt.minute;
     final period = hour >= 12 ? 'PM' : 'AM';
@@ -181,7 +181,11 @@ class VisitCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            Row(
+            Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              runSpacing: 6,
               children: [
                 if (visit.property != null) ...[
                   Text(
@@ -192,7 +196,6 @@ class VisitCard extends StatelessWidget {
                       color: AppDesign.textPrimary,
                     ),
                   ),
-                  const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
@@ -209,7 +212,6 @@ class VisitCard extends StatelessWidget {
                     ),
                   ),
                 ],
-                const Spacer(),
                 if (isUpcoming && (visit.canCancel || visit.canReschedule)) ...[
                   if (visit.canReschedule)
                     TextButton(
@@ -226,7 +228,6 @@ class VisitCard extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
                       ),
                     ),
-                  if (visit.canReschedule && visit.canCancel) const SizedBox(width: 6),
                   if (visit.canCancel)
                     TextButton(
                       onPressed: onCancel,

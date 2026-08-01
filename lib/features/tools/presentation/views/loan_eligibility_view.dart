@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/features/tools/presentation/controllers/loan_eligibility_controller.dart';
 
@@ -208,13 +209,13 @@ class LoanEligibilityView extends GetView<LoanEligibilityController> {
                       const SizedBox(height: 16),
                       _buildResultRow(
                         'max_loan_amount'.tr,
-                        '₹${_formatCurrency(controller.maxLoanAmount.value)}',
+                        IndianCurrency.compact(controller.maxLoanAmount.value),
                         isHighlight: true,
                       ),
                       const Divider(height: 24),
                       _buildResultRow(
                         'eligible_emi'.tr,
-                        '₹${_formatCurrency(controller.eligibleEmi.value)}/mo',
+                        '${IndianCurrency.compact(controller.eligibleEmi.value)}/mo',
                       ),
                       const SizedBox(height: 8),
                       _buildResultRow(
@@ -309,16 +310,5 @@ class LoanEligibilityView extends GetView<LoanEligibilityController> {
         ),
       ],
     );
-  }
-
-  String _formatCurrency(double value) {
-    if (value >= 10000000) {
-      return '${(value / 10000000).toStringAsFixed(2)} Cr';
-    } else if (value >= 100000) {
-      return '${(value / 100000).toStringAsFixed(2)} L';
-    } else if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(1)}K';
-    }
-    return value.toStringAsFixed(0);
   }
 }

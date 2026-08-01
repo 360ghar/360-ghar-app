@@ -82,6 +82,31 @@ void main() {
       );
       expect(TourUrl.isAllowedNavigation('https://random.site/tour'), isFalse);
     });
+
+    test('requires matching scheme and port for an allowed origin', () {
+      const origin = 'https://tours.example.com:8443/room/1';
+      expect(
+        TourUrl.isAllowedNavigation(
+          'http://tours.example.com:8443/room/2',
+          allowedOriginUrl: origin,
+        ),
+        isFalse,
+      );
+      expect(
+        TourUrl.isAllowedNavigation(
+          'https://tours.example.com:9443/room/2',
+          allowedOriginUrl: origin,
+        ),
+        isFalse,
+      );
+      expect(
+        TourUrl.isAllowedNavigation(
+          'https://tours.example.com:8443/room/2',
+          allowedOriginUrl: origin,
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('TourUrl.sanitizeCssColor', () {

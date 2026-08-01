@@ -22,12 +22,12 @@ class RemoteConfigService {
     'android_latest_version': '1.0.0',
     'android_min_version': '1.0.0',
     'android_force_update': false,
-    'android_update_url': 'https://play.google.com/store/apps/details?id=com.ghar360.app',
+    'android_update_url': 'https://play.google.com/store/apps/details?id=com.the360ghar.ghar360',
     'android_release_notes': '',
     'ios_latest_version': '1.0.0',
     'ios_min_version': '1.0.0',
     'ios_force_update': false,
-    'ios_update_url': 'https://apps.apple.com/app/id123456789',
+    'ios_update_url': 'https://apps.apple.com/app/id6794866216',
     'ios_release_notes': '',
   };
 

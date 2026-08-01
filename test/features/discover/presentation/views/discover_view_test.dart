@@ -216,6 +216,28 @@ void main() {
       expect(find.text('Swipe right to like | Swipe left to pass'), findsNothing);
     });
 
+    testWidgets('empty deck mid-prefetch shows the loader, not "No More Properties"', (
+      tester,
+    ) async {
+      // End-to-end wiring check: the deck drains while the next page is still
+      // in flight. Telling the user the catalogue is exhausted here — and
+      // offering "Change Filters" — makes them reset a live session.
+      pageStateService.discoverState.value = const PageStateModel(
+        pageType: PageType.discover,
+        filters: UnifiedFilterModel(),
+        properties: [],
+        hasMore: true,
+      );
+      controller.state.value = DiscoverState.prefetching;
+      controller.isPrefetching.value = true;
+
+      await tester.pumpApp(const DiscoverView());
+      await tester.pump();
+
+      expect(find.text('no_more_properties'.tr), findsNothing);
+      expect(find.text('change_filters'.tr), findsNothing);
+    });
+
     testWidgets('prefetching state renders swipe interface', (tester) async {
       pageStateService.discoverState.value = PageStateModel(
         pageType: PageType.discover,

@@ -9,13 +9,13 @@ void main() {
     test('generates the correct HTTPS URL format for a property id', () {
       final link = ShareUtils.propertyLink(42);
 
-      expect(link, 'https://the360ghar.com/p/42');
+      expect(link, 'https://360ghar.com/p/42');
     });
 
-    test('uses the the360ghar.com host', () {
+    test('uses the 360ghar.com host', () {
       final link = ShareUtils.propertyLink(1);
 
-      expect(link, startsWith('https://the360ghar.com/'));
+      expect(link, startsWith('https://360ghar.com/'));
     });
 
     test('uses the /p/<id> path segment', () {
@@ -27,20 +27,20 @@ void main() {
     test('handles id of 0', () {
       final link = ShareUtils.propertyLink(0);
 
-      expect(link, 'https://the360ghar.com/p/0');
+      expect(link, 'https://360ghar.com/p/0');
     });
 
     test('handles large ids', () {
       final link = ShareUtils.propertyLink(1000000);
 
-      expect(link, 'https://the360ghar.com/p/1000000');
+      expect(link, 'https://360ghar.com/p/1000000');
     });
 
     test('is a valid URI string', () {
       final link = ShareUtils.propertyLink(7);
 
       expect(Uri.parse(link).scheme, 'https');
-      expect(Uri.parse(link).host, 'the360ghar.com');
+      expect(Uri.parse(link).host, '360ghar.com');
       expect(Uri.parse(link).path, '/p/7');
     });
   });
@@ -119,7 +119,7 @@ void main() {
       final link = ShareUtils.propertyLink(id);
       final uri = Uri.parse(link);
 
-      expect(uri.host, 'the360ghar.com');
+      expect(uri.host, '360ghar.com');
       expect(uri.path, '/p/$id');
       expect(uri.scheme, 'https');
     });

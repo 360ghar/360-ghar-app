@@ -35,6 +35,8 @@ class AssistantController extends GetxController {
   final RxBool isDeleting = false.obs;
 
   StreamSubscription<SseEvent>? _streamSubscription;
+  String? _activeAssistantId;
+  int _conversationLoadToken = 0;
   int _messageIdCounter = 0;
 
   String _nextId() => 'local_${++_messageIdCounter}';
@@ -67,6 +69,7 @@ class AssistantController extends GetxController {
     );
 
     isStreaming.value = true;
+    _activeAssistantId = assistantId;
 
     // Cancel any previous stream before starting a new one.
     _streamSubscription?.cancel();
@@ -76,14 +79,18 @@ class AssistantController extends GetxController {
         .listen(
           (event) => _handleSseEvent(event, assistantId),
           onError: (error) {
+            if (_activeAssistantId != assistantId) return;
             DebugLogger.error('SSE stream error', error);
-            _finishStreaming(assistantId);
+            _finishStreaming(assistantId, errored: true);
           },
-          onDone: () => _finishStreaming(assistantId),
+          onDone: () {
+            if (_activeAssistantId == assistantId) _finishStreaming(assistantId);
+          },
         );
   }
 
   void _handleSseEvent(SseEvent event, String assistantId) {
+    if (_activeAssistantId != assistantId) return;
     switch (event.event) {
       case 'conversation_info':
         final id = event.data['conversation_id'];
@@ -150,18 +157,31 @@ class AssistantController extends GetxController {
     messages[idx] = messages[idx].copyWith(content: messages[idx].content + text);
   }
 
-  void _finishStreaming(String assistantId) {
+  /// Every stream termination path routes through here — `done`, `error`,
+  /// `onError` and `onDone`.
+  ///
+  /// Pass [errored] when the stream failed: a transport error used to leave a
+  /// silent empty bubble that looked identical to the assistant having nothing
+  /// to say. A turn that legitimately produces only a widget also ends empty,
+  /// so the message is only substituted on a real failure — the view skips
+  /// rendering an empty bubble instead.
+  void _finishStreaming(String assistantId, {bool errored = false}) {
+    if (_activeAssistantId != assistantId) return;
+    _activeAssistantId = null;
     isStreaming.value = false;
     activeToolCall.value = null;
     final idx = messages.indexWhere((m) => m.id == assistantId);
-    if (idx >= 0) {
-      messages[idx] = messages[idx].copyWith(isStreaming: false);
-    }
+    if (idx < 0) return;
+    final settled = messages[idx].copyWith(isStreaming: false);
+    messages[idx] = errored && settled.content.trim().isEmpty
+        ? settled.copyWith(content: 'assistant_error'.tr)
+        : settled;
   }
 
   void cancelStream() {
     _streamSubscription?.cancel();
     _streamSubscription = null;
+    _activeAssistantId = null;
     isStreaming.value = false;
     activeToolCall.value = null;
   }
@@ -226,12 +246,16 @@ class AssistantController extends GetxController {
   }
 
   Future<void> selectConversation(int id) async {
+    cancelStream();
+    final loadToken = ++_conversationLoadToken;
     conversationId.value = id;
     messages.clear();
     try {
       final msgs = await _repository.getConversationMessages(id);
+      if (loadToken != _conversationLoadToken || conversationId.value != id) return;
       messages.addAll(msgs);
     } catch (e) {
+      if (loadToken != _conversationLoadToken || conversationId.value != id) return;
       DebugLogger.error('Failed to load conversation messages', e);
       AppToast.error('error'.tr, 'failed_to_load_messages'.tr);
     }
@@ -239,6 +263,7 @@ class AssistantController extends GetxController {
 
   void startNewConversation() {
     cancelStream();
+    ++_conversationLoadToken;
     conversationId.value = null;
     messages.clear();
   }
@@ -266,6 +291,9 @@ class AssistantController extends GetxController {
   @override
   void onClose() {
     _streamSubscription?.cancel();
+    _streamSubscription = null;
+    _activeAssistantId = null;
+    ++_conversationLoadToken;
     super.onClose();
   }
 }

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import 'package:get/get.dart';
+import 'package:ghar360/core/utils/formatters.dart';
 
 class LoanEligibilityController extends GetxController {
   final TextEditingController incomeController = TextEditingController();
@@ -21,10 +22,19 @@ class LoanEligibilityController extends GetxController {
 
   void calculate() {
     final income = double.tryParse(incomeController.text) ?? 0;
-    final age = int.tryParse(ageController.text) ?? 30;
-    final existingEmi = double.tryParse(existingEmiController.text) ?? 0;
+    final ageText = ageController.text.trim();
+    final age = ageText.isEmpty ? 30 : int.tryParse(ageText);
+    final existingEmiText = existingEmiController.text.trim();
+    final existingEmi = existingEmiText.isEmpty ? 0 : double.tryParse(existingEmiText);
 
-    if (income <= 0) {
+    if (!Formatters.isPositiveFinite(income) ||
+        existingEmi == null ||
+        !existingEmi.isFinite ||
+        existingEmi < 0 ||
+        age == null ||
+        age < 18 ||
+        age > 80 ||
+        !Formatters.isPositiveFinite(interestRate.value)) {
       validationError.value = 'please_enter_valid_amounts'.tr;
       hasCalculated.value = false;
       return;
@@ -67,6 +77,11 @@ class LoanEligibilityController extends GetxController {
     final months = maxYears * 12;
     final factor = pow(1 + monthlyRate, months);
     final principal = maxEmi * (factor - 1) / (monthlyRate * factor);
+    if (!principal.isFinite || principal < 0) {
+      validationError.value = 'please_enter_valid_amounts'.tr;
+      hasCalculated.value = false;
+      return;
+    }
 
     maxLoanAmount.value = principal;
     hasCalculated.value = true;

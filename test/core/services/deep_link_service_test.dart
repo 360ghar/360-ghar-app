@@ -66,7 +66,7 @@ void main() {
 
     test('parses /property/:id path and schedules navigation', () async {
       expect(
-        () => service.handleDeepLinkForTest(Uri.parse('https://the360ghar.com/property/42')),
+        () => service.handleDeepLinkForTest(Uri.parse('https://360ghar.com/property/42')),
         returnsNormally,
       );
       await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -74,7 +74,7 @@ void main() {
 
     test('parses short /p/:id path without throwing', () async {
       expect(
-        () => service.handleDeepLinkForTest(Uri.parse('https://the360ghar.com/p/99')),
+        () => service.handleDeepLinkForTest(Uri.parse('https://360ghar.com/p/99')),
         returnsNormally,
       );
       await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -82,18 +82,24 @@ void main() {
 
     test('logs unparseable paths without throwing', () {
       expect(
-        () => service.handleDeepLinkForTest(Uri.parse('https://the360ghar.com/about')),
+        () => service.handleDeepLinkForTest(Uri.parse('https://360ghar.com/about')),
         returnsNormally,
       );
       expect(
-        () => service.handleDeepLinkForTest(Uri.parse('https://the360ghar.com/property/')),
+        () => service.handleDeepLinkForTest(Uri.parse('https://360ghar.com/property/')),
         returnsNormally,
       );
     });
 
+    test('ignores property links from unverified hosts', () async {
+      service.handleDeepLinkForTest(Uri.parse('https://evil.example/property/42'));
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(Get.currentRoute, isNot('/property/42'));
+    });
+
     test('routes OAuth redirect through AuthRepository when registered', () async {
       Get.put<AuthRepository>(authRepository);
-      final uri = Uri.parse('https://the360ghar.com/auth/callback?code=abc');
+      final uri = Uri.parse('https://360ghar.com/auth/callback?code=abc');
       when(() => authRepository.isOAuthRedirectUri(uri)).thenReturn(true);
       when(() => authRepository.completeOAuthFromUri(uri)).thenAnswer((_) async {});
 
@@ -106,7 +112,7 @@ void main() {
 
     test('handles OAuth completion failure without throwing', () async {
       Get.put<AuthRepository>(authRepository);
-      final uri = Uri.parse('https://the360ghar.com/auth/callback?code=fail');
+      final uri = Uri.parse('https://360ghar.com/auth/callback?code=fail');
       when(() => authRepository.isOAuthRedirectUri(uri)).thenReturn(true);
       when(() => authRepository.completeOAuthFromUri(uri)).thenThrow(Exception('oauth failed'));
 
@@ -116,7 +122,7 @@ void main() {
 
     test('ignores auth repository when URI is not an OAuth redirect', () {
       Get.put<AuthRepository>(authRepository);
-      final uri = Uri.parse('https://the360ghar.com/property/7');
+      final uri = Uri.parse('https://360ghar.com/property/7');
       when(() => authRepository.isOAuthRedirectUri(uri)).thenReturn(false);
 
       expect(() => service.handleDeepLinkForTest(uri), returnsNormally);

@@ -161,14 +161,10 @@ class AuthController extends GetxController {
 
   Future<void> _handleUnauthorizedFromApi(UnauthorizedEvent event) async {
     final error = event.error;
-    if (error.code != 'UNAUTHORIZED') {
-      return;
-    }
-
-    if (!event.isSessionCritical) {
-      DebugLogger.warning(
-        '🔐 [AUTH] Ignoring non-critical unauthorized response from ${event.endpoint}',
-      );
+    // MISSING_AUTH_HEADER means the SDK could not mint a token at all (dead
+    // refresh token). It is as fatal to the session as a server 401.
+    if (error.code != AppException.unauthorizedCode &&
+        error.code != AppException.missingAuthHeaderCode) {
       return;
     }
 

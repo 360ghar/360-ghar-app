@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
@@ -149,6 +151,39 @@ void main() {
 
       expect(controller.likedOverrides[property.id], isTrue);
       expect(controller.isPropertyLiked(property), isTrue);
+    });
+
+    test('toggleLike ignores stale failure after a newer tap', () async {
+      final props = seedProperties(1);
+      exploreState.value = PageStateModel(
+        pageType: PageType.explore,
+        filters: const UnifiedFilterModel(),
+        properties: props,
+        selectedLocation: const LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
+        lastFetched: DateTime.now(),
+      );
+      final firstRequest = Completer<void>();
+      var requestCount = 0;
+      when(
+        () => mockPageStateService.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+        ),
+      ).thenAnswer((_) {
+        requestCount++;
+        if (requestCount == 1) return firstRequest.future;
+        return Future<void>.value();
+      });
+
+      final controller = createController();
+      controller.activatePage();
+      final first = controller.toggleLike(props.first);
+      await Future<void>.delayed(Duration.zero);
+      await controller.toggleLike(props.first);
+      firstRequest.completeError(ServerException('stale failure'));
+      await first;
+
+      expect(controller.isPropertyLiked(props.first), isFalse);
     });
 
     test('toggleLike reverts override on failure', () async {

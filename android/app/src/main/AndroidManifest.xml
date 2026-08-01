@@ -67,32 +67,22 @@
 
                 <data
                     android:scheme="https"
-                    android:host="the360ghar.com"
+                    android:host="360ghar.com"
                     android:pathPrefix="/p/" />
 
                 <data
                     android:scheme="https"
-                    android:host="the360ghar.com"
+                    android:host="360ghar.com"
                     android:pathPrefix="/property/" />
 
                 <data
                     android:scheme="https"
-                    android:host="www.the360ghar.com"
+                    android:host="www.360ghar.com"
                     android:pathPrefix="/p/" />
 
                 <data
                     android:scheme="https"
-                    android:host="www.the360ghar.com"
-                    android:pathPrefix="/property/" />
-
-                <data
-                    android:scheme="https"
-                    android:host="app.the360ghar.com"
-                    android:pathPrefix="/p/" />
-
-                <data
-                    android:scheme="https"
-                    android:host="app.the360ghar.com"
+                    android:host="www.360ghar.com"
                     android:pathPrefix="/property/" />
             </intent-filter>
 

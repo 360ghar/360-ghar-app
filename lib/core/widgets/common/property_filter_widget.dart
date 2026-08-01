@@ -8,6 +8,7 @@ import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:ghar360/core/utils/indian_currency.dart';
 
 class PropertyFilterWidget extends StatelessWidget {
   final String pageType; // 'discover', 'explore', 'likes'
@@ -412,7 +413,10 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
           divisions: 100,
           activeColor: AppDesign.primaryYellow,
           inactiveColor: AppDesign.primaryYellow.withValues(alpha: 0.2),
-          labels: RangeLabels('₹${_formatPrice(_minPrice)}', '₹${_formatPrice(_maxPrice)}'),
+          labels: RangeLabels(
+            IndianCurrency.compact(_minPrice, fractionDigits: 1),
+            IndianCurrency.compact(_maxPrice, fractionDigits: 1),
+          ),
           onChanged: (RangeValues values) {
             setState(() {
               _minPrice = values.start;
@@ -424,7 +428,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              '₹${_formatPrice(_minPrice)}',
+              IndianCurrency.compact(_minPrice, fractionDigits: 1),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -432,7 +436,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
               ),
             ),
             Text(
-              '₹${_formatPrice(_maxPrice)}',
+              IndianCurrency.compact(_maxPrice, fractionDigits: 1),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -839,18 +843,6 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
       case 'buy':
       default:
         return 150000000.0; // ₹15Cr
-    }
-  }
-
-  String _formatPrice(double price) {
-    if (price >= 10000000) {
-      return '${(price / 10000000).toStringAsFixed(1)}Cr';
-    } else if (price >= 100000) {
-      return '${(price / 100000).toStringAsFixed(1)}L';
-    } else if (price >= 1000) {
-      return '${(price / 1000).toStringAsFixed(0)}K';
-    } else {
-      return price.toStringAsFixed(0);
     }
   }
 }

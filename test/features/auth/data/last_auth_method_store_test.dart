@@ -72,7 +72,8 @@ void main() {
       expect(store.lastIdentifierHint, '+91 ******3210');
     });
 
-    test('does not store a hint when identifier is null', () {
+    test('clears a previous hint when identifier is null', () {
+      store.save(AuthMethod.emailPassword, identifier: 'john@gmail.com');
       store.save(AuthMethod.google);
       expect(store.lastIdentifierHint, isNull);
     });
