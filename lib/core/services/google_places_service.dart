@@ -156,6 +156,12 @@ class GooglePlacesService extends GetxService {
           _clearError();
           return googleResults;
         }
+        if (googleResults != null) {
+          // Google answered (ZERO_RESULTS) for THIS query: drop the previous
+          // query's suggestions now, so the picker never shows stale places
+          // under the new query while the throttled fallback is still running.
+          placeSuggestions.clear();
+        }
         // null => Google failed; [] => zero results — try OSM for broader coverage
       }
 

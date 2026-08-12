@@ -261,6 +261,30 @@ void main() {
 
       expect(controller.isStreaming.value, isFalse);
       expect(controller.activeToolCall.value, isNull);
+      // The in-flight assistant message is settled too, so the typing
+      // indicator does not animate forever after a manual cancel.
+      expect(controller.messages[1].isStreaming, isFalse);
+    });
+
+    // ── SSE 'error' event ────────────────────────────────────────────────
+
+    test('error event with an empty message substitutes the error text', () async {
+      final streamController = StreamController<SseEvent>();
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
+
+      final controller = createController();
+      controller.sendMessage('hi');
+      // No usable message: finishing as a normal empty turn would be hidden by
+      // the view's shrink rule — the user gets no error and no retry affordance.
+      streamController.add(const SseEvent(event: 'error', data: {}));
+      await Future<void>.value();
+
+      expect(controller.messages[1].content, 'assistant_error'.tr);
+      expect(controller.messages[1].isStreaming, isFalse);
+      expect(controller.isStreaming.value, isFalse);
+      await streamController.close();
     });
 
     // ── deleteConversation success resets active conversation ─────────────

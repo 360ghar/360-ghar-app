@@ -136,6 +136,12 @@ class PageStateService extends GetxController {
     _sessionSwipedPropertyIds.clear();
     _discoverPreserveIds.clear();
 
+    // Invalidate in-flight fetches/load-mores so their completions (which
+    // would otherwise carry the previous user's data into the freshly cleared
+    // states) are discarded by the loaders' generation checks, and no queued
+    // force-reload from a pre-logout load fires under the next session.
+    _dataLoader.invalidateAllLoads();
+
     try {
       _storage.remove(_exploreStateStorageKey);
       _storage.remove(_discoverStateStorageKey);
@@ -903,7 +909,11 @@ class PageStateService extends GetxController {
     list.insert(0, property);
     _likesSegmentCache[segment] = _LikesSegmentCache(
       properties: list,
-      lastFetched: existing?.lastFetched ?? DateTime.now(),
+      // Keep lastFetched null when this cache entry is seeded purely from an
+      // optimistic swipe: a fresh timestamp would make the segment look like
+      // a complete server page and updateLikesSegment would restore only the
+      // session's optimistic entries, hiding the user's real history.
+      lastFetched: existing?.lastFetched,
       hasMore: existing?.hasMore ?? true,
       nextCursor: existing?.nextCursor,
     );
@@ -966,8 +976,24 @@ class PageStateService extends GetxController {
       return;
     }
 
-    // No fresh cache — fetch
-    likesState.value = likesState.value.resetData();
+    // No fresh cache — surface any optimistically-seeded entries immediately
+    // (the user's just-swiped items) and then fetch the real history. The
+    // fetch completion merges the optimistic entries over the server results,
+    // so the full list is never hidden behind a purely-optimistic cache.
+    if (cached != null) {
+      likesState.value = likesState.value.copyWith(
+        properties: List.of(cached.properties),
+        lastFetched: cached.lastFetched,
+        hasMore: cached.hasMore,
+        nextCursor: cached.nextCursor,
+        error: null,
+        isLoading: false,
+        isLoadingMore: false,
+        isRefreshing: false,
+      );
+    } else {
+      likesState.value = likesState.value.resetData();
+    }
     loadPageData(PageType.likes, forceRefresh: true);
   }
 

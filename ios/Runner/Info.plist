@@ -49,6 +49,8 @@
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>360 Ghar uses your location to show nearby properties on the map, find properties near you, and personalize search results.</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>This app needs location access to show nearby properties on the map.</string>
 		<key>NSPhotoLibraryUsageDescription</key>

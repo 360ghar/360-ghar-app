@@ -690,8 +690,19 @@ class ExploreController extends GetxController {
     } catch (e) {
       if (_likeRequestGenerations[property.id] != requestGeneration) return;
       DebugLogger.error('❌ Failed to toggle like: $e');
-      // Revert on failure
+      // Revert on failure — recordSwipe already applied its optimistic
+      // mutations before the network call: likes caches/visible list changed,
+      // the card was removed from the discover deck, and the id joined the
+      // session-swiped blacklist. undoSwipe (notifyServer: false) reverses the
+      // likes mutations, and reinserting the card un-blacklists it so Discover
+      // and the Likes tab do not stay wrong for the rest of the session.
       likedOverrides[property.id] = current;
+      await _pageStateService.undoSwipe(
+        propertyId: property.id,
+        originalIsLiked: next,
+        notifyServer: false,
+      );
+      _pageStateService.reinsertPropertyToDiscover(property);
       AppToast.error('action_failed'.tr, 'like_update_failed'.tr);
     } finally {
       // Prune the generation entry once the latest request settles so the map

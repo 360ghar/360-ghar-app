@@ -78,6 +78,11 @@ def check_info_plist(path: Path, label: str):
         failures.append("ITSAppUsesNonExemptEncryption must be false")
 
     required_usage = {
+        # NSLocationAlwaysAndWhenInUseUsageDescription is REQUIRED even though the
+        # app only requests when-in-use at runtime: MapLibre/geolocator_apple ship
+        # requestAlwaysAuthorization symbols in their binaries, so Apple's ITMS-90683
+        # scanner demands the purpose string. Removing it regresses App Store uploads.
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "location",
         "NSLocationWhenInUseUsageDescription": "location",
         "NSCameraUsageDescription": "camera",
         "NSPhotoLibraryUsageDescription": "photo library",

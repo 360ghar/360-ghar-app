@@ -53,6 +53,18 @@ class PageDataLoader {
     _likesDebouncer?.cancel();
   }
 
+  /// Invalidates every in-flight request generation and clears queued
+  /// force-reloads. Called when the session is reset (logout) so fetches and
+  /// load-mores still in flight cannot repopulate the cleared page states with
+  /// the previous user's data — their [_isCurrentGeneration] checks discard
+  /// them, and no stale queued reload fires under the new session.
+  void invalidateAllLoads() {
+    for (final key in _requestGeneration.keys) {
+      _requestGeneration[key] = (_requestGeneration[key] ?? 0) + 1;
+    }
+    _pendingForceReload.clear();
+  }
+
   int _bumpGeneration(PageType pageType) {
     final next = (_requestGeneration[pageType] ?? 0) + 1;
     _requestGeneration[pageType] = next;
@@ -61,6 +73,16 @@ class PageDataLoader {
 
   bool _isCurrentGeneration(PageType pageType, int generation) =>
       !_disposed && (_requestGeneration[pageType] ?? 0) == generation;
+
+  /// Stale load-more completions are discarded but must still release the
+  /// pagination flag: leaving `isLoadingMore` set would keep the spinner stuck
+  /// and make every later load-more early-return. Only re-read state so a
+  /// concurrent completion that already cleared the flag is not clobbered.
+  void _clearStaleLoadMoreFlag(PageType pageType) {
+    final latest = _pageState.getStateForPage(pageType);
+    if (!latest.isLoadingMore) return;
+    _pageState.updatePageState(pageType, latest.copyWith(isLoadingMore: false));
+  }
 
   Future<void> loadPageData(
     PageType pageType, {
@@ -221,7 +243,12 @@ class PageDataLoader {
     int? generation;
     try {
       final state = _pageState.getStateForPage(pageType);
-      if (state.isLoading || state.isLoadingMore || !state.hasMore) return;
+      // isRefreshing guards against a scroll-triggered load-more racing an
+      // in-flight refresh: the refresh supersedes pagination, and appending a
+      // stale page 2 with a stale cursor would corrupt the new page 1.
+      if (state.isLoading || state.isLoadingMore || state.isRefreshing || !state.hasMore) {
+        return;
+      }
 
       // Capture generation without bumping so a concurrent force refresh
       // (which bumps) invalidates this append.
@@ -269,6 +296,7 @@ class PageDataLoader {
         );
         if (!_isCurrentGeneration(pageType, generation)) {
           DebugLogger.debug('🔁 Discarded stale likes load-more completion');
+          _clearStaleLoadMoreFlag(pageType);
           return;
         }
         // Re-read after await: concurrent remove/move/segment switch must not
@@ -317,6 +345,7 @@ class PageDataLoader {
 
         if (!_isCurrentGeneration(pageType, generation)) {
           DebugLogger.debug('🔁 Discarded stale ${pageType.name} load-more completion');
+          _clearStaleLoadMoreFlag(pageType);
           return;
         }
 

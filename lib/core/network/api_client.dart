@@ -276,6 +276,13 @@ class ApiClient {
         ? _buildCacheKey(method, fullEndpoint, requireAuth: requireAuth)
         : null;
     var authRefreshRetryPerformed = false;
+    // Set when a 401's forced refresh failed because the auth server was
+    // unreachable. Such a NetworkException must escape the retry loop without
+    // being replayed: _shouldRetry treats NetworkException as transient, so it
+    // would retry with the OLD expired token — whose second 401 then forces a
+    // sign-out for what was only a connectivity blip (see the comment on the
+    // forced-refresh catch below).
+    var forcedRefreshUnreachable = false;
 
     // Add ETag header if cached
     if (useCache && cacheKey != null) {
@@ -349,7 +356,10 @@ class ApiClient {
                 // The refresh never reached the server, so the 401 proves
                 // nothing about the session. Surface it as a network failure
                 // rather than falling through to a sign-out.
-                if (refreshError is NetworkException) rethrow;
+                if (refreshError is NetworkException) {
+                  forcedRefreshUnreachable = true;
+                  rethrow;
+                }
               }
             }
 
@@ -405,6 +415,15 @@ class ApiClient {
           }
           throw NetworkException('Request timed out after $_timeoutSeconds seconds');
         } catch (e) {
+          // A forced refresh that could not reach the auth server must not be
+          // retried with the stale token: _shouldRetry would classify it as
+          // transient and replay the request, whose second 401 (already past
+          // the refresh branch) notifies unauthorized and signs the user out.
+          if (forcedRefreshUnreachable &&
+              e is NetworkException &&
+              e.code == AuthHeaderProvider.refreshUnreachableCode) {
+            rethrow;
+          }
           if (_shouldRetry(method: method, error: e, attempt: attempt, idempotent: idempotent)) {
             attempt++;
             await _retryBackoffDelay(attempt, method: method);

@@ -471,6 +471,33 @@ void main() {
       expect(find.byIcon(Icons.public_off), findsOneWidget);
     });
 
+    testWidgets('a late loaded signal after the watchdog error restores the tour', (tester) async {
+      bool? errorState;
+      await pumpWidget(
+        tester,
+        TourWebView(
+          tourUrl: 'https://kuula.co/share/test',
+          onErrorChanged: (hasError) => errorState = hasError,
+        ),
+      );
+
+      // Channel is live but the iframe is still loading when the 20s watchdog
+      // fires — the tour then sits on the error screen.
+      lastWebViewController?.simulateJavaScriptMessage(_signalChannel, 'ready');
+      await tester.pump(_loadTimeout + const Duration(seconds: 1));
+      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(errorState, isTrue);
+
+      // The tour finally loads; the late 'loaded' signal must clear the error
+      // the watchdog set instead of leaving the user stuck on the error screen.
+      lastWebViewController?.simulateJavaScriptMessage(_signalChannel, 'loaded');
+      await tester.pump();
+
+      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(find.byType(WebViewWidget), findsOneWidget);
+      expect(errorState, isFalse);
+    });
+
     testWidgets('no ready clears the spinner at the SHORT deadline, not the 20s watchdog', (
       tester,
     ) async {

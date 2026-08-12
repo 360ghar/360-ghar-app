@@ -32,6 +32,7 @@ void main() {
     registerFallbackValue(PageType.explore);
     registerFallbackValue(const UnifiedFilterModel());
     registerFallbackValue(const LocationData(name: '', latitude: 0, longitude: 0));
+    registerFallbackValue(testPropertyModel(id: 0));
   });
 
   setUp(() {
@@ -62,6 +63,14 @@ void main() {
         isLiked: any(named: 'isLiked'),
       ),
     ).thenAnswer((_) async {});
+    when(
+      () => mockPageStateService.undoSwipe(
+        propertyId: any(named: 'propertyId'),
+        originalIsLiked: any(named: 'originalIsLiked'),
+        notifyServer: any(named: 'notifyServer'),
+      ),
+    ).thenAnswer((_) async {});
+    when(() => mockPageStateService.reinsertPropertyToDiscover(any())).thenReturn(null);
     when(
       () => mockPageStateService.getCurrentPageState(),
     ).thenReturn(PageStateModel.initial(PageType.explore));
@@ -211,6 +220,17 @@ void main() {
 
       // Should revert to original (not liked)
       expect(controller.likedOverrides[property.id], isFalse);
+      // And reverse recordSwipe's optimistic mutations: the likes caches are
+      // undone without a server call, and the card is un-blacklisted and
+      // restored to the discover deck so Discover/Likes stay truthful.
+      verify(
+        () => mockPageStateService.undoSwipe(
+          propertyId: property.id,
+          originalIsLiked: true,
+          notifyServer: false,
+        ),
+      ).called(1);
+      verify(() => mockPageStateService.reinsertPropertyToDiscover(property)).called(1);
     });
 
     test('selectProperty sets selected property and auto-expands list', () {

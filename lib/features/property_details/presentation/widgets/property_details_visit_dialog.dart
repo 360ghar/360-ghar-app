@@ -95,11 +95,20 @@ class _BookVisitDialogState extends State<_BookVisitDialog> {
               style: TextStyle(color: AppDesign.textSecondary),
             ),
             onTap: () async {
+              // showDatePicker asserts firstDate <= initialDate <= lastDate.
+              // `_selectedDate` was captured when the dialog opened, so across
+              // midnight it can sit before today+1; clamp it into the window
+              // (same pattern as visits_view.dart).
+              final DateTime firstDate = DateTime.now().add(const Duration(days: 1));
+              final DateTime initialDate = _selectedDate.isBefore(firstDate)
+                  ? firstDate
+                  : _selectedDate;
+              final DateTime windowEnd = firstDate.add(const Duration(days: 29));
               final DateTime? picked = await showDatePicker(
                 context: context,
-                initialDate: _selectedDate,
-                firstDate: DateTime.now().add(const Duration(days: 1)),
-                lastDate: DateTime.now().add(const Duration(days: 30)),
+                initialDate: initialDate,
+                firstDate: firstDate,
+                lastDate: initialDate.isAfter(windowEnd) ? initialDate : windowEnd,
               );
               if (picked != null) {
                 setState(() => _selectedDate = picked);

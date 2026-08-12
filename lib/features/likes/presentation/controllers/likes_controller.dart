@@ -194,6 +194,11 @@ class LikesController extends GetxController {
       likedOverrides[property.id] = previous;
       await _reverseFailedSwipe(property.id, liked);
       AppToast.error('action_failed'.tr, 'like_update_failed'.tr);
+      // recordSwipe already removed the card from the visible liked/passed
+      // list before failing; only reverting the heart would leave the card
+      // missing from the grid while the heart says otherwise. Reconcile the
+      // list with the server (mirrors removeFromLikes/moveToLikes).
+      await _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
     } finally {
       _pendingFavouriteUpdates.remove(property.id);
     }

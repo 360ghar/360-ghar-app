@@ -71,11 +71,21 @@ class TourUrl {
       final originUri = Uri.tryParse(originValidated);
       final navUri = Uri.tryParse(validated);
       if (originUri == null || navUri == null) return false;
-      final originPort = originUri.hasPort ? originUri.port : _defaultPort(originUri.scheme);
-      final navPort = navUri.hasPort ? navUri.port : _defaultPort(navUri.scheme);
-      if (originUri.scheme.toLowerCase() == navUri.scheme.toLowerCase() &&
-          originUri.host.toLowerCase() == navUri.host.toLowerCase() &&
-          originPort == navPort) {
+      final originScheme = originUri.scheme.toLowerCase();
+      final navScheme = navUri.scheme.toLowerCase();
+      final originPort = originUri.hasPort ? originUri.port : _defaultPort(originScheme);
+      final navPort = navUri.hasPort ? navUri.port : _defaultPort(navScheme);
+      final sameHost = originUri.host.toLowerCase() == navUri.host.toLowerCase();
+      final sameSchemeAndPort = originScheme == navScheme && originPort == navPort;
+      // A stored http tour URL whose server redirects to https must stay
+      // navigable (same host, default ports) — but never the reverse:
+      // https→http is a downgrade and is blocked like every cross-origin hop.
+      final httpToHttpsUpgrade =
+          originScheme == 'http' &&
+          navScheme == 'https' &&
+          originPort == _defaultPort('http') &&
+          navPort == _defaultPort('https');
+      if (sameHost && (sameSchemeAndPort || httpToHttpsUpgrade)) {
         return true;
       }
     }

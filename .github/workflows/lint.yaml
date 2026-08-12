@@ -41,6 +41,7 @@ jobs:
           fi
 
       - name: Verify iOS release privacy configuration
+        if: runner.os == 'macOS'
         run: ./tool/verify_ios_release.sh
 
       - name: Get dependencies

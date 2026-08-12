@@ -1043,9 +1043,77 @@ void main() {
         ),
       ).called(1);
     });
-  });
+    test('skips when state.isRefreshing is true', () async {
+      // A scroll-triggered load-more racing an in-flight refresh must not
+      // append a stale page 2 with a stale cursor.
+      when(() => pageState.getStateForPage(any())).thenAnswer(
+        (inv) => cachedState(
+          inv.positionalArguments[0] as PageType,
+          nextCursor: 'next',
+          hasMore: true,
+        ).copyWith(isRefreshing: true),
+      );
+      await loader.loadMorePageData(PageType.explore);
+      verifyNever(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      );
+    });
+    test('stale load-more completion discards the append and clears isLoadingMore', () async {
+      // Session reset (logout) invalidates in-flight generations; the stale
+      // load-more must not repopulate the cleared state and must release the
+      // pagination flag so later load-mores still work.
+      var current = cachedState(
+        PageType.explore,
+        properties: [testPropertyModel(id: 1)],
+        nextCursor: 'next',
+        hasMore: true,
+      );
+      when(() => pageState.getStateForPage(any())).thenAnswer((_) => current);
+      when(() => pageState.updatePageState(any(), any())).thenAnswer((inv) {
+        current = inv.positionalArguments[1] as PageStateModel;
+      });
+      final gate = Completer<UnifiedPropertyResponse>();
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) => gate.future);
 
-  // ── debounceRefresh / refreshAllPagesData / dispose ──────────────────
+      final loadMore = loader.loadMorePageData(PageType.explore);
+      await Future<void>.delayed(Duration.zero);
+      expect(current.isLoadingMore, isTrue);
+
+      loader.invalidateAllLoads();
+      gate.complete(
+        UnifiedPropertyResponse(
+          items: [testPropertyModel(id: 2)],
+          nextCursor: 'next2',
+          hasMore: true,
+        ),
+      );
+      await loadMore;
+
+      // The stale page was discarded, and the flag released.
+      expect(current.properties.map((p) => p.id), [1]);
+      expect(current.isLoadingMore, isFalse);
+    });
+  });
 
   group('debounceRefresh', () {
     test('schedules a refresh for explore after delay', () async {

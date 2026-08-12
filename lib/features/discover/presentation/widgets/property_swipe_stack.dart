@@ -10,7 +10,6 @@ import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
@@ -335,6 +334,10 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   /// new list in [_pendingProperties] (it is drained by the exit animation,
   /// which never runs here). Adopt it now, or the stale card stays on top and
   /// every further swipe attempt is rejected the same way.
+  ///
+  /// No toast on purpose: this fires when a refresh replaced the deck mid-drag
+  /// (nothing failed), not when a swipe failed to save — that error toast is
+  /// the controller's job, where the revert actually happened.
   void _rejectSwipe() {
     _snapBack();
     if (_pendingProperties != null) {
@@ -343,7 +346,6 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
         _pendingProperties = null;
       });
     }
-    AppToast.error('error'.tr, 'swipe_save_failed'.tr);
   }
 
   @override

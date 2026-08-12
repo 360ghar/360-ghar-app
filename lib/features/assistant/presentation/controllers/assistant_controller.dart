@@ -144,9 +144,14 @@ class AssistantController extends GetxController {
         break;
 
       case 'error':
-        final msg = event.data['message'] as String? ?? 'assistant_error'.tr;
-        _appendToAssistant(assistantId, msg);
-        _finishStreaming(assistantId);
+        final msg = event.data['message'] as String? ?? '';
+        // An SSE error without a usable message must read as a failure, not as
+        // a normal empty turn — the view's shrink rule would hide the latter
+        // and the user would get no error and no retry affordance.
+        if (msg.trim().isNotEmpty) {
+          _appendToAssistant(assistantId, msg);
+        }
+        _finishStreaming(assistantId, errored: msg.trim().isEmpty);
         break;
     }
   }
@@ -181,9 +186,17 @@ class AssistantController extends GetxController {
   void cancelStream() {
     _streamSubscription?.cancel();
     _streamSubscription = null;
-    _activeAssistantId = null;
-    isStreaming.value = false;
-    activeToolCall.value = null;
+    final assistantId = _activeAssistantId;
+    if (assistantId == null) {
+      isStreaming.value = false;
+      activeToolCall.value = null;
+      return;
+    }
+    // Settle the in-flight assistant message (isStreaming: false) so the
+    // 3-dot typing indicator does not animate forever; _finishStreaming also
+    // clears the controller flags. No error substitution — a user-initiated
+    // cancel is not a failure.
+    _finishStreaming(assistantId);
   }
 
   // ── Conversation History ───────────────────────────────────────

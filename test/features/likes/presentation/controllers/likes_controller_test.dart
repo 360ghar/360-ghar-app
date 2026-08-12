@@ -129,6 +129,27 @@ void main() {
         () => mockPageStateService.recordSwipe(propertyId: 42, isLiked: false, property: prop),
       ).called(1);
     });
+    test('addToFavourites refreshes data on failure', () async {
+      final props = seedProperties(2);
+      likesState.value = PageStateModel(
+        pageType: PageType.likes,
+        filters: const UnifiedFilterModel(),
+        properties: props,
+        additionalData: const {'currentSegment': 'liked'},
+      );
+      when(
+        () => mockPageStateService.recordSwipe(
+          propertyId: any(named: 'propertyId'),
+          isLiked: any(named: 'isLiked'),
+          property: any(named: 'property'),
+        ),
+      ).thenThrow(ServerException('network error'));
+      final controller = createController();
+      await controller.addToFavourites(props[0]);
+      // The card was already removed from the visible list by recordSwipe, so
+      // the grid must reconcile with the server (mirrors removeFromLikes).
+      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
+    });
 
     test('currentProperties returns properties from page state', () {
       final props = seedProperties(3);

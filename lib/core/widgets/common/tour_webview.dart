@@ -141,6 +141,10 @@ class _TourWebViewState extends State<TourWebView> {
       return;
     }
     _setLoading(false);
+    // A tour that only finished loading after the 20s watchdog fired must
+    // recover: the late 'loaded' signal clears the error the watchdog set,
+    // instead of leaving the user stuck on the error screen.
+    _setError(false);
   }
 
   void _applyPageChrome() {

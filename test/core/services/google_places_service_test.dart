@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -323,6 +324,41 @@ void main() {
       );
 
       expect(result, isEmpty);
+      expect(service.placeSuggestions, isEmpty);
+      expect(service.isSearchingPlaces.value, isFalse);
+    });
+    test('clears stale suggestions as soon as Google returns zero results', () async {
+      // A previous search left suggestions on screen.
+      service.placeSuggestions.add(
+        PlaceSuggestion(
+          placeId: 'old-1',
+          description: 'Old Place',
+          mainText: 'Old',
+          secondaryText: 'Previous query',
+        ),
+      );
+      // Hang the throttled Nominatim fallback so the mid-flight state is
+      // observable: with the fix, the stale list is gone the moment Google's
+      // ZERO_RESULTS arrives, not only when the fallback settles (~1.1s).
+      final nominatimGate = Completer<http.Response>();
+      final client = MockClient((request) async {
+        if (request.url.path.contains('autocomplete')) {
+          return http.Response(
+            jsonEncode(<String, dynamic>{'status': 'ZERO_RESULTS', 'predictions': <dynamic>[]}),
+            200,
+          );
+        }
+        return nominatimGate.future;
+      });
+      final search = http.runWithClient(() => service.getPlaceSuggestions('nowhere'), () => client);
+
+      // Let Google's ZERO_RESULTS response be processed; fallback still pending.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(service.placeSuggestions, isEmpty, reason: 'stale results must clear immediately');
+      expect(service.isSearchingPlaces.value, isTrue, reason: 'fallback still in flight');
+
+      nominatimGate.complete(http.Response(jsonEncode(<dynamic>[]), 200));
+      await search;
       expect(service.placeSuggestions, isEmpty);
       expect(service.isSearchingPlaces.value, isFalse);
     });

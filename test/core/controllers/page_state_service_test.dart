@@ -9,6 +9,7 @@
 // - removePropertyFromDiscover / reinsertPropertyToDiscover
 // - addPropertyToLikes / removePropertyFromLikes
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -21,6 +22,7 @@ import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/core/data/models/unified_property_response.dart';
 import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/features/properties/data/properties_repository.dart';
@@ -803,6 +805,51 @@ void main() {
       expect(service.exploreState.value.properties, isEmpty);
       expect(service.discoverState.value.properties, isEmpty);
       expect(service.likesState.value.properties, isEmpty);
+    });
+    test('in-flight loads are invalidated so stale completions are discarded', () async {
+      final service = await createService();
+      // Seed a location so the explore fetch proceeds straight to the network.
+      service.updatePageState(
+        PageType.explore,
+        service.exploreState.value.copyWith(
+          selectedLocation: const LocationData(name: 'Test City', latitude: 28.6, longitude: 77.2),
+        ),
+      );
+
+      // Gate the explore fetch so logout can happen mid-flight.
+      final gate = Completer<UnifiedPropertyResponse>();
+      when(
+        () => propertiesRepo.searchProperties(
+          filters: any(named: 'filters'),
+          cursor: any(named: 'cursor'),
+          limit: any(named: 'limit'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+          radiusKm: any(named: 'radiusKm'),
+          excludeSwiped: any(named: 'excludeSwiped'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer((_) => gate.future);
+
+      final load = service.loadPageData(PageType.explore, forceRefresh: true);
+      await Future<void>.delayed(Duration.zero);
+
+      service.clearSessionData();
+
+      gate.complete(
+        UnifiedPropertyResponse(
+          items: [testPropertyModel(id: 1)],
+          nextCursor: null,
+          hasMore: false,
+        ),
+      );
+      await load;
+
+      // The previous user's fetch must not repopulate the cleared state, and
+      // the loading flag must not stay set for the next user.
+      expect(service.exploreState.value.properties, isEmpty);
+      expect(service.exploreState.value.isLoading, isFalse);
+      expect(service.exploreState.value.isRefreshing, isFalse);
     });
   });
 

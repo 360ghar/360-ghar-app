@@ -347,7 +347,9 @@ void main() {
       expect(find.byType(PropertySwipeCard), findsOneWidget);
     });
 
-    testWidgets('snaps back, keeps the card and toasts when canSwipe rejects it', (tester) async {
+    testWidgets('snaps back, keeps the card and stays silent when canSwipe rejects it', (
+      tester,
+    ) async {
       // A background refresh (filter change / GPS update) landed mid-drag, so
       // the frozen top card is no longer in the controller's deck. Committing
       // the swipe would fly the card off while the swipe is silently dropped —
@@ -381,10 +383,11 @@ void main() {
       expect(swipedLeft, isNull);
       // The rejected card is still the top card, not animated off.
       expect(find.text('Alpha Home'), findsWidgets);
-      // And the bounce is explained rather than silent.
+      // Nothing failed, so no error toast — the "swipe could not be saved"
+      // message would promise a revert that never happened.
       expect(
         find.text('Your swipe could not be saved. The property is back in your deck.'),
-        findsOneWidget,
+        findsNothing,
       );
 
       Get.closeAllSnackbars();
