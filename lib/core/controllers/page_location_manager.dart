@@ -199,10 +199,18 @@ class PageLocationManager {
     }
   }
 
-  // Page-specific current location (with IP fallback)
+  // Page-specific current location (with IP fallback).
+  //
+  // A fresh cached position (<2 min old) is reused as-is so activating a page
+  // never blocks the first properties fetch on a full GPS fix; the live GPS
+  // stream keeps refining the location afterwards via [_handleGpsPositionUpdate].
   Future<void> useCurrentLocationForPage(PageType pageType) async {
     try {
-      await _locationController.getCurrentLocation(forceRefresh: true);
+      final cached = _locationController.currentPosition.value;
+      if (cached == null) {
+        // Nothing usable yet — ask for a real fix.
+        await _locationController.getCurrentLocation();
+      }
       final position = _locationController.currentPosition.value;
       if (position != null) {
         // Get real address from coordinates

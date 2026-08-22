@@ -493,27 +493,28 @@ class PageStateService extends GetxController {
     try {
       final initialLocation = existingLocation ?? await _locationController.getInitialLocation();
 
-      if (!exploreState.value.hasLocation) {
-        await _locationManager.updateLocationForPage(
-          PageType.explore,
-          initialLocation,
-          source: LocationSource.initial,
-        );
-      }
-      if (!discoverState.value.hasLocation) {
-        await _locationManager.updateLocationForPage(
-          PageType.discover,
-          initialLocation,
-          source: LocationSource.initial,
-        );
-      }
-      if (!likesState.value.hasLocation) {
-        await _locationManager.updateLocationForPage(
-          PageType.likes,
-          initialLocation,
-          source: LocationSource.initial,
-        );
-      }
+      // Independent page updates run concurrently; normalizeSavedLocations
+      // waits for all of them before declaring bootstrap complete.
+      await Future.wait([
+        if (!exploreState.value.hasLocation)
+          _locationManager.updateLocationForPage(
+            PageType.explore,
+            initialLocation,
+            source: LocationSource.initial,
+          ),
+        if (!discoverState.value.hasLocation)
+          _locationManager.updateLocationForPage(
+            PageType.discover,
+            initialLocation,
+            source: LocationSource.initial,
+          ),
+        if (!likesState.value.hasLocation)
+          _locationManager.updateLocationForPage(
+            PageType.likes,
+            initialLocation,
+            source: LocationSource.initial,
+          ),
+      ]);
       await _locationManager.normalizeSavedLocations();
       DebugLogger.success('✅ Successfully bootstrapped initial location for all pages.');
     } catch (e, st) {
