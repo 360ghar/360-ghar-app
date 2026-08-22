@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
@@ -119,8 +120,8 @@ class _MockPageStateService extends GetxServiceMock implements PageStateService 
   }
 
   @override
-  String get currentLikesSegment =>
-      likesState.value.getAdditionalData<String>('currentSegment') ?? 'liked';
+  LikesSegment get currentLikesSegment => LikesSegment.tryParse(
+      likesState.value.getAdditionalData<String>('currentSegment'));
 }
 
 // ---------------------------------------------------------------------------

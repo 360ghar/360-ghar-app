@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
@@ -33,7 +34,7 @@ void main() {
     // Stub reactive fields
     when(() => mockPageStateService.likesState).thenReturn(likesState);
     when(() => mockPageStateService.currentPageType).thenReturn(currentPageType);
-    when(() => mockPageStateService.currentLikesSegment).thenReturn('liked');
+    when(() => mockPageStateService.currentLikesSegment).thenReturn(LikesSegment.liked);
 
     // Stub methods
     when(
@@ -713,7 +714,7 @@ void main() {
   group('LikesController — favourite state', () {
     test('passed property is not favourite while the passed segment is loaded', () {
       final passed = property(id: 501);
-      when(() => mockPageStateService.currentLikesSegment).thenReturn('passed');
+      when(() => mockPageStateService.currentLikesSegment).thenReturn(LikesSegment.passed);
       likesState.value = PageStateModel(
         pageType: PageType.likes,
         filters: const UnifiedFilterModel(),

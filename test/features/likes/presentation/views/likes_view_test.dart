@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
@@ -82,8 +83,7 @@ class _MockPageStateService extends GetxServiceMock implements PageStateService 
   }
 
   @override
-  String get currentLikesSegment =>
-      likesState.value.getAdditionalData<String>('currentSegment') ?? 'liked';
+  LikesSegment get currentLikesSegment => LikesSegment.liked;
 
   @override
   Future<void> loadPageData(
@@ -409,9 +409,9 @@ void main() {
 
       await pumpLikesView(tester);
 
-      // Each property card has a key 'qa.likes.card.<id>'
-      expect(find.byKey(const ValueKey('qa.likes.card.1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.likes.card.2')), findsOneWidget);
+      // Each property card has a key 'qa.property.card.<id>'
+      expect(find.byKey(const ValueKey('qa.property.card.1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('qa.property.card.2')), findsOneWidget);
     });
   });
 
@@ -602,7 +602,7 @@ void main() {
 
       // The favorite toggle is an AnimatedFavoriteIcon (GestureDetector).
       // When isFavourite=true (liked segment), the icon is Icons.favorite (filled).
-      final card = find.byKey(const ValueKey('qa.likes.card.1'));
+      final card = find.byKey(const ValueKey('qa.property.card.1'));
       expect(card, findsOneWidget);
 
       final favoriteIcon = find.descendant(of: card, matching: find.byIcon(Icons.favorite));
@@ -620,7 +620,7 @@ void main() {
 
       await pumpLikesView(tester);
 
-      final card = find.byKey(const ValueKey('qa.likes.card.1'));
+      final card = find.byKey(const ValueKey('qa.property.card.1'));
       expect(card, findsOneWidget);
 
       final favoriteIcon = find.descendant(of: card, matching: find.byIcon(Icons.favorite_border));
