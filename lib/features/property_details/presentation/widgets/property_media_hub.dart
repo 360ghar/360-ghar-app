@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -10,9 +9,8 @@ import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/tour_url.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
+import 'package:ghar360/features/property_details/presentation/widgets/fullscreen_photo_gallery.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_section_header.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -157,7 +155,11 @@ class PropertyMediaHub extends StatelessWidget {
       PageRouteBuilder<void>(
         opaque: true,
         pageBuilder: (context, animation, secondaryAnimation) {
-          return _FullscreenMediaGallery(images: images, initialIndex: initialIndex);
+          return FullscreenPhotoGallery(
+            images: images,
+            initialIndex: initialIndex,
+            heroTagPrefix: 'media',
+          );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
@@ -464,96 +466,6 @@ class _LazyVideoPlayerState extends State<_LazyVideoPlayer> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _FullscreenMediaGallery extends StatefulWidget {
-  const _FullscreenMediaGallery({required this.images, required this.initialIndex});
-
-  final List<String> images;
-  final int initialIndex;
-
-  @override
-  State<_FullscreenMediaGallery> createState() => _FullscreenMediaGalleryState();
-}
-
-class _FullscreenMediaGalleryState extends State<_FullscreenMediaGallery> {
-  late int _index;
-  late final PageController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _index = widget.initialIndex;
-    _controller = PageController(initialPage: widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppDesign.overlayDark,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            PhotoViewGallery.builder(
-              itemCount: widget.images.length,
-              pageController: _controller,
-              backgroundDecoration: const BoxDecoration(color: AppDesign.overlayDark),
-              onPageChanged: (i) => setState(() => _index = i),
-              builder: (context, index) {
-                final url = widget.images[index];
-                return PhotoViewGalleryPageOptions(
-                  imageProvider: CachedNetworkImageProvider(url),
-                  minScale: PhotoViewComputedScale.contained,
-                  maxScale: PhotoViewComputedScale.covered * 2.5,
-                  heroAttributes: PhotoViewHeroAttributes(tag: 'media_$url'),
-                );
-              },
-            ),
-            Positioned(
-              top: 4,
-              left: 8,
-              child: Material(
-                color: AppDesign.overlayDark.withValues(alpha: 0.45),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: AppDesign.overlayLight),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ),
-            if (widget.images.length > 1)
-              Positioned(
-                bottom: 20,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppDesign.overlayDark.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(AppBorderRadius.round),
-                    ),
-                    child: Text(
-                      '${_index + 1}/${widget.images.length}',
-                      style: const TextStyle(
-                        color: AppDesign.overlayLight,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }

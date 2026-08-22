@@ -1,12 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/image_cache_service.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
+import 'package:ghar360/features/property_details/presentation/widgets/fullscreen_photo_gallery.dart';
 
 /// Image gallery shown in the SliverAppBar of the property details page.
 /// Supports page swiping, prefetching, and a full-screen PhotoView overlay.
@@ -83,7 +83,11 @@ class _PropertyDetailsImageGalleryState extends State<PropertyDetailsImageGaller
         opaque: true,
         barrierColor: AppDesign.overlayDark,
         pageBuilder: (context, animation, secondaryAnimation) {
-          return _FullscreenGallery(images: images, initialIndex: initialIndex);
+          return FullscreenPhotoGallery(
+            images: images,
+            initialIndex: initialIndex,
+            heroTagPrefix: 'fullscreen',
+          );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
@@ -250,97 +254,6 @@ class _HeroMediaBadge extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _FullscreenGallery extends StatefulWidget {
-  const _FullscreenGallery({required this.images, required this.initialIndex});
-
-  final List<String> images;
-  final int initialIndex;
-
-  @override
-  State<_FullscreenGallery> createState() => _FullscreenGalleryState();
-}
-
-class _FullscreenGalleryState extends State<_FullscreenGallery> {
-  late int _index;
-  late final PageController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _index = widget.initialIndex;
-    _controller = PageController(initialPage: widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppDesign.overlayDark,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            PhotoViewGallery.builder(
-              itemCount: widget.images.length,
-              pageController: _controller,
-              backgroundDecoration: const BoxDecoration(color: AppDesign.overlayDark),
-              onPageChanged: (i) => setState(() => _index = i),
-              builder: (context, index) {
-                final url = widget.images[index];
-                return PhotoViewGalleryPageOptions(
-                  imageProvider: CachedNetworkImageProvider(url),
-                  heroAttributes: PhotoViewHeroAttributes(tag: 'fullscreen_$url'),
-                  minScale: PhotoViewComputedScale.contained,
-                  maxScale: PhotoViewComputedScale.covered * 2.5,
-                );
-              },
-            ),
-            Positioned(
-              top: 4,
-              left: 8,
-              child: Material(
-                color: AppDesign.overlayDark.withValues(alpha: 0.45),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: AppDesign.overlayLight),
-                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ),
-            if (widget.images.length > 1)
-              Positioned(
-                bottom: 20,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppDesign.overlayDark.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(AppBorderRadius.round),
-                    ),
-                    child: Text(
-                      '${_index + 1}/${widget.images.length}',
-                      style: const TextStyle(
-                        color: AppDesign.overlayLight,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }
