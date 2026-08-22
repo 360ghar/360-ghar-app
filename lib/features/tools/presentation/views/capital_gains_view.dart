@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/features/tools/presentation/controllers/capital_gains_controller.dart';
+import 'package:ghar360/features/tools/presentation/widgets/calculator_widgets.dart';
 
 class CapitalGainsView extends GetView<CapitalGainsController> {
   const CapitalGainsView({super.key});
@@ -77,7 +76,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildTextField(
+                    CalculatorTextField(
                       label: 'purchase_price'.tr,
                       controller: controller.purchasePriceController,
                       prefix: '₹',
@@ -91,7 +90,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                       onPicked: controller.setPurchaseDate,
                     ),
                     const SizedBox(height: 16),
-                    _buildTextField(
+                    CalculatorTextField(
                       label: 'improvement_cost'.tr,
                       controller: controller.improvementCostController,
                       prefix: '₹',
@@ -119,7 +118,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildTextField(
+                    CalculatorTextField(
                       label: 'sale_price'.tr,
                       controller: controller.salePriceController,
                       prefix: '₹',
@@ -170,46 +169,6 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
       ),
     );
   }
-
-  Widget _buildTextField({
-    required String label,
-    required TextEditingController controller,
-    String? prefix,
-    String? hint,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: AppDesign.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          style: TextStyle(color: AppDesign.textPrimary),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: AppDesign.textTertiary),
-            prefixText: prefix,
-            prefixStyle: TextStyle(color: AppDesign.textPrimary),
-            filled: true,
-            fillColor: AppDesign.inputBackground,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   /// A tap target styled exactly like the number inputs above it, opening
   /// Flutter's built-in [showDatePicker].
   Widget _buildDateField({
@@ -313,12 +272,12 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildResultRow(
+            CalculatorResultRow(
               'indexed_cost'.tr,
               IndianCurrency.compact(controller.indexedCost.value),
             ),
             const SizedBox(height: 8),
-            _buildResultRow(
+            CalculatorResultRow(
               'capital_gain_amount'.tr,
               IndianCurrency.compact(controller.capitalGain.value),
             ),
@@ -347,7 +306,7 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
                 controller.taxWithoutIndexation.value < controller.taxWithIndexation.value,
               ),
             ] else ...[
-              _buildResultRow(
+              CalculatorResultRow(
                 'estimated_tax'.tr,
                 IndianCurrency.compact(controller.taxWithIndexation.value),
                 isHighlight: true,
@@ -389,24 +348,6 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
       ),
     );
   }
-
-  Widget _buildResultRow(String label, String value, {bool isHighlight = false}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(fontSize: 14, color: AppDesign.textSecondary)),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: isHighlight ? 20 : 16,
-            fontWeight: FontWeight.w600,
-            color: AppDesign.textPrimary,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildTaxOption(String label, String rate, double amount, bool isRecommended) {
     return Container(
       padding: const EdgeInsets.all(12),

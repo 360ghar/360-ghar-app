@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/features/tools/presentation/controllers/loan_eligibility_controller.dart';
+import 'package:ghar360/features/tools/presentation/widgets/calculator_widgets.dart';
 
 class LoanEligibilityView extends GetView<LoanEligibilityController> {
   const LoanEligibilityView({super.key});
@@ -47,19 +46,19 @@ class LoanEligibilityView extends GetView<LoanEligibilityController> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildTextField(
+                    CalculatorTextField(
                       label: 'monthly_income'.tr,
                       controller: controller.incomeController,
                       prefix: '₹',
                     ),
                     const SizedBox(height: 16),
-                    _buildTextField(
+                    CalculatorTextField(
                       label: 'your_age'.tr,
                       controller: controller.ageController,
                       suffix: 'years'.tr,
                     ),
                     const SizedBox(height: 16),
-                    _buildTextField(
+                    CalculatorTextField(
                       label: 'existing_emi'.tr,
                       controller: controller.existingEmiController,
                       prefix: '₹',
@@ -207,18 +206,18 @@ class LoanEligibilityView extends GetView<LoanEligibilityController> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _buildResultRow(
+                      CalculatorResultRow(
                         'max_loan_amount'.tr,
                         IndianCurrency.compact(controller.maxLoanAmount.value),
                         isHighlight: true,
                       ),
                       const Divider(height: 24),
-                      _buildResultRow(
+                      CalculatorResultRow(
                         'eligible_emi'.tr,
                         '${IndianCurrency.compact(controller.eligibleEmi.value)}/mo',
                       ),
                       const SizedBox(height: 8),
-                      _buildResultRow(
+                      CalculatorResultRow(
                         'max_tenure'.tr,
                         '${controller.maxTenure.value} ${'years'.tr}',
                       ),
@@ -250,65 +249,6 @@ class LoanEligibilityView extends GetView<LoanEligibilityController> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildTextField({
-    required String label,
-    required TextEditingController controller,
-    String? prefix,
-    String? suffix,
-    String? hint,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: AppDesign.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          style: TextStyle(color: AppDesign.textPrimary),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: AppDesign.textTertiary),
-            prefixText: prefix,
-            prefixStyle: TextStyle(color: AppDesign.textPrimary),
-            suffixText: suffix,
-            suffixStyle: TextStyle(color: AppDesign.textSecondary),
-            filled: true,
-            fillColor: AppDesign.inputBackground,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildResultRow(String label, String value, {bool isHighlight = false}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(fontSize: 14, color: AppDesign.textSecondary)),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: isHighlight ? 20 : 16,
-            fontWeight: FontWeight.w600,
-            color: isHighlight ? AppDesign.primaryYellow : AppDesign.textPrimary,
-          ),
-        ),
-      ],
     );
   }
 }

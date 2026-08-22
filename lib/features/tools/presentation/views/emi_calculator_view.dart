@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/features/tools/presentation/controllers/emi_calculator_controller.dart';
+import 'package:ghar360/features/tools/presentation/widgets/calculator_widgets.dart';
 
 class EmiCalculatorView extends GetView<EmiCalculatorController> {
   const EmiCalculatorView({super.key});
@@ -49,13 +48,13 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildTextField(
+                    CalculatorTextField(
                       label: 'loan_amount'.tr,
                       controller: controller.principalController,
                       prefix: '₹',
                     ),
                     const SizedBox(height: 16),
-                    _buildTextField(
+                    CalculatorTextField(
                       label: 'interest_rate'.tr,
                       controller: controller.rateController,
                       suffix: '%',
@@ -65,7 +64,7 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
                     Row(
                       children: [
                         Expanded(
-                          child: _buildTextField(
+                          child: CalculatorTextField(
                             label: 'tenure'.tr,
                             controller: controller.tenureController,
                             keyboardType: TextInputType.number,
@@ -170,12 +169,12 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
                       const SizedBox(height: 24),
                       const Divider(),
                       const SizedBox(height: 16),
-                      _buildResultRow(
+                      CalculatorResultRow(
                         'total_interest'.tr,
                         IndianCurrency.compact(controller.totalInterest.value),
                       ),
                       const SizedBox(height: 12),
-                      _buildResultRow(
+                      CalculatorResultRow(
                         'total_payment'.tr,
                         IndianCurrency.compact(controller.totalPayment.value),
                       ),
@@ -191,65 +190,6 @@ class EmiCalculatorView extends GetView<EmiCalculatorController> {
       ),
     );
   }
-
-  Widget _buildTextField({
-    required String label,
-    required TextEditingController controller,
-    String? prefix,
-    String? suffix,
-    String? hint,
-    TextInputType? keyboardType,
-    List<TextInputFormatter>? inputFormatters,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: AppDesign.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: keyboardType ?? const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: inputFormatters,
-          style: TextStyle(color: AppDesign.textPrimary),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: AppDesign.textTertiary),
-            prefixText: prefix,
-            prefixStyle: TextStyle(color: AppDesign.textPrimary),
-            suffixText: suffix,
-            suffixStyle: TextStyle(color: AppDesign.textSecondary),
-            filled: true,
-            fillColor: AppDesign.inputBackground,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildResultRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(fontSize: 14, color: AppDesign.textSecondary)),
-        Text(
-          value,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppDesign.textPrimary),
-        ),
-      ],
-    );
-  }
-
   Widget _buildBreakdownChart() {
     final principal = double.tryParse(controller.principalController.text) ?? 0;
     final interest = controller.totalInterest.value;
