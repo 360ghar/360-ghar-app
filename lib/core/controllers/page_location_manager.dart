@@ -27,6 +27,16 @@ class PageLocationManager {
   DateTime? _lastGpsRefreshAt;
   DateTime? _lastGpsGeocodeAt;
 
+  /// Reverse-geocode results keyed by ~110m coordinate grid cells. Map pans
+  /// repeatedly resolve names for nearby points; this keeps that at one
+  /// platform geocode per cell. Bounded and rebuilt per session.
+  final Map<String, String> _geocodeCache = {};
+
+  String _geocodeCacheKey(double lat, double lng) {
+    // ~0.001° ≈ 110 m; rounding gives a stable cell key for jittery pans.
+    return '${lat.toStringAsFixed(3)}:${lng.toStringAsFixed(3)}';
+  }
+
   static const Duration _gpsRefreshMinInterval = Duration(minutes: 3);
   static const double _gpsRefreshMinDistanceMeters = 300;
   static const Duration _gpsGeocodeMinInterval = Duration(minutes: 2);
@@ -119,20 +129,34 @@ class PageLocationManager {
     LocationData finalLocation = location;
     final shouldResolveName = source.resolvesName;
     if (shouldResolveName && isPlaceholderLocationName(location.name)) {
-      try {
-        final resolvedName = await _locationController.getAddressFromCoordinates(
-          location.latitude,
-          location.longitude,
-        );
+      final cacheKey = _geocodeCacheKey(location.latitude, location.longitude);
+      final cachedName = _geocodeCache[cacheKey];
+      if (cachedName != null) {
         finalLocation = LocationData(
-          name: resolvedName,
+          name: cachedName,
           latitude: location.latitude,
           longitude: location.longitude,
         );
-        DebugLogger.info('🧭 Resolved location name to "$resolvedName"');
-      } catch (e, st) {
-        DebugLogger.warning('Reverse geocoding failed, keeping provided name. $e');
-        DebugLogger.warning(st.toString());
+      } else {
+        try {
+          final resolvedName = await _locationController.getAddressFromCoordinates(
+            location.latitude,
+            location.longitude,
+          );
+          // Keep the cache bounded: one entry per grid cell, cleared wholesale
+          // on the rare overflow rather than growing without limit.
+          if (_geocodeCache.length >= 128) _geocodeCache.clear();
+          _geocodeCache[cacheKey] = resolvedName;
+          finalLocation = LocationData(
+            name: resolvedName,
+            latitude: location.latitude,
+            longitude: location.longitude,
+          );
+          DebugLogger.info('🧭 Resolved location name to "$resolvedName"');
+        } catch (e, st) {
+          DebugLogger.warning('Reverse geocoding failed, keeping provided name. $e');
+          DebugLogger.warning(st.toString());
+        }
       }
     }
 
