@@ -11,7 +11,6 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 
 // Controllers should never talk to repositories directly
 
@@ -180,12 +179,6 @@ class DiscoverController extends GetxController {
   Future<void> swipeRight(PropertyModel property) async {
     if (!await _handleSwipe(property, true)) return;
     _recordSwipeStats(true);
-    _recordDashboardActivity(
-      type: 'like',
-      title: 'dashboard_activity_liked'.trParams({'property': property.title}),
-      icon: 'favorite',
-      liked: true,
-    );
     await _safeAnalytics(
       'property_like',
       () => AnalyticsService.likeProperty(property.id.toString()),
@@ -195,35 +188,10 @@ class DiscoverController extends GetxController {
   Future<void> swipeLeft(PropertyModel property) async {
     if (!await _handleSwipe(property, false)) return;
     _recordSwipeStats(false);
-    _recordDashboardActivity(
-      type: 'pass',
-      title: 'dashboard_activity_passed'.trParams({'property': property.title}),
-      icon: 'close',
-      liked: false,
-    );
     await _safeAnalytics(
       'property_pass',
       () => AnalyticsService.logVital('property_pass', params: {'id': property.id.toString()}),
     );
-  }
-
-  /// Records swipe activity to the locally-persisted dashboard stats so the
-  /// dashboard reflects real usage instead of fabricated data.
-  void _recordDashboardActivity({
-    required String type,
-    required String title,
-    required String icon,
-    required bool liked,
-  }) {
-    try {
-      if (!Get.isRegistered<DashboardController>()) return;
-      final dash = Get.find<DashboardController>();
-      dash.incrementStat(kDashPropertiesViewedKey);
-      if (liked) dash.incrementStat(kDashPropertiesLikedKey);
-      dash.recordActivity(type: type, title: title, icon: icon);
-    } catch (e) {
-      DebugLogger.warning('Failed to record dashboard activity: $e');
-    }
   }
 
   /// Returns false when the swipe was ignored as a duplicate gesture.
@@ -369,7 +337,7 @@ class DiscoverController extends GetxController {
 
   /// Revert logic for [_revertUnsavedSwipe]:
   /// restores [property] to the front of the deck and reverses the
-  /// session/dashboard stats [_recordSwipeStats]/[_recordDashboardActivity]
+  /// session stats [_recordSwipeStats]
   /// recorded for the original swipe.
   void _restorePropertyAfterSwipe({required PropertyModel property, required bool isLiked}) {
     // Restore the property to the front of the discover deck so the user
@@ -392,19 +360,6 @@ class DiscoverController extends GetxController {
       likesInSession.value = (likesInSession.value - 1).clamp(0, 1 << 31);
     } else {
       passesInSession.value = (passesInSession.value - 1).clamp(0, 1 << 31);
-    }
-
-    // Reverse the persisted dashboard stats that the original swipe recorded
-    // via [_recordDashboardActivity]. Keeps persisted counters in sync so
-    // reverting does not leave dashboard stats permanently inflated.
-    try {
-      if (Get.isRegistered<DashboardController>()) {
-        final dash = Get.find<DashboardController>();
-        dash.decrementStat(kDashPropertiesViewedKey);
-        if (isLiked) dash.decrementStat(kDashPropertiesLikedKey);
-      }
-    } catch (e) {
-      DebugLogger.warning('Failed to reverse dashboard stats: $e');
     }
   }
 

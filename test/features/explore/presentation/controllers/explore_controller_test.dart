@@ -9,7 +9,6 @@ import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:mocktail/mocktail.dart';
@@ -18,8 +17,6 @@ import '../../../../helpers/getx_test_binding.dart';
 import '../../../../helpers/mocks.dart';
 
 class MockPageStateService extends GetxServiceMock implements PageStateService {}
-
-class MockDashboardController extends GetxServiceMock implements DashboardController {}
 
 void main() {
   late MockPageStateService mockPageStateService;
@@ -1482,43 +1479,6 @@ void main() {
 
       // Should not throw, should process only the one with location
       expect(() => controller.fitBoundsToProperties(), returnsNormally);
-    });
-  });
-
-  // ─────────────────────────────────────────────────────────────────────
-  // updateSearchQuery — with DashboardController registered
-  // ─────────────────────────────────────────────────────────────────────
-
-  group('ExploreController — search with DashboardController', () {
-    test('records search activity when DashboardController is registered', () async {
-      final mockDashboard = MockDashboardController();
-      Get.put<DashboardController>(mockDashboard, permanent: true);
-
-      when(() => mockDashboard.incrementStat(any(), by: any(named: 'by'))).thenReturn(null);
-      when(
-        () => mockDashboard.recordActivity(
-          type: any(named: 'type'),
-          title: any(named: 'title'),
-          icon: any(named: 'icon'),
-        ),
-      ).thenReturn(null);
-
-      final controller = createController();
-      controller.updateSearchQuery('apartment');
-
-      // Wait for the 300ms debounce
-      await Future.delayed(const Duration(milliseconds: 400));
-
-      verify(() => mockDashboard.incrementStat(kDashSearchesMadeKey)).called(1);
-      verify(
-        () => mockDashboard.recordActivity(
-          type: 'search',
-          title: any(named: 'title'),
-          icon: 'search',
-        ),
-      ).called(1);
-
-      Get.delete<DashboardController>();
     });
   });
 

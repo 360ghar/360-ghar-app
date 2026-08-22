@@ -81,12 +81,10 @@ void main() {
   }
 
   group('LikesController', () {
-    test('initial state has liked segment selected and empty properties', () {
+    test('initial state has liked segment selected', () {
       final controller = createController();
 
       expect(controller.currentSegment.value, LikesSegment.liked);
-      expect(controller.likedProperties, isEmpty);
-      expect(controller.passedProperties, isEmpty);
       expect(controller.searchQuery.value, '');
     });
 
@@ -249,22 +247,6 @@ void main() {
 
       verify(() => mockPageStateService.loadMorePageData(PageType.likes)).called(1);
     });
-
-    test('loadMoreLiked calls loadMorePageData', () async {
-      final controller = createController();
-
-      await controller.loadMoreLiked();
-
-      verify(() => mockPageStateService.loadMorePageData(PageType.likes)).called(1);
-    });
-
-    test('loadMorePassed calls loadMorePageData', () async {
-      final controller = createController();
-
-      await controller.loadMorePassed();
-
-      verify(() => mockPageStateService.loadMorePageData(PageType.likes)).called(1);
-    });
   });
 
   group('LikesController — refresh', () {
@@ -285,61 +267,11 @@ void main() {
 
       verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
     });
-
-    test('refreshLiked calls loadPageData with forceRefresh', () async {
-      final controller = createController();
-
-      await controller.refreshLiked();
-
-      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
-    });
-
-    test('refreshPassed calls loadPageData with forceRefresh', () async {
-      final controller = createController();
-
-      await controller.refreshPassed();
-
-      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
-    });
-
-    test('refreshAll calls loadPageData with forceRefresh', () async {
-      final controller = createController();
-
-      await controller.refreshAll();
-
-      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
-    });
   });
 
   group('LikesController — retry', () {
-    test('retryLiked calls loadPageData with forceRefresh', () {
+    test('retryCurrentSegment calls loadPageData with forceRefresh', () {
       final controller = createController();
-
-      controller.retryLiked();
-
-      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
-    });
-
-    test('retryPassed calls loadPageData with forceRefresh', () {
-      final controller = createController();
-
-      controller.retryPassed();
-
-      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
-    });
-
-    test('retryCurrentSegment for liked segment calls retryLiked', () {
-      final controller = createController();
-      controller.currentSegment.value = LikesSegment.liked;
-
-      controller.retryCurrentSegment();
-
-      verify(() => mockPageStateService.loadPageData(PageType.likes, forceRefresh: true)).called(1);
-    });
-
-    test('retryCurrentSegment for passed segment calls retryPassed', () {
-      final controller = createController();
-      controller.currentSegment.value = LikesSegment.passed;
 
       controller.retryCurrentSegment();
 
@@ -508,7 +440,7 @@ void main() {
       expect(controller.currentState, LikesState.loaded);
     });
 
-    test('currentError returns error string from page state', () {
+    test('currentError returns error message from page state', () {
       final err = ServerException('test error');
       likesState.value = PageStateModel(
         pageType: PageType.likes,
@@ -519,7 +451,7 @@ void main() {
 
       final controller = createController();
 
-      expect(controller.currentError, err.toString());
+      expect(controller.currentError, 'test error');
     });
 
     test('currentError returns null when no error', () {

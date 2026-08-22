@@ -1,7 +1,7 @@
 // test/features/discover/data/swipes_remote_datasource_test.dart
 //
 // Unit tests for [SwipesRemoteDatasource].
-// Mocks [ApiClient] to verify swipe logging and property-swipe recording.
+// Mocks [ApiClient] to verify property-swipe recording.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/network/api_client.dart';
@@ -22,43 +22,6 @@ void main() {
   });
 
   ApiResponse successResponse() => ApiResponse(statusCode: 200, body: {'ok': true}, headers: {});
-
-  group('logSwipe', () {
-    test('posts swipe action successfully', () async {
-      when(
-        () => apiClient.post(
-          ApiPaths.swipes,
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((_) async => successResponse());
-
-      await datasource.logSwipe(propertyId: 101, action: 'like');
-
-      verify(
-        () => apiClient.post(
-          ApiPaths.swipes,
-          body: {'property_id': 101, 'action': 'like'},
-          idempotent: true,
-        ),
-      ).called(1);
-    });
-
-    test('propagates API exception', () async {
-      when(
-        () => apiClient.post(
-          ApiPaths.swipes,
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenThrow(ServerException('Server down'));
-
-      expect(
-        () => datasource.logSwipe(propertyId: 101, action: 'pass'),
-        throwsA(isA<ServerException>()),
-      );
-    });
-  });
 
   group('swipeProperty', () {
     test('posts liked swipe successfully', () async {

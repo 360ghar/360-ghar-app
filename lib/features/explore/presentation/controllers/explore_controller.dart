@@ -15,7 +15,6 @@ import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_map_session.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_property_markers.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
@@ -642,17 +641,6 @@ class ExploreController extends GetxController {
       if (query != searchQuery.value) return;
       DebugLogger.api('🔍 Searching properties: "$query"');
       _pageStateService.updatePageSearch(PageType.explore, query);
-      // Record search activity for locally-aggregated dashboard stats
-      try {
-        if (Get.isRegistered<DashboardController>()) {
-          Get.find<DashboardController>().incrementStat(kDashSearchesMadeKey);
-          Get.find<DashboardController>().recordActivity(
-            type: 'search',
-            title: 'dashboard_activity_search'.trParams({'query': query}),
-            icon: 'search',
-          );
-        }
-      } catch (_) {}
     });
   }
 

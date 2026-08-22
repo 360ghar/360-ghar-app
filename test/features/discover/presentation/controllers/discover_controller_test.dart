@@ -5,7 +5,6 @@ import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:ghar360/features/discover/presentation/controllers/discover_controller.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -14,8 +13,6 @@ import '../../../../helpers/mocks.dart';
 import '../../../../helpers/toast_host.dart';
 
 class MockPageStateService extends GetxServiceMock implements PageStateService {}
-
-class MockDashboardController extends GetxServiceMock implements DashboardController {}
 
 void main() {
   late MockPageStateService mockPageStateService;
@@ -831,36 +828,6 @@ void main() {
       expect(controller.state.value, DiscoverState.loading);
     });
 
-    test('swipeRight records dashboard activity when DashboardController registered', () async {
-      final mockDash = MockDashboardController();
-      when(() => mockDash.incrementStat(any(), by: any(named: 'by'))).thenReturn(null);
-      when(
-        () => mockDash.recordActivity(
-          type: any(named: 'type'),
-          title: any(named: 'title'),
-          icon: any(named: 'icon'),
-        ),
-      ).thenReturn(null);
-      Get.put<DashboardController>(mockDash, permanent: true);
-
-      final props = seedProperties(3);
-      seedDeck(props);
-      final controller = createController();
-      await controller.swipeRight(props[0]);
-
-      verify(() => mockDash.incrementStat(kDashPropertiesViewedKey)).called(1);
-      verify(() => mockDash.incrementStat(kDashPropertiesLikedKey)).called(1);
-      verify(
-        () => mockDash.recordActivity(
-          type: 'like',
-          title: any(named: 'title'),
-          icon: 'favorite',
-        ),
-      ).called(1);
-
-      Get.delete<DashboardController>();
-    });
-
     test('prefetch failure is swallowed and clears isPrefetching', () async {
       when(() => mockPageStateService.loadMoreData(any())).thenThrow(Exception('prefetch fail'));
 
@@ -906,34 +873,6 @@ void main() {
       await controller.swipeLeft(props[0]);
 
       verify(() => mockPageStateService.loadMoreData(PageType.discover)).called(1);
-    });
-
-    test('swipeLeft records pass dashboard activity when registered', () async {
-      final mockDash = MockDashboardController();
-      when(() => mockDash.incrementStat(any(), by: any(named: 'by'))).thenReturn(null);
-      when(
-        () => mockDash.recordActivity(
-          type: any(named: 'type'),
-          title: any(named: 'title'),
-          icon: any(named: 'icon'),
-        ),
-      ).thenReturn(null);
-      Get.put<DashboardController>(mockDash, permanent: true);
-
-      final props = seedProperties(2);
-      seedDeck(props);
-      final controller = createController();
-      await controller.swipeLeft(props[0]);
-
-      verify(
-        () => mockDash.recordActivity(
-          type: 'pass',
-          title: any(named: 'title'),
-          icon: 'close',
-        ),
-      ).called(1);
-
-      Get.delete<DashboardController>();
     });
   });
 }

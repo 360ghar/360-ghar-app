@@ -20,20 +20,8 @@ class LikesController extends GetxController {
   // Current segment (Liked or Passed)
   final Rx<LikesSegment> currentSegment = LikesSegment.liked.obs;
 
-  // No longer need swipe ID mapping since properties have liked attribute
-
-  // State management for liked properties
-  final Rx<LikesState> likedState = LikesState.initial.obs;
-  final RxList<PropertyModel> likedProperties = <PropertyModel>[].obs;
-
-  // State management for passed properties
-  final Rx<LikesState> passedState = LikesState.initial.obs;
-  final RxList<PropertyModel> passedProperties = <PropertyModel>[].obs;
-
   // Search functionality
   final RxString searchQuery = ''.obs;
-  final RxList<PropertyModel> filteredLikedProperties = <PropertyModel>[].obs;
-  final RxList<PropertyModel> filteredPassedProperties = <PropertyModel>[].obs;
   Timer? _searchDebouncer;
 
   // Error handling
@@ -234,32 +222,8 @@ class LikesController extends GetxController {
     await _pageStateService.loadMorePageData(PageType.likes);
   }
 
-  Future<void> loadMoreLiked() async {
-    await _pageStateService.loadMorePageData(PageType.likes);
-  }
-
-  Future<void> loadMorePassed() async {
-    await _pageStateService.loadMorePageData(PageType.likes);
-  }
-
   // Refresh
   Future<void> refreshCurrentSegment() async {
-    if (currentSegment.value == LikesSegment.liked) {
-      await refreshLiked();
-    } else {
-      await refreshPassed();
-    }
-  }
-
-  Future<void> refreshLiked() async {
-    await _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
-  }
-
-  Future<void> refreshPassed() async {
-    await _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
-  }
-
-  Future<void> refreshAll() async {
     await _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
   }
 
@@ -334,16 +298,8 @@ class LikesController extends GetxController {
 
   // Error handling
   void retryCurrentSegment() {
-    if (currentSegment.value == LikesSegment.liked) {
-      retryLiked();
-    } else {
-      retryPassed();
-    }
+    _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
   }
-
-  void retryLiked() => _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
-
-  void retryPassed() => _pageStateService.loadPageData(PageType.likes, forceRefresh: true);
 
   // Getters for current segment
   List<PropertyModel> get currentProperties {
@@ -360,7 +316,7 @@ class LikesController extends GetxController {
   }
 
   String? get currentError {
-    return _pageStateService.likesState.value.error?.toString();
+    return _pageStateService.likesState.value.error?.message;
   }
 
   bool get currentHasMore {
