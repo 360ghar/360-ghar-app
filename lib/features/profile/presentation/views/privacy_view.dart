@@ -303,25 +303,13 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   final RxBool newVisible = false.obs;
   final RxBool confirmVisible = false.obs;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
-  late final ChangePasswordController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = Get.isRegistered<ChangePasswordController>()
-        ? Get.find<ChangePasswordController>()
-        : Get.put(ChangePasswordController());
-  }
+  final ChangePasswordController _controller = Get.find<ChangePasswordController>();
 
   @override
   void dispose() {
     currentPasswordController.dispose();
     newPasswordController.dispose();
     confirmPasswordController.dispose();
-    if (Get.isRegistered<ChangePasswordController>() &&
-        identical(Get.find<ChangePasswordController>(), _controller)) {
-      Get.delete<ChangePasswordController>();
-    }
     super.dispose();
   }
 

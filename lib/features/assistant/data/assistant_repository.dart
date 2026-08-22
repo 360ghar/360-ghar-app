@@ -97,9 +97,10 @@ class AssistantRepository {
         '/agent/conversations/$conversationId/messages?limit=$limit',
       );
       if (response.body is List) {
-        return (response.body as List)
-            .map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>))
-            .toList();
+        // Skip malformed entries instead of failing the whole page.
+        return (response.body as List).whereType<Map>().map((e) {
+          return ChatMessageModel.fromJson(Map<String, dynamic>.from(e));
+        }).toList();
       }
       return [];
     } catch (e) {

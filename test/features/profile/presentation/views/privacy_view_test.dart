@@ -5,6 +5,7 @@ import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/profile/data/static_page_repository.dart';
+import 'package:ghar360/features/profile/presentation/controllers/change_password_controller.dart';
 import 'package:ghar360/features/profile/presentation/views/privacy_view.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -54,6 +55,10 @@ void main() {
     when(() => authController.isDeleting).thenReturn(false.obs);
     when(() => authRepository.currentUser).thenReturn(user);
     when(() => authController.deleteAccount()).thenAnswer((_) async => true);
+
+    // The change-password dialog now resolves its controller via the
+    // ProfileBinding registration (fenix), so it must be findable here too.
+    Get.lazyPut<ChangePasswordController>(() => ChangePasswordController(), fenix: true);
 
     GetxTestBinding.bind()
       ..register<AuthRepository>(authRepository)

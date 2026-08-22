@@ -258,16 +258,23 @@ class GooglePlacesService extends GetxService {
 
       switch (status) {
         case 'OK':
-          final predictions = data['predictions'] as List;
-          return predictions.map((prediction) {
-            return PlaceSuggestion(
-              placeId: prediction['place_id'] as String,
-              description: prediction['description'] as String? ?? '',
-              mainText: prediction['structured_formatting']?['main_text'] as String? ?? '',
-              secondaryText:
-                  prediction['structured_formatting']?['secondary_text'] as String? ?? '',
-            );
-          }).toList();
+          // A malformed entry must not crash autocomplete; skip it instead.
+          final predictions = (data['predictions'] as List?) ?? const [];
+          return predictions
+              .whereType<Map>()
+              .map((prediction) {
+                return PlaceSuggestion(
+                  placeId: prediction['place_id'] as String? ?? '',
+                  description: prediction['description'] as String? ?? '',
+                  mainText:
+                      (prediction['structured_formatting'] as Map?)?['main_text'] as String? ?? '',
+                  secondaryText:
+                      (prediction['structured_formatting'] as Map?)?['secondary_text'] as String? ??
+                      '',
+                );
+              })
+              .where((s) => s.placeId.isNotEmpty)
+              .toList();
 
         case 'ZERO_RESULTS':
           DebugLogger.info('Google Places API returned no results for query: $query');
@@ -522,9 +529,9 @@ class GooglePlacesService extends GetxService {
       switch (status) {
         case 'OK':
           final result = data['result'];
-          if (result != null) {
-            final location = result['geometry']['location'];
-            final addressComponents = result['address_components'] as List;
+          if (result is Map) {
+            final location = ((result['geometry'] as Map?)?['location'] as Map?) ?? const {};
+            final addressComponents = (result['address_components'] as List?) ?? const [];
 
             String displayName;
             if (preferredName != null && preferredName.isNotEmpty) {
@@ -533,17 +540,17 @@ class GooglePlacesService extends GetxService {
               String? city;
               String? locality;
 
-              for (final component in addressComponents) {
-                final types = component['types'] as List;
+              for (final component in addressComponents.whereType<Map>()) {
+                final types = (component['types'] as List?) ?? const [];
                 if (types.contains('locality')) {
-                  locality = component['long_name'];
+                  locality = component['long_name'] as String?;
                 }
                 if (types.contains('administrative_area_level_2')) {
-                  city = component['long_name'];
+                  city = component['long_name'] as String?;
                 }
               }
 
-              displayName = result['name'] ?? '';
+              displayName = result['name'] as String? ?? '';
               if (locality != null && city != null) {
                 displayName = '$locality, $city';
               } else if (city != null) {
@@ -556,8 +563,8 @@ class GooglePlacesService extends GetxService {
             _clearError();
             return LocationData(
               name: displayName,
-              latitude: location['lat'].toDouble(),
-              longitude: location['lng'].toDouble(),
+              latitude: (location['lat'] as num?)?.toDouble() ?? 0,
+              longitude: (location['lng'] as num?)?.toDouble() ?? 0,
             );
           }
           DebugLogger.warning(

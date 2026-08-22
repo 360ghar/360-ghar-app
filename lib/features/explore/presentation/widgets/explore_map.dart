@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/map/map_controller.dart';
+import 'package:ghar360/core/utils/best_effort.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
 import 'package:ghar360/features/explore/presentation/widgets/property_marker_chip.dart';
@@ -433,15 +434,20 @@ class _ExploreMapState extends State<ExploreMap> {
     MapLibreMapController controller,
     Map<String, dynamic> geojson,
   ) async {
-    try {
-      await controller.removeLayer(_radiusFillLayerId);
-    } catch (_) {}
-    try {
-      await controller.removeLayer(_radiusLineLayerId);
-    } catch (_) {}
-    try {
-      await controller.removeSource(_radiusSourceId);
-    } catch (_) {}
+    // Removing a layer/source that does not exist yet throws; that is the
+    // expected first-render path, so treat these as best-effort cleanup.
+    await BestEffort.runAsync(
+      () => controller.removeLayer(_radiusFillLayerId),
+      label: 'explore-radius-remove-fill-layer',
+    );
+    await BestEffort.runAsync(
+      () => controller.removeLayer(_radiusLineLayerId),
+      label: 'explore-radius-remove-line-layer',
+    );
+    await BestEffort.runAsync(
+      () => controller.removeSource(_radiusSourceId),
+      label: 'explore-radius-remove-source',
+    );
 
     await controller.addGeoJsonSource(_radiusSourceId, geojson);
     await controller.addFillLayer(
@@ -516,15 +522,18 @@ class _ExploreMapState extends State<ExploreMap> {
     MapLibreMapController controller,
     Map<String, dynamic> geojson,
   ) async {
-    try {
-      await controller.removeLayer(_clusterCountLayerId);
-    } catch (_) {}
-    try {
-      await controller.removeLayer(_clusterCircleLayerId);
-    } catch (_) {}
-    try {
-      await controller.removeSource(_propertiesSourceId);
-    } catch (_) {}
+    await BestEffort.runAsync(
+      () => controller.removeLayer(_clusterCountLayerId),
+      label: 'explore-properties-remove-count-layer',
+    );
+    await BestEffort.runAsync(
+      () => controller.removeLayer(_clusterCircleLayerId),
+      label: 'explore-properties-remove-circle-layer',
+    );
+    await BestEffort.runAsync(
+      () => controller.removeSource(_propertiesSourceId),
+      label: 'explore-properties-remove-source',
+    );
 
     await controller.addSource(
       _propertiesSourceId,

@@ -6,6 +6,7 @@ import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:ghar360/core/utils/best_effort.dart';
 import 'package:ghar360/core/utils/responsive.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/max_content_width.dart';
@@ -62,29 +63,34 @@ Future<void> _launchDialer(String? rawNumber) async {
   }
   final telUri = Uri(scheme: 'tel', path: '+$formatted');
 
-  try {
-    final launched = await launchUrl(telUri, mode: LaunchMode.externalApplication);
-    if (launched) return;
-  } catch (_) {}
+  // Each launcher variant is best-effort; the last one surfaces the toast.
+  Future<bool> tryLaunch(
+    Uri uri,
+    String label, {
+    LaunchMode mode = LaunchMode.platformDefault,
+  }) async {
+    var ok = false;
+    await BestEffort.runAsync(() async {
+      ok = await launchUrl(uri, mode: mode);
+    }, label: label);
+    return ok;
+  }
 
-  try {
-    final launched = await launchUrl(telUri, mode: LaunchMode.platformDefault);
-    if (launched) return;
-  } catch (_) {}
+  var launched = await tryLaunch(telUri, 'dialer-external', mode: LaunchMode.externalApplication);
+  if (launched) return;
+
+  launched = await tryLaunch(telUri, 'dialer-platform-default');
+  if (launched) return;
 
   if (GetPlatform.isIOS) {
     final telPromptUri = Uri(scheme: 'telprompt', path: '+$formatted');
-    try {
-      final launched = await launchUrl(telPromptUri, mode: LaunchMode.platformDefault);
-      if (launched) return;
-    } catch (_) {}
+    launched = await tryLaunch(telPromptUri, 'dialer-telprompt');
+    if (launched) return;
   }
 
   final plainTelUri = Uri(scheme: 'tel', path: formatted);
-  try {
-    final launched = await launchUrl(plainTelUri, mode: LaunchMode.platformDefault);
-    if (launched) return;
-  } catch (_) {}
+  launched = await tryLaunch(plainTelUri, 'dialer-plain-tel');
+  if (launched) return;
 
   AppToast.error('action_failed'.tr, 'could_not_open_phone_dialer'.tr);
 }
