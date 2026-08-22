@@ -447,7 +447,7 @@ class ExploreController extends GetxController {
           latitude: initialCenter.latitude,
           longitude: initialCenter.longitude,
         ),
-        source: 'initial',
+        source: LocationSource.initial,
       );
 
       DebugLogger.info('🚀 Triggering page data load through PageStateService');
@@ -495,7 +495,7 @@ class ExploreController extends GetxController {
             latitude: position.latitude,
             longitude: position.longitude,
           ),
-          source: 'gps',
+          source: LocationSource.gps,
         );
       } else {
         DebugLogger.warning(
@@ -516,7 +516,7 @@ class ExploreController extends GetxController {
             latitude: _defaultCenter.latitude,
             longitude: _defaultCenter.longitude,
           ),
-          source: 'fallback',
+          source: LocationSource.fallback,
         );
       }
     } catch (e) {
@@ -540,7 +540,7 @@ class ExploreController extends GetxController {
           latitude: _defaultCenter.latitude,
           longitude: _defaultCenter.longitude,
         ),
-        source: 'fallback',
+        source: LocationSource.fallback,
       );
     }
   }
@@ -617,7 +617,7 @@ class ExploreController extends GetxController {
           latitude: currentCenter.value.latitude,
           longitude: currentCenter.value.longitude,
         ),
-        source: 'manual',
+        source: LocationSource.manual,
       );
     } catch (e) {
       DebugLogger.error('❌ Failed to update filter location: $e');
@@ -743,7 +743,7 @@ class ExploreController extends GetxController {
   // Filter shortcuts
   void showFilters() {
     try {
-      showPropertyFilterBottomSheet(Get.context!, pageType: 'explore');
+      showPropertyFilterBottomSheet(Get.context!, pageType: PageType.explore);
     } catch (_) {
       // Fallback: no context available; ignore
     }

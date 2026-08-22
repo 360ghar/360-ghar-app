@@ -29,6 +29,7 @@ void main() {
     registerFallbackValue(PageType.explore);
     registerFallbackValue(const UnifiedFilterModel());
     registerFallbackValue(const LocationData(name: '', latitude: 0, longitude: 0));
+    registerFallbackValue(LocationSource.manual);
     registerFallbackValue(testPropertyModel(id: 0));
   });
 

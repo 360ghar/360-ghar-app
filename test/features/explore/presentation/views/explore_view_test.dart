@@ -165,6 +165,7 @@ void main() {
   late TextEditingController searchController;
 
   setUpAll(() {
+    registerFallbackValue(LocationSource.manual);
     registerFallbackValue(PageType.explore);
     registerFallbackValue(const UnifiedFilterModel());
     registerFallbackValue(const LocationData(name: '', latitude: 0, longitude: 0));

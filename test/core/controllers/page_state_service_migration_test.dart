@@ -15,7 +15,7 @@ void main() {
           latitude: 28.44574,
           longitude: 77.008294,
         ),
-        locationSource: 'gps',
+        locationSource: LocationSource.gps,
         filters: UnifiedFilterModel.initial(),
         searchQuery: '2bhk',
         properties: const [],
@@ -42,7 +42,7 @@ void main() {
       final legacy = PageStateModel(
         pageType: PageType.likes,
         selectedLocation: const LocationData(name: 'Delhi', latitude: 28.6139, longitude: 77.2090),
-        locationSource: 'manual',
+        locationSource: LocationSource.manual,
         filters: UnifiedFilterModel.initial().copyWith(purpose: 'rent'),
         searchQuery: 'studio',
         properties: const [],
@@ -54,7 +54,7 @@ void main() {
 
       expect(normalized.pageType, PageType.likes);
       expect(normalized.selectedLocation?.name, 'Delhi');
-      expect(normalized.locationSource, 'manual');
+      expect(normalized.locationSource, LocationSource.manual);
       expect(normalized.filters.purpose, 'rent');
       expect(normalized.searchQuery, 'studio');
       expect(normalized.additionalData?['currentSegment'], 'passed');

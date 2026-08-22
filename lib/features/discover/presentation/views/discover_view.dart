@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/responsive.dart';
@@ -27,7 +28,7 @@ class DiscoverView extends GetView<DiscoverController> {
         key: const ValueKey('qa.discover.screen'),
         backgroundColor: AppDesign.scaffoldBackground,
         appBar: DiscoverTopBar(
-          onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: 'discover'),
+          onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: PageType.discover),
         ),
         body: SafeArea(
           top: false,
@@ -162,7 +163,7 @@ class DiscoverView extends GetView<DiscoverController> {
     return ErrorStates.swipeDeckEmpty(
       onRefresh: controller.refreshDeck,
       onChangeFilters: () =>
-          showPropertyFilterBottomSheet(Get.context ?? context, pageType: 'discover'),
+          showPropertyFilterBottomSheet(Get.context ?? context, pageType: PageType.discover),
     );
   }
 
@@ -210,7 +211,7 @@ class DiscoverView extends GetView<DiscoverController> {
                       onRefresh: controller.refreshDeck,
                       onChangeFilters: () => showPropertyFilterBottomSheet(
                         Get.context ?? context,
-                        pageType: 'discover',
+                        pageType: PageType.discover,
                       ),
                     ),
                   ),

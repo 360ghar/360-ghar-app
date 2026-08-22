@@ -245,11 +245,13 @@ class PageStateService extends GetxController {
   Future<void> updateLocationForPage(
     PageType pageType,
     LocationData location, {
-    String source = 'manual',
+    LocationSource source = LocationSource.manual,
   }) => _locationManager.updateLocationForPage(pageType, location, source: source);
 
-  Future<void> updateLocation(LocationData location, {String source = 'manual'}) =>
-      _locationManager.updateLocation(location, source: source);
+  Future<void> updateLocation(
+    LocationData location, {
+    LocationSource source = LocationSource.manual,
+  }) => _locationManager.updateLocation(location, source: source);
 
   Future<void> useCurrentLocation() => _locationManager.useCurrentLocation();
 
@@ -495,21 +497,21 @@ class PageStateService extends GetxController {
         await _locationManager.updateLocationForPage(
           PageType.explore,
           initialLocation,
-          source: 'initial',
+          source: LocationSource.initial,
         );
       }
       if (!discoverState.value.hasLocation) {
         await _locationManager.updateLocationForPage(
           PageType.discover,
           initialLocation,
-          source: 'initial',
+          source: LocationSource.initial,
         );
       }
       if (!likesState.value.hasLocation) {
         await _locationManager.updateLocationForPage(
           PageType.likes,
           initialLocation,
-          source: 'initial',
+          source: LocationSource.initial,
         );
       }
       await _locationManager.normalizeSavedLocations();

@@ -7,6 +7,41 @@ part 'page_state_model.g.dart';
 
 enum PageType { explore, discover, likes }
 
+/// Where a page's selected location came from. Drives whether the location
+/// update triggers a data refresh and/or reverse geocoding.
+enum LocationSource {
+  gps,
+  ip,
+  manual,
+  initial,
+  hydrate,
+  gpsPassive,
+  fallback;
+
+  /// Persisted form (snake_case, matches historical storage values).
+  String get stored => switch (this) {
+    gpsPassive => 'gps_passive',
+    _ => name,
+  };
+
+  static LocationSource tryParse(String? raw) => switch (raw) {
+    'gps' => gps,
+    'ip' => ip,
+    'manual' => manual,
+    'initial' => initial,
+    'hydrate' => hydrate,
+    'gps_passive' => gpsPassive,
+    'fallback' => fallback,
+    _ => manual,
+  };
+
+  /// Passive sources must not trigger a data refresh.
+  bool get triggersRefresh => this != initial && this != hydrate && this != gpsPassive;
+
+  /// Passive GPS updates already carry a usable name; skip reverse geocoding.
+  bool get resolvesName => this != gpsPassive;
+}
+
 class _Unset {
   const _Unset();
 }
@@ -50,7 +85,7 @@ class PageStateModel {
   // Location state
   @JsonKey(fromJson: LocationData.tryFromJson)
   final LocationData? selectedLocation;
-  final String? locationSource; // 'gps', 'ip', 'manual'
+  final LocationSource locationSource;
 
   // Filter state
   final UnifiedFilterModel filters;
@@ -75,7 +110,7 @@ class PageStateModel {
   const PageStateModel({
     required this.pageType,
     this.selectedLocation,
-    this.locationSource,
+    this.locationSource = LocationSource.manual,
     required this.filters,
     this.searchQuery,
     required this.properties,
@@ -125,7 +160,7 @@ class PageStateModel {
           : selectedLocation as LocationData?,
       locationSource: identical(locationSource, _unset)
           ? this.locationSource
-          : locationSource as String?,
+          : locationSource as LocationSource,
       filters: filters ?? this.filters,
       searchQuery: identical(searchQuery, _unset) ? this.searchQuery : searchQuery as String?,
       properties: properties ?? this.properties,
@@ -175,7 +210,7 @@ class PageStateModel {
     return PageStateSnapshot(
       pageType: pageType.name,
       selectedLocation: selectedLocation,
-      locationSource: locationSource,
+      locationSource: locationSource.stored,
       filters: filters,
       searchQuery: searchQuery,
       additionalData: additionalData,
@@ -193,7 +228,7 @@ class PageStateModel {
     return PageStateModel(
       pageType: pageType,
       selectedLocation: snapshot.selectedLocation,
-      locationSource: snapshot.locationSource,
+      locationSource: LocationSource.tryParse(snapshot.locationSource),
       filters: snapshot.filters,
       searchQuery: snapshot.searchQuery,
       additionalData: snapshot.additionalData,

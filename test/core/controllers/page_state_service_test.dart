@@ -1223,8 +1223,12 @@ void main() {
       final service = await createService();
       const location = LocationData(name: 'Noida', latitude: 28.5, longitude: 77.4);
 
-      await service.updateLocation(location, source: 'manual');
-      await service.updateLocationForPage(PageType.discover, location, source: 'manual');
+      await service.updateLocation(location, source: LocationSource.manual);
+      await service.updateLocationForPage(
+        PageType.discover,
+        location,
+        source: LocationSource.manual,
+      );
 
       expect(service.discoverState.value.selectedLocation?.name, 'Noida');
     });

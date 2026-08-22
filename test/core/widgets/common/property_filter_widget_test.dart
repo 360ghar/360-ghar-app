@@ -86,7 +86,7 @@ void main() {
 
   Future<void> pumpFilterSheet(
     WidgetTester tester, {
-    String pageType = 'explore',
+    PageType pageType = PageType.explore,
     VoidCallback? onFiltersApplied,
   }) async {
     await tester.pumpWidget(
@@ -132,7 +132,7 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => ElevatedButton(
-              onPressed: () => showPropertyFilterBottomSheet(context, pageType: 'explore'),
+              onPressed: () => showPropertyFilterBottomSheet(context, pageType: PageType.explore),
               child: const Text('Open filters'),
             ),
           ),
@@ -165,7 +165,7 @@ void main() {
         locale: const Locale('en', 'US'),
         fallbackLocale: const Locale('en', 'US'),
         home: const Scaffold(
-          body: Center(child: PropertyFilterWidget(pageType: 'explore')),
+          body: Center(child: PropertyFilterWidget(pageType: PageType.explore)),
         ),
       ),
     );
@@ -268,7 +268,7 @@ void main() {
   });
 
   testWidgets('apply filters writes purpose and price to page state', (tester) async {
-    await pumpFilterSheet(tester, pageType: 'likes');
+    await pumpFilterSheet(tester, pageType: PageType.likes);
 
     await tester.tap(find.text('Rent').first);
     await tester.pumpAndSettle();
@@ -293,52 +293,12 @@ void main() {
     expect(find.text('Filter Properties'), findsNothing);
   });
 
-  testWidgets('resolves discover/home page type alias', (tester) async {
-    await pumpFilterSheet(tester, pageType: 'discover');
-
-    await tester.tap(find.text('Apply Filters'));
-    await tester.pumpAndSettle();
-
-    expect(pageStateService.lastUpdatedPage, PageType.discover);
-    await clearToasts(tester);
-  });
-
-  testWidgets('resolves likes/favourites page type alias', (tester) async {
-    await pumpFilterSheet(tester, pageType: 'favourites');
-
-    await tester.tap(find.text('Apply Filters'));
-    await tester.pumpAndSettle();
-
-    expect(pageStateService.lastUpdatedPage, PageType.likes);
-    await clearToasts(tester);
-  });
-
-  testWidgets('resolves favorites page type alias', (tester) async {
-    await pumpFilterSheet(tester, pageType: 'favorites');
-
-    await tester.tap(find.text('Apply Filters'));
-    await tester.pumpAndSettle();
-
-    expect(pageStateService.lastUpdatedPage, PageType.likes);
-    await clearToasts(tester);
-  });
-
-  testWidgets('resolves home page type alias to discover', (tester) async {
-    await pumpFilterSheet(tester, pageType: 'home');
-
-    await tester.tap(find.text('Apply Filters'));
-    await tester.pumpAndSettle();
-
-    expect(pageStateService.lastUpdatedPage, PageType.discover);
-    await clearToasts(tester);
-  });
-
   testWidgets('loads existing filter state from PageStateService on open', (tester) async {
     pageStateService.exploreState.value = pageStateService.exploreState.value.copyWith(
       filters: const UnifiedFilterModel(purpose: 'rent', amenities: ['Gym']),
     );
 
-    await pumpFilterSheet(tester, pageType: 'explore');
+    await pumpFilterSheet(tester, pageType: PageType.explore);
 
     expect(find.text('Price per month'), findsOneWidget);
     await scrollAndTap(tester, find.text('Gym'));
@@ -357,7 +317,8 @@ void main() {
         fallbackLocale: const Locale('en', 'US'),
         home: Scaffold(
           body: Builder(
-            builder: (context) => const Center(child: PropertyFilterWidget(pageType: 'explore')),
+            builder: (context) =>
+                const Center(child: PropertyFilterWidget(pageType: PageType.explore)),
           ),
         ),
       ),
@@ -407,7 +368,7 @@ void main() {
   });
 
   testWidgets('apply filters persists selected amenities', (tester) async {
-    await pumpFilterSheet(tester, pageType: 'explore');
+    await pumpFilterSheet(tester, pageType: PageType.explore);
 
     await scrollAndTap(tester, find.text('Pool'));
 
@@ -419,7 +380,7 @@ void main() {
   });
 
   testWidgets('apply filters persists selected property types', (tester) async {
-    await pumpFilterSheet(tester, pageType: 'explore');
+    await pumpFilterSheet(tester, pageType: PageType.explore);
 
     await scrollAndTap(tester, find.text('Apartment'));
 
@@ -431,7 +392,7 @@ void main() {
   });
 
   testWidgets('pg selection shows gender and sharing preference dropdowns', (tester) async {
-    await pumpFilterSheet(tester, pageType: 'explore');
+    await pumpFilterSheet(tester, pageType: PageType.explore);
 
     await scrollAndTap(tester, find.text('PG'));
     await tester.pumpAndSettle();

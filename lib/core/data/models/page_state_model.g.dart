@@ -29,7 +29,8 @@ Map<String, dynamic> _$PageStateSnapshotToJson(PageStateSnapshot instance) => <S
 PageStateModel _$PageStateModelFromJson(Map<String, dynamic> json) => PageStateModel(
   pageType: $enumDecode(_$PageTypeEnumMap, json['pageType']),
   selectedLocation: LocationData.tryFromJson(json['selectedLocation'] as Map<String, dynamic>?),
-  locationSource: json['locationSource'] as String?,
+  locationSource:
+      $enumDecodeNullable(_$LocationSourceEnumMap, json['locationSource']) ?? LocationSource.manual,
   filters: UnifiedFilterModel.fromJson(json['filters'] as Map<String, dynamic>),
   searchQuery: json['searchQuery'] as String?,
   properties: (json['properties'] as List<dynamic>)
@@ -47,7 +48,7 @@ PageStateModel _$PageStateModelFromJson(Map<String, dynamic> json) => PageStateM
 Map<String, dynamic> _$PageStateModelToJson(PageStateModel instance) => <String, dynamic>{
   'pageType': _$PageTypeEnumMap[instance.pageType]!,
   'selectedLocation': instance.selectedLocation?.toJson(),
-  'locationSource': instance.locationSource,
+  'locationSource': _$LocationSourceEnumMap[instance.locationSource]!,
   'filters': instance.filters.toJson(),
   'searchQuery': instance.searchQuery,
   'properties': instance.properties.map((e) => e.toJson()).toList(),
@@ -64,4 +65,14 @@ const _$PageTypeEnumMap = {
   PageType.explore: 'explore',
   PageType.discover: 'discover',
   PageType.likes: 'likes',
+};
+
+const _$LocationSourceEnumMap = {
+  LocationSource.gps: 'gps',
+  LocationSource.ip: 'ip',
+  LocationSource.manual: 'manual',
+  LocationSource.initial: 'initial',
+  LocationSource.hydrate: 'hydrate',
+  LocationSource.gpsPassive: 'gpsPassive',
+  LocationSource.fallback: 'fallback',
 };

@@ -171,8 +171,7 @@ class UnifiedTopBar extends GetView<PageStateService> implements PreferredSizeWi
               ),
           ],
         ),
-        onPressed:
-            onFilterTap ?? () => showPropertyFilterBottomSheet(context, pageType: pageType.name),
+        onPressed: onFilterTap ?? () => showPropertyFilterBottomSheet(context, pageType: pageType),
       );
     });
   }

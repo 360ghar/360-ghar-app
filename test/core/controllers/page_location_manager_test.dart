@@ -139,7 +139,7 @@ void main() {
       await manager.updateLocationForPage(
         PageType.explore,
         const LocationData(name: 'Connaught Place', latitude: 28.6, longitude: 77.2),
-        source: 'manual',
+        source: LocationSource.manual,
       );
 
       verify(() => pageState.updatePageState(PageType.explore, any())).called(1);
@@ -150,7 +150,7 @@ void main() {
       await manager.updateLocationForPage(
         PageType.discover,
         const LocationData(name: 'Location (28.6, 77.2)', latitude: 28.6, longitude: 77.2),
-        source: 'manual',
+        source: LocationSource.manual,
       );
 
       verify(() => locationController.getAddressFromCoordinates(28.6, 77.2)).called(1);
@@ -169,7 +169,7 @@ void main() {
       await manager.updateLocationForPage(
         PageType.explore,
         const LocationData(name: 'Location (28.6, 77.2)', latitude: 28.6, longitude: 77.2),
-        source: 'manual',
+        source: LocationSource.manual,
       );
 
       final state =
@@ -183,7 +183,7 @@ void main() {
       await manager.updateLocationForPage(
         PageType.explore,
         const LocationData(name: 'Delhi', latitude: 28.6, longitude: 77.2),
-        source: 'initial',
+        source: LocationSource.initial,
       );
 
       verify(() => pageState.updatePageState(PageType.explore, any())).called(1);
@@ -194,7 +194,7 @@ void main() {
       await manager.updateLocationForPage(
         PageType.explore,
         const LocationData(name: 'Delhi', latitude: 28.6, longitude: 77.2),
-        source: 'hydrate',
+        source: LocationSource.hydrate,
       );
 
       verifyNever(() => dataLoader.debounceRefresh(any()));
@@ -204,7 +204,7 @@ void main() {
       await manager.updateLocationForPage(
         PageType.explore,
         const LocationData(name: 'Location (28.6, 77.2)', latitude: 28.6, longitude: 77.2),
-        source: 'gps_passive',
+        source: LocationSource.gpsPassive,
       );
 
       // gps_passive skips name resolution.
@@ -216,7 +216,7 @@ void main() {
       await manager.updateLocationForPage(
         PageType.explore,
         const LocationData(name: 'Bandra', latitude: 19.0, longitude: 72.8),
-        source: 'manual',
+        source: LocationSource.manual,
       );
 
       verifyNever(() => locationController.getAddressFromCoordinates(any(), any()));
@@ -232,7 +232,7 @@ void main() {
 
       await manager.updateLocation(
         const LocationData(name: 'Delhi', latitude: 28.6, longitude: 77.2),
-        source: 'manual',
+        source: LocationSource.manual,
       );
 
       verify(() => authController.updateUserLocation(any())).called(1);

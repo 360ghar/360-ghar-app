@@ -45,7 +45,7 @@ class LikesView extends GetView<LikesController> {
         backgroundColor: AppDesign.scaffoldBackground,
         appBar: LikesTopBar(
           onSearchChanged: controller.updateSearchQuery,
-          onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: 'likes'),
+          onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: PageType.likes),
         ),
         body: SafeArea(
           top: false,

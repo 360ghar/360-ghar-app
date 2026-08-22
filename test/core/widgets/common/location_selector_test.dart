@@ -173,7 +173,7 @@ class _FakePageStateService extends GetxServiceMock implements PageStateService 
   Future<void> updateLocationForPage(
     PageType pageType,
     LocationData location, {
-    String source = 'manual',
+    LocationSource source = LocationSource.manual,
   }) async {
     final state = getStateForPage(pageType);
     updatePageState(pageType, state.copyWith(selectedLocation: location));

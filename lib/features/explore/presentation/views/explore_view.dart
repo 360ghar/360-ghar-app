@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
@@ -29,7 +30,7 @@ class ExploreView extends GetView<ExploreController> {
       backgroundColor: AppDesign.scaffoldBackground,
       appBar: ExploreTopBar(
         onSearchChanged: (query) => controller.updateSearchQuery(query),
-        onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: 'explore'),
+        onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: PageType.explore),
       ),
       body: Semantics(
         label: 'qa.explore.screen',
@@ -147,8 +148,10 @@ class ExploreView extends GetView<ExploreController> {
                     title: 'no_properties_found'.tr,
                     message: 'no_properties_found_area_message'.tr,
                     icon: Icons.location_off,
-                    onAction: () =>
-                        showPropertyFilterBottomSheet(Get.context ?? context, pageType: 'explore'),
+                    onAction: () => showPropertyFilterBottomSheet(
+                      Get.context ?? context,
+                      pageType: PageType.explore,
+                    ),
                     actionText: 'adjust_filters'.tr,
                   ),
                 ),

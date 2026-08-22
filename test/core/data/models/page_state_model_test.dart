@@ -10,7 +10,7 @@ void main() {
       final original = PageStateModel(
         pageType: PageType.explore,
         selectedLocation: const LocationData(name: 'Delhi', latitude: 28.6139, longitude: 77.2090),
-        locationSource: 'gps',
+        locationSource: LocationSource.gps,
         filters: UnifiedFilterModel.initial(),
         searchQuery: 'rent',
         properties: const [],
@@ -21,7 +21,6 @@ void main() {
 
       final updated = original.copyWith(
         selectedLocation: null,
-        locationSource: null,
         searchQuery: null,
         error: null,
         lastFetched: null,
@@ -29,7 +28,8 @@ void main() {
       );
 
       expect(updated.selectedLocation, isNull);
-      expect(updated.locationSource, isNull);
+      // locationSource is non-nullable now; null cannot be passed to copyWith.
+      expect(updated.locationSource, LocationSource.gps);
       expect(updated.searchQuery, isNull);
       expect(updated.error, isNull);
       expect(updated.lastFetched, isNull);
@@ -40,7 +40,7 @@ void main() {
       final original = PageStateModel(
         pageType: PageType.explore,
         selectedLocation: const LocationData(name: 'Delhi', latitude: 28.6139, longitude: 77.2090),
-        locationSource: 'gps',
+        locationSource: LocationSource.gps,
         filters: UnifiedFilterModel.initial(),
         searchQuery: 'rent',
         properties: const [],
@@ -92,7 +92,7 @@ void main() {
       final model = PageStateModel(
         pageType: PageType.discover,
         selectedLocation: const LocationData(name: 'Mumbai', latitude: 19.076, longitude: 72.8777),
-        locationSource: 'manual',
+        locationSource: LocationSource.manual,
         filters: UnifiedFilterModel.initial(),
         searchQuery: 'flat',
         properties: const [],
@@ -124,7 +124,7 @@ void main() {
 
       final restored = PageStateModel.fromJson(json);
       expect(restored.pageType, PageType.discover);
-      expect(restored.locationSource, 'manual');
+      expect(restored.locationSource, LocationSource.manual);
       expect(restored.searchQuery, 'flat');
       expect(restored.nextCursor, 'cursor123');
       expect(restored.hasMore, false);
@@ -145,7 +145,8 @@ void main() {
       final json = model.toJson();
 
       expect(json['selectedLocation'], isNull);
-      expect(json['locationSource'], isNull);
+      // locationSource is now non-nullable and defaults to manual.
+      expect(json['locationSource'], 'manual');
       expect(json['searchQuery'], isNull);
       expect(json['nextCursor'], isNull);
       expect(json['lastFetched'], isNull);
@@ -252,7 +253,7 @@ void main() {
       final model = PageStateModel(
         pageType: PageType.likes,
         selectedLocation: const LocationData(name: 'Goa', latitude: 15.29, longitude: 74.12),
-        locationSource: 'ip',
+        locationSource: LocationSource.ip,
         filters: UnifiedFilterModel.initial(),
         searchQuery: 'beach',
         properties: const [],
@@ -270,7 +271,7 @@ void main() {
 
       final restored = PageStateModel.fromSnapshot(snapshot);
       expect(restored.pageType, PageType.likes);
-      expect(restored.locationSource, 'ip');
+      expect(restored.locationSource, LocationSource.ip);
       expect(restored.searchQuery, 'beach');
       expect(restored.selectedLocation?.name, 'Goa');
       expect(restored.properties, isEmpty);

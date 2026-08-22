@@ -83,7 +83,9 @@ class PageLocationManager {
               latitude: loc.latitude,
               longitude: loc.longitude,
             ),
-            locationSource: state.locationSource ?? 'hydrate',
+            locationSource: state.locationSource == LocationSource.manual
+                ? LocationSource.hydrate
+                : state.locationSource,
           );
           _pageState.updatePageState(page, updated);
         }
@@ -106,7 +108,7 @@ class PageLocationManager {
   Future<void> updateLocationForPage(
     PageType pageType,
     LocationData location, {
-    String source = 'manual',
+    LocationSource source = LocationSource.manual,
   }) async {
     DebugLogger.info(
       '📍 Updating location for ${pageType.name}: ${location.name} '
@@ -115,7 +117,7 @@ class PageLocationManager {
 
     // Resolve human-friendly name if placeholder
     LocationData finalLocation = location;
-    final shouldResolveName = source != 'gps_passive';
+    final shouldResolveName = source.resolvesName;
     if (shouldResolveName && isPlaceholderLocationName(location.name)) {
       try {
         final resolvedName = await _locationController.getAddressFromCoordinates(
@@ -139,10 +141,10 @@ class PageLocationManager {
     _pageState.updatePageState(pageType, updated);
 
     // Only trigger a data refresh if the source is not passive/initial
-    if (source != 'initial' && source != 'hydrate' && source != 'gps_passive') {
+    if (source.triggersRefresh) {
       DebugLogger.info('🔄 Debouncing refresh for ${pageType.name} after location update');
       try {
-        AnalyticsService.locationChanged(source: source);
+        AnalyticsService.locationChanged(source: source.stored);
       } catch (e, st) {
         DebugLogger.warning('Analytics locationChanged failed', e, st);
       }
@@ -153,7 +155,10 @@ class PageLocationManager {
   }
 
   // Location management
-  Future<void> updateLocation(LocationData location, {String source = 'manual'}) async {
+  Future<void> updateLocation(
+    LocationData location, {
+    LocationSource source = LocationSource.manual,
+  }) async {
     try {
       // Update backend if authenticated
       if (_authController.isAuthenticated) {
@@ -186,7 +191,7 @@ class PageLocationManager {
           latitude: position.latitude,
           longitude: position.longitude,
         );
-        await updateLocation(location, source: 'gps');
+        await updateLocation(location, source: LocationSource.gps);
       }
     } catch (e) {
       DebugLogger.error('Failed to get current location: $e');
@@ -210,14 +215,14 @@ class PageLocationManager {
           latitude: position.latitude,
           longitude: position.longitude,
         );
-        await updateLocationForPage(pageType, loc, source: 'gps');
+        await updateLocationForPage(pageType, loc, source: LocationSource.gps);
         return;
       }
 
       // Fallback to IP-based location
       final ipLoc = await _locationController.getIpLocation();
       if (ipLoc != null) {
-        await updateLocationForPage(pageType, ipLoc, source: 'ip');
+        await updateLocationForPage(pageType, ipLoc, source: LocationSource.ip);
         return;
       }
     } catch (e) {
@@ -274,7 +279,11 @@ class PageLocationManager {
       longitude: position.longitude,
     );
 
-    await updateLocationForPage(pageType, loc, source: shouldRefresh ? 'gps' : 'gps_passive');
+    await updateLocationForPage(
+      pageType,
+      loc,
+      source: shouldRefresh ? LocationSource.gps : LocationSource.gpsPassive,
+    );
 
     if (shouldRefresh) {
       _lastGpsRefreshAt = now;

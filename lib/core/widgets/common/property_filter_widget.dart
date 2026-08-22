@@ -11,7 +11,7 @@ import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
 
 class PropertyFilterWidget extends StatelessWidget {
-  final String pageType; // 'discover', 'explore', 'likes'
+  final PageType pageType;
   final VoidCallback? onFiltersApplied;
 
   const PropertyFilterWidget({super.key, required this.pageType, this.onFiltersApplied});
@@ -37,7 +37,7 @@ class PropertyFilterWidget extends StatelessWidget {
 }
 
 class _FilterBottomSheet extends StatefulWidget {
-  final String pageType;
+  final PageType pageType;
   final VoidCallback? onFiltersApplied;
 
   const _FilterBottomSheet({required this.pageType, this.onFiltersApplied});
@@ -99,7 +99,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   @override
   void initState() {
     super.initState();
-    _targetPageType = _resolvePageType(widget.pageType);
+    _targetPageType = widget.pageType;
     // Guard PageStateService lookup to prevent runtime exceptions
     if (Get.isRegistered<PageStateService>()) {
       pageStateService = Get.find<PageStateService>();
@@ -136,21 +136,6 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
     if (!_hasPgOrFlatmateSelection) {
       _selectedGenderPreference = '';
       _selectedSharingType = '';
-    }
-  }
-
-  PageType _resolvePageType(String value) {
-    switch (value.trim().toLowerCase()) {
-      case 'discover':
-      case 'home':
-        return PageType.discover;
-      case 'likes':
-      case 'favourites':
-      case 'favorites':
-        return PageType.likes;
-      case 'explore':
-      default:
-        return PageType.explore;
     }
   }
 
@@ -850,7 +835,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
 // Public helper to show the same filter bottom sheet from anywhere
 void showPropertyFilterBottomSheet(
   BuildContext context, {
-  String pageType = 'explore',
+  PageType pageType = PageType.explore,
   VoidCallback? onFiltersApplied,
 }) {
   showModalBottomSheet(

@@ -591,7 +591,11 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
 
       // Persist first; only dismiss the sheet after success (matches
       // LocationSearchController.selectPlace).
-      await pageStateService.updateLocationForPage(widget.pageType, locationData, source: 'manual');
+      await pageStateService.updateLocationForPage(
+        widget.pageType,
+        locationData,
+        source: LocationSource.manual,
+      );
 
       if (mounted) {
         Navigator.of(context).pop();
