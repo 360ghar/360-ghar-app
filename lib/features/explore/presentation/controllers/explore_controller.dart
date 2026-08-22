@@ -469,6 +469,28 @@ class ExploreController extends GetxController {
     }
   }
 
+  /// Applies a resolved center to the map + page state. Shared by the GPS,
+  /// null-position, and error paths of [_useCurrentLocation] so the
+  /// radius-sync contract lives in exactly one place.
+  Future<void> _applyExploreLocation(
+    LatLng center,
+    double zoom, {
+    required String name,
+    required LocationSource source,
+  }) async {
+    _updateMapCenter(center, zoom);
+
+    final currentFilters = _pageStateService.getCurrentPageState().filters;
+    final updatedFilters = currentFilters.copyWith(radiusKm: currentRadius.value);
+    _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
+
+    await _pageStateService.updateLocationForPage(
+      PageType.explore,
+      LocationData(name: name, latitude: center.latitude, longitude: center.longitude),
+      source: source,
+    );
+  }
+
   Future<void> _useCurrentLocation() async {
     final requestGeneration = ++_locationRequestGeneration;
     try {
@@ -480,21 +502,10 @@ class ExploreController extends GetxController {
         DebugLogger.success(
           '✅ Current location obtained: lat=${position.latitude}, lng=${position.longitude}',
         );
-        _updateMapCenter(LatLng(position.latitude, position.longitude), 14.0);
-
-        // Update radius if needed
-        final currentFilters = _pageStateService.getCurrentPageState().filters;
-        final updatedFilters = currentFilters.copyWith(radiusKm: currentRadius.value);
-        _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-
-        // Sync Explore page state location for subsequent loads
-        await _pageStateService.updateLocationForPage(
-          PageType.explore,
-          LocationData(
-            name: 'Current Location', // Will be reverse geocoded in PageStateService
-            latitude: position.latitude,
-            longitude: position.longitude,
-          ),
+        await _applyExploreLocation(
+          LatLng(position.latitude, position.longitude),
+          14.0,
+          name: 'Current Location', // Will be reverse geocoded in PageStateService
           source: LocationSource.gps,
         );
       } else {
@@ -502,20 +513,10 @@ class ExploreController extends GetxController {
           '⚠️ LocationController returned null position, '
           'using default location',
         );
-        // Use default location if location is not available
-        _updateMapCenter(_defaultCenter, _defaultZoom);
-        // Update radius if needed
-        final currentFilters = _pageStateService.getCurrentPageState().filters;
-        final updatedFilters = currentFilters.copyWith(radiusKm: currentRadius.value);
-        _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-
-        await _pageStateService.updateLocationForPage(
-          PageType.explore,
-          LocationData(
-            name: _defaultCenterName,
-            latitude: _defaultCenter.latitude,
-            longitude: _defaultCenter.longitude,
-          ),
+        await _applyExploreLocation(
+          _defaultCenter,
+          _defaultZoom,
+          name: _defaultCenterName,
           source: LocationSource.fallback,
         );
       }
@@ -523,28 +524,15 @@ class ExploreController extends GetxController {
       if (requestGeneration != _locationRequestGeneration) return;
       DebugLogger.warning('⚠️ Could not get current location: $e');
       // Always fallback to default location
-      DebugLogger.info(
-        '🗺️ Falling back to default location '
-        '($_defaultCenterName)',
-      );
-      _updateMapCenter(_defaultCenter, _defaultZoom);
-      // Update radius if needed
-      final currentFilters = _pageStateService.getCurrentPageState().filters;
-      final updatedFilters = currentFilters.copyWith(radiusKm: currentRadius.value);
-      _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-
-      await _pageStateService.updateLocationForPage(
-        PageType.explore,
-        LocationData(
-          name: _defaultCenterName,
-          latitude: _defaultCenter.latitude,
-          longitude: _defaultCenter.longitude,
-        ),
+      DebugLogger.info('🗺️ Falling back to default location ($_defaultCenterName)');
+      await _applyExploreLocation(
+        _defaultCenter,
+        _defaultZoom,
+        name: _defaultCenterName,
         source: LocationSource.fallback,
       );
     }
   }
-
   void _updateMapCenter(LatLng center, double zoom) {
     // Always update reactive state first
     currentCenter.value = center;

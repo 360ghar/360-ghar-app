@@ -197,43 +197,11 @@ class ExploreView extends GetView<ExploreController> {
         if (controller.state.value == ExploreState.loadingMore)
           Obx(() {
             final indicatorBottom = controller.isListCollapsed.value ? 58.0 : 230.0;
-            final isDark = Theme.of(context).brightness == Brightness.dark;
-            final chipBg = (isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream)
-                .withValues(alpha: 0.95);
-            final chipBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-            final chipText = isDark
-                ? AppDesignTokens.darkTextSecondary
-                : AppDesignTokens.neutral500;
             return Positioned(
               bottom: indicatorBottom,
               left: 16,
               right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: chipBg,
-                  borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-                  border: Border.all(color: chipBorder, width: 1),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(AppDesignTokens.brandGold),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'loading_more_properties'.tr,
-                      style: TextStyle(fontSize: 12, color: chipText),
-                    ),
-                  ],
-                ),
-              ),
+              child: _buildLoadingMoreChip(context),
             );
           }),
         // Collapsible horizontal property list at bottom
