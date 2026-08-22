@@ -4,7 +4,6 @@ import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/error_mapper.dart';
 import 'package:ghar360/features/properties/data/properties_repository.dart';
-import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 
 class PropertyDetailsController extends GetxController {
   final Rxn<PropertyModel> property = Rxn<PropertyModel>();
@@ -18,21 +17,7 @@ class PropertyDetailsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // VisitsController may not be registered when deep-linking directly to a
-    // property (it is registered by the dashboard binding). Guard against its
-    // absence so the property details screen still loads.
-    if (Get.isRegistered<VisitsController>()) {
-      _ensureVisitsLoaded();
-    }
     _resolveProperty();
-  }
-
-  void _ensureVisitsLoaded() {
-    if (!Get.isRegistered<VisitsController>()) return;
-    final visits = Get.find<VisitsController>();
-    if (!visits.hasLoadedVisits.value && !visits.isLoading.value) {
-      visits.loadVisitsLazy();
-    }
   }
 
   dynamic _extractPropertyOrId(dynamic arguments) {
