@@ -153,8 +153,7 @@ class ExploreController extends GetxController {
     DebugLogger.debug('🎯 ExploreController.activatePage()');
     final pageState = _pageStateService.exploreState.value;
     final hasNoPageData = pageState.properties.isEmpty;
-    final hasStaleLoadingWithoutData =
-        hasNoPageData && pageState.isLoading && !pageState.isRefreshing;
+    final hasStaleLoadingWithoutData = pageState.isLoadStuck;
     final shouldRequestWhenEmpty =
         hasNoPageData &&
         (state.value == ExploreState.initial ||

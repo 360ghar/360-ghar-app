@@ -199,6 +199,13 @@ class PageStateModel {
     return now.difference(lastFetched!) > staleThreshold;
   }
 
+  /// True when a loading flag appears stuck: the list claims to be loading
+  /// but holds no data and no refresh is in flight. Controllers treat this as
+  /// "re-issue the load" instead of waiting forever. Mirrors the stricter
+  /// heal check in PageDataLoader._shouldHealStaleLoadingState (which also
+  /// consults its in-flight registry and lastFetched window).
+  bool get isLoadStuck => properties.isEmpty && isLoading && !isRefreshing;
+
   // Helper methods for specific page data
   T? getAdditionalData<T>(String key) {
     return additionalData?[key] as T?;

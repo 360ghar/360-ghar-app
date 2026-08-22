@@ -111,7 +111,7 @@ class DiscoverController extends GetxController {
 
   void activatePage() {
     final ps = _pageStateService.discoverState.value;
-    final hasStaleLoadingWithoutData = ps.properties.isEmpty && ps.isLoading && !ps.isRefreshing;
+    final hasStaleLoadingWithoutData = ps.isLoadStuck;
     final shouldRequestWhenEmpty =
         ps.properties.isEmpty &&
         (state.value == DiscoverState.initial ||
