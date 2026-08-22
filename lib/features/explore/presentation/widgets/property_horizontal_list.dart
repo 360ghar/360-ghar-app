@@ -114,7 +114,9 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
           _lastSelectedId = property.id;
           widget.controller.highlightPropertyFromCard(property);
         }
-      } catch (_) {}
+      } catch (e, st) {
+        DebugLogger.debug('🟡 Highlight sync from scroll failed (ignored): $e', e, st);
+      }
     });
   }
 

@@ -48,6 +48,8 @@ class LastAuthMethodStore {
       _storage.remove(_methodKey);
       _storage.remove(_hintKey);
       _storage.remove(_atKey);
-    } catch (_) {}
+    } catch (e, st) {
+      DebugLogger.warning('Failed to clear last-auth-method store', e, st);
+    }
   }
 }

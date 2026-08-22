@@ -73,7 +73,9 @@ class _OtpInputFieldState extends State<OtpInputField> with CodeAutoFill {
     if (_smsListening) {
       try {
         SmsAutoFill().unregisterListener();
-      } catch (_) {}
+      } catch (e) {
+        DebugLogger.debug('🟡 SMS listener unregister failed (ignored): $e');
+      }
     }
     super.dispose();
   }

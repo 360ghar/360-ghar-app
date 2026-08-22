@@ -304,7 +304,9 @@ class ApiClient {
           _methodToHttpMethod(method),
         );
         await httpMetric.start();
-      } catch (_) {}
+      } catch (e) {
+        DebugLogger.debug('🟡 HTTP metric start failed (ignored): $e');
+      }
     }
 
     DebugLogger.api('🚀 API $method $fullEndpoint');
@@ -448,7 +450,9 @@ class ApiClient {
             httpMetric.responsePayloadSize = payloadSize;
           }
           await httpMetric.stop();
-        } catch (_) {}
+        } catch (e) {
+          DebugLogger.debug('🟡 HTTP metric stop failed (ignored): $e');
+        }
       }
     }
   }

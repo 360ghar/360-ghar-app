@@ -279,7 +279,13 @@ class ExploreController extends GetxController {
                   reason: 'Malformed property at index $i in explore debounce worker',
                   fatal: false,
                 );
-              } catch (_) {}
+              } catch (recordError, recordStack) {
+                DebugLogger.debug(
+                  '🟡 Crashlytics record for malformed property failed (ignored): $recordError',
+                  recordError,
+                  recordStack,
+                );
+              }
             }
           }
 

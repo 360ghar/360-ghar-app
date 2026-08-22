@@ -109,7 +109,9 @@ class AuthNavigationService extends GetxService {
                   Get.find<AppUpdateController>().scheduleCheckAfterFirstFrame();
                 }
               });
-            } catch (_) {}
+            } catch (e, st) {
+              DebugLogger.debug('🟡 Post-frame update check schedule failed (ignored): $e', e, st);
+            }
           }
         }
         break;

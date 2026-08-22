@@ -151,7 +151,9 @@ class AuthController extends GetxController {
     _crashlyticsWorker = ever(authStatus, (AuthStatus status) {
       try {
         FirebaseCrashlytics.instance.setCustomKey('auth_status', status.name);
-      } catch (_) {}
+      } catch (e, st) {
+        DebugLogger.debug('🟡 Crashlytics auth_status key failed (ignored): $e', e, st);
+      }
     });
   }
 
@@ -248,7 +250,9 @@ class AuthController extends GetxController {
       try {
         await AnalyticsService.setUserId(null);
         await FirebaseCrashlytics.instance.setUserIdentifier('');
-      } catch (_) {}
+      } catch (e, st) {
+        DebugLogger.debug('🟡 Telemetry user reset failed (ignored): $e', e, st);
+      }
     } else {
       // --- USER IS SIGNED IN ---
       DebugLogger.auth(
@@ -263,7 +267,9 @@ class AuthController extends GetxController {
         try {
           await AnalyticsService.setUserId(supabaseUser.id);
           await FirebaseCrashlytics.instance.setUserIdentifier(supabaseUser.id);
-        } catch (_) {}
+        } catch (e, st) {
+          DebugLogger.debug('🟡 Telemetry user identity failed (ignored): $e', e, st);
+        }
 
         // Ensure access token is available before backend call
         if (_authProcessingGeneration != generation) return;

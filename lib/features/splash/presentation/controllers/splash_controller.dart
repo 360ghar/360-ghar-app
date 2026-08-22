@@ -8,6 +8,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/utils/debug_logger.dart';
 
 class SplashController extends GetxController with GetTickerProviderStateMixin {
   // The splash controller is now only responsible for splash screen animations,
@@ -88,7 +89,9 @@ class SplashController extends GetxController with GetTickerProviderStateMixin {
   void _completeOnboardingAndNavigate() {
     try {
       _storage.write('has_seen_onboarding', true);
-    } catch (_) {}
+    } catch (e) {
+      DebugLogger.warning('Failed to persist onboarding flag; will show again next launch', e);
+    }
 
     // AuthNavigationService is the single source of truth for navigation
     // based on authStatus. Manually calling Get.offAllNamed here would race

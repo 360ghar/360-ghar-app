@@ -1,10 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/image_cache_service.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/fullscreen_photo_gallery.dart';
 
@@ -67,7 +67,9 @@ class _PropertyDetailsImageGalleryState extends State<PropertyDetailsImageGaller
         await ImageCacheService.instance.preloadImage(url);
         if (!mounted) return;
         await precacheImage(CachedNetworkImageProvider(url), context);
-      } catch (_) {}
+      } catch (e) {
+        DebugLogger.debug('🖼️ Image prefetch failed (ignored): $e');
+      }
     }
     if (mounted) {
       setState(() => _isPrefetching = false);

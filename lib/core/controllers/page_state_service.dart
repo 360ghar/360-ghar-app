@@ -550,7 +550,9 @@ class PageStateService extends GetxController {
       final ps = getCurrentPageState();
       c.setCustomKey('property_count', ps.properties.length);
       c.setCustomKey('active_filters_count', ps.filters.activeFilterCount);
-    } catch (_) {}
+    } catch (e, st) {
+      DebugLogger.debug('🟡 Crashlytics page context update failed (ignored): $e', e, st);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────

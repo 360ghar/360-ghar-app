@@ -28,7 +28,9 @@ class ErrorHandler {
       try {
         // ignore: invalid_use_of_visible_for_testing_member
         code = (error as dynamic).code ?? '';
-      } catch (_) {}
+      } catch (_) {
+        // Not an object carrying `.code` — fall back to message matching.
+      }
       // Use normalized (lowercased) contains-matching so minor wording tweaks
       // by Supabase don't silently break classification. Exact-string switch
       // was previously brittle.
@@ -90,7 +92,9 @@ class ErrorHandler {
             reason: 'Unrecognized AuthException message',
             fatal: false,
           );
-        } catch (_) {}
+        } catch (e, st) {
+          DebugLogger.debug('🟡 Crashlytics record for auth error failed (ignored): $e', e, st);
+        }
         message = msg;
       }
     } else if (error is Exception) {
