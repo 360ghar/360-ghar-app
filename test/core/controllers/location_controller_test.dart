@@ -22,6 +22,7 @@ import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/services/google_places_service.dart';
+import 'package:ghar360/features/profile/data/profile_repository.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 import 'package:mocktail/mocktail.dart';
@@ -175,12 +176,14 @@ void main() {
   });
 
   late MockAuthController mockAuthController;
+  late MockProfileRepository mockProfileRepository;
   late MockGooglePlacesService mockPlacesService;
 
   setUp(() {
     GetxTestBinding.init();
 
     mockAuthController = MockAuthController();
+    mockProfileRepository = MockProfileRepository();
     mockPlacesService = MockGooglePlacesService();
 
     // GooglePlacesService reactive getters used by LocationController.
@@ -189,6 +192,7 @@ void main() {
 
     GetxTestBinding.bind()
       ..register<AuthController>(mockAuthController)
+      ..register<ProfileRepository>(mockProfileRepository)
       ..register<GooglePlacesService>(mockPlacesService);
   });
 
@@ -1101,7 +1105,7 @@ void main() {
 
     test('syncs location to backend when authenticated', () async {
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      when(() => mockAuthController.updateUserLocation(any())).thenAnswer((_) async => true);
+      when(() => mockProfileRepository.updateUserLocation(any())).thenAnswer((_) async {});
 
       fake = FakeGeolocatorPlatform(
         serviceEnabled: true,
@@ -1113,7 +1117,7 @@ void main() {
       final controller = createController();
       await controller.getCurrentLocation();
 
-      verify(() => mockAuthController.updateUserLocation(any())).called(greaterThan(0));
+      verify(() => mockProfileRepository.updateUserLocation(any())).called(greaterThan(0));
     });
 
     test('does not sync when not authenticated', () async {
@@ -1129,13 +1133,13 @@ void main() {
       final controller = createController();
       await controller.getCurrentLocation();
 
-      verifyNever(() => mockAuthController.updateUserLocation(any()));
+      verifyNever(() => mockProfileRepository.updateUserLocation(any()));
     });
 
     test('swallows backend sync errors', () async {
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
       when(
-        () => mockAuthController.updateUserLocation(any()),
+        () => mockProfileRepository.updateUserLocation(any()),
       ).thenThrow(Exception('network error'));
 
       fake = FakeGeolocatorPlatform(
@@ -1602,7 +1606,7 @@ void main() {
     setUp(() {
       originalPlatform = GeolocatorPlatform.instance;
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      when(() => mockAuthController.updateUserLocation(any())).thenAnswer((_) async => true);
+      when(() => mockProfileRepository.updateUserLocation(any())).thenAnswer((_) async {});
     });
 
     tearDown(() {
@@ -1619,13 +1623,13 @@ void main() {
 
       final controller = createController();
       await controller.getCurrentLocation(forceRefresh: true);
-      clearInteractions(mockAuthController);
+      clearInteractions(mockProfileRepository);
       when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      when(() => mockAuthController.updateUserLocation(any())).thenAnswer((_) async => true);
+      when(() => mockProfileRepository.updateUserLocation(any())).thenAnswer((_) async {});
 
       // Same position force-refresh — backend sync throttled by interval/distance.
       await controller.getCurrentLocation(forceRefresh: true);
-      verifyNever(() => mockAuthController.updateUserLocation(any()));
+      verifyNever(() => mockProfileRepository.updateUserLocation(any()));
     });
 
     test('far position triggers another backend sync', () async {
@@ -1643,7 +1647,7 @@ void main() {
       fake.currentPosition = testPosition(latitude: 28.59, longitude: 77.2);
       await controller.getCurrentLocation(forceRefresh: true);
 
-      verify(() => mockAuthController.updateUserLocation(any())).called(greaterThanOrEqualTo(2));
+      verify(() => mockProfileRepository.updateUserLocation(any())).called(greaterThanOrEqualTo(2));
     });
   });
 

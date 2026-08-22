@@ -16,6 +16,7 @@ import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
 import 'package:ghar360/features/auth/presentation/controllers/otp_resend_timer.dart';
+import 'package:ghar360/features/profile/data/profile_repository.dart';
 import 'package:smart_auth/smart_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -215,7 +216,14 @@ class ProfileCompletionController extends GetxController with OtpResendTimer {
       final success = await authController.updateUserProfile(profileData);
 
       if (success) {
-        await authController.updateUserPreferences({'purpose': selectedPropertyPurpose.value});
+        // Purpose preference is a profile write, not an auth-state change.
+      try {
+        await Get.find<ProfileRepository>().updateUserPreferences({
+          'purpose': selectedPropertyPurpose.value,
+        });
+      } catch (e) {
+        DebugLogger.warning('Failed to persist purpose preference: $e');
+      }
         AnalyticsService.authProfileCompleted();
         if (Get.isRegistered<PageStateService>()) {
           (pageStateService ?? Get.find<PageStateService>()).setPurposeForAllPages(

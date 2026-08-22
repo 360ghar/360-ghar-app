@@ -9,11 +9,13 @@ import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/services/google_places_service.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/features/profile/data/profile_repository.dart';
 import 'package:http/http.dart' as http;
 
 class LocationController extends GetxController {
   // Resolved lazily on access so onInit() can never crash on a re-init.
   AuthController get _authController => Get.find<AuthController>();
+  ProfileRepository get _profileRepository => Get.find<ProfileRepository>();
 
   final Rxn<Position> currentPosition = Rxn<Position>();
   final RxBool isLocationEnabled = false.obs;
@@ -183,7 +185,7 @@ class LocationController extends GetxController {
   Future<void> _syncBackendLocation(Position position) async {
     if (!_shouldSyncBackend(position)) return;
     try {
-      await _authController.updateUserLocation({
+      await _profileRepository.updateUserLocation({
         'current_latitude': position.latitude,
         'current_longitude': position.longitude,
       });

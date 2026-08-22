@@ -616,28 +616,6 @@ class AuthController extends GetxController {
     }
   }
 
-  /// Updates the user's location using ProfileRepository
-  Future<bool> updateUserLocation(Map<String, dynamic> locationData) async {
-    try {
-      await _profileRepository.updateUserLocation(locationData);
-      return true;
-    } catch (e) {
-      DebugLogger.error('Failed to update user location', e);
-      return false;
-    }
-  }
-
-  /// Updates the user's preferences using ProfileRepository
-  Future<bool> updateUserPreferences(Map<String, dynamic> preferences) async {
-    try {
-      final updatedUser = await _profileRepository.updateUserPreferences(preferences);
-      currentUser.value = updatedUser;
-      return true;
-    } catch (e) {
-      DebugLogger.error('Failed to update user preferences', e);
-      return false;
-    }
-  }
 
   /// Marks that the just-authenticated OTP session has no password and must
   /// set one before entering the app. Call this BEFORE verifying the OTP so

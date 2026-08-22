@@ -57,6 +57,7 @@ void main() {
   late MockPageDataLoader dataLoader;
   late MockLocationController locationController;
   late MockAuthController authController;
+  late MockProfileRepository profileRepo;
   late PageLocationManager manager;
 
   // Real reactive instances wired onto the location-controller mock so the
@@ -65,11 +66,15 @@ void main() {
   late RxString currentAddress;
   late Rx<PageType> currentPageType;
 
-  setUp(() {
+  setUp(() async {
     pageState = MockPageStateService();
     dataLoader = MockPageDataLoader();
     locationController = MockLocationController();
     authController = MockAuthController();
+    profileRepo = MockProfileRepository();
+
+    // Default stub: backend location sync succeeds.
+    when(() => profileRepo.updateUserLocation(any())).thenAnswer((_) async {});
 
     currentPosition = Rxn<Position>();
     currentAddress = ''.obs;
@@ -98,7 +103,8 @@ void main() {
     // DataLoader stubs.
     when(() => dataLoader.debounceRefresh(any())).thenReturn(null);
 
-    manager = PageLocationManager(pageState, dataLoader, locationController, authController);
+    manager = PageLocationManager(pageState, dataLoader, locationController, authController)
+      ..debugSetProfileRepositoryForTest(profileRepo);
   });
 
   tearDown(() {
@@ -228,14 +234,14 @@ void main() {
   group('updateLocation', () {
     test('syncs to backend when authenticated then updates current page', () async {
       when(() => authController.isAuthenticated).thenReturn(true);
-      when(() => authController.updateUserLocation(any())).thenAnswer((_) async => true);
+      when(() => profileRepo.updateUserLocation(any())).thenAnswer((_) async {});
 
       await manager.updateLocation(
         const LocationData(name: 'Delhi', latitude: 28.6, longitude: 77.2),
         source: LocationSource.manual,
       );
 
-      verify(() => authController.updateUserLocation(any())).called(1);
+      verify(() => profileRepo.updateUserLocation(any())).called(1);
       // updateLocationForPage is called for the current page type (discover).
       verify(() => pageState.updatePageState(PageType.discover, any())).called(1);
     });
@@ -247,13 +253,13 @@ void main() {
         const LocationData(name: 'Delhi', latitude: 28.6, longitude: 77.2),
       );
 
-      verifyNever(() => authController.updateUserLocation(any()));
+      verifyNever(() => profileRepo.updateUserLocation(any()));
       verify(() => pageState.updatePageState(PageType.discover, any())).called(1);
     });
 
     test('swallows backend sync errors', () async {
       when(() => authController.isAuthenticated).thenReturn(true);
-      when(() => authController.updateUserLocation(any())).thenThrow(Exception('sync failed'));
+      when(() => profileRepo.updateUserLocation(any())).thenThrow(Exception('sync failed'));
 
       // Should not throw.
       await manager.updateLocation(

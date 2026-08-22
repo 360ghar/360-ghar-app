@@ -768,75 +768,7 @@ void main() {
   // -------------------------------------------------------------------------
   // updateUserLocation
   // -------------------------------------------------------------------------
-  group('updateUserLocation', () {
-    test('returns true on success', () async {
-      when(() => profileRepo.updateUserLocation(any())).thenAnswer((_) async {});
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      final result = await c.updateUserLocation({
-        'current_latitude': 28.6139,
-        'current_longitude': 77.2090,
-      });
-
-      expect(result, isTrue);
-    });
-
-    test('returns false on failure', () async {
-      when(() => profileRepo.updateUserLocation(any())).thenThrow(Exception('failed'));
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      final result = await c.updateUserLocation({
-        'current_latitude': 28.6139,
-        'current_longitude': 77.2090,
-      });
-
-      expect(result, isFalse);
-    });
-  });
-
-  // -------------------------------------------------------------------------
   // updateUserPreferences
-  // -------------------------------------------------------------------------
-  group('updateUserPreferences', () {
-    test('returns true on success and updates currentUser', () async {
-      final updatedUser = UserModel(
-        id: 1,
-        supabaseUserId: 'fake-uid-123',
-        email: 'test@example.com',
-        fullName: 'Test User',
-        isActive: true,
-        isVerified: false,
-        createdAt: DateTime(2024, 1, 1),
-        preferences: {'purpose': 'rent'},
-      );
-
-      when(() => profileRepo.updateUserPreferences(any())).thenAnswer((_) async => updatedUser);
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      final result = await c.updateUserPreferences({'purpose': 'rent'});
-
-      expect(result, isTrue);
-      expect(c.currentUser.value?.preferences?['purpose'], 'rent');
-    });
-
-    test('returns false on failure', () async {
-      when(() => profileRepo.updateUserPreferences(any())).thenThrow(Exception('failed'));
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      final result = await c.updateUserPreferences({'purpose': 'rent'});
-
-      expect(result, isFalse);
-    });
-  });
-
   // -------------------------------------------------------------------------
   // completePasswordSetup
   // -------------------------------------------------------------------------

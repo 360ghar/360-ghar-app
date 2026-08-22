@@ -16,6 +16,7 @@ import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/features/profile/data/profile_repository.dart';
 
 class PageStateService extends GetxController {
   static PageStateService get instance => Get.find<PageStateService>();
@@ -31,6 +32,7 @@ class PageStateService extends GetxController {
   late final LocationController _locationController;
   late final AuthController _authController;
   late final SwipesPort _swipesPort;
+  late final ProfileRepository _profileRepository;
 
   // Page states
   final Rx<PageStateModel> exploreState = PageStateModel.initial(PageType.explore).obs;
@@ -70,6 +72,10 @@ class PageStateService extends GetxController {
       maxRetries: 3,
     );
     _swipesPort = await _findDependencyWithRetry<SwipesPort>('SwipesPort', maxRetries: 3);
+    _profileRepository = await _findDependencyWithRetry<ProfileRepository>(
+      'ProfileRepository',
+      maxRetries: 3,
+    );
     final propertiesPort = await _findDependencyWithRetry<PropertiesPort>(
       'PropertiesPort',
       maxRetries: 3,
@@ -1043,7 +1049,7 @@ class PageStateService extends GetxController {
 
       if (preferences.isEmpty) return;
 
-      await _authController.updateUserPreferences(preferences);
+      await _profileRepository.updateUserPreferences(preferences);
       DebugLogger.success('✅ Synced preferences to backend');
     } catch (e) {
       DebugLogger.error('Failed to sync preferences: $e');

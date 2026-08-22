@@ -23,14 +23,28 @@ import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/models/unified_property_response.dart';
+import 'package:ghar360/core/data/models/user_model.dart';
 import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
+import 'package:ghar360/features/profile/data/profile_repository.dart';
 import 'package:ghar360/features/properties/data/properties_repository.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../helpers/getx_test_binding.dart';
 import '../../helpers/mocks.dart';
+
+
+UserModel _testUser() => UserModel(
+      id: 1,
+      supabaseUserId: 'fake-uid-123',
+      email: 'test@example.com',
+      fullName: 'Test User',
+      isActive: true,
+      isVerified: false,
+      createdAt: DateTime(2024, 1, 1),
+      preferences: {'purpose': 'rent'},
+    );
 
 void main() {
   // Mock path_provider platform channel so GetStorage can initialise in tests.
@@ -68,6 +82,8 @@ void main() {
   late MockAuthController authController;
   late MockSwipesRepository swipesRepo;
   late MockPropertiesRepository propertiesRepo;
+  late MockProfileRepository profileRepo;
+  late UserModel user;
 
   setUp(() async {
     GetxTestBinding.init();
@@ -78,6 +94,8 @@ void main() {
     authController = MockAuthController();
     swipesRepo = MockSwipesRepository();
     propertiesRepo = MockPropertiesRepository();
+    profileRepo = MockProfileRepository();
+    user = _testUser();
 
     // Stub LocationController Rx fields (needed by sub-services created in onInit)
     when(() => locationController.currentPosition).thenReturn(Rxn<Position>());
@@ -98,7 +116,7 @@ void main() {
 
     // Stub AuthController
     when(() => authController.isAuthenticated).thenReturn(false);
-    when(() => authController.updateUserPreferences(any())).thenAnswer((_) async => true);
+    when(() => profileRepo.updateUserPreferences(any())).thenAnswer((_) async => user);
 
     // Stub PropertiesPort.searchProperties — PageDataLoader uses the port API
     // (not getProperties) for explore/discover loads.
@@ -138,6 +156,7 @@ void main() {
       ..register<AuthController>(authController)
       ..register<SwipesRepository>(swipesRepo)
       ..register<SwipesPort>(swipesRepo)
+      ..register<ProfileRepository>(profileRepo)
       ..register<PropertiesRepository>(propertiesRepo)
       ..register<PropertiesPort>(propertiesRepo);
   });
@@ -1070,14 +1089,14 @@ void main() {
 
       await service.syncPreferencesToBackend();
 
-      verifyNever(() => authController.updateUserPreferences(any()));
+      verifyNever(() => profileRepo.updateUserPreferences(any()));
     });
 
     test('syncs preferences when authenticated with filters', () async {
       final service = await createService();
 
       when(() => authController.isAuthenticated).thenReturn(true);
-      when(() => authController.updateUserPreferences(any())).thenAnswer((_) async => true);
+      when(() => profileRepo.updateUserPreferences(any())).thenAnswer((_) async => user);
 
       // Set some filters on current page
       service.setCurrentPage(PageType.explore);
@@ -1094,20 +1113,20 @@ void main() {
 
       await service.syncPreferencesToBackend();
 
-      verify(() => authController.updateUserPreferences(any())).called(1);
+      verify(() => profileRepo.updateUserPreferences(any())).called(1);
     });
 
     test('syncs with default purpose when authenticated', () async {
       final service = await createService();
 
       when(() => authController.isAuthenticated).thenReturn(true);
-      when(() => authController.updateUserPreferences(any())).thenAnswer((_) async => true);
+      when(() => profileRepo.updateUserPreferences(any())).thenAnswer((_) async => user);
 
       // Default filters have purpose='buy' set during bootstrap
       await service.syncPreferencesToBackend();
 
       // Should call updateUserPreferences (purpose is set by default)
-      verify(() => authController.updateUserPreferences(any())).called(1);
+      verify(() => profileRepo.updateUserPreferences(any())).called(1);
     });
   });
 

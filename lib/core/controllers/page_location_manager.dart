@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_data_loader.dart';
@@ -12,6 +11,7 @@ import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/firebase/analytics_service.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/features/profile/data/profile_repository.dart';
 
 /// Handles location updates, GPS position tracking, geocoding, and
 /// location normalization for [PageStateService].
@@ -20,6 +20,18 @@ class PageLocationManager {
   final PageDataLoader _dataLoader;
   final LocationController _locationController;
   final AuthController _authController;
+
+  /// Resolved lazily so tests can construct the manager without DI set up,
+  /// then inject a mock via [debugSetProfileRepositoryForTest].
+  ProfileRepository? _profileRepositoryOverride;
+  ProfileRepository get _profileRepository =>
+      _profileRepositoryOverride ??= Get.find<ProfileRepository>();
+
+  /// @visibleForTesting seam: overrides the ProfileRepository used for
+  /// backend location sync. Call before the first [updateLocation].
+  void debugSetProfileRepositoryForTest(ProfileRepository repo) {
+    _profileRepositoryOverride = repo;
+  }
 
   StreamSubscription? _locationSubscription;
   Position? _lastGpsPosition;
@@ -186,7 +198,7 @@ class PageLocationManager {
     try {
       // Update backend if authenticated
       if (_authController.isAuthenticated) {
-        await _authController.updateUserLocation({
+        await _profileRepository.updateUserLocation({
           'current_latitude': location.latitude,
           'current_longitude': location.longitude,
         });
