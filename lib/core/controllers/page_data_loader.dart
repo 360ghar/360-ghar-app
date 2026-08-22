@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/ports/properties_port.dart';
@@ -285,7 +286,7 @@ class PageDataLoader {
       }
 
       if (pageType == PageType.likes) {
-        final isLikedSegment = _pageState.currentLikesSegment == 'liked';
+        final isLikedSegment = _pageState.currentLikesSegment == LikesSegment.liked;
         final response = await _swipesRepo.getSwipeHistoryProperties(
           filters: state.filters.copyWith(searchQuery: state.searchQuery),
           latitude: loc.latitude,
@@ -302,7 +303,7 @@ class PageDataLoader {
         // Re-read after await: concurrent remove/move/segment switch must not
         // re-append removed rows or clobber the newly selected segment.
         final latest = _pageState.getStateForPage(pageType);
-        final stillOnSegment = (_pageState.currentLikesSegment == 'liked') == isLikedSegment;
+        final stillOnSegment = (_pageState.currentLikesSegment == LikesSegment.liked) == isLikedSegment;
         if (!stillOnSegment) {
           _pageState.updatePageState(pageType, latest.copyWith(isLoadingMore: false));
           return;
@@ -442,7 +443,7 @@ class PageDataLoader {
     if (pageType == PageType.likes) {
       // Capture segment at request start via the shared getter so checks stay
       // aligned with [PageStateService.applyLikesSegmentFetchResult].
-      final isLikedSegment = _pageState.currentLikesSegment == 'liked';
+      final isLikedSegment = _pageState.currentLikesSegment == LikesSegment.liked;
       final resp = await _swipesRepo.getSwipeHistoryProperties(
         filters: state.filters.copyWith(searchQuery: state.searchQuery),
         latitude: loc.latitude,
@@ -468,7 +469,7 @@ class PageDataLoader {
       );
       // Keep selected location / error flags consistent when still on likes.
       final latest = _pageState.getStateForPage(pageType);
-      final stillOnRequested = (_pageState.currentLikesSegment == 'liked') == isLikedSegment;
+      final stillOnRequested = (_pageState.currentLikesSegment == LikesSegment.liked) == isLikedSegment;
       if (stillOnRequested) {
         _pageState.updatePageState(
           pageType,

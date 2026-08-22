@@ -1,4 +1,5 @@
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
@@ -44,7 +45,7 @@ class LikesSwipeCoordinator {
         // Single path for optimistic like + segment caches (shared with tests).
         addPropertyToLikes(prop);
       }
-      if (currentLikesSegment == 'passed') {
+      if (currentLikesSegment == LikesSegment.passed) {
         removePropertyFromLikes(propertyId);
       }
     } else {
@@ -54,9 +55,9 @@ class LikesSwipeCoordinator {
       } else {
         // Still drop any pending like for this id.
         _optimisticLiked.remove(propertyId);
-        _removeFromLikesSegmentCache('liked', propertyId);
+        _removeFromLikesSegmentCache(LikesSegment.liked, propertyId);
       }
-      if (currentLikesSegment == 'liked') {
+      if (currentLikesSegment == LikesSegment.liked) {
         removePropertyFromLikes(propertyId);
       }
     }
@@ -207,14 +208,14 @@ class LikesSwipeCoordinator {
     // - Original PASS added to passed → undo removes from passed cache only.
     if (originalIsLiked) {
       _optimisticLiked.remove(propertyId);
-      _removeFromLikesSegmentCache('liked', propertyId);
-      if (currentLikesSegment == 'liked') {
+      _removeFromLikesSegmentCache(LikesSegment.liked, propertyId);
+      if (currentLikesSegment == LikesSegment.liked) {
         removePropertyFromLikes(propertyId);
       }
     } else {
       _optimisticPassed.remove(propertyId);
-      _removeFromLikesSegmentCache('passed', propertyId);
-      if (currentLikesSegment == 'passed') {
+      _removeFromLikesSegmentCache(LikesSegment.passed, propertyId);
+      if (currentLikesSegment == LikesSegment.passed) {
         removePropertyFromLikes(propertyId);
       }
     }
@@ -229,7 +230,7 @@ class LikesSwipeCoordinator {
 
   void removePropertyFromLikes(int propertyId) {
     // User explicitly removed from the visible segment — drop pending too.
-    if (currentLikesSegment == 'liked') {
+    if (currentLikesSegment == LikesSegment.liked) {
       _optimisticLiked.remove(propertyId);
     } else {
       _optimisticPassed.remove(propertyId);
@@ -245,17 +246,17 @@ class LikesSwipeCoordinator {
     // Always keep the liked segment cache fresh so switching tabs / revisiting
     // Likes shows the property even if the user was on "passed" when swiping.
     _trackOptimisticLike(property);
-    _upsertLikesSegmentCache('liked', property);
-    _removeFromLikesSegmentCache('passed', property.id);
-    if (currentLikesSegment != 'liked') return;
+    _upsertLikesSegmentCache(LikesSegment.liked, property);
+    _removeFromLikesSegmentCache(LikesSegment.passed, property.id);
+    if (currentLikesSegment != LikesSegment.liked) return;
     _prependToVisibleLikesList(property);
   }
 
   void addPropertyToPassed(PropertyModel property) {
     _trackOptimisticPass(property);
-    _upsertLikesSegmentCache('passed', property);
-    _removeFromLikesSegmentCache('liked', property.id);
-    if (currentLikesSegment != 'passed') return;
+    _upsertLikesSegmentCache(LikesSegment.passed, property);
+    _removeFromLikesSegmentCache(LikesSegment.liked, property.id);
+    if (currentLikesSegment != LikesSegment.passed) return;
     _prependToVisibleLikesList(property);
   }
 
@@ -306,7 +307,7 @@ class LikesSwipeCoordinator {
 
     DebugLogger.debug(
       '💖 Preserving ${pending.length} optimistic '
-      '${isLikedSegment ? 'liked' : 'passed'} properties after server merge',
+      '${isLikedSegment ? LikesSegment.liked.name : LikesSegment.passed.name} properties after server merge',
     );
     return [...pending, ...merged];
   }
@@ -319,7 +320,7 @@ class LikesSwipeCoordinator {
     required bool hasMore,
     String? nextCursor,
   }) {
-    final segment = isLikedSegment ? 'liked' : 'passed';
+    final segment = isLikedSegment ? LikesSegment.liked : LikesSegment.passed;
     final merged = mergeLikesServerResults(serverItems, isLikedSegment: isLikedSegment);
     final now = DateTime.now();
     _likesSegmentCache[segment] = _LikesSegmentCache(
@@ -331,8 +332,8 @@ class LikesSwipeCoordinator {
 
     if (currentLikesSegment != segment) {
       DebugLogger.debug(
-        '💖 Discarded visible apply for stale likes segment=$segment '
-        '(current=$currentLikesSegment); cache updated only',
+        '💖 Discarded visible apply for stale likes segment=${segment.name} '
+        '(current=${currentLikesSegment.name}); cache updated only',
       );
       return;
     }
@@ -372,7 +373,7 @@ class LikesSwipeCoordinator {
     _pageState.updatePageState(PageType.likes, state.copyWith(properties: [property, ...state.properties]));
   }
 
-  void _upsertLikesSegmentCache(String segment, PropertyModel property) {
+  void _upsertLikesSegmentCache(LikesSegment segment, PropertyModel property) {
     final existing = _likesSegmentCache[segment];
     final list = List<PropertyModel>.of(existing?.properties ?? const []);
     list.removeWhere((p) => p.id == property.id);
@@ -389,7 +390,7 @@ class LikesSwipeCoordinator {
     );
   }
 
-  void _removeFromLikesSegmentCache(String segment, int propertyId) {
+  void _removeFromLikesSegmentCache(LikesSegment segment, int propertyId) {
     final existing = _likesSegmentCache[segment];
     if (existing == null) return;
     final list = existing.properties.where((p) => p.id != propertyId).toList();
@@ -409,13 +410,14 @@ class LikesSwipeCoordinator {
   /// In-memory per-segment cache so switching between Liked and Passed tabs
   /// reuses recently-fetched data instead of always hitting the API.
   /// Not persisted (avoids disk bloat); rebuilt on cold start.
-  final Map<String, _LikesSegmentCache> _likesSegmentCache = {};
+  final Map<LikesSegment, _LikesSegmentCache> _likesSegmentCache = {};
 
   /// Switches the likes segment (liked/passed). Reuses cached data when fresh;
   /// only fetches from the network when the segment's cache is empty or stale.
   void updateLikesSegment(String segment) {
+    final target = LikesSegment.tryParse(segment);
     final previousSegment = currentLikesSegment;
-    if (previousSegment == segment) return;
+    if (previousSegment == target) return;
 
     // Snapshot the outgoing segment's data before switching
     final ps = _pageState.likesState.value;
@@ -427,10 +429,11 @@ class LikesSwipeCoordinator {
     );
 
     // Switch the segment marker
-    _pageState.likesState.value = _pageState.likesState.value.updateAdditionalData('currentSegment', segment);
+    _pageState.likesState.value =
+        _pageState.likesState.value.updateAdditionalData('currentSegment', target.name);
 
     // Restore cached data for the target segment if fresh
-    final cached = _likesSegmentCache[segment];
+    final cached = _likesSegmentCache[target];
     final fresh = cached != null && !cached.isStale;
     if (fresh) {
       _pageState.likesState.value = _pageState.likesState.value.copyWith(
@@ -467,8 +470,8 @@ class LikesSwipeCoordinator {
     _pageState.loadPageData(PageType.likes, forceRefresh: true);
   }
 
-  String get currentLikesSegment =>
-      _pageState.likesState.value.getAdditionalData<String>('currentSegment') ?? 'liked';
+  LikesSegment get currentLikesSegment => LikesSegment.tryParse(
+      _pageState.likesState.value.getAdditionalData<String>('currentSegment'));
 
   /// Drops all session-scoped likes/swipe bookkeeping (logout / account
   /// switch): segment caches, optimistic maps, swiped and preserve markers,

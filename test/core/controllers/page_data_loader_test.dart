@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/page_data_loader.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
@@ -89,7 +90,7 @@ void main() {
         nextCursor: any(named: 'nextCursor'),
       ),
     ).thenReturn(null);
-    when(() => pageState.currentLikesSegment).thenReturn('liked');
+    when(() => pageState.currentLikesSegment).thenReturn(LikesSegment.liked);
 
     // LocationController stubs.
     when(

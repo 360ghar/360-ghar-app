@@ -20,6 +20,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/models/unified_property_response.dart';
@@ -362,7 +363,7 @@ void main() {
         service.likesState.value.copyWith(properties: [testPropertyModel(id: 1)]),
       );
       service.updateLikesSegment('passed');
-      expect(service.currentLikesSegment, 'passed');
+      expect(service.currentLikesSegment, LikesSegment.passed);
 
       await service.recordSwipe(propertyId: 88, isLiked: true);
 
@@ -382,7 +383,7 @@ void main() {
         PageType.discover,
         service.discoverState.value.copyWith(properties: [prop]),
       );
-      expect(service.currentLikesSegment, 'liked');
+      expect(service.currentLikesSegment, LikesSegment.liked);
 
       await service.recordSwipe(propertyId: 77, isLiked: false);
 
@@ -668,7 +669,7 @@ void main() {
       final p2 = testPropertyModel(id: 20);
 
       // Ensure we're in the 'liked' segment (default)
-      expect(service.currentLikesSegment, 'liked');
+      expect(service.currentLikesSegment, LikesSegment.liked);
 
       service.addPropertyToLikes(p1);
       expect(service.likesState.value.properties, hasLength(1));
@@ -935,11 +936,11 @@ void main() {
   group('updateLikesSegment', () {
     test('switching to same segment is a no-op', () async {
       final service = await createService();
-      expect(service.currentLikesSegment, 'liked');
+      expect(service.currentLikesSegment, LikesSegment.liked);
 
       service.updateLikesSegment('liked');
 
-      expect(service.currentLikesSegment, 'liked');
+      expect(service.currentLikesSegment, LikesSegment.liked);
     });
 
     test('switching to passed resets data and triggers load', () async {
@@ -952,7 +953,7 @@ void main() {
 
       service.updateLikesSegment('passed');
 
-      expect(service.currentLikesSegment, 'passed');
+      expect(service.currentLikesSegment, LikesSegment.passed);
       // Data should be reset (empty) since no cache for passed
       expect(service.likesState.value.properties, isEmpty);
     });
@@ -971,7 +972,7 @@ void main() {
       // Switch back to liked (should restore cached data)
       service.updateLikesSegment('liked');
 
-      expect(service.currentLikesSegment, 'liked');
+      expect(service.currentLikesSegment, LikesSegment.liked);
       // Cached data should be restored
       expect(service.likesState.value.properties.any((p) => p.id == 10), isTrue);
     });

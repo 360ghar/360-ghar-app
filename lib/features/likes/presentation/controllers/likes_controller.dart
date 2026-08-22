@@ -3,14 +3,13 @@ import 'dart:async';
 import 'package:get/get.dart';
 
 import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
-
-enum LikesSegment { liked, passed }
 
 enum LikesState { initial, loading, loaded, empty, error, loadingMore }
 
@@ -68,10 +67,10 @@ class LikesController extends GetxController {
         '💖 [LIKES_CONTROLLER] Page state: hasLocation=${ps.hasLocation}, isLoading=${ps.isLoading}, propertiesCount=${ps.properties.length}',
       );
 
-      final segStr = _pageStateService.currentLikesSegment;
-      DebugLogger.debug('💖 [LIKES_CONTROLLER] Current segment string: $segStr');
+      final segment = _pageStateService.currentLikesSegment;
+      DebugLogger.debug('💖 [LIKES_CONTROLLER] Current segment: ${segment.name}');
 
-      currentSegment.value = segStr == 'liked' ? LikesSegment.liked : LikesSegment.passed;
+      currentSegment.value = segment;
       DebugLogger.debug('💖 [LIKES_CONTROLLER] Segment updated to: ${currentSegment.value}');
 
       if (!ps.hasLocation) {
@@ -132,7 +131,7 @@ class LikesController extends GetxController {
     if (currentSegment.value == segment) return;
     currentSegment.value = segment;
     DebugLogger.api('📱 Switched to ${segment.name} segment');
-    _pageStateService.updateLikesSegment(segment == LikesSegment.liked ? 'liked' : 'passed');
+    _pageStateService.updateLikesSegment(segment.name);
   }
 
   // Search functionality

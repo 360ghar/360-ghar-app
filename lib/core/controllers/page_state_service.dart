@@ -10,6 +10,7 @@ import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/page_data_loader.dart';
 import 'package:ghar360/core/controllers/page_filter_manager.dart';
 import 'package:ghar360/core/controllers/page_location_manager.dart';
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
@@ -574,7 +575,7 @@ class PageStateService extends GetxController {
       );
 
   void updateLikesSegment(String segment) => _likesSwipe.updateLikesSegment(segment);
-  String get currentLikesSegment => _likesSwipe.currentLikesSegment;
+  LikesSegment get currentLikesSegment => _likesSwipe.currentLikesSegment;
 
   void addPropertyToLikes(PropertyModel property) => _likesSwipe.addPropertyToLikes(property);
   void addPropertyToPassed(PropertyModel property) => _likesSwipe.addPropertyToPassed(property);
