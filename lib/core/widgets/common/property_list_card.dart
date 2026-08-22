@@ -9,13 +9,17 @@ import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/widgets/common/animated_tap_wrapper.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 
-class LikesPropertyCard extends StatelessWidget {
+/// Shared property list card used by Explore and Likes.
+///
+/// Renders hero image + favorite overlay + type chip + title/price/address +
+/// bed/area specs, navigating to [AppRoutes.propertyDetails] on tap.
+class PropertyListCard extends StatelessWidget {
   final PropertyModel property;
   final bool isFavourite;
   final bool isUpdating;
   final VoidCallback onFavouriteToggle;
 
-  const LikesPropertyCard({
+  const PropertyListCard({
     super.key,
     required this.property,
     required this.isFavourite,
@@ -29,7 +33,7 @@ class LikesPropertyCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return AnimatedTapWrapper(
-      key: ValueKey('qa.likes.card.${property.id}'),
+      key: ValueKey('qa.property.card.${property.id}'),
       onTap: () => Get.toNamed(AppRoutes.propertyDetails, arguments: property),
       child: Container(
         decoration: BoxDecoration(
@@ -152,12 +156,7 @@ class LikesPropertyCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.sm,
-                AppSpacing.sm,
-                AppSpacing.sm,
-                AppSpacing.sm,
-              ),
+              padding: const EdgeInsets.all(AppSpacing.sm),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,

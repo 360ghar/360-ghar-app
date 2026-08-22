@@ -10,8 +10,8 @@ import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/widgets/common/property_list_card.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
-import 'package:ghar360/features/explore/presentation/widgets/explore_property_card.dart';
 
 /// The property list for the Explore map.
 ///
@@ -46,7 +46,7 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
   // Horizontal card geometry (unchanged from the original layout).
   static const double _itemWidth = 260.0;
   static const double _spacing = 12.0;
-  // Vertical list item height — matches ExplorePropertyCard's intrinsic height.
+  // Vertical list item height — matches PropertyListCard's intrinsic height.
   static const double _verticalItemHeight = 112.0 + 86.0;
 
   @override
@@ -205,7 +205,7 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
     // The card uses an Expanded content row, so it needs a bounded height on
     // both axes. In the horizontal strip the parent gives it height: 220; in
     // the vertical side panel we constrain it explicitly via SizedBox.
-    final card = ExplorePropertyCard(
+    final card = PropertyListCard(
       property: property,
       isFavourite: isFavourite,
       onFavouriteToggle: () => widget.controller.toggleLike(property),

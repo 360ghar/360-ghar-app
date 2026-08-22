@@ -13,11 +13,11 @@ import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/paginated_scroll_mixin.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
+import 'package:ghar360/core/widgets/common/property_list_card.dart';
 import 'package:ghar360/core/widgets/common/segmented_control.dart';
 import 'package:ghar360/core/widgets/common/unified_top_bar.dart';
 import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:ghar360/features/likes/presentation/controllers/likes_controller.dart';
-import 'package:ghar360/features/likes/presentation/widgets/likes_property_card.dart';
 
 class LikesView extends GetView<LikesController> {
   const LikesView({super.key});
@@ -295,7 +295,7 @@ class _LikesPropertyGridState extends State<_LikesPropertyGrid>
 
                   final property = properties[index];
 
-                  return LikesPropertyCard(
+                  return PropertyListCard(
                     property: property,
                     isFavourite: controller.isFavourite(property),
                     isUpdating: controller.isFavouriteUpdating(property),

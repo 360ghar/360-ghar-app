@@ -6,7 +6,7 @@ import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/translations/app_translations.dart';
-import 'package:ghar360/features/likes/presentation/widgets/likes_property_card.dart';
+import 'package:ghar360/core/widgets/common/property_list_card.dart';
 import '../../../../helpers/getx_test_binding.dart';
 
 PropertyModel _richProperty({int id = 100}) {
@@ -89,7 +89,7 @@ void main() {
   testWidgets('renders property title and formatted price', (tester) async {
     await pumpCard(
       tester,
-      LikesPropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.text('Sunshine Villa'), findsOneWidget);
@@ -100,7 +100,7 @@ void main() {
   testWidgets('renders property type badge translated and uppercased', (tester) async {
     await pumpCard(
       tester,
-      LikesPropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.text('HOUSE'), findsOneWidget);
@@ -109,7 +109,7 @@ void main() {
   testWidgets('renders bedroom/bathroom and area specs', (tester) async {
     await pumpCard(
       tester,
-      LikesPropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.text('3BHK, 2 Bath'), findsOneWidget);
@@ -119,7 +119,7 @@ void main() {
   testWidgets('renders address display', (tester) async {
     await pumpCard(
       tester,
-      LikesPropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.text('New Delhi'), findsOneWidget);
@@ -128,7 +128,7 @@ void main() {
   testWidgets('shows filled favorite icon when isFavourite is true', (tester) async {
     await pumpCard(
       tester,
-      LikesPropertyCard(property: _richProperty(), isFavourite: true, onFavouriteToggle: () {}),
+      PropertyListCard(property: _richProperty(), isFavourite: true, onFavouriteToggle: () {}),
     );
 
     expect(find.byIcon(Icons.favorite), findsOneWidget);
@@ -137,7 +137,7 @@ void main() {
   testWidgets('shows outlined favorite icon when isFavourite is false', (tester) async {
     await pumpCard(
       tester,
-      LikesPropertyCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: _richProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.byIcon(Icons.favorite_border), findsOneWidget);
@@ -147,7 +147,7 @@ void main() {
     var toggled = 0;
     await pumpCard(
       tester,
-      LikesPropertyCard(
+      PropertyListCard(
         property: _richProperty(),
         isFavourite: false,
         onFavouriteToggle: () => toggled++,
@@ -164,7 +164,7 @@ void main() {
     final property = _richProperty();
     await pumpCard(
       tester,
-      LikesPropertyCard(property: property, isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: property, isFavourite: false, onFavouriteToggle: () {}),
       withRoutes: true,
     );
 
@@ -177,7 +177,7 @@ void main() {
   testWidgets('renders rental property with monthly rent price', (tester) async {
     await pumpCard(
       tester,
-      LikesPropertyCard(property: _rentalProperty(), isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: _rentalProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.text('Cozy Studio'), findsOneWidget);
@@ -189,7 +189,7 @@ void main() {
   testWidgets('renders studio type badge uppercased', (tester) async {
     await pumpCard(
       tester,
-      LikesPropertyCard(property: _rentalProperty(), isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: _rentalProperty(), isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.text('STUDIO'), findsOneWidget);
@@ -211,7 +211,7 @@ void main() {
     );
     await pumpCard(
       tester,
-      LikesPropertyCard(property: property, isFavourite: false, onFavouriteToggle: () {}),
+      PropertyListCard(property: property, isFavourite: false, onFavouriteToggle: () {}),
     );
 
     expect(find.byIcon(Icons.bed_outlined), findsNothing);
