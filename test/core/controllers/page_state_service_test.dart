@@ -6,8 +6,8 @@
 // - getStateForPage / getCurrentPageState return correct state
 // - updatePageState mutates the correct observable
 // - recordSwipe optimistically updates likes/dislikes
-// - removePropertyFromDiscover / reinsertPropertyToDiscover
-// - addPropertyToLikes / removePropertyFromLikes
+// - likesSwipe.removePropertyFromDiscover / reinsertPropertyToDiscover
+// - likesSwipe.addPropertyToLikes / removePropertyFromLikes
 
 import 'dart:async';
 import 'dart:io';
@@ -362,7 +362,7 @@ void main() {
         PageType.likes,
         service.likesState.value.copyWith(properties: [testPropertyModel(id: 1)]),
       );
-      service.updateLikesSegment('passed');
+      service.updateLikesSegment(LikesSegment.passed);
       expect(service.currentLikesSegment, LikesSegment.passed);
 
       await service.recordSwipe(propertyId: 88, isLiked: true);
@@ -371,7 +371,7 @@ void main() {
       expect(service.likesState.value.properties.any((p) => p.id == 88), isFalse);
 
       // Switching back to liked should surface the optimistically cached like.
-      service.updateLikesSegment('liked');
+      service.updateLikesSegment(LikesSegment.liked);
       expect(service.likesState.value.properties.any((p) => p.id == 88), isTrue);
     });
 
@@ -389,7 +389,7 @@ void main() {
 
       expect(service.likesState.value.properties.any((p) => p.id == 77), isFalse);
 
-      service.updateLikesSegment('passed');
+      service.updateLikesSegment(LikesSegment.passed);
       expect(service.likesState.value.properties.any((p) => p.id == 77), isTrue);
     });
 
@@ -406,7 +406,7 @@ void main() {
       await service.recordSwipe(propertyId: 901, isLiked: true);
 
       expect(service.discoverState.value.properties.any((p) => p.id == 901), isFalse);
-      expect(service.isSessionSwiped(901), isTrue);
+      expect(service.likesSwipe.isSessionSwiped(901), isTrue);
 
       // Simulate API refresh still returning the swiped property.
       final filtered = service.filterOutSessionSwiped([swiped, other]);
@@ -414,7 +414,7 @@ void main() {
 
       // Undo restores eligibility for the deck.
       service.reinsertPropertyToDiscover(swiped);
-      expect(service.isSessionSwiped(901), isFalse);
+      expect(service.likesSwipe.isSessionSwiped(901), isFalse);
       expect(service.filterOutSessionSwiped([swiped, other]).map((p) => p.id), [901, 902]);
     });
 
@@ -449,11 +449,11 @@ void main() {
         service.likesState.value.copyWith(properties: [prop]),
       );
       // Caller removed from visible list first (legacy LikesController pattern).
-      service.removePropertyFromLikes(606);
+      service.likesSwipe.removePropertyFromLikes(606);
 
       await service.recordSwipe(propertyId: 606, isLiked: false, property: prop);
 
-      service.updateLikesSegment('passed');
+      service.updateLikesSegment(LikesSegment.passed);
       expect(service.likesState.value.properties.any((p) => p.id == 606), isTrue);
     });
 
@@ -478,20 +478,17 @@ void main() {
       final b = testPropertyModel(id: 2);
       final reinserted = testPropertyModel(id: 3);
 
-      final epoch = service.discoverMutationEpoch;
       service.updatePageState(
         PageType.discover,
         service.discoverState.value.copyWith(properties: [a, b]),
       );
 
-      // Simulate undo reinsert while a fetch (started at [epoch]) is in flight.
+      // Simulate undo reinsert while a fetch is in flight.
       service.reinsertPropertyToDiscover(reinserted);
-      expect(service.discoverMutationEpoch, greaterThan(epoch));
 
       final merged = service.mergeDiscoverRefreshResults(
         serverItems: [a, b],
         localItems: service.discoverState.value.properties,
-        epochAtRequestStart: epoch,
       );
       expect(merged.map((p) => p.id).toList(), [3, 1, 2]);
     });
@@ -506,7 +503,6 @@ void main() {
         final d = testPropertyModel(id: 4);
         final e = testPropertyModel(id: 5);
 
-        final epoch = service.discoverMutationEpoch;
         // Pre-refresh deck for location A.
         service.updatePageState(
           PageType.discover,
@@ -514,40 +510,35 @@ void main() {
         );
 
         // User swipes A away while a location-change fetch is in flight.
-        // Epoch bumps, but only undo reinserts should be preserved — not B/C.
+        // Only undo reinserts should be preserved — not B/C.
         await service.recordSwipe(propertyId: 1, isLiked: true);
-        expect(service.discoverMutationEpoch, greaterThan(epoch));
         expect(service.discoverState.value.properties.map((p) => p.id), [2, 3]);
 
         // Server returns the new location's first page.
         final merged = service.mergeDiscoverRefreshResults(
           serverItems: [d, e],
           localItems: service.discoverState.value.properties,
-          epochAtRequestStart: epoch,
         );
         expect(merged.map((p) => p.id).toList(), [4, 5]);
       },
     );
 
-    test('mergeDiscoverRefreshResults keeps undo reinsert even when epoch matches', () async {
+    test('mergeDiscoverRefreshResults keeps undo reinsert that predates the fetch', () async {
       final service = await createService();
       final a = testPropertyModel(id: 1);
       final b = testPropertyModel(id: 2);
       final reinserted = testPropertyModel(id: 3);
 
-      // Undo happens before the fetch starts, so epoch at request start
-      // equals the post-undo epoch. Preserve markers must still win.
+      // Undo happens before the fetch starts. Preserve markers must still win.
       service.updatePageState(
         PageType.discover,
         service.discoverState.value.copyWith(properties: [a, b]),
       );
       service.reinsertPropertyToDiscover(reinserted);
-      final epoch = service.discoverMutationEpoch;
 
       final merged = service.mergeDiscoverRefreshResults(
         serverItems: [a, b],
         localItems: service.discoverState.value.properties,
-        epochAtRequestStart: epoch,
       );
       expect(merged.map((p) => p.id).toList(), [3, 1, 2]);
     });
@@ -593,7 +584,7 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
-  // removePropertyFromDiscover / reinsertPropertyToDiscover
+  // LikesSwipeCoordinator: discover deck mutations
   // -------------------------------------------------------------------------
   group('discover deck mutations', () {
     test('removePropertyFromDiscover removes the matching property', () async {
@@ -606,7 +597,7 @@ void main() {
         service.discoverState.value.copyWith(properties: [p1, p2]),
       );
 
-      service.removePropertyFromDiscover(1);
+      service.likesSwipe.removePropertyFromDiscover(1);
 
       expect(service.discoverState.value.properties, hasLength(1));
       expect(service.discoverState.value.properties.first.id, 2);
@@ -621,7 +612,7 @@ void main() {
         service.discoverState.value.copyWith(properties: [p1]),
       );
 
-      service.removePropertyFromDiscover(999);
+      service.likesSwipe.removePropertyFromDiscover(999);
 
       expect(service.discoverState.value.properties, hasLength(1));
     });
@@ -660,7 +651,7 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
-  // addPropertyToLikes / removePropertyFromLikes
+  // LikesSwipeCoordinator: likes list mutations
   // -------------------------------------------------------------------------
   group('likes list mutations', () {
     test('addPropertyToLikes prepends to likes list when segment is liked', () async {
@@ -671,11 +662,11 @@ void main() {
       // Ensure we're in the 'liked' segment (default)
       expect(service.currentLikesSegment, LikesSegment.liked);
 
-      service.addPropertyToLikes(p1);
+      service.likesSwipe.addPropertyToLikes(p1);
       expect(service.likesState.value.properties, hasLength(1));
       expect(service.likesState.value.properties.first.id, 10);
 
-      service.addPropertyToLikes(p2);
+      service.likesSwipe.addPropertyToLikes(p2);
       expect(service.likesState.value.properties, hasLength(2));
       expect(service.likesState.value.properties.first.id, 20); // prepended
     });
@@ -684,8 +675,8 @@ void main() {
       final service = await createService();
       final p1 = testPropertyModel(id: 10);
 
-      service.addPropertyToLikes(p1);
-      service.addPropertyToLikes(p1);
+      service.likesSwipe.addPropertyToLikes(p1);
+      service.likesSwipe.addPropertyToLikes(p1);
 
       expect(service.likesState.value.properties, hasLength(1));
     });
@@ -694,10 +685,10 @@ void main() {
       final service = await createService();
 
       // Switch to 'passed' segment
-      service.updateLikesSegment('passed');
+      service.updateLikesSegment(LikesSegment.passed);
 
       final p1 = testPropertyModel(id: 10);
-      service.addPropertyToLikes(p1);
+      service.likesSwipe.addPropertyToLikes(p1);
 
       // Should NOT be added because we're in 'passed' segment
       expect(service.likesState.value.properties, isEmpty);
@@ -705,10 +696,10 @@ void main() {
 
     test('addPropertyToPassed works when segment is passed', () async {
       final service = await createService();
-      service.updateLikesSegment('passed');
+      service.updateLikesSegment(LikesSegment.passed);
 
       final p1 = testPropertyModel(id: 10);
-      service.addPropertyToPassed(p1);
+      service.likesSwipe.addPropertyToPassed(p1);
 
       expect(service.likesState.value.properties, hasLength(1));
       expect(service.likesState.value.properties.first.id, 10);
@@ -719,7 +710,7 @@ void main() {
       // Default segment is 'liked'
 
       final p1 = testPropertyModel(id: 10);
-      service.addPropertyToPassed(p1);
+      service.likesSwipe.addPropertyToPassed(p1);
 
       expect(service.likesState.value.properties, isEmpty);
     });
@@ -734,7 +725,7 @@ void main() {
         service.likesState.value.copyWith(properties: [p1, p2]),
       );
 
-      service.removePropertyFromLikes(10);
+      service.likesSwipe.removePropertyFromLikes(10);
 
       expect(service.likesState.value.properties, hasLength(1));
       expect(service.likesState.value.properties.first.id, 20);
@@ -746,7 +737,7 @@ void main() {
 
       service.updatePageState(PageType.likes, service.likesState.value.copyWith(properties: [p1]));
 
-      service.removePropertyFromLikes(999);
+      service.likesSwipe.removePropertyFromLikes(999);
 
       expect(service.likesState.value.properties, hasLength(1));
     });
@@ -938,7 +929,7 @@ void main() {
       final service = await createService();
       expect(service.currentLikesSegment, LikesSegment.liked);
 
-      service.updateLikesSegment('liked');
+      service.updateLikesSegment(LikesSegment.liked);
 
       expect(service.currentLikesSegment, LikesSegment.liked);
     });
@@ -951,7 +942,7 @@ void main() {
         service.likesState.value.copyWith(properties: [prop]),
       );
 
-      service.updateLikesSegment('passed');
+      service.updateLikesSegment(LikesSegment.passed);
 
       expect(service.currentLikesSegment, LikesSegment.passed);
       // Data should be reset (empty) since no cache for passed
@@ -967,10 +958,10 @@ void main() {
       );
 
       // Switch to passed (caches liked data)
-      service.updateLikesSegment('passed');
+      service.updateLikesSegment(LikesSegment.passed);
 
       // Switch back to liked (should restore cached data)
-      service.updateLikesSegment('liked');
+      service.updateLikesSegment(LikesSegment.liked);
 
       expect(service.currentLikesSegment, LikesSegment.liked);
       // Cached data should be restored
@@ -1082,55 +1073,6 @@ void main() {
   // -------------------------------------------------------------------------
   // syncPreferencesToBackend
   // -------------------------------------------------------------------------
-  group('syncPreferencesToBackend', () {
-    test('skips when not authenticated', () async {
-      final service = await createService();
-
-      when(() => authController.isAuthenticated).thenReturn(false);
-
-      await service.syncPreferencesToBackend();
-
-      verifyNever(() => profileRepo.updateUserPreferences(any()));
-    });
-
-    test('syncs preferences when authenticated with filters', () async {
-      final service = await createService();
-
-      when(() => authController.isAuthenticated).thenReturn(true);
-      when(() => profileRepo.updateUserPreferences(any())).thenAnswer((_) async => user);
-
-      // Set some filters on current page
-      service.setCurrentPage(PageType.explore);
-      service.updatePageState(
-        PageType.explore,
-        service.exploreState.value.copyWith(
-          filters: UnifiedFilterModel.initial().copyWith(
-            purpose: 'buy',
-            priceMin: 5000000,
-            priceMax: 10000000,
-          ),
-        ),
-      );
-
-      await service.syncPreferencesToBackend();
-
-      verify(() => profileRepo.updateUserPreferences(any())).called(1);
-    });
-
-    test('syncs with default purpose when authenticated', () async {
-      final service = await createService();
-
-      when(() => authController.isAuthenticated).thenReturn(true);
-      when(() => profileRepo.updateUserPreferences(any())).thenAnswer((_) async => user);
-
-      // Default filters have purpose='buy' set during bootstrap
-      await service.syncPreferencesToBackend();
-
-      // Should call updateUserPreferences (purpose is set by default)
-      verify(() => profileRepo.updateUserPreferences(any())).called(1);
-    });
-  });
-
   // -------------------------------------------------------------------------
   // addPropertyToPassed
   // -------------------------------------------------------------------------
@@ -1140,18 +1082,18 @@ void main() {
       // Default segment is 'liked'
       final prop = testPropertyModel(id: 50);
 
-      service.addPropertyToPassed(prop);
+      service.likesSwipe.addPropertyToPassed(prop);
 
       expect(service.likesState.value.properties, isEmpty);
     });
 
     test('does not duplicate existing property in passed', () async {
       final service = await createService();
-      service.updateLikesSegment('passed');
+      service.updateLikesSegment(LikesSegment.passed);
       final prop = testPropertyModel(id: 50);
 
-      service.addPropertyToPassed(prop);
-      service.addPropertyToPassed(prop);
+      service.likesSwipe.addPropertyToPassed(prop);
+      service.likesSwipe.addPropertyToPassed(prop);
 
       expect(service.likesState.value.properties, hasLength(1));
     });

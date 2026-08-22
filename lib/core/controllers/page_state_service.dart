@@ -18,7 +18,6 @@ import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/features/profile/data/profile_repository.dart';
 
 class PageStateService extends GetxController {
   static PageStateService get instance => Get.find<PageStateService>();
@@ -34,7 +33,6 @@ class PageStateService extends GetxController {
   late final LocationController _locationController;
   late final AuthController _authController;
   late final SwipesPort _swipesPort;
-  late final ProfileRepository _profileRepository;
 
   // Page states
   final Rx<PageStateModel> exploreState = PageStateModel.initial(PageType.explore).obs;
@@ -61,6 +59,10 @@ class PageStateService extends GetxController {
   late final PageLocationManager _locationManager;
   late final LikesSwipeCoordinator _likesSwipe;
 
+  /// Test seam: direct access to the likes/swipe domain unit.
+  @visibleForTesting
+  LikesSwipeCoordinator get likesSwipe => _likesSwipe;
+
   @override
   Future<void> onInit() async {
     super.onInit();
@@ -75,10 +77,6 @@ class PageStateService extends GetxController {
       maxRetries: 3,
     );
     _swipesPort = await _findDependencyWithRetry<SwipesPort>('SwipesPort', maxRetries: 3);
-    _profileRepository = await _findDependencyWithRetry<ProfileRepository>(
-      'ProfileRepository',
-      maxRetries: 3,
-    );
     final propertiesPort = await _findDependencyWithRetry<PropertiesPort>(
       'PropertiesPort',
       maxRetries: 3,
@@ -576,34 +574,23 @@ class PageStateService extends GetxController {
         notifyServer: notifyServer,
       );
 
-  void updateLikesSegment(String segment) => _likesSwipe.updateLikesSegment(segment);
+  void updateLikesSegment(LikesSegment segment) => _likesSwipe.updateLikesSegment(segment);
   LikesSegment get currentLikesSegment => _likesSwipe.currentLikesSegment;
 
-  void addPropertyToLikes(PropertyModel property) => _likesSwipe.addPropertyToLikes(property);
-  void addPropertyToPassed(PropertyModel property) => _likesSwipe.addPropertyToPassed(property);
-  void removePropertyFromLikes(int propertyId) => _likesSwipe.removePropertyFromLikes(propertyId);
-
-  void removePropertyFromDiscover(int propertyId) =>
-      _likesSwipe.removePropertyFromDiscover(propertyId);
   void reinsertPropertyToDiscover(PropertyModel property) =>
       _likesSwipe.reinsertPropertyToDiscover(property);
 
   List<PropertyModel> mergeDiscoverRefreshResults({
     required List<PropertyModel> serverItems,
     required List<PropertyModel> localItems,
-    required int epochAtRequestStart,
   }) =>
       _likesSwipe.mergeDiscoverRefreshResults(
         serverItems: serverItems,
         localItems: localItems,
-        epochAtRequestStart: epochAtRequestStart,
       );
 
   List<PropertyModel> filterOutSessionSwiped(List<PropertyModel> items) =>
       _likesSwipe.filterOutSessionSwiped(items);
-
-  bool isSessionSwiped(int propertyId) => _likesSwipe.isSessionSwiped(propertyId);
-  int get discoverMutationEpoch => _likesSwipe.discoverMutationEpoch;
 
   List<PropertyModel> mergeLikesServerResults(
     List<PropertyModel> serverItems, {
@@ -626,53 +613,6 @@ class PageStateService extends GetxController {
 
   void syncLikesSegmentCacheFromVisible({required bool hasMore, String? nextCursor}) =>
       _likesSwipe.syncLikesSegmentCacheFromVisible(hasMore: hasMore, nextCursor: nextCursor);
-
-  // ──────────────────────────────────────────────────────────────────
-  // Preferences sync
-  // ──────────────────────────────────────────────────────────────────
-
-  Future<void> syncPreferencesToBackend() async {
-    try {
-      if (!_authController.isAuthenticated) return;
-
-      final filters = getCurrentPageState().filters;
-      final normalizedPurpose = UnifiedFilterModel.normalizePurposeToken(filters.purpose);
-      final normalizedPropertyTypes = (filters.propertyType ?? const <String>[])
-          .map((type) => UnifiedFilterModel.normalizePropertyTypeToken(type))
-          .whereType<String>()
-          .toSet()
-          .toList();
-      final locationPreference = <String>{
-        if (exploreState.value.selectedLocation?.name.trim().isNotEmpty == true)
-          exploreState.value.selectedLocation!.name.trim(),
-        if (discoverState.value.selectedLocation?.name.trim().isNotEmpty == true)
-          discoverState.value.selectedLocation!.name.trim(),
-        if (likesState.value.selectedLocation?.name.trim().isNotEmpty == true)
-          likesState.value.selectedLocation!.name.trim(),
-      }.toList();
-
-      final preferences = <String, dynamic>{
-        if (normalizedPropertyTypes.isNotEmpty) 'property_type': normalizedPropertyTypes,
-        'purpose': ?normalizedPurpose,
-        if (filters.priceMin != null) 'budget_min': filters.priceMin,
-        if (filters.priceMax != null) 'budget_max': filters.priceMax,
-        if (filters.bedroomsMin != null) 'bedrooms_min': filters.bedroomsMin,
-        if (filters.bedroomsMax != null) 'bedrooms_max': filters.bedroomsMax,
-        if (filters.areaMin != null) 'area_min': filters.areaMin,
-        if (filters.areaMax != null) 'area_max': filters.areaMax,
-        if (locationPreference.isNotEmpty) 'location_preference': locationPreference,
-        if (filters.radiusKm != null && filters.radiusKm! > 0)
-          'max_distance_km': filters.radiusKm!.round(),
-      };
-
-      if (preferences.isEmpty) return;
-
-      await _profileRepository.updateUserPreferences(preferences);
-      DebugLogger.success('✅ Synced preferences to backend');
-    } catch (e) {
-      DebugLogger.error('Failed to sync preferences: $e');
-    }
-  }
 
   // ──────────────────────────────────────────────────────────────────
   // UI helpers

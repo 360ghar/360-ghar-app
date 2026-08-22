@@ -22,6 +22,7 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(PageType.likes);
+    registerFallbackValue(LikesSegment.liked);
   });
 
   setUp(() {
@@ -62,8 +63,7 @@ void main() {
     when(() => mockPageStateService.updateLikesSegment(any())).thenReturn(null);
     when(() => mockPageStateService.loadMorePageData(any())).thenAnswer((_) async {});
     when(() => mockPageStateService.useCurrentLocationForPage(any())).thenAnswer((_) async {});
-    when(() => mockPageStateService.removePropertyFromLikes(any())).thenReturn(null);
-
+    
     GetxTestBinding.bind().register<PageStateService>(mockPageStateService);
   });
 
@@ -95,7 +95,7 @@ void main() {
       controller.switchToSegment(LikesSegment.passed);
 
       expect(controller.currentSegment.value, LikesSegment.passed);
-      verify(() => mockPageStateService.updateLikesSegment('passed')).called(1);
+      verify(() => mockPageStateService.updateLikesSegment(LikesSegment.passed)).called(1);
     });
 
     test('switchToSegment same segment is a no-op', () {
@@ -194,7 +194,7 @@ void main() {
       controller.switchToSegment(LikesSegment.passed);
 
       expect(controller.currentSegment.value, LikesSegment.passed);
-      verify(() => mockPageStateService.updateLikesSegment('passed')).called(1);
+      verify(() => mockPageStateService.updateLikesSegment(LikesSegment.passed)).called(1);
     });
 
     test('switchToSegment back to liked updates segment', () {
@@ -204,7 +204,7 @@ void main() {
       controller.switchToSegment(LikesSegment.liked);
 
       expect(controller.currentSegment.value, LikesSegment.liked);
-      verify(() => mockPageStateService.updateLikesSegment('liked')).called(1);
+      verify(() => mockPageStateService.updateLikesSegment(LikesSegment.liked)).called(1);
     });
 
     test('switchToSegment to passed twice only calls update once', () {
@@ -213,7 +213,7 @@ void main() {
 
       controller.switchToSegment(LikesSegment.passed);
 
-      verify(() => mockPageStateService.updateLikesSegment('passed')).called(1);
+      verify(() => mockPageStateService.updateLikesSegment(LikesSegment.passed)).called(1);
     });
   });
 

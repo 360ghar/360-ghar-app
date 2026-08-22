@@ -20,11 +20,8 @@ class LikesSwipeCoordinator {
   // ──────────────────────────────────────────────────────────────────
 
   /// Bumped whenever the Discover deck is mutated locally (swipe / undo /
-  /// remove). Loaders capture the value before network await so concurrent
-  /// mutations can be merged instead of overwritten by a stale response.
+  /// remove); kept for potential stale-response guards.
   int _discoverMutationEpoch = 0;
-
-  int get discoverMutationEpoch => _discoverMutationEpoch;
 
   void _bumpDiscoverMutation() => _discoverMutationEpoch++;
 
@@ -150,20 +147,15 @@ class LikesSwipeCoordinator {
   /// swipe must never preserve the rest of the pre-refresh deck (that would
   /// glue old location/filter cards onto a new server page). Session-swiped
   /// ids always stay out.
-  ///
-  /// [epochAtRequestStart] is retained for call-site compatibility and debug
-  /// context; preserve eligibility is driven solely by [_discoverPreserveIds].
   List<PropertyModel> mergeDiscoverRefreshResults({
     required List<PropertyModel> serverItems,
     required List<PropertyModel> localItems,
-    required int epochAtRequestStart,
   }) {
     final filtered = filterOutSessionSwiped(serverItems);
     final serverIds = filtered.map((p) => p.id).toSet();
 
-    // Always honor undo-reinsert markers (not only when epoch advanced during
-    // the request). Epoch alone cannot distinguish "undo before fetch" from
-    // "no local cards to keep".
+    // Always honor undo-reinsert markers, whether the undo happened mid-flight
+    // or just before the request started.
     final preserve = <PropertyModel>[];
     if (_discoverPreserveIds.isNotEmpty) {
       for (final p in localItems) {
@@ -180,11 +172,9 @@ class LikesSwipeCoordinator {
 
     if (preserve.isEmpty) return filtered;
 
-    final concurrent = discoverMutationEpoch != epochAtRequestStart;
     DebugLogger.debug(
       '👆 Preserving ${preserve.length} undo-reinserted Discover card'
-      '${preserve.length == 1 ? '' : 's'} after fetch merge'
-      '${concurrent ? ' (concurrent mutation)' : ''}',
+      '${preserve.length == 1 ? '' : 's'} after fetch merge',
     );
     return [...preserve, ...filtered];
   }
@@ -414,13 +404,12 @@ class LikesSwipeCoordinator {
 
   /// Switches the likes segment (liked/passed). Reuses cached data when fresh;
   /// only fetches from the network when the segment's cache is empty or stale.
-  void updateLikesSegment(String segment) {
-    final target = LikesSegment.tryParse(segment);
+  void updateLikesSegment(LikesSegment target) {
     final previousSegment = currentLikesSegment;
     if (previousSegment == target) return;
 
     // Snapshot the outgoing segment's data before switching
-    final ps = _pageState.likesState.value;
+    final ps = _pageState.getStateForPage(PageType.likes);
     _likesSegmentCache[previousSegment] = _LikesSegmentCache(
       properties: List.of(ps.properties),
       lastFetched: ps.lastFetched,
@@ -429,60 +418,47 @@ class LikesSwipeCoordinator {
     );
 
     // Switch the segment marker
-    _pageState.likesState.value =
-        _pageState.likesState.value.updateAdditionalData('currentSegment', target.name);
+    final marked =
+        _pageState.getStateForPage(PageType.likes).updateAdditionalData(
+              LikesSegment.additionalDataKey,
+              target.name,
+            );
+    _pageState.updatePageState(PageType.likes, marked);
 
-    // Restore cached data for the target segment if fresh
+    // Restore cached data for the target segment if fresh; either way the
+    // restored list is surfaced immediately. Without a fresh cache the fetch
+    // completion merges optimistic entries over the server results, so the
+    // user's just-swiped items are never hidden behind a purely-optimistic
+    // cache.
     final cached = _likesSegmentCache[target];
-    final fresh = cached != null && !cached.isStale;
-    if (fresh) {
-      _pageState.likesState.value = _pageState.likesState.value.copyWith(
-        properties: List.of(cached.properties),
-        lastFetched: cached.lastFetched,
-        hasMore: cached.hasMore,
-        nextCursor: cached.nextCursor,
-        error: null,
-        isLoading: false,
-        isLoadingMore: false,
-        isRefreshing: false,
-      );
-      return;
-    }
+    final restored = _pageState.getStateForPage(PageType.likes).copyWith(
+      properties: cached != null ? List.of(cached.properties) : [],
+      lastFetched: cached?.lastFetched,
+      hasMore: cached?.hasMore ?? true,
+      nextCursor: cached?.nextCursor,
+      error: null,
+      isLoading: false,
+      isLoadingMore: false,
+      isRefreshing: false,
+    );
+    _pageState.updatePageState(PageType.likes, restored);
+    if (cached != null && !cached.isStale) return;
 
-    // No fresh cache — surface any optimistically-seeded entries immediately
-    // (the user's just-swiped items) and then fetch the real history. The
-    // fetch completion merges the optimistic entries over the server results,
-    // so the full list is never hidden behind a purely-optimistic cache.
-    if (cached != null) {
-      _pageState.likesState.value = _pageState.likesState.value.copyWith(
-        properties: List.of(cached.properties),
-        lastFetched: cached.lastFetched,
-        hasMore: cached.hasMore,
-        nextCursor: cached.nextCursor,
-        error: null,
-        isLoading: false,
-        isLoadingMore: false,
-        isRefreshing: false,
-      );
-    } else {
-      _pageState.likesState.value = _pageState.likesState.value.resetData();
-    }
     _pageState.loadPageData(PageType.likes, forceRefresh: true);
   }
 
-  LikesSegment get currentLikesSegment => LikesSegment.tryParse(
-      _pageState.likesState.value.getAdditionalData<String>('currentSegment'));
+  LikesSegment get currentLikesSegment => LikesSegment.tryParse(_pageState
+      .getStateForPage(PageType.likes)
+      .getAdditionalData<String>(LikesSegment.additionalDataKey));
 
   /// Drops all session-scoped likes/swipe bookkeeping (logout / account
-  /// switch): segment caches, optimistic maps, swiped and preserve markers,
-  /// and the mutation epoch.
+  /// switch): segment caches, optimistic maps, swiped and preserve markers.
   void resetForSession() {
     _likesSegmentCache.clear();
     _optimisticLiked.clear();
     _optimisticPassed.clear();
     _sessionSwipedPropertyIds.clear();
     _discoverPreserveIds.clear();
-    _discoverMutationEpoch = 0;
   }
 }
 

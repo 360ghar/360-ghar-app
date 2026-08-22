@@ -1,3 +1,4 @@
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
@@ -129,7 +130,9 @@ class PageStateModel {
       pageType: pageType,
       filters: UnifiedFilterModel.initial(),
       properties: [],
-      additionalData: pageType == PageType.likes ? {'currentSegment': 'liked'} : null,
+      additionalData: pageType == PageType.likes
+          ? {LikesSegment.additionalDataKey: LikesSegment.liked.name}
+          : null,
     );
   }
 

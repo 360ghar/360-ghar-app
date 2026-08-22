@@ -65,12 +65,10 @@ void main() {
     when(
       () => pageState.filterOutSessionSwiped(any()),
     ).thenAnswer((inv) => List<PropertyModel>.from(inv.positionalArguments[0] as List));
-    when(() => pageState.discoverMutationEpoch).thenReturn(0);
     when(
       () => pageState.mergeDiscoverRefreshResults(
         serverItems: any(named: 'serverItems'),
         localItems: any(named: 'localItems'),
-        epochAtRequestStart: any(named: 'epochAtRequestStart'),
       ),
     ).thenAnswer((inv) => List<PropertyModel>.from(inv.namedArguments[#serverItems] as List));
     when(

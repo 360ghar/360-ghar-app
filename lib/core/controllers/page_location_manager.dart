@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
@@ -27,8 +28,9 @@ class PageLocationManager {
   ProfileRepository get _profileRepository =>
       _profileRepositoryOverride ??= Get.find<ProfileRepository>();
 
-  /// @visibleForTesting seam: overrides the ProfileRepository used for
-  /// backend location sync. Call before the first [updateLocation].
+  /// Test seam: overrides the ProfileRepository used for backend location
+  /// sync. Call before the first [updateLocation].
+  @visibleForTesting
   void debugSetProfileRepositoryForTest(ProfileRepository repo) {
     _profileRepositoryOverride = repo;
   }

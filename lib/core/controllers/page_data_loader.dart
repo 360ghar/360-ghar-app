@@ -504,7 +504,6 @@ class PageDataLoader {
     }
 
     // Explore/Discover
-    final epochAtStart = pageType == PageType.discover ? _pageState.discoverMutationEpoch : 0;
     final resp = await _propertiesRepo.searchProperties(
       filters: state.filters.copyWith(searchQuery: state.searchQuery),
       latitude: loc.latitude,
@@ -536,7 +535,6 @@ class PageDataLoader {
         ? _pageState.mergeDiscoverRefreshResults(
             serverItems: resp.items,
             localItems: latest.properties,
-            epochAtRequestStart: epochAtStart,
           )
         : resp.items;
 

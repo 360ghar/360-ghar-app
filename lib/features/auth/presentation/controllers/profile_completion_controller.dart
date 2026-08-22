@@ -217,13 +217,13 @@ class ProfileCompletionController extends GetxController with OtpResendTimer {
 
       if (success) {
         // Purpose preference is a profile write, not an auth-state change.
-      try {
-        await Get.find<ProfileRepository>().updateUserPreferences({
-          'purpose': selectedPropertyPurpose.value,
-        });
-      } catch (e) {
-        DebugLogger.warning('Failed to persist purpose preference: $e');
-      }
+        try {
+          await Get.find<ProfileRepository>().updateUserPreferences({
+            'purpose': selectedPropertyPurpose.value,
+          });
+        } catch (e) {
+          DebugLogger.warning('Failed to persist purpose preference: $e');
+        }
         AnalyticsService.authProfileCompleted();
         if (Get.isRegistered<PageStateService>()) {
           (pageStateService ?? Get.find<PageStateService>()).setPurposeForAllPages(

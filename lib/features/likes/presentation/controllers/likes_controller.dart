@@ -131,7 +131,7 @@ class LikesController extends GetxController {
     if (currentSegment.value == segment) return;
     currentSegment.value = segment;
     DebugLogger.api('📱 Switched to ${segment.name} segment');
-    _pageStateService.updateLikesSegment(segment.name);
+    _pageStateService.updateLikesSegment(segment);
   }
 
   // Search functionality
