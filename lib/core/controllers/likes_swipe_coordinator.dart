@@ -19,12 +19,6 @@ class LikesSwipeCoordinator {
   // Swipe recording & optimistic mutations
   // ──────────────────────────────────────────────────────────────────
 
-  /// Bumped whenever the Discover deck is mutated locally (swipe / undo /
-  /// remove); kept for potential stale-response guards.
-  int _discoverMutationEpoch = 0;
-
-  void _bumpDiscoverMutation() => _discoverMutationEpoch++;
-
   /// [property] should be passed when the caller already holds the model
   /// (e.g. Likes remove/move) so optimistic segment updates still work after
   /// the card was removed from the visible list.
@@ -91,7 +85,6 @@ class LikesSwipeCoordinator {
 
   void removePropertyFromDiscover(int propertyId) {
     _discoverPreserveIds.remove(propertyId);
-    _bumpDiscoverMutation();
     final state = _pageState.discoverState.value;
     final updatedList = state.properties.where((p) => p.id != propertyId).toList();
     _pageState.updatePageState(PageType.discover, state.copyWith(properties: updatedList));
@@ -130,7 +123,6 @@ class LikesSwipeCoordinator {
   void reinsertPropertyToDiscover(PropertyModel property) {
     _sessionSwipedPropertyIds.remove(property.id);
     _discoverPreserveIds.add(property.id);
-    _bumpDiscoverMutation();
     final state = _pageState.discoverState.value;
     final exists = state.properties.any((p) => p.id == property.id);
     if (exists) return;
