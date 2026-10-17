@@ -141,6 +141,9 @@ If iOS logs show APNS/FCM token issues (for example `apns-token-not-set`), follo
 
 ## 🤝 Contributing
 
+For optional web research while developing the app, see the
+[Parallel Search MCP setup guide](docs/parallel_research.md).
+
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
 1.  Fork the Project
