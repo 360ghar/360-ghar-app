@@ -1,190 +1,106 @@
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/data/models/bug_report_model.dart';
-import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/core/utils/app_toast.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/features/profile/data/support_repository.dart';
+import 'package:flutter/foundation.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-class FeedbackController extends GetxController {
-  FeedbackController({SupportRepository? supportRepository})
-    : _supportRepository = supportRepository ?? Get.find<SupportRepository>();
+import 'package:ghar360/core/controllers/auth_controller.dart';
+import 'package:ghar360/core/data/models/bug_report_model.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
+import 'package:ghar360/features/auth/data/auth_failure.dart';
+import 'package:ghar360/features/profile/data/support_repository.dart';
 
-  final SupportRepository _supportRepository;
-
-  /// Tag added to every submission so the backend can attribute the report to
-  /// this app.
-  static const String _appTag = 'ghar360';
-
-  final formKey = GlobalKey<FormState>();
-  final titleController = TextEditingController();
-  final descriptionController = TextEditingController();
-  final stepsController = TextEditingController();
-  final expectedController = TextEditingController();
-  final actualController = TextEditingController();
-  final tagsController = TextEditingController();
-
-  final Rx<BugType> selectedBugType = BugType.uiBug.obs;
-  final Rx<BugSeverity> selectedSeverity = BugSeverity.medium.obs;
-  final RxBool isSubmitting = false.obs;
-
-  @override
-  void onInit() {
-    super.onInit();
-    final arguments = Get.arguments;
-    if (arguments is Map && arguments['initialBugType'] is BugType) {
-      selectedBugType.value = arguments['initialBugType'] as BugType;
-    }
-  }
-
-  void setBugType(BugType? type) {
-    if (type != null) {
-      selectedBugType.value = type;
-    }
-  }
-
-  void setSeverity(BugSeverity? severity) {
-    if (severity != null) {
-      selectedSeverity.value = severity;
-    }
-  }
-
-  Future<void> submitFeedback() async {
-    if (isSubmitting.value) return;
-    final currentForm = formKey.currentState;
-    if (currentForm == null || !currentForm.validate()) {
-      return;
-    }
-
-    isSubmitting.value = true;
-    FocusManager.instance.primaryFocus?.unfocus();
-
-    try {
-      final packageInfo = await _safePackageInfo();
-      final deviceInfo = _buildDeviceInfo(packageInfo);
-      // Always identify the app by including the 'ghar360' tag, merged with
-      // any user-entered tags (de-duplicated, app tag first).
-      final tags = <String>{_appTag, ..._parseTags(tagsController.text)}.toList(growable: false);
-
-      final request = BugReportRequest(
-        source: 'mobile',
-        bugType: selectedBugType.value,
-        severity: selectedSeverity.value,
-        title: titleController.text.trim(),
-        description: descriptionController.text.trim(),
-        stepsToReproduce: _optionalValue(stepsController.text),
-        expectedBehavior: _optionalValue(expectedController.text),
-        actualBehavior: _optionalValue(actualController.text),
-        deviceInfo: deviceInfo,
-        appVersion: _formatAppVersion(packageInfo),
-        tags: tags,
-      );
-
-      final response = await _supportRepository.submitBugReport(request);
-      DebugLogger.success('Feedback submitted with id=${response.id}');
-      Get.back(result: response);
-      Future.delayed(Duration.zero, () {
-        AppToast.success('feedback_sent'.tr, 'thanks_for_feedback'.tr);
-      });
-    } on ValidationException catch (e) {
-      final message =
-          e.fieldErrors?.entries
-              .map((entry) => '${entry.key}: ${entry.value.join(', ')}')
-              .join('\n') ??
-          e.message;
-      _showError(message);
-    } on AppException catch (e) {
-      _showError(e.message);
-    } catch (e, stackTrace) {
-      DebugLogger.error('Unexpected error while submitting feedback', e, stackTrace);
-      _showError('feedback_send_error'.tr);
-    } finally {
-      isSubmitting.value = false;
-    }
-  }
-
-  List<String> _parseTags(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return const [];
-    final parts = trimmed.split(RegExp(r'[\n,]'));
-    return parts
-        .map((tag) => tag.trim())
-        .where((tag) => tag.isNotEmpty)
-        .toSet()
-        .toList(growable: false);
-  }
-
-  Map<String, dynamic>? _buildDeviceInfo(PackageInfo? info) {
-    final os = _platformLabel();
-    final deviceLabel = _deviceLabel();
-
-    final Map<String, dynamic> data = {
-      'os': ?os,
-      'model': ?deviceLabel,
-      if (info != null && info.version.isNotEmpty) 'app_version': _formatAppVersion(info),
-    };
-
-    if (data.isEmpty) return null;
-    return data;
-  }
-
-  Future<PackageInfo?> _safePackageInfo() async {
+final supportRepositoryProvider = Provider<SupportRepository>(
+  (ref) => SupportRepository(apiClient: ref.watch(apiClientProvider)),
+);
+final feedbackPackageInfoProvider = Provider<Future<PackageInfo?> Function()>(
+  (ref) => () async {
     try {
       return await PackageInfo.fromPlatform();
-    } catch (e, stackTrace) {
-      DebugLogger.warning('Unable to read package info for feedback', e, stackTrace);
+    } catch (_) {
       return null;
     }
-  }
+  },
+);
+final feedbackProvider = NotifierProvider.autoDispose<FeedbackController, AsyncValue<void>>(
+  FeedbackController.new,
+);
 
-  String? _formatAppVersion(PackageInfo? info) {
-    if (info == null) return null;
-    final buffer = StringBuffer(info.version);
-    if (info.buildNumber.isNotEmpty) {
-      buffer.write('+');
-      buffer.write(info.buildNumber);
-    }
-    return buffer.toString();
-  }
-
-  String? _optionalValue(String value) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
-  }
-
-  void _showError(String message) {
-    AppToast.error('feedback_failed'.tr, message);
-  }
-
-  String? _platformLabel() {
-    if (GetPlatform.isAndroid) return 'Android';
-    if (GetPlatform.isIOS) return 'iOS';
-    if (GetPlatform.isMacOS) return 'macOS';
-    if (GetPlatform.isWindows) return 'Windows';
-    if (GetPlatform.isLinux) return 'Linux';
-    if (GetPlatform.isWeb) return 'Web';
-    return null;
-  }
-
-  String? _deviceLabel() {
-    if (GetPlatform.isAndroid) return 'Android Device';
-    if (GetPlatform.isIOS) return 'iPhone/iPad';
-    if (GetPlatform.isMacOS) return 'macOS Device';
-    if (GetPlatform.isWindows) return 'Windows Device';
-    if (GetPlatform.isLinux) return 'Linux Device';
-    if (GetPlatform.isWeb) return 'Web Browser';
-    return null;
-  }
-
+class FeedbackController extends Notifier<AsyncValue<void>> {
+  int _generation = 0;
   @override
-  void onClose() {
-    titleController.dispose();
-    descriptionController.dispose();
-    stepsController.dispose();
-    expectedController.dispose();
-    actualController.dispose();
-    tagsController.dispose();
-    super.onClose();
+  AsyncValue<void> build() {
+    ref.watch(authProvider.select((value) => value.user?.supabaseUserId));
+    _generation++;
+    ref.onDispose(() {
+      _generation++;
+    });
+    return const AsyncData(null);
+  }
+
+  Future<BugReportResponse?> submitFeedback({
+    required BugType type,
+    required BugSeverity severity,
+    required String title,
+    required String description,
+    String steps = '',
+    String expected = '',
+    String actual = '',
+    String tags = '',
+  }) async {
+    if (state.isLoading) return null;
+    final repository = ref.read(supportRepositoryProvider);
+    final packageInfo = ref.read(feedbackPackageInfoProvider);
+    final generation = _generation;
+    bool current() => ref.mounted && generation == _generation;
+    state = const AsyncLoading();
+    try {
+      final info = await packageInfo();
+      if (!current()) return null;
+      final fullVersion = info == null
+          ? null
+          : '${info.version}${info.buildNumber.isEmpty ? '' : '+${info.buildNumber}'}';
+      // `app_version` is at most 50 characters (`BugReportCreate`); a longer value is a 422.
+      final version = fullVersion != null && fullVersion.length > BugReportLimits.appVersion
+          ? fullVersion.substring(0, BugReportLimits.appVersion)
+          : fullVersion;
+      final platform = kIsWeb
+          ? 'Web'
+          : switch (defaultTargetPlatform) {
+              TargetPlatform.android => 'Android',
+              TargetPlatform.iOS => 'iOS',
+              TargetPlatform.macOS => 'macOS',
+              TargetPlatform.windows => 'Windows',
+              TargetPlatform.linux => 'Linux',
+              TargetPlatform.fuchsia => 'Fuchsia',
+            };
+      String? optional(String value) => value.trim().isEmpty ? null : value.trim();
+      final request = BugReportRequest(
+        source: 'mobile',
+        bugType: type,
+        severity: severity,
+        title: title.trim(),
+        description: description.trim(),
+        stepsToReproduce: optional(steps),
+        expectedBehavior: optional(expected),
+        actualBehavior: optional(actual),
+        deviceInfo: {
+          'os': platform,
+          'model': kIsWeb ? 'Web Browser' : '$platform Device',
+          'app_version': ?version,
+        },
+        appVersion: version,
+        tags: {
+          'ghar360',
+          ...tags.split(RegExp(r'[\n,]')).map((tag) => tag.trim()).where((tag) => tag.isNotEmpty),
+        }.toList(growable: false),
+      );
+      final result = await repository.submitBugReport(request);
+      if (!current()) return null;
+      state = const AsyncData(null);
+      return result;
+    } catch (error, stack) {
+      if (current()) state = AsyncError(authFailure(error), stack);
+      return null;
+    }
   }
 }

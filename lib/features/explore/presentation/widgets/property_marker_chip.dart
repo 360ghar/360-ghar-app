@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/design/app_design_tokens.dart';
-import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 
-class PropertyMarkerChip extends StatefulWidget {
+/// A price slip pinned on the map. The selected home is a gold slip lifted a
+/// little higher; nothing pulses.
+class PropertyMarkerChip extends StatelessWidget {
   final PropertyModel property;
   final bool isSelected;
   final VoidCallback onTap;
@@ -21,144 +22,59 @@ class PropertyMarkerChip extends StatefulWidget {
   });
 
   @override
-  State<PropertyMarkerChip> createState() => _PropertyMarkerChipState();
-}
-
-class _PropertyMarkerChipState extends State<PropertyMarkerChip>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(vsync: this, duration: AppDurations.markerPulse);
-    if (widget.isSelected) {
-      _pulseController.repeat();
-    }
-  }
-
-  @override
-  void didUpdateWidget(PropertyMarkerChip oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isSelected && !oldWidget.isSelected) {
-      _pulseController.repeat();
-    } else if (!widget.isSelected && oldWidget.isSelected) {
-      _pulseController.stop();
-      _pulseController.reset();
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bool selected = widget.isSelected;
-
-    final Color bg = selected
-        ? AppDesignTokens.brandGold
-        : isDark
-        ? AppDesignTokens.brandGold.withValues(alpha: 0.25)
-        : AppDesignTokens.brandGoldSubtle;
-    final Color borderColor = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-    final Color textColor = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
-
-    final semanticLabel = widget.property.title.isNotEmpty
-        ? 'property_price_marker_label'.trParams({'property': widget.property.title})
-        : 'property_price_marker_label_generic'.tr;
-
+    final design = context.design;
+    final semanticLabel = property.title.isNotEmpty
+        ? context.l10n.text('property_price_marker_label', params: {'property': property.title})
+        : context.l10n.text('property_price_marker_label_generic');
     return Semantics(
       label: semanticLabel,
       button: true,
+      selected: isSelected,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: RepaintBoundary(
-          child: Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              // Pulse circle (only when selected)
-              if (selected)
-                Positioned.fill(
-                  child: AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, _) {
-                      return CustomPaint(
-                        painter: _MarkerPulsePainter(
-                          progress: _pulseController.value,
-                          color: AppDesignTokens.brandGold,
-                        ),
-                      );
-                    },
+        onTap: onTap,
+        // The slip is small; the tap target stays 48 px.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48, minWidth: 48, maxWidth: 120),
+          child: Center(
+            widthFactor: 1,
+            heightFactor: 1,
+            child: RepaintBoundary(
+              child: DecoratedBox(
+                decoration: ShapeDecoration(
+                  color: isSelected ? design.buttonPrimary : design.surface,
+                  shape: CutBorder(
+                    seed: 'marker',
+                    amp: 1.5,
+                    shadows: paperShadows(
+                      isSelected ? PaperElevation.mid : PaperElevation.low,
+                      design.shadowOn(design.background),
+                    ),
                   ),
                 ),
-              // Chip
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                constraints: const BoxConstraints(minHeight: 44, minWidth: 44, maxWidth: 120),
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: borderColor, width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppDesignTokens.neutral500.withValues(alpha: 0.15),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  // A map label is pinned to a place: it grows to 1.3x at most,
+                  // and the full label is in the semantics above.
+                  child: MediaQuery.withClampedTextScaling(
+                    maxScaleFactor: 1.3,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: isSelected ? design.buttonPrimaryText : design.textPrimary,
+                      ),
                     ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  widget.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  softWrap: false,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
                   ),
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
-  }
-}
-
-/// Paints a single expanding/fading circle for the marker pulse effect.
-class _MarkerPulsePainter extends CustomPainter {
-  final double progress;
-  final Color color;
-
-  _MarkerPulsePainter({required this.progress, required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final baseRadius = size.width / 2;
-    final radius = baseRadius + (baseRadius * 0.6 * progress);
-    final opacity = (1.0 - progress) * 0.35;
-
-    final paint = Paint()
-      ..color = color.withValues(alpha: opacity)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(center, radius, paint);
-  }
-
-  @override
-  bool shouldRepaint(_MarkerPulsePainter oldDelegate) {
-    return oldDelegate.progress != progress;
   }
 }

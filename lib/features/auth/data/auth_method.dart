@@ -1,27 +1,6 @@
-// lib/features/auth/data/auth_method.dart
+/// Authentication methods recorded by `POST /api/v1/auth/last-method` and persisted locally to
+/// pre-select the last-used method. The enum is generated from the backend's `AuthMethod` by
+/// `tool/gen_enums.py`: `wire` is the value on the wire, `fromJson` reads an unknown value as null.
+library;
 
-/// Authentication methods recorded by `POST /api/v1/auth/last-method`
-/// and persisted locally to pre-select the last-used method.
-///
-/// The wire values match the frozen backend contract exactly.
-enum AuthMethod {
-  google('google'),
-  apple('apple'),
-  emailPassword('email_password'),
-  phonePassword('phone_password'),
-  phoneOtp('phone_otp'),
-  emailOtp('email_otp');
-
-  const AuthMethod(this.wireValue);
-
-  /// Value sent to the backend and persisted locally.
-  final String wireValue;
-
-  static AuthMethod? fromWire(String? value) {
-    if (value == null) return null;
-    for (final method in AuthMethod.values) {
-      if (method.wireValue == value) return method;
-    }
-    return null;
-  }
-}
+export 'package:ghar360/core/data/models/wire_enums.dart' show AuthMethod;

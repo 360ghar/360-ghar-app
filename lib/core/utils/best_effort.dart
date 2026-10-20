@@ -18,7 +18,7 @@ class BestEffort {
     try {
       body();
     } catch (e, st) {
-      DebugLogger.debug('🟡 [BEST_EFFORT] $label failed (ignored): $e', e, st);
+      DebugLogger.debug('🟡 [BEST_EFFORT] $label failed (ignored)', e, st);
     }
   }
 
@@ -33,7 +33,7 @@ class BestEffort {
     try {
       await body();
     } catch (e, st) {
-      DebugLogger.debug('🟡 [BEST_EFFORT] $label failed (ignored): $e', e, st);
+      DebugLogger.debug('🟡 [BEST_EFFORT] $label failed (ignored)', e, st);
     }
   }
 }

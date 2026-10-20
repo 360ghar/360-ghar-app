@@ -1,13 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:get/get.dart';
+
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
-import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
 /// Callback type for when a notification is tapped
@@ -19,6 +20,10 @@ typedef TokenRegistrationCallback = Future<void> Function(String token);
 class PushNotificationsService {
   static final FlutterLocalNotificationsPlugin _fln = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
+  static Future<void>? _initializing;
+  static int _generation = 0;
+  static final List<StreamSubscription<dynamic>> _subscriptions = [];
+
   static String? _currentToken;
   static Future<String?>? _tokenRequestInFlight;
 
@@ -85,14 +90,14 @@ class PushNotificationsService {
 
   /// Handle notification tap when app is in foreground or background
   static void _onNotificationTapped(NotificationResponse response) {
-    DebugLogger.info('🔔 Notification tapped: ${response.payload}');
+    DebugLogger.info('Notification tapped');
     _handleNotificationPayload(response.payload);
   }
 
   /// Handle notification tap when app was terminated
   @pragma('vm:entry-point')
   static void _onBackgroundNotificationTapped(NotificationResponse response) {
-    DebugLogger.info('🔔 Background notification tapped: ${response.payload}');
+    DebugLogger.info('Background notification tapped');
     _handleNotificationPayload(response.payload);
   }
 
@@ -103,33 +108,24 @@ class PushNotificationsService {
     try {
       final data = jsonDecode(payload) as Map<String, dynamic>;
       onNotificationTap?.call(data);
-      _navigateByPayload(data);
-    } catch (e) {
-      DebugLogger.warning('Failed to parse notification payload', e);
-    }
-  }
-
-  /// Navigate based on notification data
-  static void _navigateByPayload(Map<String, dynamic> data) {
-    // Supports both an explicit `route` and a `property_id` (deep link to the
-    // property details screen). Uses the canonical AppRoutes constant so the
-    // deep-link path stays in sync with the route table.
-    final route = data['route'] as String?;
-    final propertyId = data['property_id'] as String? ?? data['propertyId'] as String?;
-
-    if (route != null && route.isNotEmpty) {
-      DebugLogger.info('🔔 Navigating to route: $route');
-      Get.toNamed(route, arguments: data);
-    } else if (propertyId != null && propertyId.isNotEmpty) {
-      DebugLogger.info('🔔 Navigating to property: $propertyId');
-      // Auth-protected details route; falls back to public deep-link routes
-      // (AppRoutes.propertyDeepLink = '/property/:id') when unauthenticated.
-      Get.toNamed(AppRoutes.propertyDeepLink.replaceAll(':id', propertyId));
+    } catch (e, stack) {
+      DebugLogger.warning('Failed to parse notification payload', e, stack);
     }
   }
 
   /// Initialize FCM handling for all app states
-  static Future<void> initializeForegroundHandling() async {
+  static Future<void> initializeForegroundHandling() {
+    final existing = _initializing;
+    if (existing != null) return existing;
+    late final Future<void> request;
+    request = _initializeForegroundHandling(_generation).whenComplete(() {
+      if (identical(_initializing, request)) _initializing = null;
+    });
+    _initializing = request;
+    return request;
+  }
+
+  static Future<void> _initializeForegroundHandling(int generation) async {
     if (_initialized) {
       DebugLogger.debug('🔔 Push notifications already initialized');
       return;
@@ -137,19 +133,18 @@ class PushNotificationsService {
 
     if (!FirebaseInitializer.isFirebaseReady) {
       DebugLogger.info('🔔 FCM initialization skipped: Firebase is not ready');
-      _initialized = true;
       return;
     }
 
     final messaging = _messaging;
     if (messaging == null) {
       DebugLogger.warning('🔔 FCM initialization skipped: messaging client unavailable');
-      _initialized = true;
       return;
     }
 
     DebugLogger.info('🔔 Initializing FCM handling...');
     await initLocalNotifications();
+    if (generation != _generation) return;
 
     // Configure foreground notification presentation options (iOS)
     await messaging.setForegroundNotificationPresentationOptions(
@@ -158,43 +153,49 @@ class PushNotificationsService {
       sound: true,
     );
 
-    // Handle messages when app is in foreground
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      DebugLogger.info('📩 [FCM][FOREGROUND] Message ID: ${message.messageId ?? 'no-id'}');
-      DebugLogger.info('📩 [FCM][FOREGROUND] Title: ${message.notification?.title}');
-      DebugLogger.info('📩 [FCM][FOREGROUND] Body: ${message.notification?.body}');
-      DebugLogger.info('📩 [FCM][FOREGROUND] Data: ${message.data}');
+    if (generation != _generation) return;
+    final launch = await _fln.getNotificationAppLaunchDetails();
+    if (generation != _generation) return;
+    if (launch?.didNotificationLaunchApp == true) {
+      _handleNotificationPayload(launch?.notificationResponse?.payload);
+    }
 
-      final notification = message.notification;
-      if (notification != null) {
-        await _showLocal(notification, message.data);
-      }
-    });
+    // Handle messages when app is in foreground
+    _subscriptions.add(
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        DebugLogger.info('Foreground notification received');
+
+        final notification = message.notification;
+        if (notification != null) {
+          await _showLocal(notification, message.data);
+        }
+      }),
+    );
 
     // Handle notification tap when app is in background (but not terminated)
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      DebugLogger.info('📩 [FCM][OPENED_APP] Message tapped from background: ${message.messageId}');
-      _handleRemoteMessage(message);
-    });
+    _subscriptions.add(
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        DebugLogger.info('Notification opened from background');
+        _handleRemoteMessage(message);
+      }),
+    );
 
     // Handle notification tap that launched the app from terminated state
     final initialMessage = await messaging.getInitialMessage();
+    if (generation != _generation) return;
     if (initialMessage != null) {
-      DebugLogger.info(
-        '📩 [FCM][INITIAL] App launched via notification: ${initialMessage.messageId}',
-      );
-      // Delay navigation slightly to ensure app is fully loaded
-      Future.delayed(const Duration(milliseconds: 500), () {
-        _handleRemoteMessage(initialMessage);
-      });
+      DebugLogger.info('Notification opened at launch');
+      _handleRemoteMessage(initialMessage);
     }
 
     // Listen for token refresh
-    messaging.onTokenRefresh.listen((newToken) async {
-      DebugLogger.info('🔑 FCM token refreshed: ${_truncateToken(newToken)}');
-      _currentToken = newToken;
-      await _registerToken(newToken);
-    });
+    _subscriptions.add(
+      messaging.onTokenRefresh.listen((newToken) async {
+        DebugLogger.info('Notification token refreshed');
+        _currentToken = newToken;
+        await _registerToken(newToken);
+      }),
+    );
 
     _initialized = true;
     DebugLogger.success('🔔 FCM handling initialized successfully');
@@ -203,7 +204,6 @@ class PushNotificationsService {
   /// Handle FCM remote message data
   static void _handleRemoteMessage(RemoteMessage message) {
     onNotificationTap?.call(message.data);
-    _navigateByPayload(message.data);
   }
 
   /// Request notification permissions from the user
@@ -273,7 +273,8 @@ class PushNotificationsService {
       return inFlight;
     }
 
-    final request = _getTokenInternal();
+    final generation = _generation;
+    final request = _getTokenInternal(generation);
     _tokenRequestInFlight = request;
 
     request.whenComplete(() {
@@ -285,7 +286,7 @@ class PushNotificationsService {
     return request;
   }
 
-  static Future<String?> _getTokenInternal() async {
+  static Future<String?> _getTokenInternal(int generation) async {
     try {
       if (!FirebaseInitializer.isFirebaseReady) {
         DebugLogger.info('🔑 FCM token request skipped: Firebase is not ready');
@@ -307,8 +308,9 @@ class PushNotificationsService {
         token = await messaging.getToken();
       }
 
+      if (generation != _generation) return null;
       if (token != null) {
-        DebugLogger.success('🔑 FCM token retrieved: ${_truncateToken(token)}');
+        DebugLogger.success('Notification token available');
         _currentToken = token;
         await _registerToken(token);
       } else {
@@ -374,10 +376,6 @@ class PushNotificationsService {
       }
     } else {
       DebugLogger.debug('🔑 No token registration callback set - token not sent to backend');
-      // Log the full token in debug mode for manual testing
-      if (kDebugMode) {
-        DebugLogger.info('🔑 FULL FCM TOKEN (for testing): $token');
-      }
     }
   }
 
@@ -406,32 +404,42 @@ class PushNotificationsService {
       notificationDetails: details,
       payload: data.isEmpty ? null : jsonEncode(data),
     );
-    DebugLogger.info('🔔 Local notification displayed: ${notification.title}');
-  }
-
-  /// Truncate token for logging (security)
-  static String _truncateToken(String token) {
-    if (token.length <= 20) return token;
-    return '${token.substring(0, 10)}...${token.substring(token.length - 10)}';
+    DebugLogger.info('Local notification displayed');
   }
 
   /// Check if notifications are enabled for the app
   static Future<bool> areNotificationsEnabled() async {
     try {
-      if (Platform.isAndroid) {
+      if (!kIsWeb && Platform.isAndroid) {
         final androidPlugin = _fln
             .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
         return await androidPlugin?.areNotificationsEnabled() ?? false;
       }
       return true; // iOS handles this differently
-    } catch (e) {
-      DebugLogger.warning('Failed to check notification enabled status', e);
+    } catch (e, stack) {
+      DebugLogger.warning('Failed to check notification enabled status', e, stack);
       return false;
     }
   }
 
+  /// Application ownership ends here, including all Firebase stream listeners.
+  static Future<void> dispose() async {
+    _generation++;
+    _initialized = false;
+    _initializing = null;
+    _currentToken = null;
+    _tokenRequestInFlight = null;
+    onNotificationTap = null;
+    onTokenRegistration = null;
+    final subscriptions = List<StreamSubscription<dynamic>>.of(_subscriptions);
+    _subscriptions.clear();
+    await Future.wait(subscriptions.map((subscription) => subscription.cancel()));
+  }
+
   /// Delete the FCM token (useful for logout)
   static Future<void> deleteToken() async {
+    _generation++;
+    _tokenRequestInFlight = null;
     try {
       if (!FirebaseInitializer.isFirebaseReady) {
         _currentToken = null;

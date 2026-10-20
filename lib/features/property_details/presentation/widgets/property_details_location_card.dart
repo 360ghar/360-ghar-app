@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/core/map/mini_map_view.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/features/property_details/presentation/widgets/property_details_section_header.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/core/widgets/property/property_facts.dart';
 
+/// Address, a map and directions. Flat, like the swipe card.
 class PropertyDetailsLocationCard extends StatelessWidget {
   const PropertyDetailsLocationCard({
     super.key,
@@ -23,82 +26,50 @@ class PropertyDetailsLocationCard extends StatelessWidget {
     final lat = property.latitude;
     final lng = property.longitude;
     if (lat == null || lng == null) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final design = context.design;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        PropertyDetailsSectionHeader('location'.tr),
-        Container(
-          decoration: BoxDecoration(
-            color: AppDesign.surface,
-            borderRadius: BorderRadius.circular(AppBorderRadius.card),
-            border: Border.all(color: AppDesign.border.withValues(alpha: 0.75)),
-            boxShadow: AppDesign.getCardShadow(),
+        SectionTitle(
+          l10n.text('location'),
+          trailing: TextButton(
+            key: const ValueKey('qa.property_details.open_in_maps'),
+            onPressed: onOpenDirections,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: Text(l10n.text('directions'))),
+                const SizedBox(width: 6),
+                const PaperIcon(KnifeIcon.arrowUpRight, size: 16),
+              ],
+            ),
           ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        ),
+        if (property.shortAddressDisplay.isNotEmpty)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                height: 240,
-                child: MiniMapView(latitude: lat, longitude: lng),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.location_on_rounded,
-                          color: AppDesign.primaryYellow,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            property.shortAddressDisplay,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: AppDesign.textPrimary,
-                              fontWeight: FontWeight.w600,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        key: const ValueKey('qa.property_details.open_in_maps'),
-                        onPressed: onOpenDirections,
-                        icon: const Icon(Icons.directions_rounded, size: 20),
-                        label: Text('directions'.tr),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppDesign.buttonText,
-                          backgroundColor: AppDesign.primaryYellow,
-                          side: BorderSide(
-                            color: AppDesign.primaryYellowDark.withValues(alpha: 0.45),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(AppBorderRadius.button),
-                          ),
-                          textStyle: theme.textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              PaperIcon(KnifeIcon.pin, size: 18, color: design.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  property.shortAddressDisplay,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: design.textSecondary),
                 ),
               ),
             ],
+          ),
+        const SizedBox(height: AppSpacing.md),
+        // The map is a print with a hand-cut edge.
+        ClipPath(
+          clipper: const ShapeBorderClipper(shape: CutBorder(seed: 'map')),
+          child: SizedBox(
+            height: 220,
+            child: MiniMapView(latitude: lat, longitude: lng),
           ),
         ),
       ],

@@ -11,7 +11,7 @@ class TourUrl {
   /// Direct [loadRequest] is still limited to http(s) via [validate].
   static const Set<String> embedHostAllowlist = {'kuula.co', 'cdn.kuula.co'};
 
-  /// Extracts a candidate tour URL from GetX route [args] (String or Map).
+  /// Extracts a candidate tour URL from a String or Map in [args].
   static String? extractFromArgs(dynamic args) {
     String? candidate;
     if (args is String) {

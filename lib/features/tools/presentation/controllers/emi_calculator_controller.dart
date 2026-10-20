@@ -1,97 +1,126 @@
 import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:get/get.dart';
-
+import 'package:ghar360/core/bootstrap/provider_policy.dart';
 import 'package:ghar360/core/utils/formatters.dart';
 
-class EmiCalculatorController extends GetxController {
-  final TextEditingController principalController = TextEditingController();
-  final TextEditingController rateController = TextEditingController();
-  final TextEditingController tenureController = TextEditingController();
+class EmiCalculatorResult {
+  const EmiCalculatorResult({
+    required this.monthlyEmi,
+    required this.totalInterest,
+    required this.totalPayment,
+  });
+  final double monthlyEmi;
+  final double totalInterest;
+  final double totalPayment;
+}
 
-  /// Longest tenure the calculator accepts, in months (50 years). Beyond a few
-  /// hundred months `pow(1+r, n)` overflows to Infinity and the EMI comes out
-  /// NaN, which then throws in the widget tree.
+class EmiCalculatorState {
+  const EmiCalculatorState({
+    this.principal = '',
+    this.rate = '',
+    this.tenure = '',
+    this.tenureInYears = true,
+    this.result,
+    this.validationKey,
+    this.validationField,
+  });
+  final String principal;
+  final String rate;
+  final String tenure;
+  final bool tenureInYears;
+  final EmiCalculatorResult? result;
+  final String? validationKey;
+  final String? validationField;
+  bool get hasCalculated => result != null;
+  double get monthlyEmi => result?.monthlyEmi ?? 0;
+  double get totalInterest => result?.totalInterest ?? 0;
+  double get totalPayment => result?.totalPayment ?? 0;
+  EmiCalculatorState copyWith({
+    String? principal,
+    String? rate,
+    String? tenure,
+    bool? tenureInYears,
+    EmiCalculatorResult? result,
+    String? validationKey,
+    String? validationField,
+  }) => EmiCalculatorState(
+    principal: principal ?? this.principal,
+    rate: rate ?? this.rate,
+    tenure: tenure ?? this.tenure,
+    tenureInYears: tenureInYears ?? this.tenureInYears,
+    result: result,
+    validationKey: validationKey,
+    validationField: validationField,
+  );
+}
+
+final emiCalculatorProvider =
+    NotifierProvider.autoDispose<EmiCalculatorController, EmiCalculatorState>(
+      EmiCalculatorController.new,
+      retry: noProviderRetry,
+    );
+
+class EmiCalculatorController extends Notifier<EmiCalculatorState> {
+  @override
+  EmiCalculatorState build() => const EmiCalculatorState();
+
+  void updateInputs({String? principal, String? rate, String? tenure}) {
+    if ((principal == null || principal == state.principal) &&
+        (rate == null || rate == state.rate) &&
+        (tenure == null || tenure == state.tenure)) {
+      return;
+    }
+    state = state.copyWith(principal: principal, rate: rate, tenure: tenure);
+  }
+
   static const int maxTenureMonths = 600;
-
-  final RxBool tenureInYears = true.obs;
-  final RxBool hasCalculated = false.obs;
-  final RxString validationError = ''.obs;
-
-  // Results
-  final RxDouble monthlyEmi = 0.0.obs;
-  final RxDouble totalInterest = 0.0.obs;
-  final RxDouble totalPayment = 0.0.obs;
-
   void calculate() {
-    final principal = double.tryParse(principalController.text) ?? 0;
-    final annualRate = double.tryParse(rateController.text) ?? 0;
-    final tenure = int.tryParse(tenureController.text) ?? 0;
-
+    final principal = double.tryParse(state.principal.trim()) ?? 0;
+    final annualRate = double.tryParse(state.rate.trim()) ?? 0;
+    final tenure = int.tryParse(state.tenure.trim()) ?? 0;
     if (!Formatters.isPositiveFinite(principal) ||
         !Formatters.isPositiveFinite(annualRate) ||
         tenure <= 0) {
-      validationError.value = 'please_enter_valid_amounts'.tr;
-      hasCalculated.value = false;
+      state = state.copyWith(
+        validationKey: 'please_enter_valid_amounts',
+        validationField: !Formatters.isPositiveFinite(principal)
+            ? 'principal'
+            : !Formatters.isPositiveFinite(annualRate)
+            ? 'rate'
+            : 'tenure',
+      );
       return;
     }
-
-    final months = tenureInYears.value ? tenure * 12 : tenure;
+    final months = state.tenureInYears ? tenure * 12 : tenure;
     if (months <= 0 || months > maxTenureMonths) {
-      validationError.value = 'tenure_max_years'.trParams({'years': '${maxTenureMonths ~/ 12}'});
-      hasCalculated.value = false;
+      state = state.copyWith(validationKey: 'tenure_max_years', validationField: 'tenure');
       return;
     }
-
-    validationError.value = '';
-
     final monthlyRate = annualRate / 12 / 100;
-
-    // EMI = P * r * (1+r)^n / ((1+r)^n - 1)
     final factor = pow(1 + monthlyRate, months);
     final emi = principal * monthlyRate * factor / (factor - 1);
-
-    // An extreme rate can still overflow `pow` to Infinity, making the EMI
-    // Infinity/Infinity = NaN. Never publish a non-finite result: NaN.round()
-    // throws UnsupportedError inside build().
-    if (!emi.isFinite) {
-      validationError.value = 'please_enter_valid_amounts'.tr;
-      hasCalculated.value = false;
+    final total = emi * months;
+    if (!emi.isFinite || !total.isFinite) {
+      state = state.copyWith(validationKey: 'please_enter_valid_amounts');
       return;
     }
-
-    monthlyEmi.value = emi;
-    totalPayment.value = emi * months;
-    totalInterest.value = totalPayment.value - principal;
-    hasCalculated.value = true;
+    state = state.copyWith(
+      result: EmiCalculatorResult(
+        monthlyEmi: emi,
+        totalPayment: total,
+        totalInterest: total - principal,
+      ),
+    );
   }
 
-  void toggleTenureUnit() {
-    tenureInYears.value = !tenureInYears.value;
-    if (hasCalculated.value) {
-      calculate();
-    }
+  void setTenureInYears(bool value) {
+    final recalculate = state.hasCalculated;
+    state = state.copyWith(tenureInYears: value);
+    if (recalculate) calculate();
   }
 
-  void clear() {
-    principalController.clear();
-    rateController.clear();
-    tenureController.clear();
-    tenureInYears.value = true;
-    hasCalculated.value = false;
-    validationError.value = '';
-    monthlyEmi.value = 0;
-    totalInterest.value = 0;
-    totalPayment.value = 0;
-  }
-
-  @override
-  void onClose() {
-    principalController.dispose();
-    rateController.dispose();
-    tenureController.dispose();
-    super.onClose();
-  }
+  void toggleTenureUnit() => setTenureInYears(!state.tenureInYears);
+  void clear() => state = const EmiCalculatorState();
 }

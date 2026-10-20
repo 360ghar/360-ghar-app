@@ -5,8 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
+import 'package:ghar360/features/assistant/presentation/widgets/paper_note.dart';
 
+/// One chat turn on the white sheet. The reader's own words sit on a mint
+/// slip at the right; the assistant's reply is a white hand-cut note at the
+/// left, signed with the kite.
 class ChatMessageBubble extends StatelessWidget {
   final ChatMessageModel message;
 
@@ -16,69 +22,70 @@ class ChatMessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.role == ChatRole.user;
     final palette = context.design;
+    final content = _buildContent(context, isUser, palette);
 
     return Padding(
-      padding: EdgeInsets.only(left: isUser ? 48 : 16, right: isUser ? 16 : 48, bottom: 8),
+      padding: EdgeInsets.only(
+        left: isUser ? 48 : 16,
+        right: isUser ? 16 : 48,
+        bottom: isUser ? 12 : 20,
+      ),
       child: Align(
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: isUser ? AppDesign.primaryYellow.withValues(alpha: 0.15) : palette.surface,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(isUser ? 16 : 4),
-              bottomRight: Radius.circular(isUser ? 4 : 16),
-            ),
-            border: isUser ? null : Border.all(color: palette.border.withValues(alpha: 0.5)),
-          ),
-          child: _buildContent(context, isUser, palette),
-        ),
+        child: isUser
+            ? PaperNote(seed: 'slip-${message.id}', slip: true, child: content)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // The kite rocks while the reply is still being written.
+                  Padding(
+                    padding: const EdgeInsets.only(top: 13),
+                    child: AssistantKite(sway: message.isStreaming),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: PaperNote(seed: 'note-${message.id}', child: content),
+                  ),
+                ],
+              ),
       ),
     );
   }
 
   Widget _buildContent(BuildContext context, bool isUser, AppPalette palette) {
+    final text = Theme.of(context).textTheme;
+    final body = text.bodyLarge?.copyWith(color: palette.textPrimary);
     if (message.isStreaming && message.content.isEmpty) {
-      return _TypingIndicator(color: palette.textSecondary);
-    }
-
-    if (isUser) {
-      return SelectableText(
-        message.content,
-        style: TextStyle(fontSize: 14, height: 1.45, color: palette.textPrimary),
+      return Semantics(
+        label: context.l10n.text('assistant_tool_executing'),
+        liveRegion: true,
+        child: _TypingIndicator(color: palette.textSecondary),
       );
     }
 
-    // During streaming, use plain text to avoid dropped characters
-    // from MarkdownBody re-parsing partial content on every chunk.
-    if (message.isStreaming) {
-      return SelectableText(
-        message.content,
-        style: TextStyle(fontSize: 14, height: 1.45, color: palette.textPrimary),
-      );
-    }
+    // User text, and a reply while it streams, stay plain: MarkdownBody would
+    // re-parse partial content on every chunk and drop characters.
+    if (isUser || message.isStreaming) return SelectableText(message.content, style: body);
 
     return MarkdownBody(
       data: message.content,
       selectable: true,
       styleSheet: MarkdownStyleSheet(
-        p: TextStyle(fontSize: 14, height: 1.45, color: palette.textPrimary),
-        strong: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: palette.textPrimary),
-        h1: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: palette.textPrimary),
-        h2: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: palette.textPrimary),
-        h3: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: palette.textPrimary),
-        listBullet: TextStyle(fontSize: 14, color: palette.textSecondary),
-        code: TextStyle(fontSize: 13, color: palette.textPrimary, backgroundColor: palette.surface),
+        p: body,
+        strong: body?.copyWith(fontWeight: FontWeight.w700),
+        h1: text.headlineMedium,
+        h2: text.headlineSmall,
+        h3: text.titleMedium,
+        listBullet: body?.copyWith(color: palette.textSecondary),
+        code: text.bodyMedium?.copyWith(color: palette.textPrimary, backgroundColor: palette.slip),
         codeblockDecoration: BoxDecoration(
-          color: palette.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: palette.border.withValues(alpha: 0.5)),
+          color: palette.slip,
+          borderRadius: BorderRadius.circular(AppBorderRadius.sm),
         ),
         codeblockPadding: const EdgeInsets.all(12),
-        a: const TextStyle(color: AppDesign.primaryYellow, decoration: TextDecoration.underline),
-        blockSpacing: 8,
+        a: body?.copyWith(color: palette.accent, decoration: TextDecoration.underline),
+        blockSpacing: 10,
       ),
     );
   }
@@ -99,8 +106,17 @@ class _TypingIndicatorState extends State<_TypingIndicator> with SingleTickerPro
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
-      ..repeat();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context) || !TickerMode.valuesOf(context).enabled) {
+      _controller.stop();
+    } else {
+      _controller.repeat();
+    }
   }
 
   @override

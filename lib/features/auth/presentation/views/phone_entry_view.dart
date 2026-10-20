@@ -1,278 +1,164 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/core/widgets/common/shake_widget.dart';
-import 'package:ghar360/features/auth/data/auth_method.dart';
-import 'package:ghar360/features/auth/presentation/controllers/phone_entry_controller.dart';
-import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
-import 'package:ghar360/features/auth/presentation/widgets/google_sign_in_button.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
-class PhoneEntryView extends GetView<PhoneEntryController> {
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/providers/auth_providers.dart';
+import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/features/auth/data/auth_method.dart';
+import 'package:ghar360/features/auth/presentation/controllers/phone_entry_controller.dart';
+import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
+import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
+import 'package:ghar360/features/auth/presentation/widgets/google_sign_in_button.dart';
+
+class PhoneEntryView extends ConsumerStatefulWidget {
   const PhoneEntryView({super.key});
+  @override
+  ConsumerState<PhoneEntryView> createState() => _PhoneEntryViewState();
+}
+
+class _PhoneEntryViewState extends ConsumerState<PhoneEntryView> {
+  final _form = GlobalKey<FormState>();
+  final _identifier = TextEditingController();
+  final _focus = FocusNode();
+  @override
+  void dispose() {
+    _identifier.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _continue() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    final args = await ref.read(phoneEntryProvider.notifier).checkIdentifier(_identifier.text);
+    if (mounted && args != null) {
+      context.push(
+        authLocation(context, args.status.isNewUser ? AppRoutes.signup : AppRoutes.login),
+        extra: args,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    final state = ref.watch(phoneEntryProvider);
+    final controller = ref.read(phoneEntryProvider.notifier);
+    final repository = ref.watch(authRepositoryProvider);
+    final method = repository.lastAuthMethodStore.lastMethod;
+    final hint = repository.lastAuthMethodStore.lastIdentifierHint;
+    final l = context.l10n;
+    final methodKey = switch (method) {
+      AuthMethod.google => 'auth_method_google',
+      AuthMethod.apple => 'auth_method_apple',
+      AuthMethod.emailPassword || AuthMethod.emailOtp => 'auth_method_email',
+      _ => 'auth_method_phone',
+    };
     return Semantics(
-      label: 'qa.auth.phone_entry.screen',
       identifier: 'qa.auth.phone_entry.screen',
       child: AuthPremiumShell(
-        key: const ValueKey('qa.auth.phone_entry.screen'),
-        title: 'auth_entry_title'.tr,
-        subtitle: 'auth_entry_subtitle'.tr,
-        chips: ['auth_chip_verified'.tr, 'auth_chip_transparent'.tr, 'auth_chip_support'.tr],
-        footer: Text('terms_footer'.tr, textAlign: TextAlign.center),
+        title: l.text('auth_entry_title'),
+        subtitle: l.text('auth_entry_subtitle'),
+        footer: Text(l.text('terms_footer'), textAlign: TextAlign.center),
         child: AutofillGroup(
           child: Form(
-            key: controller.formKey,
+            key: _form,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildLastMethodHint(theme),
-                _buildSocialButtons(),
-                _buildIdentifierField(theme),
-                Obx(() => AuthInlineError(message: controller.errorMessage.value)),
-                const SizedBox(height: 20),
-                _buildContinueButton(theme),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLastMethodHint(ThemeData theme) {
-    return Obx(() {
-      final method = controller.lastMethod.value;
-      if (method == null) {
-        return const SizedBox.shrink();
-      }
-      final hint = controller.lastIdentifierHint.value;
-      final label = _lastMethodLabel(method);
-      return Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppDesign.primaryYellow.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppDesign.primaryYellow.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.history, size: 18, color: AppDesign.primaryYellow),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                hint.isNotEmpty
-                    ? 'last_used_method_with_hint'.trParams({'method': label, 'hint': hint})
-                    : 'last_used_method'.trParams({'method': label}),
-                style: TextStyle(
-                  color: AppDesign.overlayLight.withValues(alpha: 0.85),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  String _lastMethodLabel(AuthMethod method) {
-    switch (method) {
-      case AuthMethod.google:
-        return 'auth_method_google'.tr;
-      case AuthMethod.apple:
-        return 'auth_method_apple'.tr;
-      case AuthMethod.emailPassword:
-      case AuthMethod.emailOtp:
-        return 'auth_method_email'.tr;
-      case AuthMethod.phonePassword:
-      case AuthMethod.phoneOtp:
-        return 'auth_method_phone'.tr;
-    }
-  }
-
-  Widget _buildSocialButtons() {
-    // Platform availability never changes at runtime, so it stays plain
-    // (non-reactive) code. Only the Google loading spinner needs an Obx —
-    // wrapping the whole tree caused GetX "improper use" on iOS, where the
-    // Google button (the only reactive read) is hidden (see RELEASE_IOS.md).
-    final showGoogle = controller.isGoogleAvailable && !(kIsWeb || Platform.isIOS);
-    final showApple = controller.isAppleAvailable;
-    if (!showGoogle && !showApple) {
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Column(
-        children: [
-          // Apple first on iOS, at least as prominent as Google (HIG).
-          if (showApple) ...[
-            Semantics(
-              label: 'qa.auth.apple_signin',
-              identifier: 'qa.auth.apple_signin',
-              child: SizedBox(
-                height: 54,
-                child: SignInWithAppleButton(
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    controller.signInWithApple();
-                  },
-                  style: SignInWithAppleButtonStyle.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (showGoogle)
-            Obx(
-              () => GoogleSignInButton(
-                isLoading: controller.isGoogleLoading.value,
-                onPressed: () {
-                  HapticFeedback.selectionClick();
-                  controller.signInWithGoogle();
-                },
-              ),
-            ),
-          const SizedBox(height: 18),
-          _buildDivider(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return Row(
-      children: [
-        Expanded(child: Divider(color: AppDesign.overlayLight.withValues(alpha: 0.2))),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            'or'.tr,
-            style: TextStyle(
-              color: AppDesign.overlayLight.withValues(alpha: 0.6),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: AppDesign.overlayLight.withValues(alpha: 0.2))),
-      ],
-    );
-  }
-
-  Widget _buildIdentifierField(ThemeData theme) {
-    return Obx(() {
-      final isFocused = controller.isIdentifierFocused.value;
-      final shakeTrigger = controller.validationShakeTrigger.value;
-      final looksLikeEmail = controller.looksLikeEmail.value;
-
-      return ShakeWidget(
-        trigger: shakeTrigger,
-        child: AnimatedContainer(
-          duration: AppDurations.fast,
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: isFocused
-                ? [
-                    BoxShadow(
-                      color: AppDesign.overlayLight.withValues(alpha: 0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : [],
-          ),
-          child: Semantics(
-            label: 'qa.auth.phone_entry.identifier_input',
-            identifier: 'qa.auth.phone_entry.identifier_input',
-            child: TextFormField(
-              key: const ValueKey('qa.auth.phone_entry.identifier_input'),
-              controller: controller.identifierController,
-              focusNode: controller.identifierFocusNode,
-              autofocus: true,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              // Email-friendly keyboard works for both email and phone input
-              // (digits remain reachable) and avoids re-rendering on each keystroke.
-              keyboardType: TextInputType.emailAddress,
-              textInputAction: TextInputAction.done,
-              autofillHints: const [AutofillHints.email, AutofillHints.telephoneNumber],
-              onTap: controller.requestPhoneNumberHint,
-              validator: controller.validateIdentifier,
-              onFieldSubmitted: (_) => controller.checkAndNavigate(),
-              style: const TextStyle(
-                color: AppDesign.overlayLight,
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-              ),
-              decoration: InputDecoration(
-                hintText: 'identifier_hint'.tr,
-                labelText: 'identifier_label'.tr,
-                prefixIcon: Icon(looksLikeEmail ? Icons.alternate_email : Icons.person_outline),
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
-
-  Widget _buildContinueButton(ThemeData theme) {
-    return SizedBox(
-      height: 56,
-      child: Obx(
-        () => Semantics(
-          label: 'qa.auth.phone_entry.continue',
-          identifier: 'qa.auth.phone_entry.continue',
-          child: FilledButton(
-            key: const ValueKey('qa.auth.phone_entry.continue'),
-            onPressed: controller.isLoading.value
-                ? null
-                : () {
-                    HapticFeedback.mediumImpact();
-                    controller.checkAndNavigate();
-                  },
-            child: controller.isLoading.value
-                ? Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: AppDesign.editorialInk,
-                        ),
+                if (method != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      l.text(
+                        hint?.isNotEmpty == true
+                            ? 'last_used_method_with_hint'
+                            : 'last_used_method',
+                        params: {'method': l.text(methodKey), 'hint': hint ?? ''},
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'checking_account'.tr,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: AppDesign.editorialInk,
-                        ),
-                      ),
-                    ],
-                  )
-                : Text(
-                    'continue_btn'.tr,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: AppDesign.editorialInk,
                     ),
                   ),
+                if (repository.isAppleSignInSupported) ...[
+                  Semantics(
+                    identifier: 'qa.auth.apple_signin',
+                    child: IgnorePointer(
+                      ignoring: state.loading,
+                      // The package sizes its label from the button height,
+                      // so the height grows with the text size instead of
+                      // the label growing past a fixed 52 px box.
+                      child: MediaQuery.withNoTextScaling(
+                        child: SignInWithAppleButton(
+                          onPressed: controller.signInWithApple,
+                          text: context.l10n.text('sign_in_with_apple'),
+                          height: 52 * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5),
+                          // Apple's rule: a white button on dark surfaces.
+                          style: context.design.isDark
+                              ? SignInWithAppleButtonStyle.white
+                              : SignInWithAppleButtonStyle.black,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                GoogleSignInButton(
+                  isLoading: state.loading && state.operation == 'google',
+                  onPressed: state.loading ? null : controller.signInWithGoogle,
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Text(l.text('or'), textAlign: TextAlign.center),
+                ),
+                Semantics(
+                  identifier: 'qa.auth.phone_entry.identifier_input',
+                  child: TextFormField(
+                    key: const ValueKey('qa.auth.phone_entry.identifier_input'),
+                    controller: _identifier,
+                    focusNode: _focus,
+                    autofocus: true,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.done,
+                    autofillHints: const [AutofillHints.email, AutofillHints.telephoneNumber],
+                    enabled: !state.loading,
+                    validator: (value) => identifierValidation(context, value),
+                    onFieldSubmitted: (_) => _continue(),
+                    onTap: () async {
+                      final hint = await phoneNumberHint();
+                      if (mounted && hint != null) _identifier.text = hint;
+                    },
+                    onChanged: (_) => controller.clearError(),
+                    decoration: InputDecoration(
+                      labelText: l.text('identifier_label'),
+                      hintText: l.text('identifier_hint'),
+                      prefixIcon: const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: PaperIcon(KnifeIcon.user, size: 20),
+                      ),
+                    ),
+                  ),
+                ),
+                AuthFormError(
+                  error: state.error,
+                  fallback: state.operation == 'google'
+                      ? 'google_signin_error'
+                      : state.operation == 'apple'
+                      ? 'apple_signin_error'
+                      : 'network_error',
+                ),
+                const SizedBox(height: 20),
+                AuthSubmitButton(
+                  identifier: 'qa.auth.phone_entry.continue',
+                  label: l.text('continue_btn'),
+                  loading: state.loading,
+                  onPressed: _continue,
+                ),
+              ],
+            ),
           ),
         ),
       ),

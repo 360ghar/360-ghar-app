@@ -14,9 +14,7 @@ class AppSpacing {
   static const double xxl = 48.0;
 
   // Common padding values
-  static const double cardPadding = 16.0;
   static const double screenPadding = 20.0;
-  static const double listItemSpacing = 12.0;
   static const double sectionSpacing = 24.0;
 }
 
@@ -31,17 +29,11 @@ class AppBorderRadius {
   static const double lg = 16.0;
   static const double xl = 20.0;
   static const double xxl = 24.0;
-  static const double round = 999.0;
 
   // Semantic border radius
-  static const double chip = 8.0;
-  static const double badge = 8.0;
   static const double button = 12.0;
   static const double card = 16.0;
   static const double input = 12.0;
-  static const double dialog = 16.0;
-  static const double bottomSheet = 24.0;
-  static const double modal = 24.0;
 }
 
 /// Standard durations for animations
@@ -53,13 +45,8 @@ class AppDurations {
   static const Duration normal = Duration(milliseconds: 300);
   static const Duration slow = Duration(milliseconds: 400);
   static const Duration slower = Duration(milliseconds: 500);
-  static const Duration pageTransition = Duration(milliseconds: 300);
-  static const Duration editorialReveal = Duration(milliseconds: 350);
   static const Duration tabPill = Duration(milliseconds: 250);
-  static const Duration markerPulse = Duration(milliseconds: 1400);
-  static const Duration contentFade = Duration(milliseconds: 400);
   static const Duration cardEntrance = Duration(milliseconds: 350);
-  static const Duration favoriteBurst = Duration(milliseconds: 500);
 }
 
 /// Standard curves for animations

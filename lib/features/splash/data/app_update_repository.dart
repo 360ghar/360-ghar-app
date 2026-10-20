@@ -1,109 +1,48 @@
-import 'package:flutter/foundation.dart';
-
-import 'package:get/get.dart';
-
 import 'package:ghar360/core/data/models/app_update_models.dart';
-import 'package:ghar360/core/firebase/firebase_initializer.dart';
-import 'package:ghar360/core/firebase/remote_config_service.dart';
+import 'package:ghar360/core/data/models/wire_enums.dart';
+import 'package:ghar360/core/network/api_client.dart';
+import 'package:ghar360/core/network/api_paths.dart';
+import 'package:ghar360/core/network/response_parser.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
-/// Repository for checking app updates using Firebase Remote Config.
-///
-/// This approach allows you to control app updates from Firebase Console
-/// without deploying backend changes. Simply update the Remote Config values
-/// when you publish a new version to Play Store / App Store.
-class AppUpdateRepository extends GetxService {
-  /// Checks for app updates using Firebase Remote Config.
-  ///
-  /// Compares the current app version against the latest version configured
-  /// in Remote Config. Returns update availability and whether it's mandatory.
+/// The app update check: `POST /versions/check` (`AppVersionCheckRequest`). The backend
+/// `app_versions` table is the only source of release data. The server compares the versions and
+/// decides `update_available` and `is_mandatory`; the client does not compare them.
+class AppUpdateRepository {
+  const AppUpdateRepository({required this._apiClient});
+
+  final ApiClient _apiClient;
+
+  /// The store listing of this app, used when the matching `app_versions` row has no
+  /// `download_url`.
+  static const storeUrls = {
+    DevicePlatform.android: 'https://play.google.com/store/apps/details?id=com.the360ghar.ghar360',
+    DevicePlatform.ios: 'https://apps.apple.com/app/id6794866216',
+  };
+
+  /// A failed request stays a failure: it is never read as "no update". The route is public and
+  /// a pure read, so one retry of a transient failure is safe.
   Future<AppVersionCheckResponse> checkForUpdates(AppVersionCheckRequest request) async {
+    final response = await _apiClient.post(
+      ApiPaths.versionsCheck,
+      body: request.toJson(),
+      idempotent: true,
+      requireAuth: false,
+    );
+    final AppVersionCheckResponse check;
     try {
-      if (!FirebaseInitializer.isFirebaseReady) {
-        DebugLogger.debug('Skipping app update check: Firebase/Remote Config disabled');
-        return const AppVersionCheckResponse(updateAvailable: false, isMandatory: false);
-      }
-
-      // Force-fetch the latest Remote Config to get real-time version info
-      await RemoteConfigService.forceFetch();
-
-      // Get platform-specific version info
-      final isAndroid = request.platform == 'android';
-      final latestVersion = isAndroid
-          ? RemoteConfigService.androidLatestVersion
-          : RemoteConfigService.iosLatestVersion;
-      final minVersion = isAndroid
-          ? RemoteConfigService.androidMinVersion
-          : RemoteConfigService.iosMinVersion;
-      final forceUpdate = isAndroid
-          ? RemoteConfigService.androidForceUpdate
-          : RemoteConfigService.iosForceUpdate;
-      final updateUrl = isAndroid
-          ? RemoteConfigService.androidUpdateUrl
-          : RemoteConfigService.iosUpdateUrl;
-      final releaseNotes = isAndroid
-          ? RemoteConfigService.androidReleaseNotes
-          : RemoteConfigService.iosReleaseNotes;
-
-      // Compare versions
-      final currentVersion = request.currentVersion;
-      final updateAvailable = _isVersionNewer(latestVersion, currentVersion);
-      final isMandatory = forceUpdate || _isVersionNewer(minVersion, currentVersion);
-
-      DebugLogger.info(
-        'App update check: current=$currentVersion, latest=$latestVersion, '
-        'min=$minVersion, updateAvailable=$updateAvailable, mandatory=$isMandatory',
+      check = AppVersionCheckResponse.fromJson(ResponseParser.object(response.body));
+    } catch (error, stack) {
+      DebugLogger.error('Version check response rejected', error.runtimeType, stack);
+      throw ServerException(
+        'The service returned an invalid version response.',
+        code: 'MALFORMED_RESPONSE',
       );
-
-      return AppVersionCheckResponse(
-        updateAvailable: updateAvailable,
-        isMandatory: isMandatory,
-        latestVersion: latestVersion,
-        downloadUrl: updateUrl,
-        releaseNotes: releaseNotes.isNotEmpty ? releaseNotes : null,
-        minSupportedVersion: minVersion,
-      );
-    } catch (e, stackTrace) {
-      DebugLogger.warning('Failed to check for app updates via Remote Config', e, stackTrace);
-      // Return no update available on error to prevent blocking users
-      return const AppVersionCheckResponse(updateAvailable: false, isMandatory: false);
     }
-  }
-
-  /// Test-only exposure of version comparison.
-  @visibleForTesting
-  bool isVersionNewerForTest(String newer, String older) => _isVersionNewer(newer, older);
-
-  /// Compares two semantic version strings.
-  /// Returns true if [newer] is a higher version than [older].
-  ///
-  /// Supports versions like "1.0.0", "1.2.3", "2.0.0+10"
-  bool _isVersionNewer(String newer, String older) {
-    try {
-      // Strip build metadata (e.g., "1.0.0+10" -> "1.0.0")
-      final cleanNewer = newer.split('+').first.trim();
-      final cleanOlder = older.split('+').first.trim();
-
-      final newerParts = cleanNewer.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-      final olderParts = cleanOlder.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-
-      // Pad to equal length
-      while (newerParts.length < 3) {
-        newerParts.add(0);
-      }
-      while (olderParts.length < 3) {
-        olderParts.add(0);
-      }
-
-      // Compare major.minor.patch
-      for (int i = 0; i < 3; i++) {
-        if (newerParts[i] > olderParts[i]) return true;
-        if (newerParts[i] < olderParts[i]) return false;
-      }
-      return false; // Versions are equal
-    } catch (e) {
-      DebugLogger.warning('Version comparison failed: $newer vs $older', e);
-      return false;
+    if (check.updateAvailable && !check.hasDownloadUrl) {
+      return check.copyWith(downloadUrl: storeUrls[request.platform]);
     }
+    return check;
   }
 }

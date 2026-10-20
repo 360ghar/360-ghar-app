@@ -1,32 +1,17 @@
 import 'package:json_annotation/json_annotation.dart';
 
+import 'package:ghar360/core/data/models/wire_enums.dart';
+
+export 'package:ghar360/core/data/models/wire_enums.dart' show AgentType, ExperienceLevel;
+
 part 'agent_model.g.dart';
 
-enum AgentType {
-  @JsonValue('general')
-  general,
-  @JsonValue('specialist')
-  specialist,
-  @JsonValue('senior')
-  senior,
-  @JsonValue('unknown')
-  unknown,
-}
-
-enum ExperienceLevel {
-  @JsonValue('beginner')
-  beginner,
-  @JsonValue('intermediate')
-  intermediate,
-  @JsonValue('expert')
-  expert,
-  @JsonValue('unknown')
-  unknown,
-}
-
+/// `Agent`: the relationship manager assigned to the user.
 @JsonSerializable()
 class AgentModel {
+  @JsonKey(required: true)
   final int id;
+  @JsonKey(required: true)
   final String name;
   final String? description;
   @JsonKey(name: 'avatar_url')
@@ -34,21 +19,25 @@ class AgentModel {
   @JsonKey(name: 'contact_number')
   final String? contactNumber;
   final List<String>? languages;
-  @JsonKey(name: 'agent_type', unknownEnumValue: AgentType.unknown)
-  final AgentType agentType;
-  @JsonKey(name: 'experience_level', unknownEnumValue: ExperienceLevel.unknown)
-  final ExperienceLevel experienceLevel;
-  @JsonKey(name: 'is_active', defaultValue: true)
+
+  /// Null for a value this app does not know.
+  @JsonKey(name: 'agent_type', required: true)
+  @AgentTypeConverter()
+  final AgentType? agentType;
+  @JsonKey(name: 'experience_level', required: true)
+  @ExperienceLevelConverter()
+  final ExperienceLevel? experienceLevel;
+  @JsonKey(name: 'is_active', required: true, disallowNullValue: true)
   final bool isActive;
-  @JsonKey(name: 'is_available', defaultValue: true)
+  @JsonKey(name: 'is_available', required: true, disallowNullValue: true)
   final bool isAvailable;
   @JsonKey(name: 'working_hours')
   final Map<String, dynamic>? workingHours;
-  @JsonKey(name: 'total_users_assigned', defaultValue: 0)
+  @JsonKey(name: 'total_users_assigned', required: true, disallowNullValue: true)
   final int totalUsersAssigned;
-  @JsonKey(name: 'user_satisfaction_rating', defaultValue: 0.0)
+  @JsonKey(name: 'user_satisfaction_rating', required: true, disallowNullValue: true)
   final double userSatisfactionRating;
-  @JsonKey(name: 'created_at')
+  @JsonKey(name: 'created_at', required: true, disallowNullValue: true)
   final DateTime createdAt;
   @JsonKey(name: 'updated_at')
   final DateTime? updatedAt;
@@ -112,31 +101,20 @@ class AgentModel {
   }
 
   // Convenience getters
-  String get agentTypeString {
-    switch (agentType) {
-      case AgentType.general:
-        return 'General';
-      case AgentType.specialist:
-        return 'Specialist';
-      case AgentType.senior:
-        return 'Senior';
-      case AgentType.unknown:
-        return 'Unknown';
-    }
-  }
+  String? get agentTypeString => switch (agentType) {
+    AgentType.general => 'General',
+    AgentType.specialist => 'Specialist',
+    AgentType.senior => 'Senior',
+    null => null,
+  };
 
-  String get experienceLevelString {
-    switch (experienceLevel) {
-      case ExperienceLevel.beginner:
-        return 'Beginner';
-      case ExperienceLevel.intermediate:
-        return 'Intermediate';
-      case ExperienceLevel.expert:
-        return 'Expert';
-      case ExperienceLevel.unknown:
-        return 'Unknown';
-    }
-  }
+  /// The l10n key of the experience level. Null for a level this app does not know.
+  String? get experienceLevelString => switch (experienceLevel) {
+    ExperienceLevel.beginner => 'Beginner',
+    ExperienceLevel.intermediate => 'Intermediate',
+    ExperienceLevel.expert => 'Expert',
+    null => null,
+  };
 
   String get languagesDisplay => languages?.join(', ') ?? 'Not specified';
 

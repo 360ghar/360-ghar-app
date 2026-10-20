@@ -1,20 +1,17 @@
-/// Central registry of all `GetStorage` keys used across the app.
+/// Persisted preference names and keys recognized by the legacy importer.
 ///
-/// Every raw string literal previously passed to `GetStorage.read/write/
-/// remove/hasData` lives here as a single source of truth. The string VALUES
-/// are persisted on-device, so they must never change — only their callers
-/// reference them through these constants.
-///
-/// Keys are grouped by domain for discoverability.
+/// Keep persisted string values stable so installed data remains readable.
+/// The database and read-only importer define which keys are currently used.
+/// Keys are grouped by domain.
 abstract final class StorageKeys {
   // ---------------------------------------------------------------------------
-  // Filters (global filter propagation in PageFilterManager)
+  // Filters (shared purpose and property type preferences)
   // ---------------------------------------------------------------------------
   static const String globalPurpose = 'global_purpose';
   static const String globalPropertyTypes = 'global_property_types';
 
   // ---------------------------------------------------------------------------
-  // Page state (per-page snapshots + schema version)
+  // Legacy page snapshots and schema version
   // ---------------------------------------------------------------------------
   static const String exploreState = 'explore_state';
   static const String discoverState = 'discover_state';
@@ -22,14 +19,14 @@ abstract final class StorageKeys {
   static const String pageStateSchemaVersion = 'page_state_schema_version';
 
   // ---------------------------------------------------------------------------
-  // Theme / locale (ThemeController, LocalizationController, main bootstrap)
+  // Theme and locale preferences
   // ---------------------------------------------------------------------------
   static const String themeMode = 'themeMode';
   static const String languageCode = 'language_code';
   static const String countryCode = 'country_code';
 
   // ---------------------------------------------------------------------------
-  // Onboarding (SplashController, AuthNavigationService)
+  // Onboarding preference
   // ---------------------------------------------------------------------------
   static const String hasSeenOnboarding = 'has_seen_onboarding';
 
@@ -48,9 +45,6 @@ abstract final class StorageKeys {
   // ---------------------------------------------------------------------------
   // Preferences (PreferencesController notification toggles)
   // ---------------------------------------------------------------------------
-  static const String pushNotifications = 'pushNotifications';
-  static const String emailNotifications = 'emailNotifications';
-  static const String similarProperties = 'similarProperties';
 
   // ---------------------------------------------------------------------------
   // Tools (DocumentChecklistController)
@@ -58,7 +52,7 @@ abstract final class StorageKeys {
   static const String documentChecklist = 'document_checklist';
 
   // ---------------------------------------------------------------------------
-  // ETag cache (EtagCache — composed as `${etagCachePrefix}$key`)
+  // Legacy ETag cache prefix
   // ---------------------------------------------------------------------------
   static const String etagCachePrefix = 'etag_cache_';
 

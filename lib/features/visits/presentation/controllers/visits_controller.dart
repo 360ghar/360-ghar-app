@@ -1,674 +1,392 @@
-import 'package:flutter/widgets.dart';
+import 'dart:async';
 
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ghar360/core/controllers/auth_controller.dart';
+import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/agent_model.dart';
-import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
-import 'package:ghar360/core/firebase/analytics_service.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/core/utils/app_toast.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
+import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
 import 'package:ghar360/features/visits/data/visits_repository.dart';
 
-class VisitsController extends GetxController {
-  static const int _visitPageSize = 25;
+final visitsRepositoryProvider = Provider<VisitsRepository>(
+  (ref) => VisitsRepository(
+    remoteDatasource: VisitsRemoteDatasource(ref.watch(apiClientProvider)),
+    offlineQueue: ref.watch(offlineQueueServiceProvider),
+  ),
+);
+final visitsProvider = NotifierProvider<VisitsController, VisitsState>(VisitsController.new);
+final visitClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
-  // Resolved lazily on access (not stored in late-final fields) so the
-  // controller's lifecycle can never crash with a double-initialization if
-  // GetX re-runs onInit() on a cached-but-uninitialized instance.
-  VisitsRepository get _visitsRepository => Get.find<VisitsRepository>();
-  AuthController get _authController => Get.find<AuthController>();
+enum VisitLoadPhase { initial, loading, content, refreshing, failed }
 
-  final RxList<VisitModel> visits = <VisitModel>[].obs;
-  final RxList<VisitModel> upcomingVisitsList = <VisitModel>[].obs;
-  final RxList<VisitModel> pastVisitsList = <VisitModel>[].obs;
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final RxBool isLoadingAgent = false.obs;
-  final RxBool isBookingVisit = false.obs;
+enum VisitPagePhase { idle, loading, failed }
 
-  /// Failure of the PRIMARY visits-list fetch. The view gates its full-screen
-  /// error state on this, so it must never be written by a secondary call —
-  /// otherwise a user with zero visits sees a server error instead of the
-  /// empty state.
-  final Rxn<AppException> error = Rxn<AppException>();
+class VisitAgentState {
+  const VisitAgentState({this.value, this.phase = VisitLoadPhase.loading, this.error});
+  final AgentModel? value;
+  final VisitLoadPhase phase;
+  final AppException? error;
+  bool get isLoading => phase == VisitLoadPhase.loading || phase == VisitLoadPhase.refreshing;
+  bool get hasValue => value != null;
+  bool get hasError => error != null;
+}
 
-  /// Failure of the SECONDARY relationship-manager fetch. Kept separate from
-  /// [error] so the agent card can degrade to "not shown" without masking the
-  /// visits list's own state.
-  final Rxn<AppException> agentError = Rxn<AppException>();
-  final Rxn<AgentModel> relationshipManager = Rxn<AgentModel>();
-  final Rxn<String> nextCursor = Rxn<String>();
-  final RxBool hasMore = true.obs;
-  bool _backgroundRefreshInFlight = false;
-  final RxBool isBackgroundRefreshing = false.obs;
-  Worker? _authStatusWorker;
-  Worker? _tabActivationWorker;
+class VisitsState {
+  VisitsState({
+    List<VisitModel> visits = const [],
+    this.phase = VisitLoadPhase.initial,
+    this.failure,
+    this.nextCursor,
+    this.pagePhase = VisitPagePhase.idle,
+    this.pageFailure,
+    this.stale = false,
+    this.agent = const VisitAgentState(),
+    this.booking = const AsyncData(null),
+    Map<int, AsyncValue<bool>> mutations = const {},
+  }) : visits = List.unmodifiable(visits),
+       mutations = Map.unmodifiable(mutations);
+  final List<VisitModel> visits;
+  final VisitLoadPhase phase;
+  final AppException? failure;
+  final String? nextCursor;
+  final VisitPagePhase pagePhase;
+  final AppException? pageFailure;
+  final bool stale;
+  final VisitAgentState agent;
+  final AsyncValue<VisitRequestResult?> booking;
+  final Map<int, AsyncValue<bool>> mutations;
+  bool get hasMore => nextCursor != null;
+  bool get isLoading => phase == VisitLoadPhase.loading || phase == VisitLoadPhase.initial;
+  bool get isRefreshing => phase == VisitLoadPhase.refreshing;
+  List<VisitModel> get upcoming => List.unmodifiable(
+    visits.where((v) => v.isUpcoming).toList()
+      ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate)),
+  );
+  List<VisitModel> get past => List.unmodifiable(
+    visits.where((v) => !v.isUpcoming).toList()
+      ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate)),
+  );
 
-  // Track if data has been loaded to prevent infinite loops
-  final RxBool hasLoadedVisits = false.obs;
-  final RxBool hasLoadedAgent = false.obs;
+  VisitsState copyWith({
+    List<VisitModel>? visits,
+    VisitLoadPhase? phase,
+    AppException? failure,
+    bool clearFailure = false,
+    String? nextCursor,
+    bool clearCursor = false,
+    VisitPagePhase? pagePhase,
+    AppException? pageFailure,
+    bool clearPageFailure = false,
+    bool? stale,
+    VisitAgentState? agent,
+    AsyncValue<VisitRequestResult?>? booking,
+    Map<int, AsyncValue<bool>>? mutations,
+  }) => VisitsState(
+    visits: visits ?? this.visits,
+    phase: phase ?? this.phase,
+    failure: clearFailure ? null : failure ?? this.failure,
+    nextCursor: clearCursor ? null : nextCursor ?? this.nextCursor,
+    pagePhase: pagePhase ?? this.pagePhase,
+    pageFailure: clearPageFailure ? null : pageFailure ?? this.pageFailure,
+    stale: stale ?? this.stale,
+    agent: agent ?? this.agent,
+    booking: booking ?? this.booking,
+    mutations: mutations ?? this.mutations,
+  );
+}
 
-  // Track in-flight requests to prevent race conditions
-  bool dataLoadInFlight = false;
-
+class VisitsController extends Notifier<VisitsState> {
+  int _generation = 0;
+  int _listRequest = 0;
+  bool _listInFlight = false;
+  bool _agentInFlight = false;
+  final _seenCursors = <String>{};
   @override
-  void onInit() {
-    super.onInit();
-
-    // Listen to authentication state changes (guarded so a re-entrant onInit
-    // can never register duplicate workers).
-    _authStatusWorker ??= ever(_authController.authStatus, (authStatus) {
-      if (_authController.isAuthenticated) {
-        // User is authenticated, safe to fetch data
-        _initializeController();
-      } else {
-        // User logged out, clear all data
-        _clearAllData();
-      }
+  VisitsState build() {
+    final scope = ref.watch(storageScopeProvider);
+    ref.watch(visitsRepositoryProvider);
+    final generation = ++_generation;
+    _listInFlight = false;
+    _agentInFlight = false;
+    _seenCursors.clear();
+    ref.onDispose(() {
+      _generation++;
     });
-
-    // If already authenticated, initialize immediately
-    if (_authController.isAuthenticated) {
-      _initializeController();
-    }
-
-    // Observe dashboard tab switches to refresh when Visits tab is active
-    // (guarded so a re-entrant onInit can never register a duplicate worker).
-    if (_tabActivationWorker == null && Get.isRegistered<DashboardController>()) {
-      final dash = Get.find<DashboardController>();
-      DateTime? lastRefresh;
-
-      const cooldown = Duration(seconds: 30);
-
-      _tabActivationWorker = ever<int>(dash.currentIndex, (idx) async {
-        if (idx == 4) {
-          final now = DateTime.now();
-          // Throttle to avoid spamming refresh
-          if (lastRefresh == null || now.difference(lastRefresh!) > cooldown) {
-            DebugLogger.info('🔄 Visits tab activated — refreshing (background)');
-            await loadVisits(isRefresh: true, silent: true);
-            lastRefresh = now;
-          } else {
-            DebugLogger.info('⏳ Skipping visits refresh due to cooldown');
-          }
-        }
+    if (scope.accountId != null) {
+      Future.microtask(() async {
+        if (!_active(generation)) return;
+        await Future.wait([_restoreAndLoad(generation, scope), loadRelationshipManager()]);
       });
-
-      // If app starts on Visits tab, ensure data loads quickly
-      if (dash.currentIndex.value == 4) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!hasLoadedVisits.value && !isLoading.value) {
-            loadVisitsLazy();
-          }
-        });
-      }
+      return VisitsState();
     }
+    return VisitsState(
+      phase: VisitLoadPhase.content,
+      agent: const VisitAgentState(phase: VisitLoadPhase.content),
+    );
   }
 
-  Future<void> _initializeController() async {
-    // Load visits and agent data lazily (guards prevent duplicate requests).
-    // Kept sequential: running these concurrently races the per-controller
-    // load-guard flags in a way the lazy-loader unit tests rely on, and the
-    // single saved round-trip on sign-in is not worth that coupling.
-    await loadVisitsLazy();
-    await loadRelationshipManagerLazy();
-  }
+  bool _active(int generation) => ref.mounted && generation == _generation;
+  bool get _signedIn => ref.read(storageScopeProvider).accountId != null;
+  AppException _failure(Object error) => error is AppException
+      ? error
+      : ServerException('The request could not be completed.', code: 'VISITS_FAILED');
 
-  void _clearAllData() {
-    visits.clear();
-    upcomingVisitsList.clear();
-    pastVisitsList.clear();
-    relationshipManager.value = null;
-    error.value = null;
-    agentError.value = null;
-    hasLoadedVisits.value = false;
-    hasLoadedAgent.value = false;
-  }
-
-  // Lazy loading methods - only fetch when actually needed
-  Future<void> loadVisitsLazy() async {
-    if (hasLoadedVisits.value || isLoading.value) {
-      return; // Prevent duplicate requests.
-    }
-    hasLoadedVisits.value = true;
-    await loadVisits();
-    // A failed first load must remain retryable (for pull-to-refresh, tab
-    // activation, or a later network recovery).
-    if (error.value != null) {
-      hasLoadedVisits.value = false;
-    }
-  }
-
-  Future<void> loadRelationshipManagerLazy() async {
-    if (hasLoadedAgent.value || isLoadingAgent.value) {
-      return; // Prevent duplicate requests.
-    }
-    hasLoadedAgent.value = true;
-    await loadRelationshipManager();
-    if (agentError.value != null) {
-      hasLoadedAgent.value = false;
-    }
-  }
-
-  Future<void> loadVisits({bool isRefresh = false, bool silent = false}) async {
-    if (!_authController.isAuthenticated) {
-      error.value = AuthenticationException('User not authenticated', code: 'NOT_AUTHENTICATED');
-      return;
-    }
-
-    // Race condition protection
-    if (dataLoadInFlight && !isRefresh) {
-      DebugLogger.info('🔁 Visit data load already in flight, skipping duplicate request');
-      return;
-    }
-
+  Future<void> _restoreAndLoad(int generation, StorageScope scope) async {
+    final database = ref.read(appDatabaseProvider);
     try {
-      if (isRefresh && !silent) {
-        // For pull-to-refresh, clear existing data
-        visits.clear();
-        upcomingVisitsList.clear();
-        pastVisitsList.clear();
+      final cache = await database.readCache(scope: scope, key: 'visits:first');
+      if (_active(generation) && cache?.value is List) {
+        final visits = (cache!.value! as List)
+            .map((value) => VisitModel.fromJson(Map<String, dynamic>.from(value as Map)))
+            .toList();
+        state = state.copyWith(visits: visits, phase: VisitLoadPhase.content, stale: true);
       }
-      if (silent) {
-        if (_backgroundRefreshInFlight) {
-          DebugLogger.info('🔁 Background refresh already running, skipping');
-          return;
-        }
-        _backgroundRefreshInFlight = true;
-        isBackgroundRefreshing.value = true;
-      } else {
-        dataLoadInFlight = true;
-        isLoading.value = true;
-      }
-      error.value = null;
+    } catch (_) {
+      /* Optional cache failure does not hide network recovery. */
+    }
+    if (_active(generation)) await loadVisits();
+  }
 
-      // Reset pagination cursor on initial load / explicit refresh so the
-      // cursor loop restarts at page 1.
-      nextCursor.value = null;
-      hasMore.value = true;
-
-      // Fetch the first page only. Subsequent pages are fetched lazily by
-      // [loadMoreVisits] (driven by the scroll listener in VisitsView).
-      DebugLogger.info('🔄 Fetching visits page (cursor=first, limit=$_visitPageSize)...');
-      final page = await _visitsRepository.fetchVisitsSummary(cursor: null, limit: _visitPageSize);
-      nextCursor.value = page.nextCursor;
-      hasMore.value = page.hasMore;
-
-      final fetched = page.visits;
-      DebugLogger.info(
-        '📥 Visits fetched: total=${fetched.length} | '
-        'hasMore=${page.hasMore} | nextCursor=${page.nextCursor != null} | '
-        'example=${fetched.isNotEmpty ? '{id: ${fetched.first.id}, status: ${fetched.first.status}, date: ${fetched.first.scheduledDate.toIso8601String()}}' : 'none'}',
+  Future<void> loadVisits() async {
+    if (!_signedIn || _listInFlight) return;
+    _listInFlight = true;
+    final generation = _generation;
+    final request = ++_listRequest;
+    final scope = ref.read(storageScopeProvider);
+    final repository = ref.read(visitsRepositoryProvider);
+    final database = ref.read(appDatabaseProvider);
+    state = state.copyWith(
+      phase: state.visits.isEmpty ? VisitLoadPhase.loading : VisitLoadPhase.refreshing,
+      clearFailure: true,
+      pagePhase: VisitPagePhase.idle,
+      clearPageFailure: true,
+    );
+    try {
+      final page = await repository.fetchVisitsSummary(limit: 25);
+      if (!_active(generation) || request != _listRequest) return;
+      _seenCursors.clear();
+      final cursor = page.hasMore && (page.nextCursor?.isNotEmpty ?? false)
+          ? page.nextCursor
+          : null;
+      state = state.copyWith(
+        visits: _deduplicate(page.visits),
+        phase: VisitLoadPhase.content,
+        nextCursor: cursor,
+        clearCursor: cursor == null,
+        stale: false,
       );
-
-      _replaceWithPageVisits(fetched);
-
-      // Detailed per-item logs for diagnostics
-      if (upcomingVisitsList.isEmpty) {
-        DebugLogger.warning('🟡 No upcoming visits after compute');
-      } else {
-        DebugLogger.info('🟢 Upcoming visits (${upcomingVisitsList.length}):');
-        for (final v in upcomingVisitsList) {
-          DebugLogger.info(
-            '  • id=${v.id} status=${v.status} date=${v.scheduledDate.toIso8601String()}',
-          );
-        }
+      _listInFlight = false;
+      try {
+        final now = ref.read(visitClockProvider)();
+        await database.writeCache(
+          scope: scope,
+          key: 'visits:first',
+          value: page.visits.map((visit) => visit.toJson()).toList(),
+          freshUntil: now.add(const Duration(minutes: 5)),
+          expiresAt: now.add(const Duration(days: 7)),
+        );
+      } catch (_) {
+        /* Fresh server content remains usable if cache persistence fails. */
       }
-      if (pastVisitsList.isEmpty) {
-        DebugLogger.warning('🟠 No past visits after compute');
-      } else {
-        DebugLogger.info('🔵 Past visits (${pastVisitsList.length}):');
-        for (final v in pastVisitsList) {
-          DebugLogger.info(
-            '  • id=${v.id} status=${v.status} date=${v.scheduledDate.toIso8601String()}',
-          );
-        }
+    } catch (error) {
+      if (_active(generation) && request == _listRequest) {
+        state = state.copyWith(
+          phase: state.visits.isEmpty ? VisitLoadPhase.failed : VisitLoadPhase.content,
+          failure: _failure(error),
+          stale: state.visits.isNotEmpty,
+        );
       }
-
-      DebugLogger.success(
-        '✅ Visits loaded: ${fetched.length} on first page '
-        '(${upcomingVisitsList.length} upcoming, ${pastVisitsList.length} past, '
-        'hasMore=${page.hasMore})',
-      );
-    } catch (e, stackTrace) {
-      final appException = e is AppException
-          ? e
-          : ServerException('Failed to load visits: ${e.toString()}', code: 'LOAD_ERROR');
-      error.value = appException;
-      DebugLogger.error('❌ Error loading visits: $e', e, stackTrace);
     } finally {
-      if (silent) {
-        _backgroundRefreshInFlight = false;
-        isBackgroundRefreshing.value = false;
-      } else {
-        dataLoadInFlight = false;
-        isLoading.value = false;
-      }
+      if (_active(generation) && request == _listRequest) _listInFlight = false;
     }
   }
 
-  /// Loads the next page of visits using the stored [nextCursor].
-  ///
-  /// Driven by the scroll listener in [VisitsView]. Idempotent: returns
-  /// immediately when a load is already in flight, when there are no more
-  /// pages, or when the backend has signalled the terminal page
-  /// (`nextCursor == null`).
+  Future<void> refreshVisits() => loadVisits();
   Future<void> loadMoreVisits() async {
-    if (!_authController.isAuthenticated) return;
-
-    if (isLoading.value || isLoadingMore.value) {
-      DebugLogger.info('🔁 Visit load already in flight, skipping loadMoreVisits');
+    final cursor = state.nextCursor;
+    if (!_signedIn ||
+        _listInFlight ||
+        state.pagePhase == VisitPagePhase.loading ||
+        cursor == null) {
       return;
     }
-
-    if (!hasMore.value) {
-      DebugLogger.info('🔚 No more visits pages (hasMore=false)');
-      return;
-    }
-
-    final cursor = nextCursor.value;
-    if (cursor == null || cursor.isEmpty) {
-      // Backend signalled terminal page; mark hasMore=false so subsequent
-      // scroll events short-circuit without making a network call.
-      hasMore.value = false;
-      DebugLogger.info('🔚 nextCursor is null while hasMore=true; marking terminal page');
-      return;
-    }
-
+    final generation = _generation;
+    final request = _listRequest;
+    state = state.copyWith(pagePhase: VisitPagePhase.loading, clearPageFailure: true);
     try {
-      isLoadingMore.value = true;
-      error.value = null;
-
-      DebugLogger.info('🔄 Fetching next visits page (cursor=set, limit=$_visitPageSize)...');
-      final page = await _visitsRepository.fetchVisitsSummary(
-        cursor: cursor,
-        limit: _visitPageSize,
+      final page = await ref
+          .read(visitsRepositoryProvider)
+          .fetchVisitsSummary(cursor: cursor, limit: 25);
+      if (!_active(generation) || request != _listRequest) return;
+      _seenCursors.add(cursor);
+      final next =
+          page.hasMore &&
+              (page.nextCursor?.isNotEmpty ?? false) &&
+              !_seenCursors.contains(page.nextCursor)
+          ? page.nextCursor
+          : null;
+      state = state.copyWith(
+        visits: _deduplicate([...state.visits, ...page.visits]),
+        pagePhase: VisitPagePhase.idle,
+        nextCursor: next,
+        clearCursor: next == null,
       );
-      nextCursor.value = page.nextCursor;
-      hasMore.value = page.hasMore;
-
-      final fetched = page.visits;
-      DebugLogger.info(
-        '📥 Visits fetched (loadMore): total=${fetched.length} | '
-        'hasMore=${page.hasMore} | nextCursor=${page.nextCursor != null}',
-      );
-
-      _mergePageVisits(fetched);
-
-      DebugLogger.success(
-        '✅ Loaded more visits: +${fetched.length} '
-        '(${upcomingVisitsList.length} upcoming, ${pastVisitsList.length} past, '
-        'hasMore=${page.hasMore})',
-      );
-    } catch (e, stackTrace) {
-      final appException = e is AppException
-          ? e
-          : ServerException('Failed to load more visits: ${e.toString()}', code: 'LOAD_MORE_ERROR');
-      error.value = appException;
-      DebugLogger.error('❌ Error loading more visits: $e', e, stackTrace);
-    } finally {
-      isLoadingMore.value = false;
+    } catch (error) {
+      if (_active(generation) && request == _listRequest) {
+        state = state.copyWith(pagePhase: VisitPagePhase.failed, pageFailure: _failure(error));
+      }
     }
   }
 
-  /// Upcoming visits, soonest first. The single bucket predicate is
-  /// [VisitModel.isUpcoming]; "past" is its exact complement, so a visit
-  /// always lands in exactly one bucket.
-  List<VisitModel> _computeUpcomingVisits(List<VisitModel> source) =>
-      source.where((v) => v.isUpcoming).toList()
-        ..sort((a, b) => a.scheduledDate.compareTo(b.scheduledDate));
-
-  /// Past visits, most recent first — exact complement of
-  /// [_computeUpcomingVisits].
-  List<VisitModel> _computePastVisits(List<VisitModel> source) =>
-      source.where((v) => !v.isUpcoming).toList()
-        ..sort((a, b) => b.scheduledDate.compareTo(a.scheduledDate));
-
-  /// Rebuilds the upcoming/past buckets and re-orders [visits] so the flat
-  /// list matches the two derived lists.
-  void _rebuildBuckets() {
-    final upcoming = _computeUpcomingVisits(visits);
-    final past = _computePastVisits(visits);
-
-    upcomingVisitsList.assignAll(upcoming);
-    pastVisitsList.assignAll(past);
-    visits.assignAll([...upcoming, ...past]);
-  }
-
-  /// Replaces the entire visit list with the supplied page. Used by the
-  /// initial / refresh path which always starts from the first cursor.
-  void _replaceWithPageVisits(List<VisitModel> pageVisits) {
-    visits.assignAll(pageVisits);
-    _rebuildBuckets();
-  }
-
-  /// Merges a paginated page into the existing visit lists, deduplicating by
-  /// visit id so cursor rewinds or backend overlaps never produce duplicates.
-  void _mergePageVisits(List<VisitModel> pageVisits) {
-    if (pageVisits.isEmpty) return;
-
-    final existingIds = visits.map((v) => v.id).toSet();
-    final fresh = pageVisits.where((v) => !existingIds.contains(v.id)).toList();
-    // Nothing new: the buckets already reflect `visits`, so skipping the
-    // rebuild is a no-op, not a missed update.
-    if (fresh.isEmpty) return;
-
-    visits.addAll(fresh);
-    _rebuildBuckets();
-  }
-
-  // Pull-to-refresh method
-  Future<void> refreshVisits() async {
-    await loadVisits(isRefresh: true);
+  List<VisitModel> _deduplicate(List<VisitModel> values) {
+    final seen = <int>{};
+    return values.where((visit) => seen.add(visit.id)).toList();
   }
 
   Future<void> loadRelationshipManager() async {
-    if (!_authController.isAuthenticated) return;
-
+    if (!_signedIn || _agentInFlight) return;
+    _agentInFlight = true;
+    final generation = _generation;
+    state = state.copyWith(
+      agent: VisitAgentState(value: state.agent.value, phase: VisitLoadPhase.refreshing),
+    );
     try {
-      isLoadingAgent.value = true;
-      agentError.value = null;
-      final agentData = await _visitsRepository.fetchRelationshipManager();
-
-      // Use updated AgentModel with simplified fields
-      relationshipManager.value = AgentModel(
-        id: agentData.id,
-        name: agentData.name,
-        description: agentData.description,
-        avatarUrl: agentData.avatarUrl,
-        contactNumber: agentData.contactNumber,
-        languages: agentData.languages,
-        agentType: agentData.agentType,
-        experienceLevel: agentData.experienceLevel,
-        isActive: agentData.isActive,
-        isAvailable: agentData.isAvailable,
-        workingHours: agentData.workingHours,
-        totalUsersAssigned: agentData.totalUsersAssigned,
-        userSatisfactionRating: agentData.userSatisfactionRating,
-        createdAt: agentData.createdAt,
-        updatedAt: agentData.updatedAt,
-      );
-
-      DebugLogger.success('✅ Agent loaded successfully: ${agentData.name}');
-    } catch (e) {
-      DebugLogger.error('❌ Error loading agent: $e');
-      // Secondary call: never write [error] — the agent card simply stays
-      // hidden (relationshipManager remains null) and the visits list keeps
-      // its own empty/error state.
-      relationshipManager.value = null;
-      agentError.value = ServerException('Failed to load agent', code: 'AGENT_LOAD_ERROR');
-    } finally {
-      isLoadingAgent.value = false;
-    }
-  }
-
-  Future<bool> bookVisit(
-    dynamic property, // Can be PropertyModel or PropertyCardModel
-    DateTime visitDateTime, {
-    String visitType = 'physical',
-    String? notes,
-    String contactPreference = 'phone',
-    int guestsCount = 1,
-  }) async {
-    if (!_authController.isAuthenticated) {
-      AppToast.warning('auth_required'.tr, 'login_to_book_visit'.tr);
-      return false;
-    }
-    if (isBookingVisit.value) {
-      return false;
-    }
-    if (!visitDateTime.isAfter(DateTime.now())) {
-      AppToast.warning('invalid_time'.tr, 'select_future_datetime'.tr);
-      return false;
-    }
-
-    try {
-      isBookingVisit.value = true;
-      error.value = null;
-
-      // Reject malformed dynamic input instead of sending property_id=0 or
-      // throwing a cast error (int.tryParse never throws).
-      final int? propertyId = int.tryParse(property.id.toString());
-      if (propertyId == null || propertyId <= 0) {
-        AppToast.error('booking_failed'.tr, 'booking_failed_message'.tr);
-        return false;
-      }
-      final String propertyTitle = property is PropertyModel
-          ? property.title
-          : property.title?.toString() ?? 'Property';
-
-      final visitModel = await _visitsRepository.scheduleVisit(
-        propertyId: propertyId,
-        scheduledDate: visitDateTime.toUtc().toIso8601String(),
-        specialRequirements: notes ?? 'Property visit scheduled through 360ghar app',
-      );
-
-      DebugLogger.success('✅ Visit scheduled successfully: ${visitModel.id}');
-
-      // The API returns the complete visit model, no need to reconstruct
-      // Just reload visits to get the updated list
-      await loadVisits(isRefresh: true, silent: true);
-
-      AppToast.success(
-        'visit_scheduled'.tr,
-        '${'visit_scheduled_message_prefix'.tr} $propertyTitle ${'visit_scheduled_message_infix'.tr} ${formatVisitDate(visitDateTime)} at ${formatVisitTime(visitDateTime)}',
-      );
-      await _safeAnalytics(
-        'visit_schedule',
-        () => AnalyticsService.scheduleVisit(propertyId.toString()),
-      );
-
-      return true;
-    } catch (e) {
-      final appException = e is AppException
-          ? e
-          : ServerException('Failed to book visit: ${e.toString()}', code: 'BOOKING_ERROR');
-      error.value = appException;
-      DebugLogger.error('Error booking visit: $e');
-
-      // Repository queues all retryable offline failures, including a missing
-      // auth header while the device is offline.
-      if (e is AppException && e.isRetryableOffline) {
-        AppToast.info('queued_offline'.tr, 'queued_offline_message'.tr);
-        return false;
-      }
-
-      AppToast.error(
-        'booking_failed'.tr,
-        'booking_failed_message'.trParams({'error': e.toString()}),
-      );
-
-      return false;
-    } finally {
-      isBookingVisit.value = false;
-    }
-  }
-
-  // Fallback method for non-authenticated users removed.
-  // Previously this fabricated a local VisitModel with userId: 1 and showed
-  // a success toast with no server backing, which was lost on refresh.
-  // Unauthenticated users are now routed to the real bookVisit() flow,
-  // which surfaces an "auth required" toast if not signed in.
-
-  Future<bool> cancelVisit(dynamic visitId, {required String reason}) async {
-    if (!_authController.isAuthenticated) {
-      AppToast.warning('auth_required'.tr, 'login_to_cancel_visit'.tr);
-      return false;
-    }
-
-    final visitIdInt = visitId is int ? visitId : int.tryParse(visitId.toString()) ?? 0;
-    final visitIndex = visits.indexWhere((visit) => visit.id == visitIdInt);
-    if (visitIndex == -1) {
-      DebugLogger.warning('Cancel requested for unknown visit id=$visitIdInt');
-      AppToast.error('error'.tr, 'could_not_cancel_visit'.tr);
-      return false;
-    }
-
-    final visit = visits[visitIndex];
-    if (!visit.canCancel) {
-      DebugLogger.warning('Cancel rejected for visit id=$visitIdInt status=${visit.status}');
-      AppToast.error('error'.tr, 'could_not_cancel_visit'.tr);
-      return false;
-    }
-
-    if (reason.trim().isEmpty) {
-      AppToast.warning('reason_required_label'.tr, 'reason_required_hint'.tr);
-      return false;
-    }
-
-    try {
-      if (_authController.isAuthenticated) {
-        final ok = await _visitsRepository.cancelVisit(visitIdInt, reason: reason);
-        if (!ok) {
-          throw Exception('Failed to cancel visit');
-        }
-      }
-
-      // Reload visits to get updated state from server
-      await loadVisits(isRefresh: true, silent: true);
-
-      AppToast.success('visit_cancelled'.tr, 'your_visit_has_been_cancelled'.tr);
-      await _safeAnalytics(
-        'visit_cancel',
-        () => AnalyticsService.logVital('visit_cancel', params: {'id': visitIdInt.toString()}),
-      );
-
-      return true;
-    } catch (e) {
-      DebugLogger.error('Error cancelling visit: $e');
-      AppToast.error('error'.tr, 'could_not_cancel_visit'.tr);
-      return false;
-    }
-  }
-
-  Future<bool> rescheduleVisit(dynamic visitId, DateTime newDateTime, {String? reason}) async {
-    if (!_authController.isAuthenticated) {
-      AppToast.warning('auth_required'.tr, 'login_to_cancel_visit'.tr);
-      return false;
-    }
-
-    final visitIdInt = visitId is int ? visitId : int.tryParse(visitId.toString()) ?? 0;
-    final visitIndex = visits.indexWhere((visit) => visit.id == visitIdInt);
-    if (visitIndex == -1) {
-      DebugLogger.warning('Reschedule requested for unknown visit id=$visitIdInt');
-      AppToast.error('error'.tr, 'could_not_reschedule_visit'.tr);
-      return false;
-    }
-
-    final visit = visits[visitIndex];
-    if (!visit.canReschedule) {
-      DebugLogger.warning('Reschedule rejected for visit id=$visitIdInt status=${visit.status}');
-      AppToast.error('error'.tr, 'could_not_reschedule_visit'.tr);
-      return false;
-    }
-    if (!newDateTime.isAfter(DateTime.now())) {
-      AppToast.warning('invalid_time'.tr, 'select_future_datetime'.tr);
-      return false;
-    }
-
-    try {
-      if (_authController.isAuthenticated) {
-        final ok = await _visitsRepository.rescheduleVisit(
-          visitIdInt,
-          newDate: newDateTime.toUtc().toIso8601String(),
-          reason: reason,
+      final agent = await ref.read(visitsRepositoryProvider).fetchRelationshipManager();
+      if (_active(generation)) {
+        state = state.copyWith(
+          agent: VisitAgentState(value: agent, phase: VisitLoadPhase.content),
         );
-        if (!ok) {
-          throw Exception('Failed to reschedule visit');
-        }
       }
+    } catch (error) {
+      if (_active(generation)) {
+        state = state.copyWith(
+          agent: VisitAgentState(
+            value: state.agent.value,
+            phase: VisitLoadPhase.failed,
+            error: _failure(error),
+          ),
+        );
+      }
+    } finally {
+      if (_active(generation)) _agentInFlight = false;
+    }
+  }
 
-      // Reload visits to get updated state from server
-      await loadVisits(isRefresh: true, silent: true);
-
-      AppToast.success(
-        'visit_rescheduled'.tr,
-        '${'visit_rescheduled_to'.tr} ${formatVisitDate(newDateTime)} ${'at'.tr} ${formatVisitTime(newDateTime)}',
+  Future<VisitRequestResult> bookVisit(int propertyId, DateTime date, {String? notes}) async {
+    if (!_signedIn) {
+      return VisitFailed(
+        AuthenticationException('Sign in to continue.', code: 'NOT_AUTHENTICATED'),
       );
-      await _safeAnalytics(
-        'visit_reschedule',
-        () => AnalyticsService.logVital('visit_reschedule', params: {'id': visitIdInt.toString()}),
+    }
+    if (state.booking.isLoading) {
+      return VisitFailed(
+        ValidationException('Request already in progress.', code: 'DUPLICATE_REQUEST'),
       );
+    }
+    if (propertyId <= 0 || !date.isAfter(ref.read(visitClockProvider)())) {
+      final result = VisitFailed(
+        ValidationException('Select a future date and time.', code: 'INVALID_VISIT_DATE'),
+      );
+      state = state.copyWith(booking: AsyncData(result));
+      return result;
+    }
+    final generation = _generation;
+    state = state.copyWith(booking: const AsyncLoading());
+    VisitRequestResult result;
+    try {
+      result = await ref
+          .read(visitsRepositoryProvider)
+          .scheduleVisit(
+            propertyId: propertyId,
+            scheduledDate: date.toUtc().toIso8601String(),
+            specialRequirements: notes,
+          );
+    } catch (error) {
+      result = VisitFailed(_failure(error));
+    }
+    if (!_active(generation)) {
+      return VisitFailed(NetworkException('Account changed.', code: 'CANCELLED'));
+    }
+    state = state.copyWith(booking: AsyncData(result));
+    if (result is VisitConfirmed) {
+      state = state.copyWith(visits: _deduplicate([result.visit, ...state.visits]));
+      unawaited(loadVisits());
+    }
+    return result;
+  }
 
+  /// The cancel reason is required: 1 to 1000 characters after trimming.
+  Future<bool> cancelVisit(int visitId, {required String reason}) => _mutate(
+    visitId,
+    allowed: (visit) =>
+        visit.canCancel && reason.trim().isNotEmpty && reason.trim().length <= _maxReasonLength,
+    action: (repository) => repository.cancelVisit(visitId, reason: reason.trim()),
+  );
+  Future<bool> rescheduleVisit(int visitId, DateTime date, {String? reason}) => _mutate(
+    visitId,
+    allowed: (visit) => visit.canReschedule && date.isAfter(ref.read(visitClockProvider)()),
+    action: (repository) => repository.rescheduleVisit(
+      visitId,
+      newDate: date.toUtc().toIso8601String(),
+      reason: reason,
+    ),
+  );
+  static const _maxReasonLength = 1000;
+  Future<bool> _mutate(
+    int id, {
+    required bool Function(VisitModel) allowed,
+    required Future<VisitModel> Function(VisitsRepository) action,
+  }) async {
+    if (!_signedIn || state.mutations[id]?.isLoading == true) return false;
+    final matches = state.visits.where((visit) => visit.id == id);
+    if (matches.isEmpty || !allowed(matches.first)) {
+      state = state.copyWith(
+        mutations: {
+          ...state.mutations,
+          id: AsyncError(
+            ValidationException('Check the visit details.', code: 'INVALID_VISIT_CHANGE'),
+            StackTrace.current,
+          ),
+        },
+      );
+      return false;
+    }
+    final generation = _generation;
+    state = state.copyWith(mutations: {...state.mutations, id: const AsyncLoading()});
+    try {
+      // Both routes answer with the updated Visit: show it now, then reload the list.
+      final updated = await action(ref.read(visitsRepositoryProvider));
+      if (!_active(generation)) return false;
+      state = state.copyWith(
+        visits: [
+          for (final visit in state.visits)
+            if (visit.id == updated.id)
+              updated.copyWith(property: updated.property ?? visit.property)
+            else
+              visit,
+        ],
+        mutations: {...state.mutations, id: const AsyncData(true)},
+      );
+      unawaited(loadVisits());
       return true;
-    } catch (e) {
-      DebugLogger.error('Error rescheduling visit: $e');
-      AppToast.error('error'.tr, 'could_not_reschedule_visit'.tr);
+    } catch (error, stack) {
+      if (_active(generation)) {
+        state = state.copyWith(
+          mutations: {...state.mutations, id: AsyncError(_failure(error), stack)},
+        );
+      }
       return false;
     }
   }
 
-  void markVisitCompleted(dynamic visitId) {
-    final visitIdInt = visitId is int ? visitId : int.tryParse(visitId.toString()) ?? 0;
-    final visitIndex = visits.indexWhere((visit) => visit.id == visitIdInt);
-    if (visitIndex != -1) {
-      visits[visitIndex] = visits[visitIndex].copyWith(status: VisitStatus.completed);
-      // The status change moves the visit across the upcoming/past boundary.
-      _rebuildBuckets();
-    }
-  }
-
-  Future<void> _safeAnalytics(String event, Future<void> Function() action) async {
-    try {
-      await action();
-    } catch (e, stackTrace) {
-      DebugLogger.warning('Analytics call failed for $event', e, stackTrace);
-    }
-  }
-
-  @override
-  void onClose() {
-    _authStatusWorker?.dispose();
-    _tabActivationWorker?.dispose();
-    super.onClose();
-  }
-
-  List<VisitModel> get upcomingVisits {
-    if (upcomingVisitsList.isNotEmpty || hasLoadedVisits.value) {
-      return upcomingVisitsList;
-    }
-    // Fallback compute — same predicate as _rebuildBuckets().
-    return _computeUpcomingVisits(visits);
-  }
-
-  List<VisitModel> get pastVisits {
-    if (pastVisitsList.isNotEmpty || hasLoadedVisits.value) {
-      return pastVisitsList;
-    }
-    // Fallback compute — exact complement of the upcoming predicate.
-    return _computePastVisits(visits);
-  }
-
-  String formatVisitDate(DateTime dateTime) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final visitDay = DateTime(dateTime.year, dateTime.month, dateTime.day);
-    final difference = visitDay.difference(today).inDays;
-
-    if (difference == 0) {
-      return 'today'.tr;
-    } else if (difference == 1) {
-      return 'tomorrow'.tr;
-    } else if (difference == -1) {
-      return 'yesterday'.tr;
-    } else if (difference > 1) {
-      return 'in_n_days'.trParams({'days': '$difference'});
-    } else {
-      return 'n_days_ago'.trParams({'days': '${difference.abs()}'});
-    }
-  }
-
-  String formatVisitTime(DateTime dateTime) {
-    final hour = dateTime.hour;
-    final minute = dateTime.minute;
-    final period = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    final displayMinute = minute.toString().padLeft(2, '0');
-
-    return '$displayHour:$displayMinute $period';
+  Future<bool> reconcile(PendingAction action) async {
+    final generation = _generation;
+    final visit = await ref.read(visitsRepositoryProvider).reconcile(action);
+    if (!_active(generation)) return false;
+    if (visit != null) state = state.copyWith(visits: _deduplicate([visit, ...state.visits]));
+    return visit != null;
   }
 }

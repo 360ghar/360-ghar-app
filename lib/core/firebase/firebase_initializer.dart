@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -8,9 +10,8 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_in_app_messaging/firebase_in_app_messaging.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_performance/firebase_performance.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:get_storage/get_storage.dart';
+
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
 import 'package:ghar360/core/firebase/remote_config_service.dart';
@@ -23,7 +24,7 @@ import 'package:ghar360/firebase_options.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    DebugLogger.info('📩 [FCM][BG] Message received: ${message.messageId ?? 'no-id'}');
+    DebugLogger.info('Background notification received');
 
     // Extract notification content from either notification payload or data payload
     String? title = message.notification?.title;
@@ -92,7 +93,7 @@ Future<void> _showBackgroundNotification(
       payload: jsonEncode(data),
     );
 
-    DebugLogger.info('📩 [FCM][BG] Local notification displayed: $title');
+    DebugLogger.info('Background notification displayed');
   } catch (e, st) {
     DebugLogger.error('Failed to show background notification', e, st);
   }
@@ -104,7 +105,7 @@ class FirebaseInitializer {
   static bool get isFirebaseEnabled => FirebaseRuntimeState.isEnabled;
   static bool get isFirebaseReady => FirebaseRuntimeState.isReady;
 
-  static Future<void> init() async {
+  static Future<void> init({bool Function(String)? readConsent}) async {
     if (_initialized) return;
 
     final config = AppConfig.isInitialized ? AppConfig.instance : null;
@@ -191,11 +192,7 @@ class FirebaseInitializer {
         _initialized = true;
         return;
       }
-      final storage = GetStorage();
-      bool consent(String key) {
-        final v = storage.read(key);
-        return v is bool ? v : true; // Default allow until explicit choice
-      }
+      bool consent(String key) => readConsent?.call(key) ?? false;
 
       final analyticsOn = RemoteConfigService.analyticsEnabled && consent('consent_analytics');
       final perfOn = RemoteConfigService.performanceEnabled && consent('consent_performance');

@@ -1,22 +1,14 @@
-import 'package:get/get.dart';
-
-import 'package:ghar360/core/data/models/property_image_model.dart';
-import 'package:ghar360/core/data/models/property_media_payload.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/models/unified_property_response.dart';
 import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/network/api_client.dart';
-import 'package:ghar360/core/network/api_paths.dart';
-import 'package:ghar360/core/network/response_parser.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/properties/data/datasources/properties_remote_datasource.dart';
 
-class PropertiesRepository extends GetxService implements PropertiesPort {
-  PropertiesRepository({PropertiesRemoteDatasource? remoteDatasource, ApiClient? apiClient})
-    : _remoteDatasource = remoteDatasource ?? Get.find<PropertiesRemoteDatasource>(),
-      _apiClient = apiClient ?? Get.find<ApiClient>();
+class PropertiesRepository implements PropertiesPort {
+  PropertiesRepository({required this._remoteDatasource, required this._apiClient});
 
   final PropertiesRemoteDatasource _remoteDatasource;
   final ApiClient _apiClient;
@@ -54,10 +46,10 @@ class PropertiesRepository extends GetxService implements PropertiesPort {
       );
       return response;
     } on AppException catch (e) {
-      DebugLogger.error('Failed to fetch properties: ${e.message}');
+      DebugLogger.error('Failed to fetch properties: ${e.runtimeType}');
       rethrow;
     } catch (e, stackTrace) {
-      DebugLogger.error('Unexpected error fetching properties: $e', e, stackTrace);
+      DebugLogger.error('Unexpected error fetching properties', e.runtimeType, stackTrace);
       rethrow;
     }
   }
@@ -67,48 +59,10 @@ class PropertiesRepository extends GetxService implements PropertiesPort {
     try {
       DebugLogger.api('Fetching property details: $propertyId');
       final property = await _remoteDatasource.fetchPropertyById(propertyId.toString());
-      DebugLogger.success('Property details fetched: ${property.title}');
+      DebugLogger.success('Property detail fetched');
       return property;
     } on AppException catch (e) {
-      DebugLogger.error('Failed to fetch property $propertyId: ${e.message}');
-      rethrow;
-    }
-  }
-
-  @override
-  Future<List<PropertyModel>> getPropertiesByIds(List<int> propertyIds) async {
-    if (propertyIds.isEmpty) return [];
-
-    try {
-      DebugLogger.api('Fetching ${propertyIds.length} properties by IDs');
-
-      // Try batch endpoint first (single request per chunk of 50)
-      const batchSize = 50;
-      final List<PropertyModel> allProperties = [];
-
-      for (int i = 0; i < propertyIds.length; i += batchSize) {
-        final batch = propertyIds.skip(i).take(batchSize).toList();
-        try {
-          final batchResults = await _remoteDatasource.fetchPropertiesByIds(batch);
-          allProperties.addAll(batchResults);
-        } catch (e) {
-          // Fallback: fetch individually if batch endpoint is unsupported
-          DebugLogger.warning('Batch fetch failed, falling back to individual: $e');
-          for (final id in batch) {
-            try {
-              final property = await getPropertyDetail(id);
-              allProperties.add(property);
-            } catch (e2) {
-              DebugLogger.warning('Failed to load property $id: $e2');
-            }
-          }
-        }
-      }
-
-      DebugLogger.success('Loaded ${allProperties.length}/${propertyIds.length} properties');
-      return allProperties;
-    } on AppException catch (e) {
-      DebugLogger.error('Failed to fetch properties by IDs: ${e.message}');
+      DebugLogger.error('Property detail failed: ${e.runtimeType}');
       rethrow;
     }
   }
@@ -136,94 +90,6 @@ class PropertiesRepository extends GetxService implements PropertiesPort {
     );
   }
 
-  Future<PropertyModel> createProperty({
-    required Map<String, dynamic> propertyData,
-    PropertyMediaPayload? mediaPayload,
-  }) async {
-    try {
-      final payload = Map<String, dynamic>.from(propertyData);
-      if (mediaPayload != null) {
-        payload.addAll(mediaPayload.toJson());
-      }
-      DebugLogger.api('Creating property with media fields=${mediaPayload != null}');
-      final response = await _apiClient.post(ApiPaths.properties, body: payload);
-      return _parsePropertyResponse(response.body);
-    } on AppException catch (e) {
-      DebugLogger.error('Failed to create property: ${e.message}');
-      rethrow;
-    }
-  }
-
-  Future<PropertyModel> updateProperty({
-    required int propertyId,
-    Map<String, dynamic>? fields,
-    PropertyMediaPayload? mediaPayload,
-  }) async {
-    try {
-      final payload = Map<String, dynamic>.from(fields ?? {});
-      if (mediaPayload != null) {
-        payload.addAll(mediaPayload.toPropertyUpdateJson());
-      }
-      DebugLogger.api('Updating property $propertyId with media=${mediaPayload != null}');
-      final response = await _apiClient.put(
-        ApiPaths.propertyById(propertyId.toString()),
-        body: payload,
-      );
-      return _parsePropertyResponse(response.body);
-    } on AppException catch (e) {
-      DebugLogger.error('Failed to update property $propertyId: ${e.message}');
-      rethrow;
-    }
-  }
-
-  Future<PropertyModel> updatePropertyMedia({
-    required int propertyId,
-    String? mainImageUrl,
-    List<PropertyImageModel>? images,
-    String? videoTourUrl,
-    List<String>? videoUrls,
-    String? virtualTourUrl,
-    String? googleStreetViewUrl,
-    String? floorPlanUrl,
-  }) async {
-    final payload = PropertyMediaPayload(
-      mainImageUrl: mainImageUrl,
-      images: images,
-      videoTourUrl: videoTourUrl,
-      videoUrls: videoUrls,
-      virtualTourUrl: virtualTourUrl,
-      googleStreetViewUrl: googleStreetViewUrl,
-      floorPlanUrl: floorPlanUrl,
-    );
-
-    try {
-      if (images != null && images.isNotEmpty) {
-        DebugLogger.warning(
-          'Ignoring images in property update payload; backend update endpoint supports scalar media fields only.',
-        );
-      }
-      DebugLogger.api('Updating media for property $propertyId');
-      final response = await _apiClient.put(
-        ApiPaths.propertyById(propertyId.toString()),
-        body: payload.toPropertyUpdateJson(),
-      );
-      return _parsePropertyResponse(response.body);
-    } on AppException catch (e) {
-      DebugLogger.error('Failed to update property media for $propertyId: ${e.message}');
-      rethrow;
-    }
-  }
-
-  PropertyModel _parsePropertyResponse(dynamic body) {
-    final payload = ResponseParser.unwrapObject(body);
-    if (payload.isEmpty) {
-      throw const FormatException('Unexpected property payload');
-    }
-    return PropertyModel.fromJson(Map<String, dynamic>.from(payload));
-  }
-
   @override
-  void clearCache() {
-    DebugLogger.api('Properties repository cache cleared');
-  }
+  Future<void> clearCache() => _apiClient.clearCache();
 }

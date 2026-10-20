@@ -1,8 +1,9 @@
 import 'dart:async';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Provides authentication headers for API requests.
 class AuthHeaderProvider {
@@ -16,22 +17,29 @@ class AuthHeaderProvider {
   final Session? Function()? _currentSessionProvider;
   final Future<AuthResponse> Function()? _refreshSession;
   Future<Session?>? _refreshInFlight;
+  int _generation = 0;
 
   AuthHeaderProvider({this._supabaseClient, this._currentSessionProvider, this._refreshSession});
-
-  SupabaseClient get _supabase => _supabaseClient ?? Supabase.instance.client;
 
   /// Gets the current auth header if user is authenticated.
   ///
   /// Token lifecycle is managed by Supabase SDK. This provider reads and
   /// refreshes sessions when the token is stale or when [forceRefresh] is true.
   Future<Map<String, String>?> getAuthHeader({bool forceRefresh = false}) async {
+    final generation = _generation;
+    final scope = requestScope;
     try {
       var session = _readCurrentSession();
       final isFresh = _isTokenFresh(session);
 
       if (forceRefresh || !isFresh) {
         final refreshed = await _refreshSessionCoalesced();
+        if (generation != _generation || scope != requestScope) {
+          throw NetworkException('The request was cancelled.', code: 'CANCELLED');
+        }
+        if (refreshed != null && refreshed.user.id != session?.user.id) {
+          throw NetworkException('The request was cancelled.', code: 'CANCELLED');
+        }
         if (refreshed != null) {
           session = refreshed;
         }
@@ -68,9 +76,15 @@ class AuthHeaderProvider {
       // for losing signal.
       rethrow;
     } catch (e, stackTrace) {
-      DebugLogger.error('🔑 Failed to get auth header: $e', e, stackTrace);
+      DebugLogger.error('Failed to get auth header', e, stackTrace);
       return null;
     }
+  }
+
+  /// Detach an old account's refresh so a new account cannot join its future.
+  void invalidateSession() {
+    _generation++;
+    _refreshInFlight = null;
   }
 
   /// Stable scope for request deduplication. Anonymous and authenticated
@@ -107,7 +121,7 @@ class AuthHeaderProvider {
     if (sessionProvider != null) {
       return sessionProvider();
     }
-    return _supabase.auth.currentSession;
+    return _supabaseClient?.auth.currentSession;
   }
 
   bool _isTokenFresh(Session? session) {
@@ -156,7 +170,7 @@ class AuthHeaderProvider {
       final refreshSession = _refreshSession;
       final response = refreshSession != null
           ? await refreshSession()
-          : await _supabase.auth.refreshSession();
+          : await _supabaseClient?.auth.refreshSession() ?? AuthResponse();
       final refreshed = response.session ?? _readCurrentSession();
       final expiresIn = _sessionExpiresInSeconds(refreshed);
       DebugLogger.debug(

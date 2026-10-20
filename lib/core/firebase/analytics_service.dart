@@ -46,7 +46,7 @@ class AnalyticsService {
     if (!_enabled || analytics == null) return;
     try {
       await analytics.logEvent(name: name, parameters: params);
-      DebugLogger.debug('📊 Analytics event: $name ${params ?? {}}');
+      DebugLogger.debug('Analytics event recorded');
     } catch (e, st) {
       DebugLogger.warning('Analytics logEvent failed', e, st);
     }

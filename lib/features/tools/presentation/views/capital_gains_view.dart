@@ -1,227 +1,178 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/api_date_time.dart';
+import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/tools/presentation/controllers/capital_gains_controller.dart';
 import 'package:ghar360/features/tools/presentation/widgets/calculator_widgets.dart';
 
-class CapitalGainsView extends GetView<CapitalGainsController> {
+class CapitalGainsView extends ConsumerStatefulWidget {
   const CapitalGainsView({super.key});
+  @override
+  ConsumerState<CapitalGainsView> createState() => _CapitalGainsViewState();
+}
+
+class _CapitalGainsViewState extends ConsumerState<CapitalGainsView> {
+  CapitalGainsController get controller => ref.read(capitalGainsProvider.notifier);
+  CapitalGainsState get state => ref.read(capitalGainsProvider);
+  late final TextEditingController _purchasePrice;
+  late final TextEditingController _salePrice;
+  late final TextEditingController _improvementCost;
+
+  @override
+  void initState() {
+    super.initState();
+    _purchasePrice = TextEditingController(text: state.purchasePrice)..addListener(_syncInputs);
+    _salePrice = TextEditingController(text: state.salePrice)..addListener(_syncInputs);
+    _improvementCost = TextEditingController(text: state.improvementCost)..addListener(_syncInputs);
+  }
+
+  void _syncInputs() => controller.updateInputs(
+    purchasePrice: _purchasePrice.text,
+    salePrice: _salePrice.text,
+    improvementCost: _improvementCost.text,
+  );
+  void _clear() {
+    _purchasePrice.clear();
+    _salePrice.clear();
+    _improvementCost.clear();
+    controller.clear();
+  }
+
+  @override
+  void dispose() {
+    _purchasePrice.dispose();
+    _salePrice.dispose();
+    _improvementCost.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: const ValueKey('qa.tools.capital_gains.screen'),
-      backgroundColor: AppDesign.background,
-      appBar: AppBar(
-        backgroundColor: AppDesign.appBarBackground,
-        elevation: 0,
-        title: Text(
-          'capital_gains'.tr,
-          style: TextStyle(color: AppDesign.appBarText, fontSize: 20, fontWeight: FontWeight.w600),
+    ref.watch(capitalGainsProvider);
+    final l10n = context.l10n;
+    String? fieldError(String field) => state.validationField == field
+        ? l10n.text(state.validationKey!, params: const {'years': '50'})
+        : null;
+    return CalculatorScaffold(
+      screenKey: 'qa.tools.capital_gains.screen',
+      title: l10n.text('capital_gains'),
+      onReset: _clear,
+      inputs: [
+        CalculatorNote(
+          '${l10n.text('capital_gains_disclaimer')}\n\n${l10n.text('capital_gains_assumptions')}',
         ),
-        leading: IconButton(
-          tooltip: 'back'.tr,
-          icon: Icon(Icons.arrow_back, color: AppDesign.iconColor),
-          onPressed: () => Get.back(),
+        const SizedBox(height: 28),
+        CalculatorSectionTitle(l10n.text('purchase_details')),
+        const SizedBox(height: 16),
+        CalculatorTextField(
+          label: l10n.text('purchase_price'),
+          controller: _purchasePrice,
+          errorText: fieldError('purchasePrice'),
+          prefix: '₹',
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh, color: AppDesign.iconColor),
-            onPressed: controller.clear,
+        const SizedBox(height: 16),
+        _buildDateField(
+          context: context,
+          label: l10n.text('purchase_date'),
+          fieldKey: 'qa.tools.capital_gains.purchase_date',
+          value: state.purchaseDate,
+          onPicked: controller.setPurchaseDate,
+        ),
+        const SizedBox(height: 16),
+        CalculatorTextField(
+          label: l10n.text('improvement_cost'),
+          controller: _improvementCost,
+          errorText: fieldError('improvementCost'),
+          prefix: '₹',
+          hint: l10n.text('optional'),
+        ),
+        const SizedBox(height: 28),
+        CalculatorSectionTitle(l10n.text('sale_details')),
+        const SizedBox(height: 16),
+        CalculatorTextField(
+          label: l10n.text('sale_price'),
+          controller: _salePrice,
+          errorText: fieldError('salePrice'),
+          prefix: '₹',
+        ),
+        const SizedBox(height: 16),
+        _buildDateField(
+          context: context,
+          label: l10n.text('sale_date'),
+          fieldKey: 'qa.tools.capital_gains.sale_date',
+          value: state.saleDate,
+          onPicked: controller.setSaleDate,
+        ),
+        if (state.validationKey != null && state.validationField == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: ErrorStates.inlineError(
+              message: l10n.text(state.validationKey!, params: const {'years': '50'}),
+            ),
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppDesign.warningAmber.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline, color: AppDesign.warningAmber, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'capital_gains_disclaimer'.tr,
-                      style: TextStyle(fontSize: 12, color: AppDesign.textSecondary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Card(
-              color: AppDesign.cardBackground,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'purchase_details'.tr,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppDesign.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    CalculatorTextField(
-                      label: 'purchase_price'.tr,
-                      controller: controller.purchasePriceController,
-                      prefix: '₹',
-                    ),
-                    const SizedBox(height: 16),
-                    _buildDateField(
-                      context: context,
-                      label: 'purchase_date'.tr,
-                      fieldKey: 'qa.tools.capital_gains.purchase_date',
-                      value: controller.purchaseDate,
-                      onPicked: controller.setPurchaseDate,
-                    ),
-                    const SizedBox(height: 16),
-                    CalculatorTextField(
-                      label: 'improvement_cost'.tr,
-                      controller: controller.improvementCostController,
-                      prefix: '₹',
-                      hint: 'optional'.tr,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              color: AppDesign.cardBackground,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'sale_details'.tr,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppDesign.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    CalculatorTextField(
-                      label: 'sale_price'.tr,
-                      controller: controller.salePriceController,
-                      prefix: '₹',
-                    ),
-                    const SizedBox(height: 16),
-                    _buildDateField(
-                      context: context,
-                      label: 'sale_date'.tr,
-                      fieldKey: 'qa.tools.capital_gains.sale_date',
-                      value: controller.saleDate,
-                      onPicked: controller.setSaleDate,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Obx(() {
-              if (controller.validationError.value.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: ErrorStates.inlineError(message: controller.validationError.value),
-              );
-            }),
-            SizedBox(
-              width: double.infinity,
-              child: Semantics(
-                label: 'qa.tools.capital_gains.calculate',
-                identifier: 'qa.tools.capital_gains.calculate',
-                child: FilledButton(
-                  key: const ValueKey('qa.tools.capital_gains.calculate'),
-                  onPressed: controller.calculate,
-                  child: Text('calculate_tax'.tr),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Obx(() {
-              if (!controller.hasCalculated.value) {
-                return const SizedBox.shrink();
-              }
-              return _buildResults();
-            }),
-          ],
+        const SizedBox(height: 24),
+        Semantics(
+          identifier: 'qa.tools.capital_gains.calculate',
+          child: FilledButton(
+            key: const ValueKey('qa.tools.capital_gains.calculate'),
+            onPressed: controller.calculate,
+            child: Text(l10n.text('calculate_tax')),
+          ),
         ),
-      ),
+      ],
+      result: state.hasCalculated ? [_buildResults()] : null,
     );
   }
-  /// A tap target styled exactly like the number inputs above it, opening
-  /// Flutter's built-in [showDatePicker].
+
+  /// A tap target drawn as a themed field, opening Flutter's [showDatePicker].
   Widget _buildDateField({
     required BuildContext context,
     required String label,
     required String fieldKey,
-    required Rx<DateTime> value,
+    required DateTime value,
     required ValueChanged<DateTime> onPicked,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: AppDesign.textSecondary,
-          ),
-        ),
+        CalculatorLabel(label),
         const SizedBox(height: 8),
-        Obx(
-          () => InkWell(
+        Builder(
+          builder: (context) => InkWell(
             key: ValueKey(fieldKey),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppBorderRadius.input),
             onTap: () async {
               final picked = await showDatePicker(
                 context: context,
-                initialDate: value.value,
+                initialDate: value,
                 firstDate: CapitalGainsController.firstSelectableDate,
                 lastDate: CapitalGainsController.lastSelectableDate,
               );
-              if (picked != null) {
+              if (picked != null && context.mounted) {
                 onPicked(picked);
               }
             },
-            child: Container(
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: AppDesign.inputBackground,
-                borderRadius: BorderRadius.circular(12),
+            child: InputDecorator(
+              decoration: InputDecoration(
+                suffixIcon: PaperIcon(
+                  KnifeIcon.calendar,
+                  size: 20,
+                  color: context.design.textSecondary,
+                ),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      formatDisplayDate(value.value),
-                      style: TextStyle(color: AppDesign.textPrimary, fontSize: 16),
-                    ),
-                  ),
-                  Icon(Icons.calendar_today_outlined, size: 18, color: AppDesign.textSecondary),
-                ],
+              child: Text(
+                formatDisplayDate(value),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(color: context.design.textPrimary),
               ),
             ),
           ),
@@ -231,171 +182,114 @@ class CapitalGainsView extends GetView<CapitalGainsController> {
   }
 
   Widget _buildResults() {
-    return Card(
-      color: AppDesign.cardBackground,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'tax_calculation'.tr,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppDesign.textPrimary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: controller.isLongTerm.value
-                        ? AppDesign.successGreen.withValues(alpha: 0.1)
-                        : AppDesign.accentOrange.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    controller.isLongTerm.value ? 'long_term'.tr : 'short_term'.tr,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: controller.isLongTerm.value
-                          ? AppDesign.successGreen
-                          : AppDesign.accentOrange,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            CalculatorResultRow(
-              'indexed_cost'.tr,
-              IndianCurrency.compact(controller.indexedCost.value),
-            ),
-            const SizedBox(height: 8),
-            CalculatorResultRow(
-              'capital_gain_amount'.tr,
-              IndianCurrency.compact(controller.capitalGain.value),
-            ),
-            const Divider(height: 24),
-            if (controller.isLongTerm.value) ...[
-              Text(
-                'tax_options'.tr,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: AppDesign.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildTaxOption(
-                'with_indexation'.tr,
-                '20%',
-                controller.taxWithIndexation.value,
-                controller.taxWithIndexation.value <= controller.taxWithoutIndexation.value,
-              ),
-              const SizedBox(height: 8),
-              _buildTaxOption(
-                'without_indexation'.tr,
-                '12.5%',
-                controller.taxWithoutIndexation.value,
-                controller.taxWithoutIndexation.value < controller.taxWithIndexation.value,
-              ),
-            ] else ...[
-              CalculatorResultRow(
-                'estimated_tax'.tr,
-                IndianCurrency.compact(controller.taxWithIndexation.value),
-                isHighlight: true,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'short_term_tax_note'.tr,
-                style: TextStyle(fontSize: 12, color: AppDesign.textTertiary),
-              ),
-            ],
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppDesign.accentBlue.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'exemptions_available'.tr,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppDesign.accentBlue,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'section_54_info'.tr,
-                    style: TextStyle(fontSize: 12, color: AppDesign.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    final l10n = context.l10n;
+    final lang = l10n.locale.languageCode;
+    final design = context.design;
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CalculatorSectionTitle(l10n.text('tax_calculation')),
+        const SizedBox(height: 4),
+        Text(
+          l10n.text(state.isLongTerm ? 'long_term' : 'short_term'),
+          key: const ValueKey('qa.tools.capital_gains.term'),
+          style: text.labelLarge?.copyWith(
+            color: state.isLongTerm ? design.success : design.textSecondary,
+          ),
         ),
-      ),
+        const SizedBox(height: 14),
+        CalculatorHeadline(
+          label: l10n.text('capital_gain_amount'),
+          value: state.capitalGain,
+          format: (value) => IndianCurrency.compact(value, languageCode: lang),
+        ),
+        const SizedBox(height: 14),
+        CalculatorResultRow(
+          l10n.text('indexed_cost'),
+          IndianCurrency.compact(state.indexedCost, languageCode: lang),
+        ),
+        const SizedBox(height: 20),
+        if (state.isLongTerm) ...[
+          CalculatorLabel(l10n.text('tax_options')),
+          const SizedBox(height: 4),
+          _buildTaxOption(
+            l10n.text('with_indexation'),
+            '20%',
+            state.taxWithIndexation,
+            state.taxWithIndexation <= state.taxWithoutIndexation,
+            'qa.tools.capital_gains.tax_with_indexation',
+          ),
+          _buildTaxOption(
+            l10n.text('without_indexation'),
+            '12.5%',
+            state.taxWithoutIndexation,
+            state.taxWithoutIndexation < state.taxWithIndexation,
+            'qa.tools.capital_gains.tax_without_indexation',
+          ),
+        ] else ...[
+          CalculatorResultRow(
+            l10n.text('estimated_tax'),
+            IndianCurrency.compact(state.taxWithIndexation, languageCode: lang),
+            isHighlight: true,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            l10n.text('short_term_tax_note'),
+            style: text.bodySmall?.copyWith(color: design.textSecondary),
+          ),
+        ],
+        const SizedBox(height: 24),
+        Text(l10n.text('exemptions_available'), style: text.titleMedium),
+        const SizedBox(height: 6),
+        Text(
+          l10n.text('section_54_info'),
+          style: text.bodyMedium?.copyWith(color: design.textSecondary),
+        ),
+      ],
     );
   }
-  Widget _buildTaxOption(String label, String rate, double amount, bool isRecommended) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: isRecommended ? AppDesign.successGreen : AppDesign.border,
-          width: isRecommended ? 2 : 1,
-        ),
-        borderRadius: BorderRadius.circular(12),
-      ),
+
+  /// One way to pay. The lower estimate is said in words and in the status
+  /// colour, not with a box or a badge.
+  Widget _buildTaxOption(
+    String label,
+    String rate,
+    double amount,
+    bool isRecommended,
+    String qaKey,
+  ) {
+    final design = context.design;
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppDesign.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text('($rate)', style: TextStyle(fontSize: 12, color: AppDesign.textTertiary)),
-                  ],
-                ),
+                Text(label, style: text.bodyLarge?.copyWith(color: design.textPrimary)),
+                Text(rate, style: text.bodySmall?.copyWith(color: design.textSecondary)),
                 if (isRecommended)
                   Text(
-                    'recommended'.tr,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppDesign.successGreen,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    context.l10n.text('lower_estimate'),
+                    key: ValueKey('$qaKey.lower'),
+                    style: text.labelMedium?.copyWith(color: design.success),
                   ),
               ],
             ),
           ),
-          Text(
-            IndianCurrency.compact(amount),
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: isRecommended ? AppDesign.successGreen : AppDesign.textPrimary,
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              IndianCurrency.compact(amount, languageCode: context.l10n.locale.languageCode),
+              key: ValueKey(qaKey),
+              textAlign: TextAlign.end,
+              style: text.headlineSmall?.copyWith(
+                color: isRecommended ? design.success : design.textPrimary,
+              ),
             ),
           ),
         ],

@@ -1,33 +1,90 @@
 import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:get/get.dart';
-
+import 'package:ghar360/core/bootstrap/provider_policy.dart';
 import 'package:ghar360/core/utils/formatters.dart';
 
-class LoanEligibilityController extends GetxController {
-  final TextEditingController incomeController = TextEditingController();
-  final TextEditingController ageController = TextEditingController();
-  final TextEditingController existingEmiController = TextEditingController();
+class LoanEligibilityResult {
+  const LoanEligibilityResult({
+    required this.maxLoanAmount,
+    required this.maxTenure,
+    required this.eligibleEmi,
+  });
+  final double maxLoanAmount;
+  final int maxTenure;
+  final double eligibleEmi;
+}
 
-  final RxDouble creditScore = 750.0.obs;
-  final RxDouble interestRate = 8.5.obs;
-  final RxBool hasCalculated = false.obs;
-  final RxString validationError = ''.obs;
+class LoanEligibilityState {
+  const LoanEligibilityState({
+    this.income = '',
+    this.age = '',
+    this.existingEmi = '',
+    this.creditScore = 750,
+    this.interestRate = 8.5,
+    this.result,
+    this.validationKey,
+    this.validationField,
+  });
+  final String income;
+  final String age;
+  final String existingEmi;
+  final double creditScore;
+  final double interestRate;
+  final LoanEligibilityResult? result;
+  final String? validationKey;
+  final String? validationField;
+  bool get hasCalculated => result != null;
+  double get maxLoanAmount => result?.maxLoanAmount ?? 0;
+  int get maxTenure => result?.maxTenure ?? 0;
+  double get eligibleEmi => result?.eligibleEmi ?? 0;
+  LoanEligibilityState copyWith({
+    String? income,
+    String? age,
+    String? existingEmi,
+    double? creditScore,
+    double? interestRate,
+    LoanEligibilityResult? result,
+    String? validationKey,
+    String? validationField,
+  }) => LoanEligibilityState(
+    income: income ?? this.income,
+    age: age ?? this.age,
+    existingEmi: existingEmi ?? this.existingEmi,
+    creditScore: creditScore ?? this.creditScore,
+    interestRate: interestRate ?? this.interestRate,
+    result: result,
+    validationKey: validationKey,
+    validationField: validationField,
+  );
+}
 
-  // Results
-  final RxDouble maxLoanAmount = 0.0.obs;
-  final RxInt maxTenure = 0.obs;
-  final RxDouble eligibleEmi = 0.0.obs;
+final loanEligibilityProvider =
+    NotifierProvider.autoDispose<LoanEligibilityController, LoanEligibilityState>(
+      LoanEligibilityController.new,
+      retry: noProviderRetry,
+    );
+
+class LoanEligibilityController extends Notifier<LoanEligibilityState> {
+  @override
+  LoanEligibilityState build() => const LoanEligibilityState();
+
+  void updateInputs({String? income, String? age, String? existingEmi}) {
+    if ((income == null || income == state.income) &&
+        (age == null || age == state.age) &&
+        (existingEmi == null || existingEmi == state.existingEmi)) {
+      return;
+    }
+    state = state.copyWith(income: income, age: age, existingEmi: existingEmi);
+  }
 
   void calculate() {
-    final income = double.tryParse(incomeController.text) ?? 0;
-    final ageText = ageController.text.trim();
-    final age = ageText.isEmpty ? 30 : int.tryParse(ageText);
-    final existingEmiText = existingEmiController.text.trim();
-    final existingEmi = existingEmiText.isEmpty ? 0 : double.tryParse(existingEmiText);
-
+    final income = double.tryParse(state.income.trim()) ?? 0;
+    final age = state.age.trim().isEmpty ? 30 : int.tryParse(state.age.trim());
+    final existingEmi = state.existingEmi.trim().isEmpty
+        ? 0.0
+        : double.tryParse(state.existingEmi.trim());
     if (!Formatters.isPositiveFinite(income) ||
         existingEmi == null ||
         !existingEmi.isFinite ||
@@ -35,77 +92,62 @@ class LoanEligibilityController extends GetxController {
         age == null ||
         age < 18 ||
         age > 80 ||
-        !Formatters.isPositiveFinite(interestRate.value)) {
-      validationError.value = 'please_enter_valid_amounts'.tr;
-      hasCalculated.value = false;
+        !Formatters.isPositiveFinite(state.interestRate) ||
+        !state.creditScore.isFinite ||
+        state.creditScore < 300 ||
+        state.creditScore > 900) {
+      state = state.copyWith(
+        validationKey: 'please_enter_valid_amounts',
+        validationField: !Formatters.isPositiveFinite(income)
+            ? 'income'
+            : (age == null || age < 18 || age > 80)
+            ? 'age'
+            : 'existingEmi',
+      );
       return;
     }
-
-    validationError.value = '';
-
-    // FOIR (Fixed Obligation to Income Ratio) based on credit score
-    double foirPercentage;
-    if (creditScore.value >= 750) {
-      foirPercentage = 0.50; // 50% for excellent credit
-    } else if (creditScore.value >= 700) {
-      foirPercentage = 0.45;
-    } else if (creditScore.value >= 650) {
-      foirPercentage = 0.40;
-    } else {
-      foirPercentage = 0.35;
-    }
-
-    // Calculate eligible EMI
-    final maxEmi = income * foirPercentage - existingEmi;
+    final foir = state.creditScore >= 750
+        ? .50
+        : state.creditScore >= 700
+        ? .45
+        : state.creditScore >= 650
+        ? .40
+        : .35;
+    final maxEmi = income * foir - existingEmi;
     if (maxEmi <= 0) {
-      eligibleEmi.value = 0;
-      maxLoanAmount.value = 0;
-      maxTenure.value = 0;
-      hasCalculated.value = true;
+      state = state.copyWith(
+        result: const LoanEligibilityResult(maxLoanAmount: 0, maxTenure: 0, eligibleEmi: 0),
+      );
       return;
     }
-    eligibleEmi.value = maxEmi;
-
-    // Max tenure based on age (retirement at 60)
-    final retirementAge = 60;
-    final maxYears = (retirementAge - age).clamp(5, 30);
-    maxTenure.value = maxYears;
-
-    // Calculate max loan using EMI formula reverse
-    // EMI = P * r * (1+r)^n / ((1+r)^n - 1)
-    // P = EMI * ((1+r)^n - 1) / (r * (1+r)^n)
-    final monthlyRate = interestRate.value / 12 / 100;
-    final months = maxYears * 12;
-    final factor = pow(1 + monthlyRate, months);
-    final principal = maxEmi * (factor - 1) / (monthlyRate * factor);
+    final years = (60 - age).clamp(5, 30);
+    final rate = state.interestRate / 12 / 100;
+    final factor = pow(1 + rate, years * 12);
+    final principal = maxEmi * (factor - 1) / (rate * factor);
     if (!principal.isFinite || principal < 0) {
-      validationError.value = 'please_enter_valid_amounts'.tr;
-      hasCalculated.value = false;
+      state = state.copyWith(validationKey: 'please_enter_valid_amounts');
       return;
     }
-
-    maxLoanAmount.value = principal;
-    hasCalculated.value = true;
+    state = state.copyWith(
+      result: LoanEligibilityResult(
+        maxLoanAmount: principal,
+        maxTenure: years,
+        eligibleEmi: maxEmi,
+      ),
+    );
   }
 
-  void clear() {
-    incomeController.clear();
-    ageController.clear();
-    existingEmiController.clear();
-    creditScore.value = 750.0;
-    interestRate.value = 8.5;
-    hasCalculated.value = false;
-    validationError.value = '';
-    maxLoanAmount.value = 0;
-    maxTenure.value = 0;
-    eligibleEmi.value = 0;
+  void setCreditScore(double value) {
+    final recalculate = state.hasCalculated;
+    state = state.copyWith(creditScore: value);
+    if (recalculate) calculate();
   }
 
-  @override
-  void onClose() {
-    incomeController.dispose();
-    ageController.dispose();
-    existingEmiController.dispose();
-    super.onClose();
+  void setInterestRate(double value) {
+    final recalculate = state.hasCalculated;
+    state = state.copyWith(interestRate: value);
+    if (recalculate) calculate();
   }
+
+  void clear() => state = const LoanEligibilityState();
 }

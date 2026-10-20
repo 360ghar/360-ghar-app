@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/utils/api_date_time.dart';
-import 'package:ghar360/core/widgets/common/robust_network_image.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/presentation/property_labels.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 
+/// One visit as a visit pass: a tear-off date stub, a column of punched
+/// holes, then the home, the time and status as text, and the actions.
+/// Passes lie flat on the sheet; space separates them, never a rule.
 class VisitCard extends StatelessWidget {
-  final VisitModel visit;
-  final bool isUpcoming;
-  final VoidCallback onReschedule;
-  final VoidCallback onCancel;
-  final VoidCallback? onTap;
-
   const VisitCard({
     super.key,
     required this.visit,
@@ -21,277 +19,341 @@ class VisitCard extends StatelessWidget {
     required this.onReschedule,
     required this.onCancel,
     this.onTap,
+    this.selected = false,
+    this.showActions = true,
   });
+  final VisitModel visit;
+  final bool isUpcoming;
+  final VoidCallback onReschedule;
+  final VoidCallback onCancel;
+  final VoidCallback? onTap;
+
+  /// The pass shown in the detail pane. It gets the quiet `slip` fill.
+  final bool selected;
+
+  /// False in the two-pane layout, where the pane carries the actions.
+  final bool showActions;
 
   @override
   Widget build(BuildContext context) {
-    final dt = visit.scheduledDate;
-    final dateText = formatDisplayDate(dt);
-    final hour = dt.hour;
-    final minute = dt.minute;
-    final period = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    final timeText = '$displayHour:${minute.toString().padLeft(2, '0')} $period';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppDesign.surface,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: AppDesign.getCardShadow(),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                RobustNetworkImage(
-                  imageUrl: visit.property?.mainImage ?? visit.property?.mainImageUrl ?? '',
-                  width: 72,
-                  height: 72,
-                  fit: BoxFit.cover,
-                  borderRadius: BorderRadius.circular(10),
-                  errorWidget: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: AppDesign.inputBackground,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(Icons.home_work_rounded, size: 28, color: AppDesign.iconColor),
-                  ),
+    final palette = context.design;
+    final text = Theme.of(context).textTheme;
+    final date = visit.scheduledDate.toLocal();
+    final property = visit.property;
+    final facts = [
+      // A listing with no price for its purpose has no price to show.
+      if (property != null && property.effectivePrice != null) property.localizedPrice(context),
+      if (property != null) context.l10n.text(property.listingTranslationKey),
+      if (property?.bedrooms != null) '${property!.bedrooms} BHK',
+      if (property?.bathrooms != null) '${property!.bathrooms} ${context.l10n.text('bathrooms')}',
+      if (property?.areaSqft != null)
+        '${property!.areaSqft!.toStringAsFixed(0)} ${context.l10n.text('sqft')}',
+    ];
+    final actions = [
+      if (showActions && isUpcoming && visit.canReschedule)
+        OutlinedButton(
+          onPressed: onReschedule,
+          style: visitPaperButtonStyle(context, seed: 'reschedule-${visit.id}'),
+          child: Text(context.l10n.text('reschedule')),
+        ),
+      if (showActions && isUpcoming && visit.canCancel)
+        TextButton(
+          onPressed: onCancel,
+          style: TextButton.styleFrom(
+            foregroundColor: palette.error,
+            minimumSize: const Size(48, 48),
+          ),
+          child: Text(context.l10n.text('cancel')),
+        ),
+    ];
+    final words = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          visitTitle(context, visit),
+          style: text.titleMedium,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: '${TimeOfDay.fromDateTime(date).format(context)} · '),
+              TextSpan(
+                text: context.l10n.text(visit.statusStringKey),
+                style: TextStyle(
+                  color: visitStatusColor(context, visit.status),
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+            ],
+          ),
+          style: text.bodyMedium?.copyWith(color: palette.textPrimary),
+        ),
+        // The other person on a flatmate meet: name only. The backend sends no contact.
+        if (visit.isFlatmateMeet && (visit.counterpartyUser?.displayName ?? '').isNotEmpty)
+          Text(
+            context.l10n.text(
+              'meeting_with',
+              params: {'name': visit.counterpartyUser!.displayName!},
+            ),
+            style: text.bodySmall?.copyWith(color: palette.textSecondary),
+          ),
+        if (property != null && property.addressDisplay.isNotEmpty)
+          Text(
+            property.addressDisplay,
+            style: text.bodySmall?.copyWith(color: palette.textSecondary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        if (facts.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(facts.join(' · '), style: text.bodySmall?.copyWith(color: palette.textSecondary)),
+        ],
+        if (isUpcoming && (visit.specialRequirements?.isNotEmpty ?? false)) ...[
+          const SizedBox(height: 4),
+          Text(
+            visit.specialRequirements!,
+            style: text.bodySmall?.copyWith(color: palette.textSecondary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        if (actions.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: actions,
+          ),
+        ],
+      ],
+    );
+    // Large text gives the words the full width: the stub lies across the
+    // top of the pass and the tear line runs under it.
+    final across = MediaQuery.textScalerOf(context).scale(14) > 21;
+    // On the selected pass's mint fill the stub turns white, so it still reads.
+    final stub = VisitDateBlock(
+      date: date,
+      seed: 'stub-${visit.id}',
+      across: across,
+      color: selected ? palette.raised : null,
+    );
+    final shape = CutBorder(seed: 'visit-${visit.id}', amp: 1.5);
+    return Material(
+      color: selected ? palette.slip : Colors.transparent,
+      shape: shape,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: shape,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: across
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [stub, const _Perforation(across: true), words],
+                )
+              // The stub and the holes run the full height of the pass.
+              : IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              visit.property?.title ?? visit.propertyTitle,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: AppDesign.textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          _buildStatusChip(visit.status),
-                        ],
-                      ),
-                      if (visit.property != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          visit.property!.addressDisplay,
-                          style: TextStyle(fontSize: 12, color: AppDesign.textSecondary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      stub,
+                      const _Perforation(across: false),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.only(start: 6),
+                          child: words,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          [
-                            if (visit.property!.bedrooms != null) '${visit.property!.bedrooms}BHK',
-                            if (visit.property!.bathrooms != null) '${visit.property!.bathrooms}B',
-                            if (visit.property!.areaSqft != null)
-                              '${visit.property!.areaSqft!.toStringAsFixed(0)} sqft',
-                          ].join(' · '),
-                          style: TextStyle(fontSize: 11, color: AppDesign.textTertiary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 2,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.calendar_today_rounded,
-                                size: 13,
-                                color: AppDesign.textSecondary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                dateText,
-                                style: TextStyle(fontSize: 11, color: AppDesign.textSecondary),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.access_time_rounded,
-                                size: 13,
-                                color: AppDesign.textSecondary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                timeText,
-                                style: TextStyle(fontSize: 11, color: AppDesign.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ],
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          if (visit.property != null ||
-              (isUpcoming && (visit.canCancel || visit.canReschedule))) ...[
-            const SizedBox(height: 8),
-            if ((visit.specialRequirements ?? '').isNotEmpty && isUpcoming) ...[
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppDesign.inputBackground.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.notes_rounded, size: 14, color: AppDesign.iconColor),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        visit.specialRequirements!,
-                        style: TextStyle(fontSize: 11, color: AppDesign.textSecondary),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                if (visit.property != null) ...[
-                  Text(
-                    visit.property!.formattedPrice,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppDesign.textPrimary,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppDesign.primaryYellow.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      visit.property!.listingTranslationKey.tr,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: AppDesign.primaryYellow,
-                      ),
-                    ),
-                  ),
-                ],
-                if (isUpcoming && (visit.canCancel || visit.canReschedule)) ...[
-                  if (visit.canReschedule)
-                    TextButton(
-                      onPressed: onReschedule,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppDesign.primaryYellow,
-                        side: const BorderSide(color: AppDesign.primaryYellow),
-                        minimumSize: const Size(0, 44),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        tapTargetSize: MaterialTapTargetSize.padded,
-                      ),
-                      child: Text(
-                        'reschedule'.tr,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                      ),
-                    ),
-                  if (visit.canCancel)
-                    TextButton(
-                      onPressed: onCancel,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppDesign.errorRed,
-                        side: const BorderSide(color: AppDesign.errorRed),
-                        minimumSize: const Size(0, 44),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        tapTargetSize: MaterialTapTargetSize.padded,
-                      ),
-                      child: Text(
-                        'cancel'.tr,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                      ),
-                    ),
-                ],
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusChip(VisitStatus status) {
-    Color color;
-    String text;
-
-    switch (status) {
-      case VisitStatus.scheduled:
-        color = AppDesign.primaryYellow;
-        text = 'visit_status_scheduled'.tr;
-        break;
-      case VisitStatus.confirmed:
-        color = AppDesign.accentGreen;
-        text = 'visit_status_confirmed'.tr;
-        break;
-      case VisitStatus.completed:
-        color = AppDesign.accentGreen;
-        text = 'visit_status_completed'.tr;
-        break;
-      case VisitStatus.cancelled:
-        color = AppDesign.errorRed;
-        text = 'visit_status_cancelled'.tr;
-        break;
-      case VisitStatus.rescheduled:
-        color = AppDesign.primaryYellow;
-        text = 'visit_status_rescheduled'.tr;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
+        ),
       ),
     );
   }
 }
+
+/// The white paper button of a visit: card stock with a hand-cut edge and a
+/// short shadow on the sheet. Pressing tints it; it never moves.
+ButtonStyle visitPaperButtonStyle(BuildContext context, {required String seed}) {
+  final design = context.design;
+  return OutlinedButton.styleFrom(
+    foregroundColor: design.textPrimary,
+    minimumSize: const Size(48, 48),
+    // The card's own lip tone marks the lit top-left edge on a white sheet.
+    shape: CutBorder(
+      seed: seed,
+      amp: 1.5,
+      side: BorderSide(color: design.sheetLip),
+      shadows: paperShadows(PaperElevation.low, design.shadowOn(design.surface)),
+    ),
+  ).copyWith(
+    // Mint card stock, like the date stub: a white button on the white
+    // sheet read as plain text.
+    backgroundColor: WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.pressed) || states.contains(WidgetState.hovered)
+          ? Color.lerp(design.slip, design.accent, 0.12)
+          : design.slip,
+    ),
+  );
+}
+
+/// A tear-off date stub: the short month, the day in the display face and
+/// the weekday on a hand-cut mint leaf.
+class VisitDateBlock extends StatelessWidget {
+  const VisitDateBlock({
+    super.key,
+    required this.date,
+    this.seed = 'stub',
+    this.across = false,
+    this.color,
+  });
+  final DateTime date;
+
+  /// Seed of the leaf's hand-cut edge.
+  final String seed;
+
+  /// A strip across the top of the pass (large text) instead of a column.
+  final bool across;
+
+  /// The leaf's stock; the mint slip when null.
+  final Color? color;
+
+  static const gap = 14.0;
+
+  /// Grows with large text, up to 92 px; longer month labels scale down
+  /// inside it instead of wrapping.
+  static double widthOf(BuildContext context) =>
+      MediaQuery.textScalerOf(context).scale(60).clamp(60, 92).toDouble();
+
+  @override
+  Widget build(BuildContext context) {
+    final design = context.design;
+    final text = Theme.of(context).textTheme;
+    final locale = Localizations.localeOf(context).languageCode;
+    Widget line(String value, TextStyle? style) => FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(value, style: style, maxLines: 1, textAlign: TextAlign.center),
+    );
+    final month = DateFormat.MMM(locale).format(date);
+    final weekday = DateFormat.E(locale).format(date);
+    final day = text.displaySmall?.copyWith(color: design.textPrimary);
+    final quiet = text.labelMedium?.copyWith(color: design.textSecondary);
+    final leaf = ShapeDecoration(
+      color: color ?? design.slip,
+      shape: CutBorder(seed: seed, amp: 1.5),
+    );
+    if (across) {
+      return DecoratedBox(
+        decoration: leaf,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: [
+              Text('${date.day}', style: day),
+              const SizedBox(width: 12),
+              Flexible(child: Text('$month · $weekday', style: quiet)),
+            ],
+          ),
+        ),
+      );
+    }
+    return DecoratedBox(
+      decoration: leaf,
+      child: SizedBox(
+        width: widthOf(context),
+        child: Padding(
+          // Clear of the 1.5 px cut on every side.
+          padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              line(month, quiet),
+              line('${date.day}', day),
+              line(weekday, text.labelSmall?.copyWith(color: design.textSecondary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The tear line of a pass: holes punched through the sheet, so the page
+/// shows in them. Light falls from the top left, so each hole's top-left
+/// wall is in shade.
+class _Perforation extends StatelessWidget {
+  const _Perforation({required this.across});
+
+  /// Holes in a row under the stub instead of a column beside it.
+  final bool across;
+
+  @override
+  Widget build(BuildContext context) {
+    final design = context.design;
+    return SizedBox(
+      width: across ? null : 24,
+      height: across ? 24 : null,
+      child: CustomPaint(
+        painter: _HolesPainter(
+          page: design.background,
+          wall: Color.lerp(design.background, design.shadowOn(design.surface), 0.35)!,
+        ),
+      ),
+    );
+  }
+}
+
+class _HolesPainter extends CustomPainter {
+  const _HolesPainter({required this.page, required this.wall});
+
+  final Color page;
+  final Color wall;
+
+  static const _hole = 6.0;
+  static const _gap = 6.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // The holes run along the longer side, centred on the shorter one.
+    final across = size.width > size.height;
+    final length = across ? size.width : size.height;
+    final count = ((length - 4 + _gap) / (_hole + _gap)).floor();
+    if (count <= 0) return;
+    final first = (length - count * _hole - (count - 1) * _gap) / 2;
+    final wallPaint = Paint()..color = wall;
+    final pagePaint = Paint()..color = page;
+    for (var i = 0; i < count; i++) {
+      final at = first + i * (_hole + _gap);
+      final hole = across
+          ? Rect.fromLTWH(at, (size.height - _hole) / 2, _hole, _hole)
+          : Rect.fromLTWH((size.width - _hole) / 2, at, _hole, _hole);
+      canvas.save();
+      canvas.clipPath(Path()..addOval(hole));
+      canvas.drawOval(hole, wallPaint);
+      canvas.drawOval(hole.shift(const Offset(1, 1)), pagePaint);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HolesPainter old) => old.page != page || old.wall != wall;
+}
+
+/// Status reads as coloured text, never a pill.
+Color visitStatusColor(BuildContext context, VisitStatus? status) => switch (status) {
+  VisitStatus.cancelled => context.design.error,
+  VisitStatus.completed || VisitStatus.confirmed => context.design.success,
+  VisitStatus.rescheduled => context.design.warning,
+  _ => context.design.textSecondary,
+};
+
+/// The visit's property title, or "Property #id" when the backend sent no
+/// nested property.
+String visitTitle(BuildContext context, VisitModel visit) => visit.propertyTitle.isNotEmpty
+    ? visit.propertyTitle
+    : context.l10n.text('visit_property_fallback', params: {'id': '${visit.propertyId}'});

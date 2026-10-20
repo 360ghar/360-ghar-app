@@ -3,7 +3,9 @@ import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/models/unified_property_response.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
+import 'package:ghar360/core/network/cache_policy.dart';
 import 'package:ghar360/core/network/response_parser.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
 /// Remote datasource for property data.
@@ -24,9 +26,7 @@ class PropertiesRemoteDatasource {
     bool excludeSwiped = false,
     bool useCache = true,
   }) async {
-    DebugLogger.debug(
-      '🔍 Fetching properties: lat=$latitude, lng=$longitude, radius=${radiusKm}km',
-    );
+    DebugLogger.debug('Fetching properties with location and radius');
 
     final queryParams = _buildQueryParams(
       latitude: latitude,
@@ -38,7 +38,7 @@ class PropertiesRemoteDatasource {
       excludeSwiped: excludeSwiped,
     );
 
-    DebugLogger.debug('🔍 Query params: $queryParams');
+    DebugLogger.debug('Property query fields: ${queryParams.keys.join(',')}');
 
     final response = await _apiClient.get(
       ApiPaths.properties,
@@ -46,45 +46,28 @@ class PropertiesRemoteDatasource {
       useCache: useCache,
     );
 
-    return _parsePropertiesResponse(response.body);
+    return _parsePropertiesResponse(response);
   }
 
   /// Fetches a single property by ID.
   ///
   /// Optional auth: the endpoint is public (shared `/p/:id` deep links must
   /// work signed out) but still enriches liked-status for signed-in users.
-  /// Caching is off because the ETag cache keys on URL alone, so one entry
-  /// would otherwise serve a signed-in user's liked-status to a guest.
+  /// The ETag cache is off here: the detail has its own scoped cache, and the server marks a
+  /// signed-in response `private, no-store` (see [markCachePolicy]).
   Future<PropertyModel> fetchPropertyById(String propertyId) async {
     final response = await _apiClient.get(
       ApiPaths.propertyById(propertyId),
       useCache: false,
       requireAuth: false,
     );
-    final payload = ResponseParser.unwrapObject(response.body);
-    if (payload.isEmpty) {
-      throw const FormatException('Unexpected property response format');
+    final PropertyModel property;
+    try {
+      property = _parseProperty(ResponseParser.object(response.body));
+    } catch (error, stack) {
+      throw _malformed(error, stack);
     }
-    return PropertyModel.fromJson(Map<String, dynamic>.from(payload));
-  }
-
-  /// Fetches multiple properties by IDs in a single request.
-  ///
-  /// Uses repeated `ids` query params (e.g. `?ids=1&ids=2`) to batch-fetch.
-  /// Falls back to
-  /// individual fetches if the batch endpoint fails.
-  ///
-  /// Caching is off for the same reason as [fetchPropertyById]: the response
-  /// carries per-user liked-status but the ETag cache keys on URL alone, so one
-  /// entry would serve one account's liked-status to the next.
-  Future<List<PropertyModel>> fetchPropertiesByIds(List<int> ids) async {
-    DebugLogger.debug('📦 Batch-fetching ${ids.length} properties by IDs');
-    final response = await _apiClient.get(
-      ApiPaths.properties,
-      queryParams: {'ids': ids},
-      useCache: false,
-    );
-    return _parsePropertiesResponse(response.body).items;
+    return markCachePolicy(property, response.headers);
   }
 
   /// Searches properties by query.
@@ -115,7 +98,7 @@ class PropertiesRemoteDatasource {
       queryParams: queryParams,
       useCache: useCache,
     );
-    return _parsePropertiesResponse(response.body);
+    return _parsePropertiesResponse(response);
   }
 
   Map<String, dynamic> _buildQueryParams({
@@ -128,7 +111,7 @@ class PropertiesRemoteDatasource {
     String? searchQuery,
     bool excludeSwiped = false,
   }) {
-    final queryParams = <String, dynamic>{'limit': limit.toString()};
+    final queryParams = <String, dynamic>{'limit': limit.clamp(1, 100).toString()};
     // Omit `cursor` on the first page; backend treats absence/null as page 1.
     if (cursor != null && cursor.isNotEmpty) {
       queryParams['cursor'] = cursor;
@@ -138,7 +121,7 @@ class PropertiesRemoteDatasource {
       queryParams['lat'] = latitude.toStringAsFixed(6);
       queryParams['lng'] = longitude.toStringAsFixed(6);
       final effectiveRadius = radiusKm ?? filters?.radiusKm ?? 10.0;
-      queryParams['radius'] = effectiveRadius.toInt().toString();
+      queryParams['radius'] = UnifiedFilterModel.apiRadiusKm(effectiveRadius).toString();
     }
 
     if (searchQuery != null && searchQuery.trim().isNotEmpty) {
@@ -175,49 +158,40 @@ class PropertiesRemoteDatasource {
     return queryParams;
   }
 
-  UnifiedPropertyResponse _parsePropertiesResponse(dynamic body) {
-    try {
-      DebugLogger.debug('📊 Response type: ${body?.runtimeType}');
+  PropertyModel _parseProperty(Map<String, dynamic> json) {
+    final id = json['id'];
+    if (id is! int || id <= 0) {
+      throw const FormatException('Property response has no valid identity.');
+    }
+    return PropertyModel.fromJson(json);
+  }
 
-      if (body is Map) {
-        // Normalize to a typed map and unwrap common nested envelopes (`data`
-        // as a list or as a `{items,...}` map) so the cursor envelope parser
-        // always sees the final shape. Without this, a wrapped response
-        // silently drops results or throws at runtime when `items` is absent.
-        final mapBody = Map<String, dynamic>.from(body);
-        if (!mapBody.containsKey('items')) {
-          final nestedData = mapBody['data'];
-          if (nestedData is List) {
-            mapBody['items'] = nestedData;
-          } else if (nestedData is Map) {
-            final nestedMap = Map<String, dynamic>.from(nestedData);
-            final nestedItems = nestedMap['items'];
-            if (nestedItems is List) mapBody['items'] = nestedItems;
-            mapBody.putIfAbsent('has_more', () => nestedMap['has_more']);
-            mapBody.putIfAbsent('next_cursor', () => nestedMap['next_cursor']);
-            mapBody.putIfAbsent('limit', () => nestedMap['limit']);
-          }
-        }
-        // Guarantee `items` is a List so fromJson never throws on scalar payloads.
-        mapBody['items'] = (mapBody['items'] is List) ? mapBody['items'] : const <Object>[];
-        final unifiedResponse = UnifiedPropertyResponse.fromJson(mapBody);
-        DebugLogger.debug(
-          '📦 Parsed ${unifiedResponse.items.length} properties '
-          '(hasMore=${unifiedResponse.hasMore}, nextCursor=${unifiedResponse.nextCursor != null})',
-        );
-        return unifiedResponse;
-      } else if (body is List) {
-        // Tolerate bare-array responses by wrapping them in the uniform envelope.
-        final normalizedData = {'items': body};
-        return UnifiedPropertyResponse.fromJson(normalizedData);
-      } else {
-        // Unknown/scalar payload: return an empty terminal page instead of a
-        // runtime type error.
-        return const UnifiedPropertyResponse();
+  ServerException _malformed(Object error, StackTrace stack) {
+    DebugLogger.error('Property response rejected', error.runtimeType, stack);
+    return ServerException(
+      'The service returned an invalid property response.',
+      code: 'MALFORMED_RESPONSE',
+    );
+  }
+
+  /// A `CursorPage[Property]`. A row that cannot be read fails the page: dropping it would make a
+  /// partial page look complete and advance its cursor past a missing property.
+  UnifiedPropertyResponse _parsePropertiesResponse(ApiResponse response) {
+    try {
+      final body = ResponseParser.object(response.body);
+      final items = body['items'];
+      if (items is! List) {
+        throw const FormatException('Property response has no list of items.');
       }
-    } catch (e, stackTrace) {
-      DebugLogger.error('Failed to parse properties response: $e', e, stackTrace);
-      rethrow;
+      for (final item in items) {
+        final id = (item as Map)['id'];
+        if (id is! int || id <= 0) {
+          throw const FormatException('Property response has no valid identity.');
+        }
+      }
+      return markCachePolicy(UnifiedPropertyResponse.fromJson(body), response.headers);
+    } catch (error, stack) {
+      throw _malformed(error, stack);
     }
   }
 }

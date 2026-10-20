@@ -1,22 +1,39 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/providers/pending_actions_provider.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
-import 'package:ghar360/core/utils/api_date_time.dart';
-import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/best_effort.dart';
 import 'package:ghar360/core/utils/responsive.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
-import 'package:ghar360/core/widgets/common/max_content_width.dart';
-import 'package:ghar360/core/widgets/common/segmented_control.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
+import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/paper/folder_tabs.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/core/widgets/paper/paper_scroll_page.dart';
+import 'package:ghar360/core/widgets/paper/paper_sheet.dart';
+import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
+import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 import 'package:ghar360/features/visits/presentation/widgets/agent_card.dart';
 import 'package:ghar360/features/visits/presentation/widgets/visit_card.dart';
-import 'package:ghar360/features/visits/presentation/widgets/visits_skeleton_loaders.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:ghar360/features/visits/presentation/widgets/visit_edit_dialog.dart';
+import 'package:ghar360/features/visits/presentation/widgets/visit_failure_message.dart';
 
 /// Formats a phone number for dialing/WhatsApp.
 ///
@@ -30,7 +47,7 @@ String _formatIndianNumber(String? raw) {
   final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
   if (digits.isEmpty) return '';
 
-  // Already has an explicit `+` country code — keep the original (preserves
+  // Already has an explicit `+` country code: keep the original (preserves
   // extensions and international formatting). Strip extension digits (ext/x/#)
   // so they don't corrupt the dial/WhatsApp target.
   if (raw.trim().startsWith('+')) {
@@ -51,14 +68,17 @@ String _formatIndianNumber(String? raw) {
   }
 
   // Anything longer than 10 digits that isn't a recognised Indian form is
-  // treated as international — pass through unchanged so we don't mangle it.
+  // treated as international; pass it through unchanged so we don't mangle it.
   return d;
 }
 
-Future<void> _launchDialer(String? rawNumber) async {
+Future<void> _launchDialer(BuildContext context, String? rawNumber) async {
   final formatted = _formatIndianNumber(rawNumber);
   if (formatted.isEmpty) {
-    AppToast.warning('unavailable'.tr, 'agent_contact_unavailable'.tr);
+    AppToast.warning(
+      context.l10n.text('unavailable'),
+      context.l10n.text('agent_contact_unavailable'),
+    );
     return;
   }
   final telUri = Uri(scheme: 'tel', path: '+$formatted');
@@ -82,7 +102,7 @@ Future<void> _launchDialer(String? rawNumber) async {
   launched = await tryLaunch(telUri, 'dialer-platform-default');
   if (launched) return;
 
-  if (GetPlatform.isIOS) {
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
     final telPromptUri = Uri(scheme: 'telprompt', path: '+$formatted');
     launched = await tryLaunch(telPromptUri, 'dialer-telprompt');
     if (launched) return;
@@ -92,623 +112,737 @@ Future<void> _launchDialer(String? rawNumber) async {
   launched = await tryLaunch(plainTelUri, 'dialer-plain-tel');
   if (launched) return;
 
-  AppToast.error('action_failed'.tr, 'could_not_open_phone_dialer'.tr);
+  if (!context.mounted) return;
+  AppToast.error(
+    context.l10n.text('action_failed'),
+    context.l10n.text('could_not_open_phone_dialer'),
+  );
 }
 
-Future<void> _launchWhatsApp(String? rawNumber) async {
+Future<void> _launchWhatsApp(BuildContext context, String? rawNumber) async {
   final formatted = _formatIndianNumber(rawNumber);
   if (formatted.isEmpty) {
-    AppToast.warning('unavailable'.tr, 'agent_contact_unavailable'.tr);
+    AppToast.warning(
+      context.l10n.text('unavailable'),
+      context.l10n.text('agent_contact_unavailable'),
+    );
     return;
   }
   final uri = Uri.parse('https://wa.me/$formatted');
   final ok = await canLaunchUrl(uri);
   if (!ok) {
-    AppToast.error('action_failed'.tr, 'could_not_open_whatsapp'.tr);
+    if (!context.mounted) return;
+    AppToast.error(
+      context.l10n.text('action_failed'),
+      context.l10n.text('could_not_open_whatsapp'),
+    );
     return;
   }
   await launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 
-class VisitsView extends GetView<VisitsController> {
+/// Scheduled and past visits on one sheet under the society gate. From
+/// 840 px the list sits left and the selected visit, with its home, fills
+/// the right pane.
+class VisitsView extends ConsumerStatefulWidget {
   const VisitsView({super.key});
-
   @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Semantics(
-        label: 'visits'.tr,
-        identifier: 'qa.visits.screen',
-        child: Scaffold(
-          key: const ValueKey('qa.visits.screen'),
-          backgroundColor: AppDesign.scaffoldBackground,
-          body: SafeArea(
-            child: Obx(() {
-              final Widget child;
-              final Key key;
-
-              if (controller.isLoading.value) {
-                key = const ValueKey('loading');
-                child = _buildLoadingState();
-              } else if (controller.error.value != null && controller.visits.isEmpty) {
-                key = const ValueKey('error');
-                child = _buildErrorState(controller);
-              } else {
-                key = const ValueKey('content');
-                child = _VisitsContent(controller: controller);
-              }
-
-              return AnimatedSwitcher(
-                duration: AppDurations.contentFade,
-                transitionBuilder: (child, animation) =>
-                    FadeTransition(opacity: animation, child: child),
-                child: KeyedSubtree(key: key, child: child),
-              );
-            }),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingState() {
-    return Column(
-      children: [
-        Container(height: 48, color: AppDesign.scaffoldBackground),
-        Container(
-          color: AppDesign.scaffoldBackground,
-          child: const Padding(padding: EdgeInsets.all(20), child: RelationshipManagerSkeleton()),
-        ),
-        Expanded(child: TabBarView(children: [_buildSkeletonList(), _buildSkeletonList()])),
-      ],
-    );
-  }
-
-  Widget _buildSkeletonList() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(children: List.generate(3, (index) => const VisitCardSkeleton())),
-    );
-  }
-
-  Widget _buildErrorState(VisitsController controller) {
-    return ErrorStates.genericError(
-      error: controller.error.value,
-      onRetry: () => controller.loadVisits(isRefresh: true),
-    );
-  }
+  ConsumerState<VisitsView> createState() => _VisitsViewState();
 }
 
-class _VisitsContent extends StatefulWidget {
-  final VisitsController controller;
+/// Whether the first load is still running, and the failure that left the
+/// screen with no visits.
+(bool, Object?) _screen(VisitsState s) => (
+  s.isLoading && s.visits.isEmpty,
+  s.phase == VisitLoadPhase.failed && s.visits.isEmpty ? s.failure : null,
+);
 
-  const _VisitsContent({required this.controller});
+class _VisitsViewState extends ConsumerState<VisitsView> {
+  final _scroll = ScrollController();
+
+  /// Each tab keeps its own place, as the old per-tab lists did.
+  final _offsets = <int, double>{};
+  int _tab = 0;
+  int? _selectedId;
 
   @override
-  State<_VisitsContent> createState() => _VisitsContentState();
-}
+  void initState() {
+    super.initState();
+    _scroll.addListener(_paginate);
+  }
 
-class _VisitsContentState extends State<_VisitsContent> {
-  TabController? _tabController;
-
-  // Scroll controllers for the two paginated tabs. Each tab's SingleChildScrollView
-  // is driven by its own controller so the bottom-of-list detection can call
-  // [VisitsController.loadMoreVisits] without interfering with the other tab.
-  final ScrollController _upcomingScrollController = ScrollController();
-  final ScrollController _pastScrollController = ScrollController();
-
-  /// Threshold (pixels) from the bottom at which we trigger the next page.
-  /// Keep small enough to feel "infinite" but generous enough to mask the
-  /// network round-trip on slow connections.
-  static const double _loadMoreThresholdPx = 240;
-
-  // Listener attachment is guarded by [_upcomingListenerAttached] /
-  // [_pastListenerAttached] so rebuilds of the tab body never re-register
-  // the same callback on the [ScrollController] (which would fire twice
-  // per scroll event). [ScrollController.hasListeners] is a protected
-  // ChangeNotifier member, so we cannot rely on it from outside the
-  // subclass.
-  bool _upcomingListenerAttached = false;
-  bool _pastListenerAttached = false;
-
-  void _onUpcomingScroll() => _onScrollForPagination(_upcomingScrollController);
-  void _onPastScroll() => _onScrollForPagination(_pastScrollController);
-
-  void _onTabChanged() {
-    if (_tabController != null && !_tabController!.indexIsChanging) {
-      setState(() {});
+  void _paginate() {
+    final state = ref.read(visitsProvider);
+    final (loading, failure) = _screen(state);
+    // Only the visit list pages; the first load and its failure do not.
+    if (!loading &&
+        failure == null &&
+        _scroll.hasClients &&
+        _scroll.position.extentAfter < 240 &&
+        state.pagePhase == VisitPagePhase.idle) {
+      unawaited(ref.read(visitsProvider.notifier).loadMoreVisits());
     }
   }
 
-  void _onScrollForPagination(ScrollController controller) {
-    if (!controller.hasClients) return;
-    final position = controller.position;
-    // Near-bottom detection: remaining pixels below the viewport are within
-    // [_loadMoreThresholdPx]. Skip when the controller is already loading the
-    // next page or when the server signalled the terminal page.
-    final remaining = position.maxScrollExtent - position.pixels;
-    if (remaining <= _loadMoreThresholdPx) {
-      final ctrl = widget.controller;
-      if (!ctrl.isLoadingMore.value && ctrl.hasMore.value) {
-        // Fire-and-forget: loadMoreVisits owns its own error/isLoadingMore
-        // lifecycle so the UI never gets stuck mid-pagination.
-        ctrl.loadMoreVisits();
-      }
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final inherited = DefaultTabController.of(context);
-    if (inherited != _tabController) {
-      _tabController?.removeListener(_onTabChanged);
-      _tabController = inherited;
-      _tabController!.addListener(_onTabChanged);
-    }
+  void _select(int tab) {
+    if (tab == _tab) return;
+    if (_scroll.hasClients) _offsets[_tab] = _scroll.offset;
+    setState(() => _tab = tab);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final position = _scroll.position;
+      _scroll.jumpTo(
+        (_offsets[tab] ?? 0).clamp(position.minScrollExtent, position.maxScrollExtent),
+      );
+    });
   }
 
   @override
   void dispose() {
-    _tabController?.removeListener(_onTabChanged);
-    _upcomingScrollController.removeListener(_onUpcomingScroll);
-    _pastScrollController.removeListener(_onPastScroll);
-    _upcomingScrollController.dispose();
-    _pastScrollController.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final selectedIndex = _tabController?.index ?? 0;
+    final (loading, failure) = ref.watch(visitsProvider.select(_screen));
+    final refreshing = ref.watch(visitsProvider.select((s) => s.isRefreshing));
+    final l10n = context.l10n;
+    final twoPane = context.windowSizeClass.index >= WindowSizeClass.expanded.index;
+    final listing = !loading && failure == null;
+    final List<Widget> body;
+    if (loading) {
+      body = [SliverFillRemaining(child: LoadingStates.visitsSkeleton())];
+    } else if (failure != null) {
+      body = [
+        const SliverPadding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+          sliver: SliverToBoxAdapter(child: _PendingVisits()),
+        ),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: ErrorStates.genericError(
+            error: failure,
+            onRetry: ref.read(visitsProvider.notifier).loadVisits,
+            seed: 'visits',
+          ),
+        ),
+      ];
+    } else {
+      body = [
+        _VisitList(
+          upcoming: _tab == 0,
+          selectedId: twoPane ? _selectedId : null,
+          onSelect: twoPane ? (visit) => setState(() => _selectedId = visit.id) : null,
+        ),
+      ];
+    }
+    final list = LayoutBuilder(
+      builder: (context, constraints) => RefreshIndicator(
+        onRefresh: ref.read(visitsProvider.notifier).refreshVisits,
+        notificationPredicate: (notification) => listing && notification.depth == 0,
+        child: PaperScrollPage(
+          key: const ValueKey('qa.visits.list'),
+          controller: _scroll,
+          // Wide windows keep the passes a readable width on the title's
+          // left edge; the scene and the sheet still run edge to edge.
+          padding: EdgeInsets.only(
+            right: math.max(0.0, constraints.maxWidth - context.contentMaxWidth),
+          ),
+          header: SceneHeaderSliver(
+            title: l10n.text('visits'),
+            qaId: 'qa.visits.title',
+            scene: PaperSceneSpec.visits(),
+            tabs: FolderTabs(
+              labels: [l10n.text('scheduled_visits'), l10n.text('past_visits')],
+              selected: _tab,
+              onSelect: _select,
+              qaIds: const ['qa.visits.scheduled', 'qa.visits.past'],
+              seed: 'visits-tabs',
+            ),
+          ),
+          slivers: [
+            if (refreshing)
+              SliverToBoxAdapter(
+                child: LinearProgressIndicator(semanticsLabel: l10n.text('loading')),
+              ),
+            ...body,
+          ],
+        ),
+      ),
+    );
+    return Semantics(
+      identifier: 'qa.visits.screen',
+      label: l10n.text('visits'),
+      child: Scaffold(
+        key: const ValueKey('qa.visits.screen'),
+        backgroundColor: context.design.background,
+        body: SafeArea(
+          top: false,
+          child: !twoPane || !listing
+              ? list
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(width: 400, child: list),
+                    // The same paper pane as Explore and Saved, not a rule.
+                    // Its home is shown a second time, so its photo is no hero.
+                    Expanded(
+                      child: SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 12, 12, 12),
+                          child: HeroMode(
+                            enabled: false,
+                            child: PaperSheet(
+                              seed: 'pane-visits',
+                              elevation: PaperElevation.low,
+                              padding: const EdgeInsets.all(4),
+                              child: _VisitPane(visitId: _selectedId),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
 
-    return MaxContentWidth(
-      // Center the visits content and cap width on tablet/desktop. On compact
-      // (phone) widths MaxContentWidth is full-bleed (no-op).
-      maxWidth: 840,
-      child: Column(
+/// One tab as slivers: the manager and pending requests (scheduled tab
+/// only), then the visit passes, then the next-page control.
+class _VisitList extends ConsumerWidget {
+  const _VisitList({required this.upcoming, required this.selectedId, required this.onSelect});
+  final bool upcoming;
+  final int? selectedId;
+
+  /// Non-null in the two-pane layout: a tap selects instead of opening.
+  final ValueChanged<VisitModel>? onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (visits, stale, failure, hasMore) = ref.watch(
+      visitsProvider.select((s) => (upcoming ? s.upcoming : s.past, s.stale, s.failure, s.hasMore)),
+    );
+    final controller = ref.read(visitsProvider.notifier);
+    final l10n = context.l10n;
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverList.list(
+          children: [
+            if (stale)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Text(
+                  l10n.text('visits_saved_offline'),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: context.design.textSecondary),
+                ),
+              ),
+            if (failure != null)
+              InlineRetryBanner(
+                message: visitFailureMessage(context, failure),
+                error: failure,
+                onRetry: controller.loadVisits,
+              ),
+            if (upcoming) ...[
+              const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: _AgentSection()),
+              const Padding(padding: EdgeInsets.fromLTRB(16, 4, 16, 0), child: _PendingVisits()),
+            ],
+          ],
+        ),
+        // An empty first page with more to fetch is not "no visits" yet.
+        if (visits.isEmpty && !hasMore)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: ErrorStates.emptyState(
+              title: l10n.text(upcoming ? 'no_visits' : 'visits_empty_past'),
+              message: l10n.text(
+                upcoming ? 'visits_empty_scheduled_message' : 'visits_empty_past_message',
+              ),
+              actionText: l10n.text('discover'),
+              onAction: () => context.go(AppRoutes.discover),
+              seed: upcoming ? 'scheduled' : 'past',
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+            sliver: SliverList.separated(
+              itemCount: visits.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final visit = visits[index];
+                return VisitCard(
+                  key: ValueKey('visit-${visit.id}'),
+                  visit: visit,
+                  isUpcoming: upcoming,
+                  selected: visit.id == selectedId,
+                  showActions: onSelect == null,
+                  onTap: onSelect == null
+                      ? () => context.push(
+                          AppRoutes.propertyDetails,
+                          extra: visit.property ?? visit.propertyId,
+                        )
+                      : () => onSelect!(visit),
+                  onReschedule: () => showVisitEditDialog(context, visit, cancel: false),
+                  onCancel: () => showVisitEditDialog(context, visit, cancel: true),
+                );
+              },
+            ),
+          ),
+        const SliverPadding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 24),
+          sliver: SliverToBoxAdapter(child: _NextPage()),
+        ),
+      ],
+    );
+  }
+}
+
+/// The next-page footer. Rows stay put while it loads; a failure is its own
+/// retry row, never a full-screen error.
+class _NextPage extends ConsumerWidget {
+  const _NextPage();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (phase, failure, hasMore) = ref.watch(
+      visitsProvider.select((s) => (s.pagePhase, s.pageFailure, s.hasMore)),
+    );
+    final controller = ref.read(visitsProvider.notifier);
+    if (phase == VisitPagePhase.failed) {
+      return InlineRetryBanner(
+        identifier: 'qa.visits.pagination.retry',
+        message: visitFailureMessage(context, failure),
+        error: failure,
+        onRetry: controller.loadMoreVisits,
+      );
+    }
+    if (!hasMore) return const SizedBox.shrink();
+    final loading = phase == VisitPagePhase.loading;
+    return Center(
+      child: TextButton(
+        key: const ValueKey('qa.visits.load_more'),
+        onPressed: loading ? null : controller.loadMoreVisits,
+        style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+        child: loading
+            ? LoadingStates.buttonSpinner()
+            : Text(context.l10n.text('visits_load_more'), textAlign: TextAlign.center),
+      ),
+    );
+  }
+}
+
+/// The assigned relationship manager. No assignment (a 404 from the backend)
+/// is a quiet line, not an error.
+class _AgentSection extends ConsumerWidget {
+  const _AgentSection();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final agent = ref.watch(visitsProvider.select((s) => s.agent));
+    final value = agent.value;
+    if (value != null) {
+      return AgentCard(
+        agent: value,
+        onCall: () => _launchDialer(context, value.contactNumber),
+        onWhatsApp: () => _launchWhatsApp(context, value.contactNumber),
+      );
+    }
+    if (agent.isLoading) return const _AgentSkeleton();
+    if (agent.hasError) {
+      return InlineRetryBanner(
+        message: context.l10n.text('visits_agent_error'),
+        error: agent.error,
+        onRetry: ref.read(visitsProvider.notifier).loadRelationshipManager,
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(
+        context.l10n.text('visits_no_agent'),
+        key: const ValueKey('qa.visits.no_agent'),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: context.design.textSecondary),
+      ),
+    );
+  }
+}
+
+/// Placeholder in the shape of [AgentCard]: photo, two lines, two icons.
+class _AgentSkeleton extends StatelessWidget {
+  const _AgentSkeleton();
+  @override
+  Widget build(BuildContext context) => const Skeleton(
+    key: ValueKey('qa.visits.agent_loading'),
+    child: Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenPadding,
-              AppSpacing.sm,
-              AppSpacing.screenPadding,
-              0,
-            ),
-            child: SegmentedControl(
-              selectedIndex: selectedIndex,
-              segments: [
-                SegmentItem(
-                  label: 'scheduled_visits'.tr,
-                  badge: widget.controller.upcomingVisits.length,
-                  semanticsLabel: 'qa.visits.tab.scheduled',
-                  semanticsIdentifier: 'qa.visits.tab.scheduled',
-                ),
-                SegmentItem(
-                  label: 'past_visits'.tr,
-                  badge: widget.controller.pastVisits.length,
-                  semanticsLabel: 'qa.visits.tab.past',
-                  semanticsIdentifier: 'qa.visits.tab.past',
-                ),
+          SkeletonBox(width: 48, height: 48, radius: 24),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonBox(height: 12, width: 140),
+                SizedBox(height: 8),
+                SkeletonBox(height: 18, width: 180),
               ],
-              onSegmentChanged: (index) => _tabController?.animateTo(index),
             ),
           ),
-          Obx(
-            () => widget.controller.isBackgroundRefreshing.value
-                ? const LinearProgressIndicator(
-                    minHeight: 2,
-                    backgroundColor: AppDesign.transparent,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          Container(
-            color: AppDesign.scaffoldBackground,
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.screenPadding),
-              child: _buildRelationshipManagerCard(),
-            ),
+          SizedBox(width: 12),
+          SkeletonBox(width: 24, height: 24),
+          SizedBox(width: 24),
+          SkeletonBox(width: 24, height: 24),
+        ],
+      ),
+    ),
+  );
+}
+
+/// The right pane: the visit's facts and actions over its home.
+class _VisitPane extends ConsumerWidget {
+  const _VisitPane({required this.visitId});
+  final int? visitId;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visit = ref.watch(
+      visitsProvider.select((s) => s.visits.where((v) => v.id == visitId).firstOrNull),
+    );
+    if (visit == null) {
+      return ErrorStates.emptyState(
+        title: context.l10n.text('visits_pane_title'),
+        message: context.l10n.text('visits_pane_message'),
+        seed: 'pane',
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: constraints.maxHeight * 0.4),
+            child: SingleChildScrollView(child: _VisitFacts(visit: visit)),
           ),
           Expanded(
-            child: TabBarView(
-              controller: _tabController!,
-              children: [_buildUpcomingVisitsTab(), _buildPastVisitsTab()],
+            child: PropertyDetailsView(
+              key: ValueKey('visit-pane-${visit.propertyId}'),
+              propertyId: visit.propertyId,
+              initialProperty: visit.property,
+              embedded: true,
+              showBookingBar: false,
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildUpcomingVisitsTab() {
-    if (!_upcomingListenerAttached) {
-      _upcomingScrollController.addListener(_onUpcomingScroll);
-      _upcomingListenerAttached = true;
-    }
-    return RefreshIndicator(
-      onRefresh: widget.controller.refreshVisits,
-      child: SingleChildScrollView(
-        controller: _upcomingScrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+class _VisitFacts extends StatelessWidget {
+  const _VisitFacts({required this.visit});
+  final VisitModel visit;
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final palette = context.design;
+    final l10n = context.l10n;
+    final date = visit.scheduledDate.toLocal();
+    final upcoming = visit.isUpcoming;
+    Widget note(String label, String value) => Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text.rich(
+        TextSpan(
           children: [
-            Obx(() {
-              if (widget.controller.upcomingVisits.isEmpty) {
-                return _buildEmptyState('no_visits'.tr, 'no_upcoming_visits_subtitle'.tr);
-              }
-
-              return _buildResponsiveVisitGrid(
-                context,
-                widget.controller.upcomingVisits,
-                isUpcoming: true,
-              );
-            }),
+            TextSpan(
+              text: '$label: ',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            TextSpan(text: value),
           ],
         ),
+        style: text.bodyMedium?.copyWith(color: palette.textSecondary),
       ),
     );
-  }
-
-  Widget _buildPastVisitsTab() {
-    if (!_pastListenerAttached) {
-      _pastScrollController.addListener(_onPastScroll);
-      _pastListenerAttached = true;
-    }
-    return RefreshIndicator(
-      onRefresh: widget.controller.refreshVisits,
-      child: SingleChildScrollView(
-        controller: _pastScrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Obx(() {
-              if (widget.controller.pastVisits.isEmpty) {
-                return _buildEmptyState('no_visits'.tr, 'no_past_visits_subtitle'.tr);
-              }
-
-              return _buildResponsiveVisitGrid(
-                context,
-                widget.controller.pastVisits,
-                isUpcoming: false,
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Lays out visit cards responsively. On compact (phone) widths cards stack
-  /// in a single column exactly as before. On tablet/desktop widths they
-  /// reflow into a multi-column grid (2 columns on medium, 3 on expanded+)
-  /// using a [Wrap] so each card keeps its natural height — visit cards have
-  /// variable content (special-requirements notes, action buttons) that does
-  /// not fit a fixed aspect-ratio grid cell.
-  Widget _buildResponsiveVisitGrid(
-    BuildContext context,
-    List<VisitModel> visits, {
-    required bool isUpcoming,
-  }) {
-    final columns = _visitColumnCount(context);
-
-    // Single column → original stacked layout (unchanged on phones).
-    if (columns <= 1) {
-      return Column(
-        children: visits
-            .map(
-              (visit) => VisitCard(
-                visit: visit,
-                isUpcoming: isUpcoming,
-                onTap: () => _openPropertyDetails(visit),
-                onReschedule: isUpcoming ? () => _showRescheduleDialog(visit) : () {},
-                onCancel: isUpcoming ? () => _showCancelDialog(visit) : () {},
-              ),
-            )
-            .toList(),
-      );
-    }
-
-    // Multi-column grid via Wrap. Each card is constrained to an equal fraction
-    // of the available width; the card's own internal layout (fixed 72px thumb
-    // + flexible text) adapts to the narrower cell.
-    const spacing = AppSpacing.listItemSpacing;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - spacing * (columns - 1)) / columns;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: visits
-              .map(
-                (visit) => SizedBox(
-                  width: cardWidth,
-                  child: VisitCard(
-                    visit: visit,
-                    isUpcoming: isUpcoming,
-                    onTap: () => _openPropertyDetails(visit),
-                    onReschedule: isUpcoming ? () => _showRescheduleDialog(visit) : () {},
-                    onCancel: isUpcoming ? () => _showCancelDialog(visit) : () {},
-                  ),
-                ),
-              )
-              .toList(),
-        );
-      },
-    );
-  }
-
-  /// Visit-card column count by window-size class. Compact stays single-column
-  /// (phone layout unchanged); medium+ reflows into a grid.
-  static int _visitColumnCount(BuildContext context) {
-    switch (context.windowSizeClass) {
-      case WindowSizeClass.compact:
-        return 1;
-      case WindowSizeClass.medium:
-        return 2;
-      case WindowSizeClass.expanded:
-        return 3;
-      case WindowSizeClass.large:
-        return 3;
-    }
-  }
-
-  void _openPropertyDetails(VisitModel visit) {
-    if (visit.property != null) {
-      Get.toNamed(AppRoutes.propertyDetails, arguments: visit.property);
-    }
-  }
-
-  Widget _buildRelationshipManagerCard() {
-    return Obx(() {
-      if (widget.controller.isLoadingAgent.value) {
-        return const RelationshipManagerSkeleton();
-      }
-
-      final agent = widget.controller.relationshipManager.value;
-      if (agent == null) {
-        return const SizedBox.shrink();
-      }
-
-      return AgentCard(
-        agent: agent,
-        onCall: () {
-          _launchDialer(agent.contactNumber);
-        },
-        onWhatsApp: () {
-          _launchWhatsApp(agent.contactNumber);
-        },
-      );
-    });
-  }
-
-  Widget _buildEmptyState(String title, String subtitle) {
-    return ErrorStates.emptyState(
-      title: title,
-      message: subtitle,
-      icon: Icons.calendar_today_outlined,
-      actionText: 'discover'.tr,
-      onAction: () {
-        if (Get.isRegistered<DashboardController>()) {
-          Get.find<DashboardController>().changeTab(DashboardController.discoverTab);
-        }
-      },
-    );
-  }
-
-  void _showRescheduleDialog(VisitModel visit) {
-    final now = DateTime.now();
-    DateTime selectedDate = visit.scheduledDate.isBefore(now) ? now : visit.scheduledDate;
-    TimeOfDay selectedTime = visit.scheduledDate.isBefore(now)
-        ? TimeOfDay.fromDateTime(now.add(const Duration(hours: 1)))
-        : TimeOfDay.fromDateTime(visit.scheduledDate);
-    bool isLoading = false;
-
-    Get.dialog(
-      StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: Text('reschedule_visit'.tr),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+    return Padding(
+      key: const ValueKey('qa.visits.pane.facts'),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          VisitDateBlock(date: date, seed: 'pane-stub-${visit.id}'),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${'reschedule_visit_to_prefix'.tr} ${visit.propertyTitle}',
-                  style: const TextStyle(fontSize: 16),
+                  '${MaterialLocalizations.of(context).formatFullDate(date)} · '
+                  '${TimeOfDay.fromDateTime(date).format(context)}',
+                  style: text.titleMedium,
                 ),
-                const SizedBox(height: 20),
-                ListTile(
-                  leading: const Icon(Icons.calendar_today, color: AppDesign.primaryYellow),
-                  title: Text('date'.tr),
-                  subtitle: Text(formatDisplayDate(selectedDate)),
-                  onTap: isLoading
-                      ? null
-                      : () async {
-                          // showDatePicker asserts firstDate <= initialDate <=
-                          // lastDate. `selectedDate` can sit outside the default
-                          // 30-day window (a visit booked further out, or a
-                          // stale `now` captured when the dialog opened), so
-                          // clamp the start and widen the end to always contain
-                          // it instead of throwing.
-                          final DateTime firstDate = DateUtils.dateOnly(DateTime.now());
-                          final DateTime initialDate = selectedDate.isBefore(firstDate)
-                              ? firstDate
-                              : selectedDate;
-                          final DateTime windowEnd = firstDate.add(const Duration(days: 30));
-                          final DateTime? picked = await showDatePicker(
-                            context: context,
-                            initialDate: initialDate,
-                            firstDate: firstDate,
-                            lastDate: initialDate.isAfter(windowEnd) ? initialDate : windowEnd,
-                          );
-                          if (picked != null) {
-                            setState(() {
-                              selectedDate = picked;
-                            });
-                          }
-                        },
+                const SizedBox(height: 4),
+                Text(
+                  l10n.text(visit.statusStringKey),
+                  style: text.bodyMedium?.copyWith(
+                    color: visitStatusColor(context, visit.status),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.access_time, color: AppDesign.primaryYellow),
-                  title: Text('time'.tr),
-                  subtitle: Text(selectedTime.format(context)),
-                  onTap: isLoading
-                      ? null
-                      : () async {
-                          final TimeOfDay? picked = await showTimePicker(
-                            context: context,
-                            initialTime: selectedTime,
-                          );
-                          if (picked != null) {
-                            setState(() {
-                              selectedTime = picked;
-                            });
-                          }
-                        },
-                ),
+                if (visit.specialRequirements?.isNotEmpty ?? false)
+                  note(l10n.text('visits_notes_label'), visit.specialRequirements!),
+                if (visit.status == VisitStatus.cancelled &&
+                    (visit.cancellationReason?.isNotEmpty ?? false))
+                  note(l10n.text('visits_cancel_reason_label'), visit.cancellationReason!),
+                if (upcoming && (visit.canReschedule || visit.canCancel)) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (visit.canReschedule)
+                        OutlinedButton(
+                          key: const ValueKey('qa.visits.pane.reschedule'),
+                          onPressed: () => showVisitEditDialog(context, visit, cancel: false),
+                          style: visitPaperButtonStyle(context, seed: 'pane-reschedule'),
+                          child: Text(l10n.text('reschedule')),
+                        ),
+                      if (visit.canCancel)
+                        TextButton(
+                          key: const ValueKey('qa.visits.pane.cancel'),
+                          onPressed: () => showVisitEditDialog(context, visit, cancel: true),
+                          style: TextButton.styleFrom(
+                            foregroundColor: palette.error,
+                            minimumSize: const Size(48, 48),
+                          ),
+                          child: Text(l10n.text('cancel')),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
-            actions: [
-              TextButton(onPressed: isLoading ? null : () => Get.back(), child: Text('cancel'.tr)),
-              ElevatedButton(
-                onPressed: isLoading
-                    ? null
-                    : () async {
-                        final newDateTime = DateTime(
-                          selectedDate.year,
-                          selectedDate.month,
-                          selectedDate.day,
-                          selectedTime.hour,
-                          selectedTime.minute,
-                        );
-
-                        if (newDateTime.isBefore(DateTime.now())) {
-                          AppToast.warning('invalid_time'.tr, 'select_future_datetime'.tr);
-                          return;
-                        }
-
-                        setState(() {
-                          isLoading = true;
-                        });
-
-                        final success = await widget.controller.rescheduleVisit(
-                          visit.id.toString(),
-                          newDateTime,
-                        );
-
-                        if (success) {
-                          Get.back();
-                        } else {
-                          setState(() {
-                            isLoading = false;
-                          });
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppDesign.primaryYellow,
-                  foregroundColor: AppDesign.buttonText,
-                ),
-                child: isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppDesign.overlayLight),
-                        ),
-                      )
-                    : Text('reschedule'.tr),
-              ),
-            ],
-          );
-        },
+          ),
+        ],
       ),
     );
   }
+}
 
-  void _showCancelDialog(VisitModel visit) {
-    final TextEditingController reasonController = TextEditingController();
-    bool isLoading = false;
+class _PendingVisits extends ConsumerWidget {
+  const _PendingVisits();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (actions, failure) = ref.watch(
+      pendingActionsProvider.select((s) => (s.actions, s.failure)),
+    );
+    final visits = actions.where((action) => action.kind == 'visit').toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (failure != null)
+          InlineRetryBanner(
+            message: visitFailureMessage(context, failure),
+            onRetry: () => ref.read(pendingActionsProvider.notifier).reload(),
+          ),
+        const _UnownedRequests(),
+        if (visits.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: Text(
+              context.l10n.text('visits_pending_title'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          ...visits.map(
+            (action) => _PendingVisitCard(key: ValueKey(action.operationId), action: action),
+          ),
+        ],
+      ],
+    );
+  }
+}
 
-    Get.dialog(
-      StatefulBuilder(
-        builder: (context, setState) {
-          final canSubmit = reasonController.text.trim().isNotEmpty && !isLoading;
-          return AlertDialog(
-            title: Text('cancel_visit'.tr),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+Future<bool> _confirmDiscard(BuildContext context) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(context.l10n.text('visits_discard')),
+        content: Text(context.l10n.text('visits_discard_help')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(context.l10n.text('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(context.l10n.text('visits_discard')),
+          ),
+        ],
+      ),
+    ) ==
+    true;
+
+/// An unconfirmed booking: flat text with the status in warning or error
+/// colour, and two quiet actions.
+class _PendingVisitCard extends ConsumerStatefulWidget {
+  const _PendingVisitCard({super.key, required this.action});
+  final PendingAction action;
+  @override
+  ConsumerState<_PendingVisitCard> createState() => _PendingVisitCardState();
+}
+
+class _PendingVisitCardState extends ConsumerState<_PendingVisitCard> {
+  bool _busy = false;
+  String? _message;
+  Future<void> _reconcile() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      final found = await ref.read(visitsProvider.notifier).reconcile(widget.action);
+      if (mounted && !found) setState(() => _message = context.l10n.text('visits_no_match'));
+    } catch (error) {
+      if (mounted) setState(() => _message = visitFailureMessage(context, error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _discard() async {
+    if (!await _confirmDiscard(context) || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(pendingActionsProvider.notifier).discard(widget.action.operationId);
+    } catch (error) {
+      if (mounted) setState(() => _message = visitFailureMessage(context, error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.design;
+    final text = Theme.of(context).textTheme;
+    final failed = widget.action.status == PendingActionStatus.failed;
+    final date = DateTime.tryParse(
+      widget.action.payload['scheduled_date']?.toString() ?? '',
+    )?.toLocal();
+    final color = failed ? palette.error : palette.warning;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: PaperIcon(KnifeIcon.alert, size: 20, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${'cancel_visit_confirm_prefix'.tr} ${visit.propertyTitle}?'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: reasonController,
-                  enabled: !isLoading,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    labelText: 'reason_required_label'.tr,
-                    hintText: 'reason_required_hint'.tr,
-                    filled: true,
-                    fillColor: AppDesign.inputBackground,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: AppDesign.border),
-                    ),
+                Text(
+                  context.l10n.text(failed ? 'visits_request_failed' : 'visits_unresolved'),
+                  style: text.titleSmall?.copyWith(color: color),
+                ),
+                if (date != null)
+                  Text(
+                    '${MaterialLocalizations.of(context).formatMediumDate(date)} · '
+                    '${TimeOfDay.fromDateTime(date).format(context)}',
+                    style: text.bodyMedium,
                   ),
+                Text(
+                  context.l10n.text('visits_pending_help'),
+                  style: text.bodySmall?.copyWith(color: palette.textSecondary),
+                ),
+                if (_message != null)
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(_message!, style: text.bodySmall?.copyWith(color: palette.error)),
+                  ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: _busy ? null : _reconcile,
+                      style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                      child: _busy
+                          ? LoadingStates.buttonSpinner()
+                          : Text(context.l10n.text('visits_check_bookings')),
+                    ),
+                    TextButton(
+                      onPressed: _busy ? null : _discard,
+                      style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                      child: Text(context.l10n.text('visits_discard')),
+                    ),
+                  ],
                 ),
               ],
             ),
-            actions: [
-              TextButton(onPressed: isLoading ? null : () => Get.back(), child: Text('no'.tr)),
-              ElevatedButton(
-                onPressed: canSubmit
-                    ? () async {
-                        final reason = reasonController.text.trim();
-
-                        setState(() {
-                          isLoading = true;
-                        });
-
-                        final success = await widget.controller.cancelVisit(
-                          visit.id.toString(),
-                          reason: reason,
-                        );
-
-                        if (success) {
-                          Get.back();
-                        } else {
-                          setState(() {
-                            isLoading = false;
-                          });
-                        }
-                      }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppDesign.errorRed,
-                  foregroundColor: Theme.of(context).colorScheme.onError,
-                ),
-                child: isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppDesign.overlayLight),
-                        ),
-                      )
-                    : Text('yes_cancel'.tr),
-              ),
-            ],
-          );
-        },
+          ),
+        ],
       ),
-    ).then((_) {
-      reasonController.dispose();
-    });
+    );
   }
+}
+
+class _UnownedRequests extends ConsumerWidget {
+  const _UnownedRequests();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ref
+      .watch(unownedActionsProvider)
+      .when(
+        loading: () => const SizedBox.shrink(),
+        error: (error, _) => InlineRetryBanner(
+          message: visitFailureMessage(context, error),
+          onRetry: () => ref.invalidate(unownedActionsProvider),
+        ),
+        data: (actions) => actions.isEmpty
+            ? const SizedBox.shrink()
+            : Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.l10n.text('visits_legacy_requests'),
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    Text(
+                      context.l10n.text('visits_legacy_help'),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: context.design.textSecondary),
+                    ),
+                    for (final action in actions)
+                      TextButton(
+                        onPressed: () async {
+                          final database = ref.read(appDatabaseProvider);
+                          if (!await _confirmDiscard(context) || !context.mounted) return;
+                          try {
+                            await database.discardUnownedAction(action.operationId);
+                            if (context.mounted) ref.invalidate(unownedActionsProvider);
+                          } catch (error) {
+                            if (context.mounted) {
+                              AppToast.error(
+                                context.l10n.text('error'),
+                                visitFailureMessage(context, error),
+                              );
+                            }
+                          }
+                        },
+                        child: Text(context.l10n.text('visits_discard')),
+                      ),
+                  ],
+                ),
+              ),
+      );
 }

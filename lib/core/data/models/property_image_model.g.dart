@@ -6,16 +6,20 @@ part of 'property_image_model.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-PropertyImageModel _$PropertyImageModelFromJson(Map<String, dynamic> json) => PropertyImageModel(
-  id: (json['id'] as num).toInt(),
-  propertyId: (json['property_id'] as num).toInt(),
-  imageUrl: json['image_url'] as String? ?? '',
-  caption: json['caption'] as String?,
-  displayOrder: (json['display_order'] as num?)?.toInt() ?? 0,
-  isMainImage: json['is_main_image'] as bool? ?? false,
-  isMain: json['is_main'] as bool? ?? false,
-  category: json['category'] as String? ?? 'gallery',
-);
+PropertyImageModel _$PropertyImageModelFromJson(Map<String, dynamic> json) {
+  $checkKeys(json, requiredKeys: const ['id', 'property_id', 'image_url']);
+  return PropertyImageModel(
+    id: (json['id'] as num).toInt(),
+    propertyId: (json['property_id'] as num).toInt(),
+    imageUrl: json['image_url'] as String,
+    caption: json['caption'] as String?,
+    displayOrder: (json['display_order'] as num?)?.toInt() ?? 0,
+    isMainImage: json['is_main_image'] as bool? ?? false,
+    category: json['image_category'] == null
+        ? ImageCategory.others
+        : const ImageCategoryConverter().fromJson(json['image_category']),
+  );
+}
 
 Map<String, dynamic> _$PropertyImageModelToJson(PropertyImageModel instance) => <String, dynamic>{
   'id': instance.id,
@@ -24,6 +28,5 @@ Map<String, dynamic> _$PropertyImageModelToJson(PropertyImageModel instance) => 
   'caption': instance.caption,
   'display_order': instance.displayOrder,
   'is_main_image': instance.isMainImage,
-  'is_main': instance.isMain,
-  'category': instance.category,
+  'image_category': const ImageCategoryConverter().toJson(instance.category),
 };

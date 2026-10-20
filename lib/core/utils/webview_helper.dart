@@ -1,10 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
+
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 
 class WebViewHelper {
   static bool _isInitialized = false;
@@ -26,7 +33,7 @@ class WebViewHelper {
       }
       _isInitialized = true;
     } catch (e) {
-      DebugLogger.warning('WebView platform initialization failed', e);
+      DebugLogger.warning('WebView platform initialization failed: ${e.runtimeType}');
     }
   }
 
@@ -47,7 +54,11 @@ class WebViewHelper {
     );
 
     if (_isAndroid) {
-      AndroidWebViewController.enableDebugging(kDebugMode);
+      unawaited(
+        AndroidWebViewController.enableDebugging(kDebugMode).catchError((Object error) {
+          DebugLogger.warning('WebView debug setting failed: ${error.runtimeType}');
+        }),
+      );
     }
 
     return controller;
@@ -78,7 +89,7 @@ class WebViewHelper {
             onWebResourceError:
                 onWebResourceError ??
                 (WebResourceError error) {
-                  DebugLogger.warning('WebView error: ${error.description}');
+                  DebugLogger.warning('WebView resource failed: ${error.errorCode}');
                 },
           ),
         )
@@ -86,7 +97,7 @@ class WebViewHelper {
 
       return controller;
     } catch (e) {
-      DebugLogger.error('Error creating WebView controller', e);
+      DebugLogger.error('Error creating WebView controller: ${e.runtimeType}');
       rethrow;
     }
   }
@@ -109,7 +120,7 @@ class WebViewHelper {
         onPageStarted: onPageStarted,
         onPageFinished: onPageFinished,
         onWebResourceError: (error) {
-          DebugLogger.warning('WebView resource error: ${error.description}');
+          DebugLogger.warning('WebView resource failed: ${error.errorCode}');
         },
       );
 
@@ -122,7 +133,7 @@ class WebViewHelper {
         ),
       );
     } catch (e) {
-      DebugLogger.error('Error creating safe WebView', e);
+      DebugLogger.error('Error creating safe WebView: ${e.runtimeType}');
       return errorWidget ?? _buildErrorWidget(context, width, height, url);
     }
   }
@@ -140,10 +151,10 @@ class WebViewHelper {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.public_off, size: 48, color: Theme.of(context).colorScheme.outline),
+          PaperIcon(KnifeIcon.alert, size: 48, color: Theme.of(context).colorScheme.outline),
           const SizedBox(height: 16),
           Text(
-            'tour_unavailable_title'.tr,
+            context.l10n.text('tour_unavailable_title'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -152,22 +163,22 @@ class WebViewHelper {
           ),
           const SizedBox(height: 8),
           Text(
-            'tour_unavailable_body'.tr,
+            context.l10n.text('tour_unavailable_body'),
             style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
           if (kIsWeb)
             TextButton(
-              onPressed: () {
-                // Try to open in new tab for web
+              onPressed: () async {
+                final uri = Uri.tryParse(url);
+                if (uri == null || !['http', 'https'].contains(uri.scheme)) return;
                 try {
-                  // This would need url_launcher for proper implementation
-                  DebugLogger.debug('Opening URL in new tab: $url');
-                } catch (e) {
-                  DebugLogger.warning('Could not open URL', e);
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } catch (error, stack) {
+                  DebugLogger.warning('Could not open tour', error.runtimeType, stack);
                 }
               },
-              child: Text('open_in_new_tab'.tr),
+              child: Text(context.l10n.text('open_in_new_tab')),
             ),
         ],
       ),

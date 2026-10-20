@@ -1,5 +1,6 @@
-import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+
+import 'package:ghar360/core/translations/app_messages.dart';
 
 /// Formats rupee amounts the way Indian users actually read them.
 ///
@@ -20,25 +21,36 @@ class IndianCurrency {
 
   static final NumberFormat _grouped = NumberFormat.decimalPattern('en_IN');
 
-  /// A compact amount, e.g. `₹1.25 Cr`, `₹2.50 L`, `₹43,400`.
+  /// A compact amount, e.g. `₹1.25 Cr`, `₹2.5 L`, `₹85 L`, `₹43,400`.
   ///
   /// [fractionDigits] applies only to the crore/lakh forms; whole rupee
   /// amounts below a lakh are never shown with decimals.
-  static String compact(num value, {int fractionDigits = 2, bool withSymbol = true}) {
+  static String compact(
+    num value, {
+    int fractionDigits = 2,
+    bool withSymbol = true,
+    String languageCode = 'en',
+  }) {
     final symbol = withSymbol ? '₹' : '';
     final magnitude = value.abs();
     final sign = value < 0 ? '-' : '';
 
-    if (magnitude >= _crore) {
-      final amount = (magnitude / _crore).toStringAsFixed(fractionDigits);
-      return '$sign$symbol$amount ${'unit_crore'.tr}';
-    }
+    String unit(String key) => appMessages[languageCode == 'hi' ? 'hi_IN' : 'en_US']![key]!;
     if (magnitude >= _lakh) {
-      final amount = (magnitude / _lakh).toStringAsFixed(fractionDigits);
-      return '$sign$symbol$amount ${'unit_lakh'.tr}';
+      final lakhs = (magnitude / _lakh).toStringAsFixed(fractionDigits);
+      // 99.999 lakh rounds to 100: that is a crore, not "100 L".
+      if (magnitude >= _crore || double.parse(lakhs) >= 100) {
+        final crores = (magnitude / _crore).toStringAsFixed(fractionDigits);
+        return '$sign$symbol${_trim(crores)} ${unit('unit_crore')}';
+      }
+      return '$sign$symbol${_trim(lakhs)} ${unit('unit_lakh')}';
     }
     return '$sign$symbol${_grouped.format(magnitude.round())}';
   }
+
+  /// `85.0` → `85`, `2.50` → `2.5`: listings write "₹85 L", not "₹85.0 L".
+  static String _trim(String amount) =>
+      amount.contains('.') ? amount.replaceFirst(RegExp(r'\.?0+$'), '') : amount;
 
   /// The full amount with Indian digit grouping and no compaction,
   /// e.g. `₹12,50,000`. Use where an exact figure matters more than brevity.

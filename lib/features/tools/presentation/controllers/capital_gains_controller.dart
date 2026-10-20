@@ -1,40 +1,91 @@
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:get/get.dart';
-
+import 'package:ghar360/core/bootstrap/provider_policy.dart';
 import 'package:ghar360/core/utils/formatters.dart';
 
-class CapitalGainsController extends GetxController {
-  final TextEditingController purchasePriceController = TextEditingController();
-  final TextEditingController salePriceController = TextEditingController();
-  final TextEditingController improvementCostController = TextEditingController();
+class CapitalGainsResult {
+  const CapitalGainsResult({
+    required this.isLongTerm,
+    required this.indexedCost,
+    required this.capitalGain,
+    required this.taxWithIndexation,
+    required this.taxWithoutIndexation,
+  });
+  final bool isLongTerm;
+  final double indexedCost;
+  final double capitalGain;
+  final double taxWithIndexation;
+  final double taxWithoutIndexation;
+}
 
-  /// Earliest selectable date: the CII table starts at 2001.
-  static final DateTime firstSelectableDate = DateTime(2001);
-
-  static DateTime get _today => DateUtils.dateOnly(DateTime.now());
-
-  /// A property cannot be bought or sold in the future.
-  static DateTime get lastSelectableDate => _today;
-
-  static DateTime get _defaultPurchaseDate {
-    final today = _today;
-    return DateTime(today.year - 2, today.month, today.day);
+class CapitalGainsState {
+  const CapitalGainsState({
+    this.purchasePrice = '',
+    this.salePrice = '',
+    this.improvementCost = '',
+    required this.purchaseDate,
+    required this.saleDate,
+    this.result,
+    this.validationKey,
+    this.validationField,
+  });
+  factory CapitalGainsState.initial() {
+    final now = DateTime.now();
+    return CapitalGainsState(
+      purchaseDate: DateTime(now.year - 2, now.month, now.day),
+      saleDate: DateTime(now.year, now.month, now.day),
+    );
   }
+  final String purchasePrice;
+  final String salePrice;
+  final String improvementCost;
+  final DateTime purchaseDate;
+  final DateTime saleDate;
+  final CapitalGainsResult? result;
+  final String? validationKey;
+  final String? validationField;
+  bool get hasCalculated => result != null;
+  bool get isLongTerm => result?.isLongTerm ?? false;
+  double get indexedCost => result?.indexedCost ?? 0;
+  double get capitalGain => result?.capitalGain ?? 0;
+  double get taxWithIndexation => result?.taxWithIndexation ?? 0;
+  double get taxWithoutIndexation => result?.taxWithoutIndexation ?? 0;
+  CapitalGainsState copyWith({
+    String? purchasePrice,
+    String? salePrice,
+    String? improvementCost,
+    DateTime? purchaseDate,
+    DateTime? saleDate,
+    CapitalGainsResult? result,
+    String? validationKey,
+    String? validationField,
+  }) => CapitalGainsState(
+    purchasePrice: purchasePrice ?? this.purchasePrice,
+    salePrice: salePrice ?? this.salePrice,
+    improvementCost: improvementCost ?? this.improvementCost,
+    purchaseDate: purchaseDate ?? this.purchaseDate,
+    saleDate: saleDate ?? this.saleDate,
+    result: result,
+    validationKey: validationKey,
+    validationField: validationField,
+  );
+}
 
-  final Rx<DateTime> purchaseDate = _defaultPurchaseDate.obs;
-  final Rx<DateTime> saleDate = _today.obs;
-  final RxBool hasCalculated = false.obs;
-  final RxString validationError = ''.obs;
+final capitalGainsProvider =
+    NotifierProvider.autoDispose<CapitalGainsController, CapitalGainsState>(
+      CapitalGainsController.new,
+      retry: noProviderRetry,
+    );
 
-  // Results
-  final RxBool isLongTerm = false.obs;
-  final RxDouble indexedCost = 0.0.obs;
-  final RxDouble capitalGain = 0.0.obs;
-  final RxDouble taxWithIndexation = 0.0.obs;
-  final RxDouble taxWithoutIndexation = 0.0.obs;
-
-  // Cost Inflation Index (CII) values - updated for FY 2024-25
+class CapitalGainsController extends Notifier<CapitalGainsState> {
+  @override
+  CapitalGainsState build() => CapitalGainsState.initial();
+  static final DateTime firstSelectableDate = DateTime(2001, 4);
+  static DateTime get lastSelectableDate => _dateOnly(DateTime.now());
+  static DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+  static int financialYear(DateTime date) => date.month < 4 ? date.year - 1 : date.year;
+  // Official CII table by financial-year starting year:
+  // https://www.incometaxindia.gov.in/hi/w/view-all-cii
   static const Map<int, int> ciiValues = {
     2001: 100,
     2002: 105,
@@ -60,105 +111,89 @@ class CapitalGainsController extends GetxController {
     2022: 331,
     2023: 348,
     2024: 363,
-    2025: 363, // Using 2024 value as 2025 not yet announced
+    2025: 376,
+    2026: 384,
   };
 
-  /// Long-term iff the asset was held for STRICTLY MORE than 24 months, by
-  /// real date arithmetic. `DateTime` normalises month overflow, so
-  /// `month + 24` rolls the year over correctly.
-  ///
-  /// Boundary: bought 15 Jan 2023, sold 15 Jan 2025 = exactly 24 months =
-  /// short-term; sold 16 Jan 2025 = long-term.
   static bool isLongTermHolding(DateTime purchase, DateTime sale) {
     final boundary = DateTime(purchase.year, purchase.month + 24, purchase.day);
-    return DateUtils.dateOnly(sale).isAfter(boundary);
+    return _dateOnly(sale).isAfter(boundary);
   }
 
-  void setPurchaseDate(DateTime date) => purchaseDate.value = DateUtils.dateOnly(date);
+  void updateInputs({String? purchasePrice, String? salePrice, String? improvementCost}) {
+    if ((purchasePrice == null || purchasePrice == state.purchasePrice) &&
+        (salePrice == null || salePrice == state.salePrice) &&
+        (improvementCost == null || improvementCost == state.improvementCost)) {
+      return;
+    }
+    state = state.copyWith(
+      purchasePrice: purchasePrice,
+      salePrice: salePrice,
+      improvementCost: improvementCost,
+    );
+  }
 
-  void setSaleDate(DateTime date) => saleDate.value = DateUtils.dateOnly(date);
-
+  void setPurchaseDate(DateTime date) => state = state.copyWith(purchaseDate: _dateOnly(date));
+  void setSaleDate(DateTime date) => state = state.copyWith(saleDate: _dateOnly(date));
   void calculate() {
-    final purchasePrice = double.tryParse(purchasePriceController.text) ?? 0;
-    final salePrice = double.tryParse(salePriceController.text) ?? 0;
-    final improvementCost = double.tryParse(improvementCostController.text) ?? 0;
-
-    if (!Formatters.isPositiveFinite(purchasePrice) ||
-        !Formatters.isPositiveFinite(salePrice) ||
-        !improvementCost.isFinite ||
-        improvementCost < 0) {
-      validationError.value = 'please_enter_valid_amounts'.tr;
-      hasCalculated.value = false;
+    final purchase = double.tryParse(state.purchasePrice.trim()) ?? 0;
+    final sale = double.tryParse(state.salePrice.trim()) ?? 0;
+    final improvement = state.improvementCost.trim().isEmpty
+        ? 0.0
+        : double.tryParse(state.improvementCost.trim());
+    if (!Formatters.isPositiveFinite(purchase) ||
+        !Formatters.isPositiveFinite(sale) ||
+        improvement == null ||
+        !improvement.isFinite ||
+        improvement < 0) {
+      state = state.copyWith(
+        validationKey: 'please_enter_valid_amounts',
+        validationField: !Formatters.isPositiveFinite(purchase)
+            ? 'purchasePrice'
+            : !Formatters.isPositiveFinite(sale)
+            ? 'salePrice'
+            : 'improvementCost',
+      );
       return;
     }
-
-    if (saleDate.value.isBefore(purchaseDate.value)) {
-      validationError.value = 'sale_date_must_be_after_purchase_date'.tr;
-      hasCalculated.value = false;
+    if (state.saleDate.isBefore(state.purchaseDate)) {
+      state = state.copyWith(validationKey: 'sale_date_must_be_after_purchase_date');
       return;
     }
-
-    validationError.value = '';
-
-    isLongTerm.value = isLongTermHolding(purchaseDate.value, saleDate.value);
-
-    if (isLongTerm.value) {
-      // Long-term capital gains calculation. CII is keyed by the YEAR of each date.
-      final purchaseCii = ciiValues[purchaseDate.value.year] ?? 301;
-      final saleCii = ciiValues[saleDate.value.year] ?? 363;
-
-      // Indexed cost = Purchase price * (Sale CII / Purchase CII)
-      final indexedPurchase = purchasePrice * saleCii / purchaseCii;
-      final indexedImprovement = improvementCost * saleCii / purchaseCii;
-      indexedCost.value = indexedPurchase + indexedImprovement;
-
-      // Capital gain with indexation
-      final gainWithIndexation = salePrice - indexedCost.value;
-      capitalGain.value = gainWithIndexation > 0 ? gainWithIndexation : 0;
-
-      // Tax calculation (post Budget 2024)
-      // Option 1: 20% with indexation (old regime, grandfathered)
-      // Option 2: 12.5% without indexation (new regime)
-      taxWithIndexation.value = capitalGain.value * 0.20;
-
-      // Without indexation
-      final gainWithoutIndexation = salePrice - purchasePrice - improvementCost;
-      taxWithoutIndexation.value = (gainWithoutIndexation > 0 ? gainWithoutIndexation : 0) * 0.125;
-    } else {
-      // Short-term: Added to income, taxed at slab rates
-      // Using 30% as highest slab for estimation
-      indexedCost.value = purchasePrice + improvementCost;
-      capitalGain.value = salePrice - indexedCost.value;
-      if (capitalGain.value < 0) capitalGain.value = 0;
-
-      // Estimate at 30% slab
-      taxWithIndexation.value = capitalGain.value * 0.30;
-      taxWithoutIndexation.value = capitalGain.value * 0.30;
+    if (state.purchaseDate.isBefore(firstSelectableDate) ||
+        state.saleDate.isAfter(lastSelectableDate)) {
+      state = state.copyWith(validationKey: 'capital_gains_dates_invalid');
+      return;
     }
-
-    hasCalculated.value = true;
+    final longTerm = isLongTermHolding(state.purchaseDate, state.saleDate);
+    var indexed = purchase + improvement;
+    if (longTerm) {
+      final purchaseCii = ciiValues[financialYear(state.purchaseDate)];
+      final saleCii = ciiValues[financialYear(state.saleDate)];
+      if (purchaseCii == null || saleCii == null) {
+        state = state.copyWith(validationKey: 'capital_gains_index_unavailable');
+        return;
+      }
+      indexed = (purchase + improvement) * saleCii / purchaseCii;
+    }
+    final gain = (sale - indexed).clamp(0.0, double.infinity);
+    final unindexedGain = (sale - purchase - improvement).clamp(0.0, double.infinity);
+    final indexedTax = gain * (longTerm ? .20 : .30);
+    final unindexedTax = longTerm ? unindexedGain * .125 : gain * .30;
+    if (![indexed, gain, indexedTax, unindexedTax].every((value) => value.isFinite)) {
+      state = state.copyWith(validationKey: 'please_enter_valid_amounts');
+      return;
+    }
+    state = state.copyWith(
+      result: CapitalGainsResult(
+        isLongTerm: longTerm,
+        indexedCost: indexed,
+        capitalGain: gain,
+        taxWithIndexation: indexedTax,
+        taxWithoutIndexation: unindexedTax,
+      ),
+    );
   }
 
-  void clear() {
-    purchasePriceController.clear();
-    salePriceController.clear();
-    improvementCostController.clear();
-    purchaseDate.value = _defaultPurchaseDate;
-    saleDate.value = _today;
-    hasCalculated.value = false;
-    validationError.value = '';
-    isLongTerm.value = false;
-    indexedCost.value = 0;
-    capitalGain.value = 0;
-    taxWithIndexation.value = 0;
-    taxWithoutIndexation.value = 0;
-  }
-
-  @override
-  void onClose() {
-    purchasePriceController.dispose();
-    salePriceController.dispose();
-    improvementCostController.dispose();
-    super.onClose();
-  }
+  void clear() => state = CapitalGainsState.initial();
 }

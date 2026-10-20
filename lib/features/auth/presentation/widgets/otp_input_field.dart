@@ -3,10 +3,14 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
+
 import 'package:sms_autofill/sms_autofill.dart';
+
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 
 /// Reusable 6-digit OTP input with Android SMS autofill (`CodeAutoFill`) and
 /// `autofillHints: oneTimeCode` for the iOS keyboard suggestion bar.
@@ -51,10 +55,14 @@ class _OtpInputFieldState extends State<OtpInputField> with CodeAutoFill {
   Future<void> _startListeningForSms() async {
     try {
       await SmsAutoFill().listenForCode();
+      if (!mounted) {
+        await SmsAutoFill().unregisterListener();
+        return;
+      }
       _smsListening = true;
     } catch (e) {
       // SMS autofill unavailable (e.g. emulator without Play services).
-      DebugLogger.debug('OtpInputField: SMS autofill unavailable: $e');
+      DebugLogger.debug('SMS autofill unavailable', e.runtimeType);
     }
   }
 
@@ -74,7 +82,7 @@ class _OtpInputFieldState extends State<OtpInputField> with CodeAutoFill {
       try {
         SmsAutoFill().unregisterListener();
       } catch (e) {
-        DebugLogger.debug('🟡 SMS listener unregister failed (ignored): $e');
+        DebugLogger.debug('SMS listener removal failed', e.runtimeType);
       }
     }
     super.dispose();
@@ -84,7 +92,6 @@ class _OtpInputFieldState extends State<OtpInputField> with CodeAutoFill {
   Widget build(BuildContext context) {
     final label = widget.semanticsLabel ?? 'qa.auth.otp_input';
     return Semantics(
-      label: label,
       identifier: label,
       child: TextFormField(
         key: ValueKey(label),
@@ -95,8 +102,8 @@ class _OtpInputFieldState extends State<OtpInputField> with CodeAutoFill {
         maxLength: 6,
         textAlign: TextAlign.center,
         autofillHints: const [AutofillHints.oneTimeCode],
-        style: const TextStyle(
-          color: AppDesign.overlayLight,
+        style: TextStyle(
+          color: context.design.textPrimary,
           letterSpacing: 8,
           fontWeight: FontWeight.w700,
           fontSize: 24,
@@ -106,10 +113,13 @@ class _OtpInputFieldState extends State<OtpInputField> with CodeAutoFill {
           LengthLimitingTextInputFormatter(6),
         ],
         decoration: InputDecoration(
-          labelText: 'enter_otp'.tr,
-          hintText: 'otp_hint'.tr,
+          labelText: context.l10n.text('enter_otp'),
+          hintText: context.l10n.text('otp_hint'),
           counterText: '',
-          prefixIcon: const Icon(Icons.security),
+          prefixIcon: const Padding(
+            padding: EdgeInsets.all(12),
+            child: PaperIcon(KnifeIcon.shield, size: 20),
+          ),
         ),
         onChanged: (value) {
           widget.onChanged?.call(value);

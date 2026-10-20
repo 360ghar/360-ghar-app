@@ -1,54 +1,28 @@
-// lib/features/auth/presentation/controllers/otp_resend_timer.dart
-
 import 'dart:async';
 
-import 'package:get/get.dart';
-
-/// Reusable 30-second resend-OTP countdown for auth controllers.
-///
-/// Standardizes every OTP step (signup OTP, login OTP-first, add-phone) to a
-/// 30-second cooldown after an OTP is sent: [canResendOtp] is false and
-/// [otpCountdown] ticks down each second; once it reaches 0 the resend control
-/// becomes enabled.
-mixin OtpResendTimer on GetxController {
-  /// Standard resend cooldown for all OTP steps.
+/// Recomputes elapsed time after app suspension and releases its timer on dispose.
+class OtpResendTimer {
+  OtpResendTimer(this.onTick, {DateTime Function()? now}) : _now = now ?? DateTime.now;
   static const int resendCooldownSeconds = 30;
-
-  final RxBool canResendOtp = false.obs;
-  final RxInt otpCountdown = 0.obs;
-
-  Timer? _otpTimer;
-  bool _otpTimerDisposed = false;
-
-  /// Starts (or restarts) the 30-second resend countdown.
-  void startOtpCountdown() {
-    cancelOtpTimer();
-    canResendOtp.value = false;
-    otpCountdown.value = resendCooldownSeconds;
-    _otpTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_otpTimerDisposed) {
-        timer.cancel();
-        return;
-      }
-      if (otpCountdown.value > 0) {
-        otpCountdown.value--;
-      }
-      if (otpCountdown.value <= 0) {
-        canResendOtp.value = true;
-        timer.cancel();
-        _otpTimer = null;
-      }
+  final void Function(int seconds) onTick;
+  final DateTime Function() _now;
+  Timer? _timer;
+  void start() {
+    cancel();
+    final deadline = _now().add(const Duration(seconds: resendCooldownSeconds));
+    onTick(resendCooldownSeconds);
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final remaining = (deadline.difference(_now()).inMilliseconds / 1000).ceil().clamp(
+        0,
+        resendCooldownSeconds,
+      );
+      onTick(remaining);
+      if (remaining == 0) cancel();
     });
   }
 
-  void cancelOtpTimer() {
-    _otpTimer?.cancel();
-    _otpTimer = null;
-  }
-
-  /// Call from the host controller's onClose/dispose to stop the timer.
-  void disposeOtpTimer() {
-    _otpTimerDisposed = true;
-    cancelOtpTimer();
+  void cancel() {
+    _timer?.cancel();
+    _timer = null;
   }
 }

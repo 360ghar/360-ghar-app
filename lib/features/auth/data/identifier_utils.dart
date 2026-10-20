@@ -1,8 +1,6 @@
-// lib/features/auth/data/identifier_utils.dart
-
-import 'package:get/get.dart';
-
 import 'package:ghar360/core/utils/formatters.dart';
+
+// lib/features/auth/data/identifier_utils.dart
 
 /// Helpers for auto-detecting whether a free-form identifier is an email or a
 /// phone number, normalizing it for the backend / Supabase, and masking it for
@@ -15,7 +13,10 @@ class IdentifierUtils {
   static final RegExp _e164In = RegExp(r'^\+91[0-9]{10}$');
 
   /// True when the trimmed [value] looks like an email address.
-  static bool isEmail(String value) => GetUtils.isEmail(value.trim());
+  static final RegExp _email = RegExp(
+    r'^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$',
+  );
+  static bool isEmail(String value) => _email.hasMatch(value.trim());
 
   /// True when the trimmed [value] looks like a (10-digit or +91) phone number.
   static bool isPhone(String value) {

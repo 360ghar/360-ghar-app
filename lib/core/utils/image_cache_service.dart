@@ -1,228 +1,165 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
+import 'package:flutter_cache_manager/file.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Unified image caching service that works across web and mobile platforms
-class ImageCacheService {
-  static const String _cacheKey = 'robust_image_cache';
-  static const Duration _defaultMaxAge = Duration(hours: 24);
-  static const int _maxCacheSize = 200 * 1024 * 1024; // 200MB
-  static const int _maxFilesCount = 200;
+import 'package:ghar360/core/utils/debug_logger.dart';
 
-  // Singleton instance
-  static ImageCacheService? _instance;
-  static ImageCacheService get instance {
-    _instance ??= ImageCacheService._();
-    return _instance!;
-  }
-
-  late final CacheManager _cacheManager;
-
-  ImageCacheService._() {
-    _cacheManager = CacheManager(
+/// One cache owner per application ProviderScope. Widgets only borrow it.
+final imageCacheServiceProvider = Provider<ImageCacheService>((ref) {
+  final service = ImageCacheService(
+    cacheManager: CacheManager(
       Config(
-        _cacheKey,
-        stalePeriod: _defaultMaxAge,
-        maxNrOfCacheObjects: _maxFilesCount,
-        repo: JsonCacheInfoRepository(databaseName: _cacheKey),
-        fileService: HttpFileService(),
+        'robust_image_cache',
+        stalePeriod: const Duration(hours: 24),
+        maxNrOfCacheObjects: 200,
+        // The JSON index opens a file through path_provider, which web lacks;
+        // web keeps the package's in-memory default.
+        repo: kIsWeb
+            ? NonStoringObjectProvider()
+            : ImageCacheInfoRepository(databaseName: 'robust_image_cache'),
       ),
-    );
-  }
+    ),
+  );
+  ref.onDispose(
+    () => unawaited(
+      service.dispose().catchError((Object error) {
+        DebugLogger.warning('Image cache close failed: ${error.runtimeType}');
+      }),
+    ),
+  );
+  return service;
+}, retry: (_, _) => null);
 
-  /// Get cached image file or download from network
-  Future<File?> getImageFile(String url) async {
-    if (!isValidImageUrl(url)) {
-      return null;
-    }
-
+/// JsonCacheInfoRepository.close writes its file before the package waits for
+/// open. Scope disposal may occur while the platform directory call is pending.
+/// Keep both operations on the same initialization future before closing.
+class ImageCacheInfoRepository extends JsonCacheInfoRepository {
+  ImageCacheInfoRepository({super.path, super.databaseName});
+  ImageCacheInfoRepository.withFile(super.file) : super.withFile();
+  Future<bool>? _opening;
+  Future<bool>? _closing;
+  @override
+  Future<bool> open() => _opening ??= super.open();
+  @override
+  Future<bool> close() => _closing ??= _closeAfterOpen();
+  Future<bool> _closeAfterOpen() async {
+    final opening = _opening;
+    if (opening == null) return false;
     try {
-      final fileInfo = await _cacheManager.getFileFromCache(url);
-      if (fileInfo != null && fileInfo.file.existsSync()) {
-        // Check if cached file is still valid
-        if (await _isFileValid(fileInfo.file)) {
-          return fileInfo.file;
-        } else {
-          // Remove invalid cached file
-          await _cacheManager.removeFile(url);
-        }
-      }
-
-      // Download new file
-      final newFileInfo = await _cacheManager.downloadFile(url, key: url);
-
-      return newFileInfo.file;
-    } catch (e) {
-      debugPrint('Error loading image from cache: $e');
-      return null;
-    }
-  }
-
-  /// Get image as bytes for web platform
-  Future<Uint8List?> getImageBytes(String url) async {
-    if (!isValidImageUrl(url)) {
-      return null;
-    }
-
-    try {
-      final file = await getImageFile(url);
-      if (file != null) {
-        return await file.readAsBytes();
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Error getting image bytes: $e');
-      return null;
-    }
-  }
-
-  /// Check if URL is valid for caching
-  bool isValidImageUrl(String url) {
-    if (url.isEmpty) return false;
-    try {
-      final uri = Uri.parse(url);
-      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https') && uri.hasAuthority;
-    } catch (e) {
+      await opening;
+    } catch (_) {
+      // An unsuccessful open owns no initialized file to flush.
       return false;
     }
-  }
-
-  /// Check if cached file is still valid (exists and not corrupted)
-  Future<bool> _isFileValid(File file) async {
-    try {
-      return file.existsSync() && file.lengthSync() > 0;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /// Remove specific image from cache
-  Future<void> removeFromCache(String url) async {
-    try {
-      await _cacheManager.removeFile(url);
-    } catch (e) {
-      debugPrint('Error removing image from cache: $e');
-    }
-  }
-
-  /// Clear all cached images
-  Future<void> clearCache() async {
-    try {
-      await _cacheManager.emptyCache();
-    } catch (e) {
-      debugPrint('Error clearing cache: $e');
-    }
-  }
-
-  /// Get cache size in bytes
-  Future<int> getCacheSize() async {
-    try {
-      // flutter_cache_manager doesn't expose cache size directly
-      // Return 0 as we can't determine this easily
-      return 0;
-    } catch (e) {
-      debugPrint('Error getting cache size: $e');
-      return 0;
-    }
-  }
-
-  /// Get cache file count
-  Future<int> getCacheFileCount() async {
-    try {
-      // flutter_cache_manager doesn't expose cache count directly
-      // Return 0 as we can't determine this easily
-      return 0;
-    } catch (e) {
-      debugPrint('Error getting cache file count: $e');
-      return 0;
-    }
-  }
-
-  /// Remove expired cache entries
-  Future<void> cleanExpiredCache() async {
-    try {
-      // flutter_cache_manager handles expiration automatically
-      // We can clear all files and let the cache manager re-download as needed
-      await _cacheManager.emptyCache();
-    } catch (e) {
-      debugPrint('Error cleaning expired cache: $e');
-    }
-  }
-
-  /// Dispose cache manager (call on app termination)
-  Future<void> dispose() async {
-    try {
-      await _cacheManager.dispose();
-      _instance = null;
-    } catch (e) {
-      debugPrint('Error disposing cache manager: $e');
-    }
-  }
-
-  /// Smart cache cleanup based on size and age
-  Future<void> smartCleanup() async {
-    try {
-      // For flutter_cache_manager, the best approach is to clear expired entries
-      // and let the built-in size limits handle the rest
-      await cleanExpiredCache();
-    } catch (e) {
-      debugPrint('Error during smart cleanup: $e');
-    }
-  }
-
-  /// Set custom cache configuration
-  Future<void> updateCacheConfig({Duration? maxAge, int? maxSize, int? maxFiles}) async {
-    try {
-      // Note: flutter_cache_manager doesn't support runtime config changes
-      // This would require recreating the cache manager
-      debugPrint('Cache config update requested. Restart app for changes to take effect.');
-    } catch (e) {
-      debugPrint('Error updating cache config: $e');
-    }
-  }
-
-  /// Get cache statistics
-  Future<Map<String, dynamic>> getCacheStats() async {
-    try {
-      // For flutter_cache_manager, we don't have direct access to cache info
-      // We'll return basic configuration info
-      return {
-        'maxAge': _defaultMaxAge.toString(),
-        'maxSize': _maxCacheSize,
-        'maxFiles': _maxFilesCount,
-        'note': 'flutter_cache_manager handles cache internally',
-      };
-    } catch (e) {
-      debugPrint('Error getting cache stats: $e');
-      return {};
-    }
+    return super.close();
   }
 }
 
-/// Extension for easier cache operations
-extension ImageCacheServiceExtension on ImageCacheService {
-  /// Preload image into cache
-  Future<void> preloadImage(String url) async {
-    if (isValidImageUrl(url)) {
-      await getImageFile(url);
+/// Owns the disk cache shared by displayed images and speculative downloads.
+///
+/// The cache manager evicts the least recently used files above 200 entries and
+/// files unused for 24 hours. HTTP cache headers control response freshness.
+/// There is no claimed byte limit or estimated cache-size reporting.
+class ImageCacheService {
+  ImageCacheService({required this.cacheManager});
+
+  /// The application owns this manager. Individual image widgets must not
+  /// dispose it. Tests and scoped owners can supply an isolated manager.
+  final BaseCacheManager cacheManager;
+  final Map<String, Future<void>> _prefetches = {};
+  bool _disposed = false;
+
+  bool isValidImageUrl(String url) => isValidUrl(url);
+
+  static bool isValidUrl(String url) {
+    if (url.isEmpty || url.trim() != url) return false;
+    final uri = Uri.tryParse(url);
+    return uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty &&
+        uri.userInfo.isEmpty;
+  }
+
+  /// Fetches only fresh, nonempty files. CacheManager preserves HTTP expiry and
+  /// request deduplication; an expired cache entry must not bypass revalidation.
+  Future<File?> getImageFile(String url) async {
+    if (_disposed || !isValidImageUrl(url)) return null;
+    try {
+      final cached = await cacheManager.getFileFromCache(url);
+      if (cached != null && (!await cached.file.exists() || await cached.file.length() == 0)) {
+        await cacheManager.removeFile(url);
+      }
+      if (_disposed) return null;
+      final file = await cacheManager.getSingleFile(url);
+      if (_disposed || !await file.exists() || await file.length() == 0) return null;
+      return file;
+    } catch (_) {
+      // Images recover locally. Do not log signed URLs or response bodies.
+      return null;
     }
   }
 
-  /// Invalidate cache for specific URL with delay
-  Future<void> invalidateCacheDelayed(String url, Duration delay) async {
-    Future.delayed(delay, () => removeFromCache(url));
+  Future<Uint8List?> getImageBytes(String url) async {
+    try {
+      return await (await getImageFile(url))?.readAsBytes();
+    } catch (_) {
+      return null;
+    }
   }
 
-  /// Check if image exists in cache
   Future<bool> isImageCached(String url) async {
+    if (_disposed || !isValidImageUrl(url)) return false;
     try {
-      final fileInfo = await _cacheManager.getFileFromCache(url);
-      return fileInfo != null && fileInfo.file.existsSync();
-    } catch (e) {
+      final info = await cacheManager.getFileFromCache(url);
+      return info != null && await info.file.exists() && await info.file.length() > 0;
+    } catch (_) {
       return false;
     }
+  }
+
+  /// At most two speculative downloads run at once across all galleries.
+  /// When both slots are occupied, drop the speculative request; a visible
+  /// image can still request its file normally. Duplicate requests share work.
+  Future<void> preloadImage(String url) {
+    if (_disposed || !isValidImageUrl(url)) return Future<void>.value();
+    final existing = _prefetches[url];
+    if (existing != null) return existing;
+    if (_prefetches.length >= 2) return Future<void>.value();
+    final future = getImageFile(url).then<void>((_) {}).whenComplete(() {
+      _prefetches.remove(url);
+    });
+    _prefetches[url] = future;
+    return future;
+  }
+
+  /// Only the next two images are prefetched, to disk without decoded copies.
+  /// The owner supplies [isCurrent] to stop work after paging or disposal.
+  Future<void> preloadImages(Iterable<String> urls, {bool Function()? isCurrent}) async {
+    for (final url in urls.where(isValidImageUrl).toSet().take(2)) {
+      if (_disposed || isCurrent?.call() == false) return;
+      await preloadImage(url);
+    }
+  }
+
+  /// Explicit eviction. Errors reach the caller so it cannot claim success
+  /// when local storage failed. Flutter's decoded image cache is widget-owned.
+  Future<void> removeFromCache(String url) async {
+    await cacheManager.removeFile(url);
+  }
+
+  Future<void> clearCache() async {
+    await cacheManager.emptyCache();
+  }
+
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    await Future.wait(_prefetches.values.toList());
+    await cacheManager.dispose();
   }
 }

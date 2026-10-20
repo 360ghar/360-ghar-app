@@ -3,70 +3,53 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/design/app_design_tokens.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/widgets/common/property_list_card.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import 'package:ghar360/features/properties/application/swipe_history.dart';
 
-/// The property list for the Explore map.
-///
-/// Renders as a horizontal card strip (phone/compact) or a vertical list
-/// inside a tablet side panel (expanded/large). The horizontal layout is the
-/// original design and must stay visually identical on compact widths; the
-/// vertical layout is selected via [direction] = [Axis.vertical] from the
-/// two-pane tablet shell.
-class PropertyHorizontalList extends StatefulWidget {
-  final ExploreController controller;
+/// The horizontal strip of homes under the Explore map. Scrolling highlights
+/// the home on the map; a marker tap scrolls its card to the middle.
+class PropertyHorizontalList extends ConsumerStatefulWidget {
+  const PropertyHorizontalList({super.key, this.onOpen, this.openId});
 
-  /// Scroll axis of the list. Defaults to [Axis.horizontal] (phone). The tablet
-  /// side panel passes [Axis.vertical].
-  final Axis direction;
+  /// Opens a home in the detail pane. Null pushes the details route.
+  final ValueChanged<PropertyModel>? onOpen;
 
-  const PropertyHorizontalList({
-    super.key,
-    required this.controller,
-    this.direction = Axis.horizontal,
-  });
+  /// The home shown in the detail pane.
+  final int? openId;
+
+  static double height(BuildContext context) =>
+      220 + (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0, 28) * 6;
 
   @override
-  State<PropertyHorizontalList> createState() => _PropertyHorizontalListState();
+  ConsumerState<PropertyHorizontalList> createState() => _PropertyHorizontalListState();
 }
 
-class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
+class _PropertyHorizontalListState extends ConsumerState<PropertyHorizontalList> {
   final ScrollController _scrollController = ScrollController();
-  Worker? _selectionWorker;
+  ExploreController get controller => ref.read(exploreProvider.notifier);
   int? _lastSelectedId;
   Timer? _scrollDebounce;
 
-  // Horizontal card geometry (unchanged from the original layout).
   static const double _itemWidth = 260.0;
   static const double _spacing = 12.0;
-  // Vertical list item height — matches PropertyListCard's intrinsic height.
-  static const double _verticalItemHeight = 112.0 + 86.0;
 
   @override
   void initState() {
     super.initState();
-    // Listen to selected property changes to auto-scroll
-    _selectionWorker = ever(widget.controller.selectedProperty, (PropertyModel? p) {
-      if (p == null) return;
-      if (_lastSelectedId == p.id) return;
-      _lastSelectedId = p.id;
-      HapticFeedback.selectionClick();
-      _scrollToProperty(p.id);
-    });
-
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
-    _selectionWorker?.dispose();
     _scrollDebounce?.cancel();
     _scrollController.dispose();
     super.dispose();
@@ -74,57 +57,49 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
 
   void _scrollToProperty(int propertyId) {
     try {
-      final index = widget.controller.properties.indexWhere((e) => e.id == propertyId);
+      final index = controller.properties.indexWhere((e) => e.id == propertyId);
       if (index == -1) return;
-
-      final isVertical = widget.direction == Axis.vertical;
-      final itemExtent = isVertical ? _verticalItemHeight : _itemWidth;
       final viewportDimension = _scrollController.position.viewportDimension;
-
-      // Center the selected card in the viewport
-      final target = index * (itemExtent + _spacing) - (viewportDimension / 2) + (itemExtent / 2);
+      // Center the selected card in the viewport.
+      final target = index * (_itemWidth + _spacing) - (viewportDimension / 2) + (_itemWidth / 2);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _scrollController.animateTo(
           target.clamp(0, _scrollController.position.maxScrollExtent),
-          duration: AppDurations.normal,
+          duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : AppDurations.normal,
           curve: AppCurves.standard,
         );
       });
-    } catch (e) {
-      DebugLogger.warning('Could not scroll to property: $e');
+    } catch (e, stack) {
+      DebugLogger.warning('Could not scroll to property', e, stack);
     }
   }
 
   void _onScroll() {
     _maybeLoadMore();
-
-    // Debounce to avoid spamming highlight updates
+    // Debounce to avoid spamming highlight updates.
     _scrollDebounce?.cancel();
     _scrollDebounce = Timer(const Duration(milliseconds: 80), () {
       try {
-        final isVertical = widget.direction == Axis.vertical;
-        final itemExtent = isVertical ? _verticalItemHeight : _itemWidth;
-        final offset = _scrollController.offset;
-        final rawIndex = offset / (itemExtent + _spacing);
-        final index = rawIndex.round().clamp(0, widget.controller.properties.length - 1);
-        if (widget.controller.properties.isEmpty) return;
-        final property = widget.controller.properties[index];
+        final properties = controller.properties;
+        if (properties.isEmpty) return;
+        final rawIndex = _scrollController.offset / (_itemWidth + _spacing);
+        final property = properties[rawIndex.round().clamp(0, properties.length - 1)];
         if (property.id != _lastSelectedId) {
           _lastSelectedId = property.id;
-          widget.controller.highlightPropertyFromCard(property);
+          controller.highlightPropertyFromCard(property);
         }
       } catch (e, st) {
-        DebugLogger.debug('🟡 Highlight sync from scroll failed (ignored): $e', e, st);
+        DebugLogger.debug('Highlight sync from scroll failed', e, st);
       }
     });
   }
 
   void _maybeLoadMore() {
     try {
-      if (!widget.controller.hasMore || widget.controller.isLoadingMore) return;
+      if (!controller.hasMore || controller.isLoadingMore) return;
       if (_scrollController.position.extentAfter < 300) {
-        unawaited(widget.controller.loadMoreProperties());
+        unawaited(controller.loadMoreProperties());
       }
     } catch (_) {
       // ScrollController may not have position yet.
@@ -133,107 +108,79 @@ class _PropertyHorizontalListState extends State<PropertyHorizontalList> {
 
   @override
   Widget build(BuildContext context) {
-    final isVertical = widget.direction == Axis.vertical;
-
-    return Obx(() {
-      final properties = widget.controller.properties;
-      // Force Obx to subscribe to like state changes
-      final _ = widget.controller.likedOverrides.entries.toList();
-      if (properties.isEmpty) {
-        if (isVertical) {
-          return SizedBox(
-            height: double.infinity,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Text(
-                  'no_properties_found'.tr,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? AppDesignTokens.darkTextSecondary
-                        : AppDesignTokens.neutral500,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-        return SizedBox(
-          height: 48,
-          child: Center(
-            child: Text(
-              'no_properties_found'.tr,
-              style: TextStyle(fontSize: 13, color: AppDesign.textSecondary),
-            ),
+    final properties = ref.watch(
+      propertyQueryProvider(PropertyFeed.explore).select((state) => state.items),
+    );
+    ref.listen(exploreProvider.select((state) => state.selectedId), (_, id) {
+      if (id == null || id == _lastSelectedId) return;
+      _lastSelectedId = id;
+      HapticFeedback.selectionClick();
+      _scrollToProperty(id);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scrollController.hasClients) _maybeLoadMore();
+    });
+    if (properties.isEmpty) {
+      return SizedBox(
+        height: 48,
+        child: Center(
+          child: Text(
+            context.l10n.text('no_properties_found'),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: context.design.textSecondary),
           ),
-        );
-      }
-
-      // Vertical list for the tablet side panel.
-      if (isVertical) {
-        return ListView.separated(
-          controller: _scrollController,
-          scrollDirection: Axis.vertical,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-          itemBuilder: (context, index) => _buildCard(context, properties[index]),
-          separatorBuilder: (context, index) => const SizedBox(height: _spacing),
-          itemCount: properties.length,
-        );
-      }
-
-      // Horizontal card strip (original phone layout — visually unchanged).
-      return Container(
-        height: 220,
-        padding: const EdgeInsets.only(bottom: 10),
-        child: ListView.separated(
-          controller: _scrollController,
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemBuilder: (context, index) => _buildCard(context, properties[index]),
-          separatorBuilder: (context, index) => const SizedBox(width: _spacing),
-          itemCount: properties.length,
         ),
       );
-    });
-  }
-
-  Widget _buildCard(BuildContext context, PropertyModel property) {
-    final isVertical = widget.direction == Axis.vertical;
-    final isSelected = widget.controller.selectedProperty.value?.id == property.id;
-    final isFavourite = widget.controller.isPropertyLiked(property);
-
-    // The card uses an Expanded content row, so it needs a bounded height on
-    // both axes. In the horizontal strip the parent gives it height: 220; in
-    // the vertical side panel we constrain it explicitly via SizedBox.
-    final card = PropertyListCard(
-      property: property,
-      isFavourite: isFavourite,
-      onFavouriteToggle: () => widget.controller.toggleLike(property),
-    );
-
-    final container = AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      width: isVertical ? double.infinity : _itemWidth,
-      clipBehavior: Clip.hardEdge,
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        color: isSelected
-            ? (Theme.of(context).brightness == Brightness.dark
-                  ? AppDesignTokens.brandGold.withValues(alpha: 0.18)
-                  : AppDesignTokens.brandGoldSubtle.withValues(alpha: 0.5))
-            : null,
-        border: Border.all(
-          color: isSelected ? AppDesignTokens.brandGold : AppDesign.transparent,
-          width: isSelected ? 1.5 : 0,
+    }
+    return SizedBox(
+      height: PropertyHorizontalList.height(context),
+      child: ListView.separated(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        itemBuilder: (context, index) => SizedBox(
+          width: _itemWidth,
+          child: _ExploreCard(
+            property: properties[index],
+            open: widget.openId == properties[index].id,
+            onOpen: widget.onOpen,
+          ),
         ),
+        separatorBuilder: (context, index) => const SizedBox(width: _spacing),
+        itemCount: properties.length,
       ),
-      child: card,
     );
+  }
+}
 
-    if (!isVertical) return container;
-    return SizedBox(height: _verticalItemHeight, child: container);
+/// One card. It watches only its own selection and like state, so a
+/// highlight or a like rebuilds this card and not the strip.
+class _ExploreCard extends ConsumerWidget {
+  const _ExploreCard({required this.property, required this.open, this.onOpen});
+
+  final PropertyModel property;
+  final bool open;
+  final ValueChanged<PropertyModel>? onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final highlighted = ref.watch(exploreProvider.select((s) => s.selectedId == property.id));
+    final liked = ref.watch(
+      swipeHistoryProvider.select((h) => h.entries[property.id]?.isLiked ?? property.liked),
+    );
+    final controller = ref.read(exploreProvider.notifier);
+    return PropertyListCard(
+      property: property,
+      isFavourite: liked,
+      selected: open || highlighted,
+      onFavouriteToggle: () => controller.toggleLike(property),
+      onTap: onOpen == null
+          ? null
+          : () {
+              controller.highlightPropertyFromCard(property);
+              onOpen!(property);
+            },
+    );
   }
 }

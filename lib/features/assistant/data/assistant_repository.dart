@@ -1,113 +1,88 @@
 import 'dart:async';
 
-import 'package:get/get.dart';
-
 import 'package:ghar360/core/network/api_client.dart';
+import 'package:ghar360/core/network/api_paths.dart';
+import 'package:ghar360/core/network/response_parser.dart';
 import 'package:ghar360/core/network/sse_client.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/features/assistant/data/models/assistant_frame.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/data/models/conversation_model.dart';
 
-/// A single page of conversations returned by [AssistantRepository.getConversations].
-///
-/// Mirrors the uniform cursor envelope (`{items, next_cursor, has_more}`)
-/// documented on the endpoint so callers can drive [loadMoreConversations]
-/// without re-parsing the response.
-class ConversationsPage {
-  final List<ConversationModel> items;
-  final String? nextCursor;
-  final bool hasMore;
+/// A page of conversations, newest first.
+typedef ConversationsPage = CursorPageData<ConversationModel>;
 
-  const ConversationsPage({required this.items, required this.hasMore, this.nextCursor});
-}
+/// A page of messages, oldest first within the page. [CursorPageData.nextCursor] points to
+/// older messages.
+typedef MessagesPage = CursorPageData<ChatMessageModel>;
 
 class AssistantRepository {
-  AssistantRepository({SseClient? sseClient, ApiClient? apiClient})
-    : _sseClient = sseClient ?? Get.find<SseClient>(),
-      _apiClient = apiClient ?? Get.find<ApiClient>();
+  AssistantRepository({required this._sseClient, required this._apiClient});
 
   final SseClient _sseClient;
   final ApiClient _apiClient;
   final Map<String, String?> _widgetHtmlCache = {};
 
-  /// Stream chat response from the agent via SSE.
-  Stream<SseEvent> streamChat({required String message, int? conversationId}) {
-    return _sseClient.postStream(
-      '/agent/chat',
+  /// The longest message the backend takes (`AgentChatRequest.message`): a longer one is a 422.
+  static const maxMessageLength = 4000;
+
+  /// Stream the reply of the agent as typed frames. The stream ends with an [AppException] when
+  /// the request fails (see [SseClient.postStream]) and with a [FormatException] when a frame
+  /// does not match the contract. A frame name this app does not know is skipped.
+  Stream<AssistantFrame> streamChat({required String message, int? conversationId}) async* {
+    if (message.isEmpty || message.length > maxMessageLength) {
+      throw ValidationException(
+        'The message is empty or longer than $maxMessageLength characters.',
+        code: 'INVALID_MESSAGE',
+      );
+    }
+    await for (final event in _sseClient.postStream(
+      ApiPaths.agentChat,
       body: {'message': message, 'conversation_id': ?conversationId},
-    );
+    )) {
+      final frame = AssistantFrame.fromEvent(event);
+      if (frame != null) yield frame;
+    }
   }
 
-  /// List the user's conversations.
-  ///
-  /// Uses the uniform cursor envelope `{items, next_cursor, has_more, limit}`.
-  /// Pass [cursor] (from a previous response's `next_cursor`) to fetch the
-  /// next page; omit/null on the first page. Returns a [ConversationsPage]
-  /// so callers can drive pagination from [nextCursor] and [hasMore].
+  /// List the user's conversations. Pass [cursor] from a previous page's
+  /// `next_cursor`; omit it for the first page.
   Future<ConversationsPage> getConversations({String? cursor, int limit = 50}) async {
     final response = await _apiClient.get(
-      '/agent/conversations',
+      ApiPaths.agentConversations,
       queryParams: <String, dynamic>{
-        'limit': limit.toString(),
+        'limit': limit.clamp(1, 100).toString(),
         if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
       },
     );
-    final body = response.body;
-
-    // Tolerate bare-list responses too (older deployments that pre-date the
-    // cursor envelope): treat a bare list as a single terminal page.
-    if (body is List) {
-      final items = body.whereType<Map>().map((e) {
-        return ConversationModel.fromJson(Map<String, dynamic>.from(e));
-      }).toList();
-      return ConversationsPage(items: items, hasMore: false, nextCursor: null);
-    }
-
-    if (body is Map<String, dynamic>) {
-      final dynamic rawItems = body['items'] ?? body['data'];
-      final items = rawItems is List
-          ? rawItems.whereType<Map>().map((item) {
-              return ConversationModel.fromJson(Map<String, dynamic>.from(item));
-            }).toList()
-          : const <ConversationModel>[];
-
-      // Envelope-driven pagination: honour has_more / next_cursor when the
-      // server provides them. Default to a terminal page otherwise so the
-      // caller short-circuits on subsequent [loadMoreConversations] calls.
-      final dynamic rawHasMore = body['has_more'];
-      final dynamic rawNextCursor = body['next_cursor'];
-      final bool hasMore = rawHasMore is bool ? rawHasMore : false;
-      final String? nextCursor = rawNextCursor is String && rawNextCursor.isNotEmpty
-          ? rawNextCursor
-          : null;
-
-      return ConversationsPage(items: items, hasMore: hasMore, nextCursor: nextCursor);
-    }
-
-    return const ConversationsPage(items: <ConversationModel>[], hasMore: false);
+    return _page(response.body, ConversationModel.fromJson);
   }
 
-  /// Get messages for a conversation.
-  Future<List<ChatMessageModel>> getConversationMessages(
-    int conversationId, {
-    int limit = 100,
-  }) async {
+  /// The newest [limit] messages, or the page before [cursor]
+  /// (`GET /agent/conversations/{id}/messages/page`, a `CursorPage`, 1 to 100 rows).
+  Future<MessagesPage> getMessagesPage(int conversationId, {String? cursor, int limit = 30}) async {
+    final response = await _apiClient.get(
+      ApiPaths.agentMessagesPage(conversationId),
+      queryParams: <String, dynamic>{'limit': '${limit.clamp(1, 100)}', 'cursor': ?cursor},
+    );
+    return _page(response.body, ChatMessageModel.fromJson);
+  }
+
+  /// A `CursorPage`. A row that cannot be read fails the page, so a partial page never looks
+  /// complete.
+  CursorPageData<T> _page<T>(Object? body, T Function(Map<String, dynamic>) fromJson) {
     try {
-      final response = await _apiClient.get(
-        '/agent/conversations/$conversationId/messages?limit=$limit',
-      );
-      if (response.body is List) {
-        // Skip malformed entries instead of failing the whole page.
-        return (response.body as List).whereType<Map>().map((e) {
-          return ChatMessageModel.fromJson(Map<String, dynamic>.from(e));
-        }).toList();
-      }
-      return [];
-    } catch (e) {
-      DebugLogger.error('Failed to load messages', e);
-      return [];
+      return ResponseParser.cursorPage(body, fromJson);
+    } on FormatException {
+      throw _malformedResponse();
+    } on TypeError {
+      throw _malformedResponse();
     }
   }
+
+  ApiException _malformedResponse() =>
+      ApiException('Conversation data could not be read.', code: 'MALFORMED_RESPONSE');
 
   /// Safe widget name: alphanumeric, underscore, hyphen only (blocks path traversal).
   static final RegExp widgetNamePattern = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$');
@@ -121,21 +96,21 @@ class AssistantRepository {
   /// network requests during streaming list rebuilds.
   Future<String?> getWidgetHtml(String widgetName) async {
     if (!isValidWidgetName(widgetName)) {
-      DebugLogger.warning('Rejected unsafe assistant widget name: $widgetName');
+      DebugLogger.warning('Rejected unsafe assistant widget name');
       return null;
     }
     if (_widgetHtmlCache.containsKey(widgetName)) {
       return _widgetHtmlCache[widgetName];
     }
     try {
-      final response = await _apiClient.get('/agent/widgets/${Uri.encodeComponent(widgetName)}');
+      final response = await _apiClient.get(ApiPaths.agentWidget(widgetName));
       if (response.body is String) {
         final html = response.body as String;
         _widgetHtmlCache[widgetName] = html;
         return html;
       }
-    } catch (e) {
-      DebugLogger.error('Failed to fetch widget HTML', e);
+    } catch (error, stack) {
+      DebugLogger.error('Failed to fetch widget HTML: ${error.runtimeType}', null, stack);
     }
     // Do not cache failures — allow retry on next call.
     return null;
@@ -144,13 +119,13 @@ class AssistantRepository {
   /// Clears in-memory widget HTML (call on logout).
   void clearWidgetCache() => _widgetHtmlCache.clear();
 
-  /// Delete a conversation.
+  /// Delete a conversation (`DELETE`, 204 with no body).
   Future<bool> deleteConversation(int conversationId) async {
     try {
-      await _apiClient.delete('/agent/conversations/$conversationId');
+      await _apiClient.delete(ApiPaths.agentConversation(conversationId));
       return true;
-    } catch (e) {
-      DebugLogger.error('Failed to delete conversation', e);
+    } catch (error, stack) {
+      DebugLogger.error('Failed to delete conversation: ${error.runtimeType}', null, stack);
       return false;
     }
   }

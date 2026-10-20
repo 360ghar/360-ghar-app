@@ -1,26 +1,13 @@
-import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/utils/api_date_time.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:json_annotation/json_annotation.dart';
+
+import 'package:ghar360/core/data/models/property_model.dart';
+import 'package:ghar360/core/data/models/wire_enums.dart';
+
+export 'package:ghar360/core/data/models/wire_enums.dart' show VisitContext, VisitStatus;
 
 part 'visit_model.g.dart';
 
-enum VisitStatus {
-  // Wire values must match the backend VisitStatus enum (app/models/enums.py),
-  // which serializes scheduled as 'requested' and rescheduled as
-  // 'reschedule_suggested'.
-  @JsonValue('requested')
-  scheduled,
-  @JsonValue('confirmed')
-  confirmed,
-  @JsonValue('completed')
-  completed,
-  @JsonValue('cancelled')
-  cancelled,
-  @JsonValue('reschedule_suggested')
-  rescheduled,
-}
-
+/// `VisitAgentInfo`: the agent who looks after the visit. The wire key for the number is `phone`.
 @JsonSerializable()
 class VisitAgentInfo {
   final int id;
@@ -36,21 +23,54 @@ class VisitAgentInfo {
   Map<String, dynamic> toJson() => _$VisitAgentInfoToJson(this);
 }
 
-@JsonSerializable(explicitToJson: true)
-class VisitModel {
+/// `PublicUserRef`: another person on a visit. Name and avatar only; there is no phone, email or
+/// location to read.
+@JsonSerializable()
+class PublicUserRef {
   final int id;
-  @JsonKey(name: 'property_id')
+  @JsonKey(name: 'display_name')
+  final String? displayName;
+  @JsonKey(name: 'avatar_url')
+  final String? avatarUrl;
+
+  const PublicUserRef({required this.id, this.displayName, this.avatarUrl});
+
+  factory PublicUserRef.fromJson(Map<String, dynamic> json) => _$PublicUserRefFromJson(json);
+
+  Map<String, dynamic> toJson() => _$PublicUserRefToJson(this);
+}
+
+/// `Visit`. Timestamps are UTC with a `Z`.
+@JsonSerializable(explicitToJson: true, checked: true)
+class VisitModel {
+  @JsonKey(required: true)
+  final int id;
+  @JsonKey(name: 'property_id', required: true)
   final int propertyId;
-  @JsonKey(name: 'user_id')
+  @JsonKey(name: 'user_id', required: true)
   final int userId;
   @JsonKey(name: 'agent_id')
   final int? agentId;
-  @JsonKey(name: 'scheduled_date')
+  @JsonKey(name: 'scheduled_date', required: true)
   final DateTime scheduledDate;
+
+  /// The slot the visitor picked (for example `morning`), if any.
+  @JsonKey(name: 'time_slot_label')
+  final String? timeSlotLabel;
   @JsonKey(name: 'actual_date')
   final DateTime? actualDate;
-  @JsonKey(unknownEnumValue: VisitStatus.scheduled)
-  final VisitStatus status;
+
+  /// Null for a status this app does not know.
+  @JsonKey(required: true)
+  @VisitStatusConverter()
+  final VisitStatus? status;
+  @JsonKey(name: 'visit_context', required: true)
+  @VisitContextConverter()
+  final VisitContext? visitContext;
+  @JsonKey(name: 'conversation_id')
+  final int? conversationId;
+  @JsonKey(name: 'match_id')
+  final int? matchId;
   @JsonKey(name: 'special_requirements')
   final String? specialRequirements;
   @JsonKey(name: 'visit_notes')
@@ -59,27 +79,30 @@ class VisitModel {
   final String? visitorFeedback;
   @JsonKey(name: 'interest_level')
   final String? interestLevel;
-  @JsonKey(name: 'follow_up_required', defaultValue: false)
+  @JsonKey(name: 'follow_up_required', required: true)
   final bool followUpRequired;
   @JsonKey(name: 'follow_up_date')
   final DateTime? followUpDate;
+
+  /// The cancel reason. A reschedule reason is stored here too.
   @JsonKey(name: 'cancellation_reason')
   final String? cancellationReason;
   @JsonKey(name: 'rescheduled_from')
   final DateTime? rescheduledFrom;
-  @JsonKey(name: 'created_at')
+  @JsonKey(name: 'created_at', required: true)
   final DateTime createdAt;
   @JsonKey(name: 'updated_at')
   final DateTime? updatedAt;
-  // Backend returns nested full property under `property`
+  // The backend nests the full property, the assigned agent and the people on the visit.
   final PropertyModel? property;
   final VisitAgentInfo? agents;
 
-  // API response fields for date and time parsing
-  @JsonKey(name: 'property_title')
-  final String? propertyTitleApi;
-  @JsonKey(name: 'agent_name')
-  final String? agentNameApi;
+  /// The visitor.
+  final PublicUserRef? user;
+
+  /// The other person on a flatmate meet. Null on a property tour.
+  @JsonKey(name: 'counterparty_user')
+  final PublicUserRef? counterpartyUser;
 
   const VisitModel({
     required this.id,
@@ -87,8 +110,12 @@ class VisitModel {
     required this.userId,
     this.agentId,
     required this.scheduledDate,
+    this.timeSlotLabel,
     this.actualDate,
     required this.status,
+    this.visitContext = VisitContext.propertyTour,
+    this.conversationId,
+    this.matchId,
     this.specialRequirements,
     this.visitNotes,
     this.visitorFeedback,
@@ -101,91 +128,46 @@ class VisitModel {
     this.updatedAt,
     this.property,
     this.agents,
-    this.propertyTitleApi,
-    this.agentNameApi,
+    this.user,
+    this.counterpartyUser,
   });
 
-  factory VisitModel.fromJson(Map<String, dynamic> json) {
-    final dateStr = json['visit_date'] as String?;
-    final timeStr = json['visit_time'] as String?;
-    final scheduledDateValue = json['scheduled_date'];
-    DateTime? scheduledDateTime = parseApiDateTime(scheduledDateValue);
-
-    if (scheduledDateTime == null && dateStr != null) {
-      scheduledDateTime = combineUtcDateAndTime(dateStr, timeStr) ?? parseApiDateTime(dateStr);
-    }
-
-    if (scheduledDateTime == null) {
-      DebugLogger.error(
-        '⚠️ VisitModel: No date fields found. '
-        'Keys: ${json.keys.where((k) => k.contains('date') || k.contains('time')).toList()} '
-        'visitId=${json['id']}',
-      );
-      scheduledDateTime = DateTime.now().toUtc();
-    } else if (scheduledDateValue != null && parseApiDateTime(scheduledDateValue) == null) {
-      DebugLogger.error(
-        '⚠️ VisitModel: Failed to parse scheduled_date. '
-        'Raw: "${json['scheduled_date']}" visitId=${json['id']}',
-      );
-    } else if (dateStr != null &&
-        scheduledDateValue == null &&
-        combineUtcDateAndTime(dateStr, timeStr) == null) {
-      DebugLogger.error(
-        '⚠️ VisitModel: Failed to parse date+time. '
-        'Raw: date="$dateStr" time="$timeStr" visitId=${json['id']}',
-      );
-    }
-
-    final modifiedJson = Map<String, dynamic>.from(json);
-    modifiedJson['scheduled_date'] = toApiUtcInstant(scheduledDateTime);
-
-    // Call the generated fromJson with the modified data
-    return _$VisitModelFromJson(modifiedJson);
-  }
+  factory VisitModel.fromJson(Map<String, dynamic> json) => _$VisitModelFromJson(json);
 
   Map<String, dynamic> toJson() => _$VisitModelToJson(this);
 
   // Convenience getters
-  String get propertyTitle => property?.title ?? propertyTitleApi ?? 'Property #$propertyId';
-  String get agentName => agents?.name ?? agentNameApi ?? 'Unknown Agent';
+  /// Empty when the backend sent no nested property; the UI then shows a
+  /// localized placeholder.
+  String get propertyTitle => property?.title ?? '';
   String get agentPhone => agents?.phone ?? '';
   String get notes => visitNotes ?? '';
 
-  bool get isUpcoming =>
-      DateTime.now().isBefore(scheduledDate) &&
-      (status == VisitStatus.scheduled ||
-          status == VisitStatus.confirmed ||
-          status == VisitStatus.rescheduled);
+  /// A meeting with another flatmate, not a property tour.
+  bool get isFlatmateMeet => visitContext == VisitContext.flatmateMeet;
+
+  bool get isUpcoming => DateTime.now().isBefore(scheduledDate) && canCancel;
   bool get isCompleted => status == VisitStatus.completed;
   bool get isCancelled => status == VisitStatus.cancelled;
 
-  // Helper methods for status - returns translation keys
-  String get statusStringKey {
-    switch (status) {
-      case VisitStatus.scheduled:
-        return 'visit_status_scheduled';
-      case VisitStatus.confirmed:
-        return 'visit_status_confirmed';
-      case VisitStatus.completed:
-        return 'visit_status_completed';
-      case VisitStatus.cancelled:
-        return 'visit_status_cancelled';
-      case VisitStatus.rescheduled:
-        return 'visit_status_rescheduled';
-    }
-  }
+  /// Translation key of the status. A status this app does not know gets a neutral label.
+  String get statusStringKey => switch (status) {
+    VisitStatus.scheduled => 'visit_status_scheduled',
+    VisitStatus.confirmed => 'visit_status_confirmed',
+    VisitStatus.completed => 'visit_status_completed',
+    VisitStatus.cancelled => 'visit_status_cancelled',
+    VisitStatus.rescheduled => 'visit_status_rescheduled',
+    null => 'visit_status_unknown',
+  };
 
-  @Deprecated('Use statusStringKey with .tr for localized text')
+  @Deprecated('Use context.l10n.text(statusStringKey) for localized text')
   String get statusString => statusStringKey;
 
   bool get canReschedule =>
       status == VisitStatus.scheduled ||
       status == VisitStatus.confirmed ||
       status == VisitStatus.rescheduled;
-  bool get canCancel =>
-      status == VisitStatus.scheduled ||
-      status == VisitStatus.confirmed ||
-      status == VisitStatus.rescheduled;
+  bool get canCancel => canReschedule;
 
   VisitModel copyWith({
     int? id,
@@ -193,8 +175,12 @@ class VisitModel {
     int? userId,
     int? agentId,
     DateTime? scheduledDate,
+    String? timeSlotLabel,
     DateTime? actualDate,
     VisitStatus? status,
+    VisitContext? visitContext,
+    int? conversationId,
+    int? matchId,
     String? specialRequirements,
     String? visitNotes,
     String? visitorFeedback,
@@ -207,8 +193,8 @@ class VisitModel {
     DateTime? updatedAt,
     PropertyModel? property,
     VisitAgentInfo? agents,
-    String? propertyTitleApi,
-    String? agentNameApi,
+    PublicUserRef? user,
+    PublicUserRef? counterpartyUser,
   }) {
     return VisitModel(
       id: id ?? this.id,
@@ -216,8 +202,12 @@ class VisitModel {
       userId: userId ?? this.userId,
       agentId: agentId ?? this.agentId,
       scheduledDate: scheduledDate ?? this.scheduledDate,
+      timeSlotLabel: timeSlotLabel ?? this.timeSlotLabel,
       actualDate: actualDate ?? this.actualDate,
       status: status ?? this.status,
+      visitContext: visitContext ?? this.visitContext,
+      conversationId: conversationId ?? this.conversationId,
+      matchId: matchId ?? this.matchId,
       specialRequirements: specialRequirements ?? this.specialRequirements,
       visitNotes: visitNotes ?? this.visitNotes,
       visitorFeedback: visitorFeedback ?? this.visitorFeedback,
@@ -230,8 +220,8 @@ class VisitModel {
       updatedAt: updatedAt ?? this.updatedAt,
       property: property ?? this.property,
       agents: agents ?? this.agents,
-      propertyTitleApi: propertyTitleApi ?? this.propertyTitleApi,
-      agentNameApi: agentNameApi ?? this.agentNameApi,
+      user: user ?? this.user,
+      counterpartyUser: counterpartyUser ?? this.counterpartyUser,
     );
   }
 }

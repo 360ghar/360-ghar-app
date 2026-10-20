@@ -108,9 +108,8 @@ extension ResponsiveContext on BuildContext {
 
   /// True for [medium] and above (tablets and larger).
   ///
-  /// Named `isTabletWidth` (not `isTablet`) because GetX already ships a
-  /// `context.isTablet` via its `ContextExtensionss`; this one is anchored to
-  /// this file's breakpoints. Prefer [windowSizeClass] for finer decisions.
+  /// Uses the width breakpoints in this file, independent of device type.
+  /// Prefer [windowSizeClass] for finer layout decisions.
   bool get isTabletWidth => windowSizeClass.index >= WindowSizeClass.medium.index;
 
   /// True only for [large] (desktop-class widths). See [isTabletWidth].

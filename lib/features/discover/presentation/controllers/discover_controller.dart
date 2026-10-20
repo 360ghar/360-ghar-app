@@ -1,467 +1,88 @@
 import 'dart:async';
 
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/firebase/analytics_service.dart';
-import 'package:ghar360/core/routes/app_routes.dart';
-import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/core/utils/error_mapper.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import 'package:ghar360/features/properties/application/swipe_history.dart';
 
-// Controllers should never talk to repositories directly
+class DiscoverSession {
+  const DiscoverSession({this.likes = 0, this.passes = 0});
+  final int likes;
+  final int passes;
+  int get total => likes + passes;
+}
 
-enum DiscoverState { initial, loading, loaded, empty, error, prefetching }
+final discoverProvider = NotifierProvider<DiscoverController, DiscoverSession>(
+  DiscoverController.new,
+);
 
-class DiscoverController extends GetxController {
-  final PageStateService _pageStateService = Get.find<PageStateService>();
-
-  // Reactive state
-  final Rx<DiscoverState> state = DiscoverState.initial.obs;
-  final Rxn<AppException> error = Rxn<AppException>();
-
-  // currentIndex — kept for view API compatibility. Always 0 in practice
-  // because swiped items are removed from the deck by PageStateService.
-  final RxInt currentIndex = 0.obs;
-
-  static const int _prefetchThreshold = 3;
-
-  // Swipe tracking (owned exclusively by this controller)
-  final RxInt totalSwipesInSession = 0.obs;
-  final RxInt likesInSession = 0.obs;
-  final RxInt passesInSession = 0.obs;
-
-  // Loading states
-  final RxBool isPrefetching = false.obs;
-
-  // Workers
-  Worker? _pageActivationWorker;
-  Worker? _stateSyncWorker;
-
-  // ── Deck: single source of truth from PageStateService ──
-
-  /// The property deck is a computed view of PageStateService's discover
-  /// properties. There is no separate copy; PageStateService is the sole owner
-  /// of property data, pagination, and loading state.
-  List<PropertyModel> get deck => _pageStateService.discoverState.value.properties;
-
-  // ── Pagination: derived from PageStateService ──
-
-  bool get _hasMore => _pageStateService.discoverState.value.hasMore;
-
+class DiscoverController extends Notifier<DiscoverSession> {
   @override
-  void onInit() {
-    super.onInit();
-    _setupStateSyncWorker();
+  DiscoverSession build() {
+    ref.watch(storageScopeProvider);
+    return const DiscoverSession();
   }
 
-  @override
-  void onReady() {
-    super.onReady();
-
-    // Listen for page activation
-    _pageActivationWorker = ever(_pageStateService.currentPageType, (pageType) {
-      if (pageType == PageType.discover) activatePage();
-    });
-
-    // Initial activation if already on discover page
-    if (_pageStateService.currentPageType.value == PageType.discover) {
-      Future.delayed(const Duration(milliseconds: 100), activatePage);
+  List<PropertyModel> get deck => ref.read(visiblePropertiesProvider(PropertyFeed.discover));
+  Future<void> swipeRight(PropertyModel property) => _swipe(property, true);
+  Future<void> swipeLeft(PropertyModel property) => _swipe(property, false);
+  Future<void> _swipe(PropertyModel property, bool liked) async {
+    if (!deck.any((item) => item.id == property.id)) return;
+    final scope = ref.read(storageScopeProvider);
+    final pending = ref.read(swipeHistoryProvider.notifier).record(property, liked);
+    state = DiscoverSession(
+      likes: state.likes + (liked ? 1 : 0),
+      passes: state.passes + (liked ? 0 : 1),
+    );
+    if (deck.length <= 3) {
+      unawaited(ref.read(propertyQueryProvider(PropertyFeed.discover).notifier).loadMore());
     }
-  }
-
-  /// Single worker that derives controller state from PageStateService.
-  /// This replaces the former dual-sync mechanism (_setupPageStateSync +
-  /// _hydrateDeckFromPageState) that could drift out of sync.
-  void _setupStateSyncWorker() {
-    _stateSyncWorker = ever(_pageStateService.discoverState, (PageStateModel ps) {
-      // Don't override while prefetching
-      if (isPrefetching.value) return;
-
-      if (ps.isLoading && !ps.isRefreshing) {
-        state.value = DiscoverState.loading;
-      } else if (ps.error != null && ps.properties.isEmpty) {
-        state.value = DiscoverState.error;
-        error.value = ps.error;
-      } else if (ps.properties.isEmpty && !ps.isLoading && !ps.isRefreshing) {
-        // Only mark empty if we've actually attempted a load
-        if (state.value != DiscoverState.initial) {
-          state.value = DiscoverState.empty;
-        }
-      } else if (ps.properties.isNotEmpty) {
-        // Transition to loaded from any non-loaded state when properties arrive.
-        // Previously this only allowed transition from loading/initial, which
-        // caused a permanent "empty" state if properties arrived after the
-        // controller had already transitioned to empty or error.
-        if (state.value != DiscoverState.loaded && state.value != DiscoverState.prefetching) {
-          state.value = DiscoverState.loaded;
-          error.value = null;
-        }
-      }
-
-      // Keep currentIndex in bounds
-      if (currentIndex.value > 0 && currentIndex.value >= ps.properties.length) {
-        currentIndex.value = 0;
-      }
-    });
-  }
-
-  void activatePage() {
-    final ps = _pageStateService.discoverState.value;
-    final hasStaleLoadingWithoutData = ps.isLoadStuck;
-    final shouldRequestWhenEmpty =
-        ps.properties.isEmpty &&
-        (state.value == DiscoverState.initial ||
-            ps.isDataStale ||
-            ps.error != null ||
-            hasStaleLoadingWithoutData);
-
-    // Already have fresh data — just ensure state is correct
-    if (ps.properties.isNotEmpty && !ps.isDataStale) {
-      if (state.value == DiscoverState.initial) {
-        state.value = DiscoverState.loaded;
-      }
-      return;
-    }
-
-    // Stale data — background refresh
-    if (ps.properties.isNotEmpty && ps.isDataStale) {
-      _pageStateService.loadPageData(PageType.discover, backgroundRefresh: true);
-      return;
-    }
-
-    // No data yet — initialize location then load
-    if (shouldRequestWhenEmpty) {
-      if (hasStaleLoadingWithoutData) {
-        DebugLogger.warning(
-          '🩹 [DISCOVER] Detected stale loading flag with empty data. Forcing reload.',
-        );
-      }
-      // useCurrentLocationForPage triggers debounceRefresh internally,
-      // which calls loadPageData. No need for a separate _loadInitialDeck.
-      state.value = DiscoverState.loading;
-      _pageStateService.useCurrentLocationForPage(PageType.discover);
-      return;
-    }
-
-    if (ps.properties.isEmpty) {
-      DebugLogger.warning(
-        '🩹 [DISCOVER] activatePage: Empty properties with state=${state.value}, '
-        'isDataStale=${ps.isDataStale}, lastFetched=${ps.lastFetched}. Forcing reload.',
+    final saved = await pending;
+    if (!ref.mounted || !identical(scope, ref.read(storageScopeProvider))) return;
+    if (!saved) {
+      state = DiscoverSession(
+        likes: (state.likes - (liked ? 1 : 0)).clamp(0, 1 << 31),
+        passes: (state.passes - (liked ? 0 : 1)).clamp(0, 1 << 31),
       );
-      state.value = DiscoverState.loading;
-      _pageStateService.useCurrentLocationForPage(PageType.discover);
-    }
-  }
-
-  Future<void> _loadInitialDeck({bool ignoreLoadingGuard = false}) async {
-    if (!ignoreLoadingGuard && state.value == DiscoverState.loading) return;
-
-    try {
-      state.value = DiscoverState.loading;
-      error.value = null;
-      currentIndex.value = 0;
-
-      await _pageStateService.loadPageData(PageType.discover, forceRefresh: true);
-      // State is derived by _stateSyncWorker when discoverState updates
-    } catch (e, stackTrace) {
-      DebugLogger.error('❌ Failed to load initial deck', e, stackTrace);
-      state.value = DiscoverState.error;
-      error.value = ErrorMapper.mapApiError(e, stackTrace);
-    }
-  }
-
-  // ── Swipe actions ──
-
-  Future<void> swipeRight(PropertyModel property) async {
-    if (!await _handleSwipe(property, true)) return;
-    _recordSwipeStats(true);
-    await _safeAnalytics(
-      'property_like',
-      () => AnalyticsService.likeProperty(property.id.toString()),
-    );
-  }
-
-  Future<void> swipeLeft(PropertyModel property) async {
-    if (!await _handleSwipe(property, false)) return;
-    _recordSwipeStats(false);
-    await _safeAnalytics(
-      'property_pass',
-      () => AnalyticsService.logVital('property_pass', params: {'id': property.id.toString()}),
-    );
-  }
-
-  /// Returns false when the swipe was ignored as a duplicate gesture.
-  Future<bool> _handleSwipe(PropertyModel property, bool isLiked) async {
-    // recordSwipe synchronously removes the property from the deck, so a
-    // property no longer in the deck means this gesture is a duplicate
-    // (e.g. rapid double-tap on an action button) — ignore it.
-    if (!deck.any((p) => p.id == property.id)) {
-      DebugLogger.warning('⚠️ Ignoring duplicate swipe for property ${property.id}');
-      return false;
+      return;
     }
     try {
-      DebugLogger.api(
-        '👆 Swiping ${isLiked ? 'RIGHT (LIKE)' : 'LEFT (PASS)'}: '
-        '${property.title}',
-      );
-
-      // Delegate mutation to PageStateService.
-      // This synchronously removes the property from the discover deck
-      // (optimistic update) and fires a background network call.
-      // Because the swiped property is removed, the next card naturally
-      // becomes deck[currentIndex] — no index increment needed.
-      // Only the newest optimistic swipe may restore the deck. If an older
-      // request fails after another swipe, restoring it would clobber the
-      // newer card state; its failure is reported without reinserting it.
-      _pendingSwipes.clear();
-      _pendingSwipes[property.id] = (property: property, isLiked: isLiked);
-      _pageStateService
-          .recordSwipe(propertyId: property.id, isLiked: isLiked)
-          .then((_) {
-            _pendingSwipes.remove(property.id);
-          })
-          .catchError((e) {
-            DebugLogger.error('❌ Failed to record swipe for property ${property.id}: $e');
-            _revertUnsavedSwipe(property, isLiked);
-          });
-
-      // After optimistic removal, check deck state
-      if (deck.isEmpty) {
-        if (_hasMore) {
-          _prefetchMoreProperties();
-        } else {
-          state.value = DiscoverState.empty;
-          unawaited(
-            _safeAnalytics(
-              'deck_exhausted',
-              () => AnalyticsService.deckExhausted(totalSwiped: totalSwipesInSession.value),
-            ),
-          );
-        }
+      if (liked) {
+        await AnalyticsService.likeProperty(property.id.toString());
       } else {
-        _checkForPrefetch();
+        await AnalyticsService.logVital('property_pass', params: {'id': property.id.toString()});
       }
-      return true;
-    } catch (e) {
-      DebugLogger.error('❌ Failed to handle swipe: $e');
-      return false;
+    } catch (error, stack) {
+      DebugLogger.warning('Swipe analytics unavailable', error.runtimeType, stack);
     }
   }
-
-  void _recordSwipeStats(bool isLiked) {
-    totalSwipesInSession.value++;
-    if (isLiked) {
-      likesInSession.value++;
-    } else {
-      passesInSession.value++;
-    }
-  }
-
-  void _checkForPrefetch() {
-    final remaining = deck.length - currentIndex.value - 1;
-
-    if (remaining <= _prefetchThreshold && _hasMore && !isPrefetching.value) {
-      _prefetchMoreProperties();
-    }
-  }
-
-  Future<void> _prefetchMoreProperties() async {
-    if (isPrefetching.value || !_hasMore) return;
-
-    try {
-      isPrefetching.value = true;
-      state.value = DiscoverState.prefetching;
-
-      DebugLogger.api('🔄 Prefetching more properties...');
-      await _pageStateService.loadMoreData(PageType.discover);
-    } catch (e) {
-      DebugLogger.error('❌ Prefetch failed: $e');
-    } finally {
-      isPrefetching.value = false;
-      // In finally, not after the await: a load-more that threw used to leave
-      // state pinned at `prefetching` (isLoaded false) until the next
-      // discoverState emission, because the reset sat inside the try.
-      if (state.value == DiscoverState.prefetching) {
-        state.value = DiscoverState.loaded;
-      }
-    }
-  }
-
-  // ── Manual refresh ──
 
   Future<void> refreshDeck() async {
-    totalSwipesInSession.value = 0;
-    likesInSession.value = 0;
-    passesInSession.value = 0;
-    currentIndex.value = 0;
-
-    await _loadInitialDeck();
+    state = const DiscoverSession();
+    await ref.read(propertyQueryProvider(PropertyFeed.discover).notifier).load(refresh: true);
   }
 
-  // ── Failed-swipe recovery ──
-
-  /// Tracks the last swiped property so a failed persist can restore it.
-  /// Replaced by the next swipe, cleared once a revert has run.
-  final Map<int, ({PropertyModel property, bool isLiked})> _pendingSwipes = {};
-
-  /// Called when [PageStateService.recordSwipe]'s network call fails after
-  /// the optimistic swipe already moved the card off the deck (fire-and-forget
-  /// from [_handleSwipe]). Reverts the local optimistic state,
-  /// with notifyServer: false since the swipe never reached the server —
-  /// there's nothing to reverse remotely, only the local optimistic UI.
-  void _revertUnsavedSwipe(PropertyModel property, bool isLiked) {
-    // A newer swipe has already superseded this one —
-    // reverting now would clobber state that no longer belongs to this swipe.
-    // The swipe is still lost though: the property left the deck and never
-    // reached the server, so say so rather than dropping it in silence.
-    if (!_pendingSwipes.containsKey(property.id)) {
-      // Not 'swipe_save_failed': that promises the property is back in the
-      // deck, which is exactly what this branch does not do.
-      AppToast.error('error'.tr, 'swipe_not_saved'.tr);
-      return;
-    }
-
-    _restorePropertyAfterSwipe(property: property, isLiked: isLiked);
-    _pendingSwipes.remove(property.id);
-
-    if (state.value != DiscoverState.loaded && state.value != DiscoverState.prefetching) {
-      state.value = DiscoverState.loaded;
-    }
-
-    AppToast.error('error'.tr, 'swipe_save_failed'.tr);
-  }
-
-  /// Revert logic for [_revertUnsavedSwipe]:
-  /// restores [property] to the front of the deck and reverses the
-  /// session stats [_recordSwipeStats]
-  /// recorded for the original swipe.
-  void _restorePropertyAfterSwipe({required PropertyModel property, required bool isLiked}) {
-    // Restore the property to the front of the discover deck so the user
-    // sees it again as the top card.
-    _pageStateService.reinsertPropertyToDiscover(property);
-
-    // Reverse the likes list adjustment; notifyServer stays false because the
-    // swipe never reached the server (see _revertUnsavedSwipe). Uses undoSwipe
-    // (not recordSwipe) so the property is NOT removed from the discover deck
-    // again.
-    unawaited(
-      _pageStateService
-          .undoSwipe(propertyId: property.id, originalIsLiked: isLiked, notifyServer: false)
-          .catchError((e) => DebugLogger.error('❌ Undo reverse-swipe failed: $e')),
-    );
-
-    // Update session stats
-    totalSwipesInSession.value = (totalSwipesInSession.value - 1).clamp(0, 1 << 31);
-    if (isLiked) {
-      likesInSession.value = (likesInSession.value - 1).clamp(0, 1 << 31);
-    } else {
-      passesInSession.value = (passesInSession.value - 1).clamp(0, 1 << 31);
-    }
-  }
-
-  // ── Computed getters ──
-
-  PropertyModel? get currentProperty {
-    if (deck.isEmpty || currentIndex.value >= deck.length) return null;
-    return deck[currentIndex.value];
-  }
-
-  List<PropertyModel> get nextProperties {
-    final start = currentIndex.value + 1;
-    if (start >= deck.length) return [];
-    final end = (start + 3).clamp(0, deck.length);
-    return deck.sublist(start, end);
-  }
-
-  int get remainingCards => deck.isEmpty ? 0 : deck.length - currentIndex.value - 1;
-
-  double get progressPercentage {
-    if (deck.isEmpty) return 0.0;
-    return (currentIndex.value / deck.length).clamp(0.0, 1.0);
-  }
-
-  String get sessionStats {
-    if (totalSwipesInSession.value == 0) {
-      return 'start_swiping_stats'.tr;
-    }
-
-    final likeRate = (likesInSession.value / totalSwipesInSession.value * 100).round();
-    return 'session_stats'.trParams({
-      'swipes': '${totalSwipesInSession.value}',
-      'likes': '${likesInSession.value}',
-      'rate': '$likeRate',
-    });
-  }
-
-  // ── Navigation ──
-
-  void viewPropertyDetails(PropertyModel property) {
-    unawaited(
-      _safeAnalytics(
-        'property_view',
-        () => AnalyticsService.viewPropertyOnce(property.id.toString()),
-      ),
-    );
-    Get.toNamed(AppRoutes.propertyDetails, arguments: property);
-  }
-
-  Future<void> _safeAnalytics(String event, Future<void> Function() action) async {
-    try {
-      await action();
-    } catch (e, stackTrace) {
-      DebugLogger.warning('Analytics call failed for $event', e, stackTrace);
-    }
-  }
-
-  // ── Filter shortcuts ──
-
-  Future<void> showNearbyProperties() async {
-    await _pageStateService.useCurrentLocation();
-  }
-
-  void filterByPropertyType(String type) {
-    final currentFilters = _pageStateService.getCurrentPageState().filters;
-    final updatedFilters = currentFilters.copyWith(propertyType: [type]);
-    _pageStateService.updatePageFilters(PageType.discover, updatedFilters);
-  }
-
-  void filterByPurpose(String purpose) {
-    final currentFilters = _pageStateService.getCurrentPageState().filters;
-    final updatedFilters = currentFilters.copyWith(purpose: purpose);
-    _pageStateService.updatePageFilters(PageType.discover, updatedFilters);
-  }
-
-  // ── Error handling ──
-
-  void retryLoading() {
-    error.value = null;
-    _loadInitialDeck();
-  }
-
-  void clearError() {
-    error.value = null;
-    if (state.value == DiscoverState.error) {
-      state.value = deck.isEmpty ? DiscoverState.empty : DiscoverState.loaded;
-    }
-  }
-
-  @override
-  void onClose() {
-    _pageActivationWorker?.dispose();
-    _stateSyncWorker?.dispose();
-    super.onClose();
-  }
-
-  // ── Helper getters ──
-
-  bool get isLoading => state.value == DiscoverState.loading;
-  bool get isEmpty => state.value == DiscoverState.empty;
-  bool get hasError => state.value == DiscoverState.error;
-  bool get isLoaded => state.value == DiscoverState.loaded;
-  bool get hasProperties => deck.isNotEmpty;
-  bool get canSwipe => hasProperties && currentProperty != null;
+  Future<void> retryLoading() =>
+      ref.read(propertyQueryProvider(PropertyFeed.discover).notifier).load(refresh: true);
+  Future<void> showNearbyProperties() =>
+      ref.read(propertyLocationProvider(PageType.discover).notifier).useCurrent();
+  Future<bool> filterByPropertyType(String type) => ref
+      .read(propertyFiltersProvider.notifier)
+      .update(
+        PageType.discover,
+        ref.read(propertyFiltersProvider).forPage(PageType.discover).copyWith(propertyType: [type]),
+      );
+  Future<bool> filterByPurpose(String purpose) => ref
+      .read(propertyFiltersProvider.notifier)
+      .update(
+        PageType.discover,
+        ref.read(propertyFiltersProvider).forPage(PageType.discover).copyWith(purpose: purpose),
+      );
 }

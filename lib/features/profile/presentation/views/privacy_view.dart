@@ -1,460 +1,330 @@
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/mixins/theme_mixin.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
-import 'package:ghar360/core/utils/error_handler.dart';
-import 'package:ghar360/core/utils/password_validators.dart';
-import 'package:ghar360/core/widgets/common/max_content_width.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
 import 'package:ghar360/features/profile/presentation/controllers/change_password_controller.dart';
-import 'package:ghar360/features/profile/presentation/views/policy_page_view.dart';
+import 'package:ghar360/features/profile/presentation/widgets/profile_sheet_page.dart';
 
-class PrivacyView extends StatelessWidget with ThemeMixin {
+class PrivacyView extends StatelessWidget {
   const PrivacyView({super.key});
-
   static final List<_PolicyItem> _policyItems = const [
     _PolicyItem(
       titleKey: 'privacy_terms_of_service_title',
       subtitleKey: 'privacy_terms_of_service_subtitle',
       uniqueName: 'terms-of-service',
-      icon: Icons.description_outlined,
+      icon: KnifeIcon.document,
     ),
     _PolicyItem(
       titleKey: 'privacy_policy_item_title',
       subtitleKey: 'privacy_policy_item_subtitle',
       uniqueName: 'privacy-policy',
-      icon: Icons.privacy_tip_outlined,
+      icon: KnifeIcon.shield,
     ),
     _PolicyItem(
       titleKey: 'privacy_content_guidelines_title',
       subtitleKey: 'privacy_content_guidelines_subtitle',
       uniqueName: 'content-guidelines',
-      icon: Icons.rule_folder_outlined,
+      icon: KnifeIcon.document,
     ),
     _PolicyItem(
       titleKey: 'privacy_content_takedown_title',
       subtitleKey: 'privacy_content_takedown_subtitle',
       uniqueName: 'content-takedown-policy',
-      icon: Icons.remove_circle_outline,
+      icon: KnifeIcon.minus,
     ),
     _PolicyItem(
       titleKey: 'privacy_grievance_redressal_title',
       subtitleKey: 'privacy_grievance_redressal_subtitle',
       uniqueName: 'grievance-redressal-mechanism',
-      icon: Icons.support_agent,
+      icon: KnifeIcon.chat,
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return buildThemeAwareScaffold(
-      title: 'privacy_security'.tr,
-      body: Semantics(
-        label: 'qa.profile.privacy.screen',
-        identifier: 'qa.profile.privacy.screen',
-        child: MaxContentWidth(
-          // Center the settings cards and cap width on tablet/desktop. No-op on
-          // compact (phone) widths so the phone layout is visually unchanged.
-          maxWidth: 720,
-          child: SingleChildScrollView(
-            key: const ValueKey('qa.profile.privacy.screen'),
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                buildThemeAwareCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      buildSectionTitle('account_security'.tr),
-                      const SizedBox(height: 16),
-                      _buildSecurityItem(
-                        qaKey: 'qa.profile.privacy.change_password',
-                        icon: Icons.lock_outline,
-                        title: 'change_password'.tr,
-                        subtitle: 'update_account_password'.tr,
-                        onTap: _changePassword,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                buildThemeAwareCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      buildSectionTitle('policies_legal'.tr),
-                      const SizedBox(height: 16),
-                      ..._policyItems.map(
-                        (item) => _buildPolicyItem(
-                          icon: item.icon,
-                          title: item.titleKey.tr,
-                          subtitle: item.subtitleKey.tr,
-                          uniqueName: item.uniqueName,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                buildThemeAwareCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      buildSectionTitle('account_management'.tr),
-                      const SizedBox(height: 12),
-                      Text(
-                        'delete_account_description'.tr,
-                        style: TextStyle(fontSize: 14, color: AppDesign.textSecondary, height: 1.4),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          key: const ValueKey('qa.profile.privacy.delete_account'),
-                          onPressed: _showDeleteAccountDialog,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppDesign.errorRed,
-                            foregroundColor: Theme.of(context).colorScheme.onError,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: Text(
-                            'delete_account'.tr,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSecurityItem({
-    String? qaKey,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Semantics(
-      label: qaKey,
-      identifier: qaKey,
-      child: ListTile(
-        key: qaKey != null ? ValueKey(qaKey) : null,
-        contentPadding: EdgeInsets.zero,
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: AppDesign.primaryYellow.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: AppDesign.primaryYellow, size: 20),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppDesign.textPrimary),
-        ),
-        subtitle: Text(subtitle, style: TextStyle(fontSize: 14, color: AppDesign.textSecondary)),
-        trailing: Icon(Icons.chevron_right, color: AppDesign.iconColor),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  Widget _buildPolicyItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String uniqueName,
-  }) {
-    return ListTile(
+    final l = context.l10n;
+    final design = context.design;
+    final text = Theme.of(context).textTheme;
+    Widget row({
+      Key? key,
+      required KnifeIcon icon,
+      required String titleKey,
+      required String subtitleKey,
+      required VoidCallback onTap,
+    }) => ListTile(
+      key: key,
       contentPadding: EdgeInsets.zero,
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: AppDesign.primaryYellow.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(icon, color: AppDesign.primaryYellow, size: 20),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppDesign.textPrimary),
-      ),
-      subtitle: Text(subtitle, style: TextStyle(fontSize: 14, color: AppDesign.textSecondary)),
-      trailing: Icon(Icons.arrow_forward_ios, color: AppDesign.iconColor, size: 16),
-      onTap: () => _openPolicy(uniqueName, title),
+      titleAlignment: ListTileTitleAlignment.top,
+      leading: PaperIcon(icon, color: design.accent, size: 22),
+      title: Text(l.text(titleKey)),
+      subtitle: Text(l.text(subtitleKey)),
+      trailing: PaperIcon(KnifeIcon.chevronRight, color: design.textTertiary, size: 20),
+      onTap: onTap,
     );
-  }
-
-  void _changePassword() {
-    Get.dialog<void>(const _ChangePasswordDialog());
-  }
-
-  void _showDeleteAccountDialog() {
-    final confirmController = TextEditingController();
-    const confirmWord = 'DELETE';
-    final canDelete = false.obs;
-    final authController = Get.find<AuthController>();
-
-    Get.dialog<void>(
-      Obx(
-        () => AlertDialog(
-          backgroundColor: AppDesign.surface,
-          title: Text(
-            'delete_account_dialog_title'.tr,
-            style: const TextStyle(color: AppDesign.errorRed),
-          ),
-          content: SingleChildScrollView(
-            child: SizedBox(
-              width: (MediaQuery.of(Get.context!).size.width - 80).clamp(0.0, 420.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'delete_account_dialog_content'.tr,
-                    style: TextStyle(color: AppDesign.textSecondary),
+    return ProfileSheetPage(
+      title: l.text('privacy_security'),
+      identifier: 'qa.profile.privacy.screen',
+      maxWidth: 720,
+      children: [
+        SheetSectionTitle(l.text('account_security'), top: 4),
+        Semantics(
+          identifier: 'qa.profile.privacy.change_password',
+          child: row(
+            key: const ValueKey('qa.profile.privacy.change_password'),
+            icon: KnifeIcon.key,
+            titleKey: 'change_password',
+            subtitleKey: 'update_account_password',
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (_) => Consumer(
+                builder: (_, ref, _) => _ChangePasswordDialog(
+                  key: ValueKey(
+                    ref.watch(authProvider.select((state) => state.user?.supabaseUserId)),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'delete_account_type_delete_hint'.trParams({'word': confirmWord}),
-                    style: TextStyle(color: AppDesign.textSecondary, fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: confirmController,
-                    autocorrect: false,
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: const InputDecoration(
-                      labelText: confirmWord,
-                      prefixIcon: Icon(Icons.warning_amber_rounded),
-                    ),
-                    onChanged: (value) =>
-                        canDelete.value = value.trim().toUpperCase() == confirmWord,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: authController.isDeleting.value ? null : () => Get.back(),
-              child: Text('cancel'.tr, style: TextStyle(color: AppDesign.textSecondary)),
-            ),
-            TextButton(
-              onPressed: (authController.isDeleting.value || !canDelete.value)
-                  ? null
-                  : () async {
-                      final deleted = await authController.deleteAccount();
-                      if (deleted && (Get.isDialogOpen ?? false)) Get.back();
-                    },
-              child: authController.isDeleting.value
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      'delete'.tr,
-                      style: TextStyle(
-                        color: canDelete.value ? AppDesign.errorRed : AppDesign.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-            ),
-          ],
         ),
-      ),
-    ).then((_) {
-      confirmController.dispose();
-    });
-  }
-
-  void _openPolicy(String uniqueName, String title) {
-    Get.to(() => PolicyPageView(uniqueName: uniqueName, titleText: title));
+        SheetSectionTitle(l.text('policies_legal')),
+        for (final item in _policyItems)
+          row(
+            icon: item.icon,
+            titleKey: item.titleKey,
+            subtitleKey: item.subtitleKey,
+            onTap: () => context.push('/policy/${item.uniqueName}', extra: l.text(item.titleKey)),
+          ),
+        SheetSectionTitle(l.text('account_management')),
+        Text(
+          l.text('delete_account_description'),
+          style: text.bodyMedium?.copyWith(color: design.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        // Destructive and rare: ink in the error colour, no fill.
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            key: const ValueKey('qa.profile.privacy.delete_account'),
+            style: TextButton.styleFrom(
+              foregroundColor: design.error,
+              minimumSize: const Size(48, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            onPressed: () => showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => Consumer(
+                builder: (_, ref, _) => _DeleteAccountDialog(
+                  key: ValueKey(
+                    ref.watch(authProvider.select((state) => state.user?.supabaseUserId)),
+                  ),
+                ),
+              ),
+            ),
+            icon: const PaperIcon(KnifeIcon.trash, size: 20),
+            label: Text(l.text('delete_account')),
+          ),
+        ),
+      ],
+    );
   }
 }
 
-class _ChangePasswordDialog extends StatefulWidget {
-  const _ChangePasswordDialog();
-
+class _DeleteAccountDialog extends ConsumerStatefulWidget {
+  const _DeleteAccountDialog({super.key});
   @override
-  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+  ConsumerState<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
 }
 
-class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
-  final TextEditingController currentPasswordController = TextEditingController();
-  final TextEditingController newPasswordController = TextEditingController();
-  final TextEditingController confirmPasswordController = TextEditingController();
-  final RxBool currentVisible = false.obs;
-  final RxBool newVisible = false.obs;
-  final RxBool confirmVisible = false.obs;
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
-  final ChangePasswordController _controller = Get.find<ChangePasswordController>();
-
+class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
+  final _confirmation = TextEditingController();
   @override
   void dispose() {
-    currentPasswordController.dispose();
-    newPasswordController.dispose();
-    confirmPasswordController.dispose();
+    _confirmation.dispose();
     super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!formKey.currentState!.validate()) return;
-
-    final result = await _controller.changePassword(
-      currentPassword: currentPasswordController.text,
-      newPassword: newPasswordController.text,
-    );
-
-    if (!mounted) return;
-
-    switch (result) {
-      case ChangePasswordResult.success:
-        Get.back();
-        AppToast.success('success'.tr, 'password_updated_successfully'.tr);
-      case ChangePasswordResult.updateFailed:
-        ErrorHandler.handleAuthError(_controller.errorMessage.value);
-      case ChangePasswordResult.incorrectCurrent:
-      case ChangePasswordResult.verificationUnavailable:
-        // errorMessage already set on controller for inline display
-        break;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Obx(
-      () => AlertDialog(
-        backgroundColor: AppDesign.surface,
-        title: Text('change_password'.tr),
+    final state = ref.watch(authProvider);
+    final l = context.l10n;
+    final busy = state.mutation.isLoading;
+    final confirmed = state.user != null && _confirmation.text.trim().toUpperCase() == 'DELETE';
+    return PopScope(
+      canPop: !busy,
+      child: AlertDialog(
+        title: Text(l.text('delete_account_dialog_title')),
         content: SingleChildScrollView(
-          child: SizedBox(
-            width: (MediaQuery.of(context).size.width - 80).clamp(0.0, 420.0),
-            child: Form(
-              key: formKey,
-              child: AutofillGroup(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Obx(
-                      () => TextFormField(
-                        controller: currentPasswordController,
-                        obscureText: !currentVisible.value,
-                        autofillHints: const [AutofillHints.password],
-                        decoration: InputDecoration(
-                          labelText: 'current_password'.tr,
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            onPressed: () => currentVisible.value = !currentVisible.value,
-                            icon: Icon(
-                              currentVisible.value ? Icons.visibility_off : Icons.visibility,
-                            ),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'password_required'.tr;
-                          }
-                          return null;
-                        },
-                      ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l.text('delete_account_dialog_content')),
+              const SizedBox(height: 16),
+              Text(l.text('delete_account_type_delete_hint', params: {'word': 'DELETE'})),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('qa.profile.privacy.delete_confirm_input'),
+                controller: _confirmation,
+                enabled: !busy,
+                autocorrect: false,
+                textCapitalization: TextCapitalization.characters,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(labelText: 'DELETE'),
+              ),
+              if (state.mutation.hasError && state.mutationKind == AuthMutation.deleteAccount)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      l.text('something_went_wrong'),
+                      style: TextStyle(color: context.design.error),
                     ),
-                    const SizedBox(height: 14),
-                    Obx(
-                      () => TextFormField(
-                        controller: newPasswordController,
-                        obscureText: !newVisible.value,
-                        autofillHints: const [AutofillHints.newPassword],
-                        decoration: InputDecoration(
-                          labelText: 'new_password'.tr,
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            onPressed: () => newVisible.value = !newVisible.value,
-                            icon: Icon(newVisible.value ? Icons.visibility_off : Icons.visibility),
-                          ),
-                        ),
-                        validator: PasswordValidators.validate,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Obx(
-                      () => TextFormField(
-                        controller: confirmPasswordController,
-                        obscureText: !confirmVisible.value,
-                        autofillHints: const [AutofillHints.newPassword],
-                        decoration: InputDecoration(
-                          labelText: 'confirm_password'.tr,
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            onPressed: () => confirmVisible.value = !confirmVisible.value,
-                            icon: Icon(
-                              confirmVisible.value ? Icons.visibility_off : Icons.visibility,
-                            ),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'confirm_password_required'.tr;
-                          }
-                          if (value != newPasswordController.text) {
-                            return 'passwords_dont_match'.tr;
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    Obx(() {
-                      final error = _controller.errorMessage.value;
-                      if (error.isEmpty) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text(
-                          error,
-                          style: const TextStyle(color: AppDesign.errorRed, fontSize: 13),
-                        ),
-                      );
-                    }),
-                  ],
+                  ),
                 ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: busy ? null : () => Navigator.of(context).pop(),
+            child: Text(l.text('cancel')),
+          ),
+          // A floor keeps the button steady while busy; a fixed box would
+          // clip the label at large text.
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 112, minHeight: 48),
+            child: TextButton(
+              key: const ValueKey('qa.profile.privacy.delete_confirm'),
+              onPressed: !confirmed || busy
+                  ? null
+                  : () async {
+                      final deleted = await ref.read(authProvider.notifier).deleteAccount();
+                      if (context.mounted && deleted) Navigator.of(context).pop();
+                    },
+              child: busy
+                  ? LoadingStates.buttonSpinner(size: 18)
+                  : Text(l.text('delete'), style: TextStyle(color: context.design.error)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChangePasswordDialog extends ConsumerStatefulWidget {
+  const _ChangePasswordDialog({super.key});
+  @override
+  ConsumerState<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
+  final _form = GlobalKey<FormState>();
+  final _current = TextEditingController(),
+      _new = TextEditingController(),
+      _confirm = TextEditingController();
+  final _visible = [false, false, false];
+  @override
+  void dispose() {
+    _current.dispose();
+    _new.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    final result = await ref
+        .read(changePasswordProvider.notifier)
+        .changePassword(currentPassword: _current.text, newPassword: _new.text);
+    if (!mounted || result != ChangePasswordResult.success) return;
+    AppToast.success(
+      context.l10n.text('success'),
+      context.l10n.text('password_updated_successfully'),
+    );
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(changePasswordProvider);
+    final l = context.l10n;
+    final labels = ['current_password', 'new_password', 'confirm_password'];
+    final fields = [_current, _new, _confirm];
+    final errorKey = switch (state.result) {
+      ChangePasswordResult.incorrectCurrent => 'incorrect_password',
+      ChangePasswordResult.verificationUnavailable => 'password_verification_unavailable',
+      _ => 'failed_to_update_password',
+    };
+    return PopScope(
+      canPop: !state.loading,
+      child: AlertDialog(
+        title: Text(l.text('change_password')),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _form,
+            child: AutofillGroup(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var index = 0; index < fields.length; index++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: TextFormField(
+                        controller: fields[index],
+                        enabled: !state.loading,
+                        obscureText: !_visible[index],
+                        autofillHints: [
+                          index == 0 ? AutofillHints.password : AutofillHints.newPassword,
+                        ],
+                        validator: (value) => index == 2
+                            ? confirmPasswordValidation(context, value, _new.text)
+                            : passwordValidation(context, value, login: index == 0),
+                        decoration: InputDecoration(
+                          labelText: l.text(labels[index]),
+                          suffixIcon: IconButton(
+                            tooltip: l.text(labels[index]),
+                            onPressed: () => setState(() => _visible[index] = !_visible[index]),
+                            icon: PaperIcon(_visible[index] ? KnifeIcon.eyeOff : KnifeIcon.eye),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (state.error != null)
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(l.text(errorKey), style: TextStyle(color: context.design.error)),
+                    ),
+                ],
               ),
             ),
           ),
         ),
         actions: [
           TextButton(
-            onPressed: _controller.isLoading.value ? null : () => Get.back(),
-            child: Text('cancel'.tr, style: TextStyle(color: AppDesign.textSecondary)),
+            onPressed: state.loading ? null : () => Navigator.of(context).pop(),
+            child: Text(l.text('cancel')),
           ),
           TextButton(
-            onPressed: _controller.isLoading.value ? null : _submit,
-            child: _controller.isLoading.value
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(
-                    'update_password'.tr,
-                    style: const TextStyle(
-                      color: AppDesign.primaryYellow,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+            onPressed: state.loading ? null : _submit,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Opacity(opacity: state.loading ? 0 : 1, child: Text(l.text('update_password'))),
+                if (state.loading) LoadingStates.buttonSpinner(size: 18),
+              ],
+            ),
           ),
         ],
       ),
@@ -466,7 +336,7 @@ class _PolicyItem {
   final String titleKey;
   final String subtitleKey;
   final String uniqueName;
-  final IconData icon;
+  final KnifeIcon icon;
 
   const _PolicyItem({
     required this.titleKey,

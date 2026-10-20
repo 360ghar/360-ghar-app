@@ -36,7 +36,7 @@ UnifiedFilterModel _$UnifiedFilterModelFromJson(Map<String, dynamic> json) => Un
       ? null
       : DateTime.parse(json['check_out_date'] as String),
   guests: (json['guests'] as num?)?.toInt(),
-  sortBy: $enumDecodeNullable(_$SortByEnumMap, json['sort_by']),
+  sortBy: const SortByConverter().fromJson(json['sort_by']),
   searchQuery: json['search_query'] as String?,
   includeUnavailable: json['include_unavailable'] as bool?,
   propertyIds: (json['property_ids'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList(),
@@ -66,17 +66,8 @@ Map<String, dynamic> _$UnifiedFilterModelToJson(UnifiedFilterModel instance) => 
   'check_in_date': instance.checkInDate?.toIso8601String(),
   'check_out_date': instance.checkOutDate?.toIso8601String(),
   'guests': instance.guests,
-  'sort_by': _$SortByEnumMap[instance.sortBy],
+  'sort_by': const SortByConverter().toJson(instance.sortBy),
   'search_query': instance.searchQuery,
   'include_unavailable': instance.includeUnavailable,
   'property_ids': instance.propertyIds,
-};
-
-const _$SortByEnumMap = {
-  SortBy.distance: 'distance',
-  SortBy.priceLow: 'price_low',
-  SortBy.priceHigh: 'price_high',
-  SortBy.newest: 'newest',
-  SortBy.popular: 'popular',
-  SortBy.relevance: 'relevance',
 };

@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
-
-import 'package:ghar360/core/design/app_design_tokens.dart';
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 
 /// Branded cold-start / auth-bootstrap loader that matches the native splash
-/// (neutral50 background + centered logo) so the handoff does not feel blank.
+/// (paper background + centered mark) so the handoff does not feel blank.
 ///
 /// After [slowThreshold], shows a recovery message and optional [onRetry].
 class AppBootLoader extends StatefulWidget {
@@ -31,24 +33,20 @@ class AppBootLoader extends StatefulWidget {
   /// When false, only progress + text are shown (rare).
   final bool showLogo;
 
-  static const String logoAsset = 'assets/icons/splash_logo.png';
+  static const String logoAsset = 'assets/icons/logo_mark.png';
+  static const String logoAssetDark = 'assets/icons/logo_mark_dark.png';
 
   @override
   State<AppBootLoader> createState() => _AppBootLoaderState();
 }
 
-class _AppBootLoaderState extends State<AppBootLoader> with SingleTickerProviderStateMixin {
+class _AppBootLoaderState extends State<AppBootLoader> {
   Timer? _slowTimer;
   bool _isSlow = false;
-  late final AnimationController _fadeController;
-  late final Animation<double> _fade;
 
   @override
   void initState() {
     super.initState();
-    _fadeController = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
-    _fade = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
-    _fadeController.forward();
     _armSlowTimer();
   }
 
@@ -72,93 +70,65 @@ class _AppBootLoaderState extends State<AppBootLoader> with SingleTickerProvider
   @override
   void dispose() {
     _slowTimer?.cancel();
-    _fadeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final isDark = brightness == Brightness.dark;
-    final background = isDark ? AppDesignTokens.neutral900 : AppDesignTokens.neutral50;
-    final onSurface = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
-    final muted = isDark ? AppDesignTokens.darkTextSecondary : AppDesignTokens.neutral500;
-    final message = widget.message ?? 'loading'.tr;
+    final design = context.design;
+    final text = Theme.of(context).textTheme;
+    final message = widget.message ?? context.l10n.text('loading');
 
+    // Same background and mark as the native splash, so the handoff is seamless.
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: design.background,
       body: SafeArea(
-        child: FadeTransition(
-          opacity: _fade,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.showLogo) ...[
-                    Image.asset(
-                      AppBootLoader.logoAsset,
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.home_work_outlined,
-                        size: 72,
-                        color: AppDesignTokens.brandGold,
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-                  ],
-                  SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: AppDesignTokens.brandGold,
-                      backgroundColor: AppDesignTokens.brandGold.withValues(alpha: 0.15),
-                    ),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.showLogo) ...[
+                  Image.asset(
+                    design.isDark ? AppBootLoader.logoAssetDark : AppBootLoader.logoAsset,
+                    width: 120,
+                    height: 120,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) =>
+                        PaperIcon(KnifeIcon.home, size: 72, color: design.accent),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 28),
+                ],
+                LoadingStates.buttonSpinner(size: 24, color: design.accent),
+                const SizedBox(height: 20),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: text.bodyLarge?.copyWith(color: design.textSecondary),
+                ),
+                if (_isSlow) ...[
+                  const SizedBox(height: 12),
                   Text(
-                    message,
+                    context.l10n.text('boot_taking_longer'),
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: onSurface.withValues(alpha: 0.75),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.1,
-                    ),
+                    style: text.bodyMedium?.copyWith(color: design.textSecondary),
                   ),
-                  if (_isSlow) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'boot_taking_longer'.tr,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: muted, fontSize: 13, height: 1.35),
+                  if (widget.onRetry != null) ...[
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      key: const ValueKey('qa.boot.retry'),
+                      onPressed: () {
+                        setState(() => _isSlow = false);
+                        _armSlowTimer();
+                        widget.onRetry!();
+                      },
+                      icon: const PaperIcon(KnifeIcon.retry, size: 18),
+                      label: Text(context.l10n.text('retry')),
                     ),
-                    if (widget.onRetry != null) ...[
-                      const SizedBox(height: 20),
-                      TextButton.icon(
-                        key: const ValueKey('qa.boot.retry'),
-                        onPressed: () {
-                          setState(() => _isSlow = false);
-                          _armSlowTimer();
-                          widget.onRetry!();
-                        },
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: Text('retry'.tr),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppDesignTokens.neutral900,
-                          backgroundColor: AppDesignTokens.brandGold,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ],
                   ],
                 ],
-              ),
+              ],
             ),
           ),
         ),

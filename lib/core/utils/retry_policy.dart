@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/core/utils/error_mapper.dart';
 
 /// Signature for the delay seam used by [RetryPolicy].
 ///
@@ -95,12 +94,10 @@ class RetryPolicy {
   /// Default retry predicate reused across presets: retries the transient
   /// transport-layer failures the old loops retried on.
   ///
-  /// Mirrors the previous [ApiClient] gate (`NetworkException` /
-  /// `ServerException`) and defers to the typed [ErrorMapper.isRetryable] for
-  /// other mapped [AppException]s.
+  /// Uses typed failures without depending on presentation error mapping.
   static bool isTransientError(Object error) {
-    if (error is NetworkException || error is ServerException) return true;
-    if (error is AppException) return ErrorMapper.isRetryable(error);
+    if (error is NetworkException) return error.code != 'CANCELLED';
+    if (error is ServerException) return true;
     return false;
   }
 

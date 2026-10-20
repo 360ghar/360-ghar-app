@@ -1,6 +1,9 @@
-import 'package:ghar360/core/data/models/api_response_models.dart';
-import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:json_annotation/json_annotation.dart';
+
+import 'package:ghar360/core/data/models/wire_enums.dart';
+import 'package:ghar360/core/utils/api_date_time.dart';
+
+export 'package:ghar360/core/data/models/wire_enums.dart' show SortBy;
 
 part 'unified_filter_model.g.dart';
 
@@ -57,6 +60,7 @@ class UnifiedFilterModel {
   final DateTime? checkOutDate;
   final int? guests;
   @JsonKey(name: 'sort_by')
+  @SortByConverter()
   final SortBy? sortBy;
 
   // Search query for text-based search
@@ -115,22 +119,15 @@ class UnifiedFilterModel {
   factory UnifiedFilterModel.fromJson(Map<String, dynamic> json) =>
       _$UnifiedFilterModelFromJson(json);
 
-  static const Set<String> _canonicalPropertyTypes = <String>{
-    'house',
-    'apartment',
-    'builder_floor',
-    'room',
-    'villa',
-    'plot',
-    'condo',
-    'penthouse',
-    'studio',
-    'loft',
-    'pg',
-    'flatmate',
-    'office',
-    'shop',
-    'warehouse',
+  /// Radius the backend accepts, in whole kilometres.
+  static const minRadiusKm = 1;
+  static const maxRadiusKm = 100;
+
+  /// The radius to send: whole kilometres, kept between [minRadiusKm] and [maxRadiusKm].
+  static int apiRadiusKm(double km) => km.round().clamp(minRadiusKm, maxRadiusKm);
+
+  static final Set<String> _canonicalPropertyTypes = {
+    for (final type in PropertyType.values) type.wire,
   };
 
   static const Map<String, List<String>> _propertyTypeAliases = <String, List<String>>{
@@ -195,27 +192,14 @@ class UnifiedFilterModel {
     if (rawValue == null) return null;
     final normalized = rawValue.trim().toLowerCase();
     if (normalized.isEmpty) return null;
-    switch (normalized) {
-      case 'any':
-      case 'male':
-      case 'female':
-        return normalized;
-      default:
-        return null;
-    }
+    return ListingGenderPreference.fromJson(normalized)?.wire;
   }
 
   static String? normalizeSharingTypeToken(String? rawValue) {
     if (rawValue == null) return null;
     final normalized = rawValue.trim().toLowerCase().replaceAll('-', '_').replaceAll(' ', '_');
     if (normalized.isEmpty) return null;
-    switch (normalized) {
-      case 'private_room':
-      case 'shared_room':
-        return normalized;
-      default:
-        return null;
-    }
+    return ListingSharingType.fromJson(normalized)?.wire;
   }
 
   Map<String, dynamic> toApiQueryParams() {
@@ -226,6 +210,11 @@ class UnifiedFilterModel {
       if (value == null) return;
 
       switch (key) {
+        // The backend reads the radius from `radius` (sent by the datasource)
+        // and has no `include_unavailable` parameter; sending them does nothing.
+        case 'radius_km':
+        case 'include_unavailable':
+          return;
         case 'property_type':
           if (value is List) {
             final normalized = normalizePropertyTypes(value.map((item) => item?.toString() ?? ''));
@@ -271,6 +260,13 @@ class UnifiedFilterModel {
       }
     });
 
+    // The backend takes `check_in` and `check_out` together; a lone date is a 422.
+    if (mapped.containsKey('check_in') != mapped.containsKey('check_out')) {
+      mapped
+        ..remove('check_in')
+        ..remove('check_out');
+    }
+
     return mapped;
   }
 
@@ -289,9 +285,7 @@ class UnifiedFilterModel {
     }
 
     // Ensure numeric values are within valid ranges
-    if (radiusKm != null && (radiusKm! <= 0 || radiusKm! > 1000)) {
-      json.remove('radius_km'); // Remove invalid radius
-    }
+    if (radiusKm != null) json['radius_km'] = apiRadiusKm(radiusKm!).toDouble();
     if (priceMin != null && priceMin! < 0) {
       json.remove('price_min'); // Remove invalid price
     }

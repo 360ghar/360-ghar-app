@@ -1,86 +1,66 @@
-/// Standardized API response parsing utilities.
+/// One page of the `CursorPage` envelope: `{items, next_cursor, has_more, limit, total}`.
 ///
-/// All backend responses may be wrapped in `{ "data": ... }` or returned
-/// unwrapped. This utility normalises both formats so datasources can
-/// focus on domain logic.
+/// The server always sends all five keys. `total` is null unless the request set
+/// `include_total=true`. A cursor is opaque: pass [nextCursor] back unchanged, with the same
+/// filters, and never decode it.
+class CursorPageData<T> {
+  const CursorPageData({
+    required this.items,
+    required this.hasMore,
+    this.nextCursor,
+    this.limit = 0,
+    this.total,
+  });
+
+  final List<T> items;
+  final String? nextCursor;
+  final bool hasMore;
+  final int limit;
+  final int? total;
+
+  /// True when another page can be fetched: the server says so and gave a cursor.
+  bool get hasMorePages => hasMore && (nextCursor?.isNotEmpty ?? false);
+}
+
+/// Strict readers for response bodies. A body that does not have the contract shape throws a
+/// [FormatException]; the callers turn it into a typed failure.
 class ResponseParser {
-  /// Unwrap a single object from an API response body.
-  ///
-  /// Handles both `{ "data": { ... } }` and raw `{ ... }` formats.
-  /// Returns the inner map, or the body itself if no wrapper.
-  /// Throws [FormatException] if body is not a Map.
-  static Map<String, dynamic> unwrapObject(dynamic body) {
-    if (body is Map<String, dynamic>) {
-      final data = body['data'];
-      if (data is Map<String, dynamic>) return data;
-      return body;
-    }
-    throw FormatException(
-      'Expected Map<String, dynamic> in response body, but got ${body?.runtimeType ?? 'null'}',
-    );
+  const ResponseParser._();
+
+  /// The JSON object of a response body.
+  static Map<String, dynamic> object(dynamic body) {
+    if (body is Map) return Map<String, dynamic>.from(body);
+    throw FormatException('Expected a JSON object, got ${body?.runtimeType ?? 'null'}');
   }
 
-  /// Unwrap a list from an API response body.
-  ///
-  /// Tries `body['items']` (uniform cursor envelope), then `body['data']`,
-  /// then [fallbackKeys] in order, then `body` itself. Returns a `List` if
-  /// found, otherwise throws [FormatException].
-  static List unwrapList(dynamic body, {List<String> fallbackKeys = const []}) {
-    if (body is List) return body;
-    if (body is Map) {
-      final items = body['items'];
-      if (items is List) return items;
-      final data = body['data'];
-      if (data is List) return data;
-      for (final key in fallbackKeys) {
-        final alt = body[key];
-        if (alt is List) return alt;
-      }
-      // If body itself is a map but no list found, throw exception
-      throw FormatException(
-        'Expected List in response body (checked keys: items, data, '
-        '${fallbackKeys.join(', ')}), '
-        'but found keys: ${body.keys.take(10).join(', ')}',
+  /// A `CursorPage` body. Each item goes through [parse].
+  static CursorPageData<T> cursorPage<T>(
+    dynamic body,
+    T Function(Map<String, dynamic> json) parse,
+  ) {
+    final page = object(body);
+    final items = page['items'];
+    final hasMore = page['has_more'];
+    final nextCursor = page['next_cursor'];
+    final limit = page['limit'];
+    final total = page['total'];
+    if (items is! List ||
+        hasMore is! bool ||
+        nextCursor is! String? ||
+        limit is! int ||
+        total is! int? ||
+        !page.containsKey('next_cursor') ||
+        !page.containsKey('total')) {
+      throw const FormatException(
+        'Expected a CursorPage: items, next_cursor, has_more, limit, total',
       );
     }
-    throw FormatException(
-      'Expected List or Map<String, dynamic> in response body, but got ${body?.runtimeType ?? 'null'}',
+    return CursorPageData(
+      items: List.unmodifiable([for (final item in items) parse(object(item))]),
+      nextCursor: nextCursor == null || nextCursor.isEmpty ? null : nextCursor,
+      hasMore: hasMore,
+      limit: limit,
+      total: total,
     );
-  }
-
-  /// Extract the cursor-pagination `has_more` flag from the response envelope.
-  ///
-  /// Reads `body['has_more']` (uniform cursor envelope). Returns `false` when
-  /// absent or non-bool so callers can safely treat the page as terminal.
-  static bool extractHasMore(dynamic body) {
-    if (body is Map) {
-      final value = body['has_more'];
-      if (value is bool) return value;
-    }
-    return false;
-  }
-
-  /// Extract the opaque cursor-pagination `next_cursor` token from the
-  /// response envelope. Returns `null` on terminal pages or missing keys.
-  /// The token is opaque; callers MUST NOT decode it.
-  static String? extractNextCursor(dynamic body) {
-    if (body is Map) {
-      final value = body['next_cursor'];
-      if (value is String && value.isNotEmpty) return value;
-    }
-    return null;
-  }
-
-  /// Extract pagination total from the response envelope.
-  ///
-  /// Looks for `total`, then `count` keys. Falls back to [listLength].
-  /// Tolerates `null`/missing values (returns [listLength]) for callers that
-  /// still reference totals during the cursor migration.
-  static int extractTotal(dynamic body, {int listLength = 0}) {
-    if (body is Map) {
-      if (body['total'] is num) return (body['total'] as num).toInt();
-      if (body['count'] is num) return (body['count'] as num).toInt();
-    }
-    return listLength;
   }
 }

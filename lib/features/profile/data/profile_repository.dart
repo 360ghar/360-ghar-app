@@ -1,5 +1,3 @@
-import 'package:get/get.dart';
-
 import 'package:ghar360/core/data/models/user_model.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
@@ -7,15 +5,37 @@ import 'package:ghar360/core/network/response_parser.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
+/// The keys `PUT /users/profile` (`UserUpdate`) accepts from this app. The body is strict, so a
+/// key outside this set is a 422. `email` and `profile_image_url` are not in it: an email changes
+/// through Supabase and the avatar through its upload route. `preferences` has its own route.
+const userUpdateKeys = {'full_name', 'phone', 'date_of_birth'};
+
+/// The keys `PUT /users/preferences` (`UserPreferencesPatch`) accepts. A key sent as null is
+/// removed; a key not sent keeps its value.
+const userPreferencesKeys = {
+  'property_type',
+  'purpose',
+  'budget_min',
+  'budget_max',
+  'bedrooms_min',
+  'bedrooms_max',
+  'area_min',
+  'area_max',
+  'location_preference',
+  'max_distance_km',
+};
+
 /// Repository for managing user profile operations
 /// Handles all profile-related API calls and data management
-class ProfileRepository extends GetxService {
-  ProfileRepository({ApiClient? apiClient}) : _apiClient = apiClient ?? Get.find<ApiClient>();
+class ProfileRepository {
+  ProfileRepository({required this._apiClient});
 
   final ApiClient _apiClient;
 
-  /// Updates the user profile on the backend
+  /// Updates the user profile (`PUT /users/profile`) and returns the saved `SelfUser`. Only the
+  /// keys in [userUpdateKeys] are sent; `null` clears a nullable key (a blank `date_of_birth`).
   Future<UserModel> updateUserProfile(Map<String, dynamic> profileData) async {
+    _requireKeys(profileData, userUpdateKeys, 'profile');
     try {
       DebugLogger.info('👤 Updating user profile with data: ${profileData.keys.join(', ')}');
       final response = await _apiClient.put(ApiPaths.usersProfile, body: profileData);
@@ -23,45 +43,47 @@ class ProfileRepository extends GetxService {
       DebugLogger.success('✅ Profile updated successfully');
       return updatedUser;
     } on AppException catch (e, stackTrace) {
-      DebugLogger.error('❌ Failed to update user profile: ${e.message}', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     } catch (e, stackTrace) {
-      DebugLogger.error('Unexpected error updating user profile: $e', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     }
   }
 
-  /// Updates the user's location on the backend (fire-and-forget, no profile refetch)
-  Future<void> updateUserLocation(Map<String, dynamic> locationData) async {
+  /// Sends the device position (`PUT /users/location`, `LocationUpdate`: both keys, in range).
+  /// The backend answers with `UserLocation`; nothing here reads it.
+  Future<void> updateUserLocation({required double latitude, required double longitude}) async {
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return;
     try {
       DebugLogger.info('📍 Updating user location');
-      final lat = locationData['current_latitude'] as double?;
-      final lon = locationData['current_longitude'] as double?;
-      if (lat != null && lon != null) {
-        await _apiClient.put(ApiPaths.usersLocation, body: {'latitude': lat, 'longitude': lon});
-        DebugLogger.success('✅ Location updated successfully');
-      }
+      await _apiClient.put(
+        ApiPaths.usersLocation,
+        body: {'latitude': latitude, 'longitude': longitude},
+      );
+      DebugLogger.success('✅ Location updated successfully');
     } on AppException catch (e, stackTrace) {
-      DebugLogger.error('❌ Failed to update user location: ${e.message}', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     } catch (e, stackTrace) {
-      DebugLogger.error('Unexpected error updating user location: $e', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     }
   }
 
-  /// Updates the user's preferences on the backend
-  Future<UserModel> updateUserPreferences(Map<String, dynamic> preferences) async {
+  /// Merges [patch] into the stored preferences (`PUT /users/preferences`) and returns the
+  /// preferences the backend now holds. This is the only writer of preferences.
+  Future<UserPreferences> updateUserPreferences(Map<String, dynamic> patch) async {
+    _requireKeys(patch, userPreferencesKeys, 'preferences');
     try {
       DebugLogger.info('⚙️ Updating user preferences');
-      await _apiClient.put(ApiPaths.usersPreferences, body: preferences);
-      // Refetch profile to get the most up-to-date user model
-      return await getCurrentUserProfile();
+      final response = await _apiClient.put(ApiPaths.usersPreferences, body: patch);
+      return UserPreferences.fromJson(ResponseParser.object(response.body));
     } on AppException catch (e, stackTrace) {
-      DebugLogger.error('❌ Failed to update user preferences: ${e.message}', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     } catch (e, stackTrace) {
-      DebugLogger.error('Unexpected error updating user preferences: $e', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     }
   }
@@ -75,10 +97,10 @@ class ProfileRepository extends GetxService {
       DebugLogger.success('✅ User profile fetched successfully');
       return user;
     } on AppException catch (e, stackTrace) {
-      DebugLogger.error('❌ Failed to fetch user profile: ${e.message}', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     } catch (e, stackTrace) {
-      DebugLogger.error('Unexpected error fetching user profile: $e', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     }
   }
@@ -88,15 +110,9 @@ class ProfileRepository extends GetxService {
     return user.isProfileComplete;
   }
 
-  /// Updates a specific profile field
-  Future<UserModel> updateProfileField(String field, dynamic value) async {
-    return await updateUserProfile({field: value});
-  }
-
-  /// Uploads and updates user profile image
-  /// Uploads a local image file as the user's avatar and returns the updated
-  /// user. The backend `/users/me/avatar` endpoint stores the file (converting
-  /// to WebP) and returns the user with the new `profile_image_url`.
+  /// Uploads a local image file as the user's avatar and returns the updated user. The backend
+  /// `/users/me/avatar` endpoint stores the file (converting to WebP) and returns the `SelfUser`
+  /// with the new `profile_image_url`.
   Future<UserModel> updateProfileImage(String imagePath) async {
     try {
       DebugLogger.info('📸 Uploading user profile image');
@@ -109,25 +125,33 @@ class ProfileRepository extends GetxService {
       DebugLogger.success('✅ Profile image uploaded successfully');
       return updatedUser;
     } on AppException catch (e, stackTrace) {
-      DebugLogger.error('❌ Failed to upload profile image: ${e.message}', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     } catch (e, stackTrace) {
-      DebugLogger.error('Unexpected error uploading profile image: $e', e, stackTrace);
+      DebugLogger.error('Profile request failed', e.runtimeType, stackTrace);
       rethrow;
     }
   }
 
+  /// A `SelfUser`. A body that does not have the contract shape is a malformed response.
   UserModel _parseUser(dynamic raw) {
-    final payload = ResponseParser.unwrapObject(raw);
-    if (payload.isEmpty) {
-      throw const FormatException('Unexpected user response payload');
+    try {
+      return UserModel.fromJson(ResponseParser.object(raw));
+    } catch (error, stack) {
+      DebugLogger.error('User response rejected', error.runtimeType, stack);
+      throw ServerException(
+        'The service returned an invalid profile response.',
+        code: 'MALFORMED_RESPONSE',
+      );
     }
+  }
 
-    payload['phone'] ??= '';
-    if (payload['preferences'] is! Map<String, dynamic>) {
-      payload['preferences'] = <String, dynamic>{};
+  /// The backend rejects an undeclared key with a 422, so a caller bug fails here, before a
+  /// request is made.
+  static void _requireKeys(Map<String, dynamic> body, Set<String> allowed, String what) {
+    final unknown = body.keys.where((key) => !allowed.contains(key));
+    if (unknown.isNotEmpty) {
+      throw ArgumentError('Undeclared $what keys: ${unknown.join(', ')}');
     }
-
-    return UserModel.fromJson(payload);
   }
 }

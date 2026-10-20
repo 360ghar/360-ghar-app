@@ -1,677 +1,478 @@
-// lib/core/controllers/auth_controller.dart
-
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/controllers/offline_queue_service.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
+
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
-import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/firebase/analytics_service.dart';
 import 'package:ghar360/core/firebase/push_notifications_service.dart';
 import 'package:ghar360/core/network/api_client.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/providers/auth_providers.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
+import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/core/utils/error_handler.dart';
-import 'package:ghar360/core/utils/retry_policy.dart';
-import 'package:ghar360/features/assistant/data/assistant_repository.dart';
+import 'package:ghar360/features/auth/data/auth_failure.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
 import 'package:ghar360/features/profile/data/profile_repository.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-class AuthController extends GetxController {
-  // Dependencies are resolved lazily in onInit() (not via field initializers)
-  // so that registration order in InitialBinding can change without throwing
-  // a cryptic "X not found" error. onInit() runs after the binding completes.
-  late final AuthRepository _authRepository;
-  late final ProfileRepository _profileRepository;
-  late final NotificationsRemoteDatasource _notificationsDatasource;
+const _unchanged = Object();
 
-  // --- Reactive State ---
-  final Rx<AuthStatus> authStatus = AuthStatus.initial.obs;
-  final Rxn<UserModel> currentUser = Rxn<UserModel>();
-  final RxnString authErrorMessage = RxnString();
-  final RxBool isLoading = false.obs;
-  final RxBool isDeleting = false.obs;
-  final RxBool isAuthResolving = false.obs;
-  final Rxn<RouteSettings> redirectRoute = Rxn<RouteSettings>();
+enum AuthMutation { none, signOut, deleteAccount, updateProfile, updateAvatar, setPassword }
 
-  /// Set when an OTP login completes for an account without a password.
-  /// Forces a mandatory set-password screen before entering the app
-  /// (closes requirement 6). Cleared once the password is set.
-  bool _requiresPasswordSetup = false;
+@immutable
+class AuthState {
+  const AuthState({
+    this.status = AuthStatus.initial,
+    this.user,
+    this.error,
+    this.resolving = false,
+    this.stale = false,
+    this.profileCompletionDeferred = false,
+    this.mutation = const AsyncData(null),
+    this.mutationKind = AuthMutation.none,
+  });
+  final AuthStatus status;
+  final UserModel? user;
+  final AppException? error;
+  final bool resolving;
+  final bool stale;
+  final bool profileCompletionDeferred;
+  final AsyncValue<void> mutation;
+  final AuthMutation mutationKind;
+  bool get isAuthenticated => status == AuthStatus.authenticated;
 
-  StreamSubscription<User?>? _authSubscription;
-  Timer? _debounceTimer;
-  String? _lastProcessedAuthFingerprint;
-  Worker? _crashlyticsWorker;
-  bool _profileRetryInFlight = false;
-  DateTime? _lastProfileRetryAttemptAt;
-  bool _isHandlingUnauthorized = false;
-  DateTime? _lastUnauthorizedHandledAt;
-  String? _lastRegisteredNotificationToken;
-  String? _lastRegisteredNotificationUserId;
-  int _authProcessingGeneration = 0;
-  Timer? _authResolvingTimeoutTimer;
-  static const Duration _authResolvingMaxDuration = Duration(seconds: 60);
-  static const Duration _tokenWaitTimeout = Duration(seconds: 10);
-  static const Duration _initialProfileLoadTimeout = Duration(seconds: 50);
-  static const Duration _profileRetryCooldown = Duration(seconds: 2);
-  static const Duration _unauthorizedHandleCooldown = Duration(seconds: 8);
-  static const Duration _authStateDebounce = Duration(
-    milliseconds: 300,
-  ); // Increased from 100ms for Supabase propagation
+  AuthState copyWith({
+    AuthStatus? status,
+    Object? user = _unchanged,
+    Object? error = _unchanged,
+    bool? resolving,
+    bool? stale,
+    bool? profileCompletionDeferred,
+    AsyncValue<void>? mutation,
+    AuthMutation? mutationKind,
+  }) => AuthState(
+    status: status ?? this.status,
+    user: identical(user, _unchanged) ? this.user : user as UserModel?,
+    error: identical(error, _unchanged) ? this.error : error as AppException?,
+    resolving: resolving ?? this.resolving,
+    stale: stale ?? this.stale,
+    profileCompletionDeferred: profileCompletionDeferred ?? this.profileCompletionDeferred,
+    mutation: mutation ?? this.mutation,
+    mutationKind: mutationKind ?? this.mutationKind,
+  );
+}
 
-  void _setAuthResolving(bool value) {
-    isAuthResolving.value = value;
-    _authResolvingTimeoutTimer?.cancel();
-    if (value) {
-      _authResolvingTimeoutTimer = Timer(_authResolvingMaxDuration, () {
-        if (isAuthResolving.value) {
-          DebugLogger.error(
-            '⏰ isAuthResolving stuck true for '
-            '${_authResolvingMaxDuration.inSeconds}s. '
-            'Forcing recovery.',
-          );
-          isAuthResolving.value = false;
-          if (authStatus.value != AuthStatus.authenticated &&
-              authStatus.value != AuthStatus.unauthenticated) {
-            _handleProfileLoadFailure(userMessage: 'auth_resolving_timeout'.tr);
-          }
-        }
-      });
-    }
-  }
+final authProvider = NotifierProvider<AuthController, AuthState>(AuthController.new);
+
+/// Session state has no navigation or presentation controllers.
+class AuthController extends Notifier<AuthState> {
+  late AuthRepository _auth;
+  late ProfileRepository _profiles;
+  late NotificationsRemoteDatasource _notifications;
+  late AppDatabase _database;
+  late ApiClient _client;
+  String? _accountId;
+  String? _registeredToken;
+  int _generation = 0;
+  bool _passwordRequired = false;
+  bool _handlingUnauthorized = false;
+  DateTime? _lastRetry;
 
   @override
-  void onInit() {
-    super.onInit();
-    _resolveDependencies();
-    _setupCrashlyticsWorker();
-    _setupUnauthorizedHandler();
-    _initialize();
-  }
-
-  /// Resolves dependencies with a clear error message identifying which
-  /// dependency is missing, so registration-order issues are easy to debug.
-  void _resolveDependencies() {
-    _authRepository = _findOrThrow<AuthRepository>('AuthRepository');
-    _profileRepository = _findOrThrow<ProfileRepository>('ProfileRepository');
-    _notificationsDatasource = _findOrThrow<NotificationsRemoteDatasource>(
-      'NotificationsRemoteDatasource',
+  AuthState build() {
+    _auth = ref.watch(authRepositoryProvider);
+    _profiles = ref.watch(profileRepositoryProvider);
+    _notifications = ref.watch(notificationsDatasourceProvider);
+    _database = ref.watch(appDatabaseProvider);
+    _client = ref.watch(apiClientProvider);
+    // Establish account scope subscription before accepting profile responses.
+    ref.read(storageScopeProvider);
+    final generation = ++_generation;
+    _accountId = _auth.currentUser?.id;
+    final handler = _handleUnauthorized;
+    _client.onUnauthorized = handler;
+    final subscription = _auth.onAuthStateChange.listen(
+      _acceptSession,
+      onError: (Object error, StackTrace stack) {
+        if (!ref.mounted) return;
+        state = state.copyWith(
+          error: authFailure(error),
+          resolving: false,
+          status: state.user == null ? AuthStatus.error : state.status,
+          stale: state.user != null,
+        );
+        DebugLogger.warning('Session stream failed', error.runtimeType, stack);
+      },
     );
-  }
-
-  T _findOrThrow<T>(String name) {
-    if (!Get.isRegistered<T>()) {
-      throw StateError(
-        'AuthController: $name is not registered. Ensure InitialBinding registers '
-        'it before AuthController.onInit().',
-      );
-    }
-    return Get.find<T>();
-  }
-
-  /// Initialize the controller and listen to auth state changes.
-  void _initialize() {
-    // Listen to the stream from the repository
-    _authSubscription = _authRepository.onAuthStateChange.listen(_onAuthStateChanged);
-    DebugLogger.auth('AuthController initialized and listening for auth changes.');
-
-    // Perform an initial check in case the stream has already emitted a value
-    final initialUser = _authRepository.currentUser;
-    if (initialUser != null) {
-      _onAuthStateChanged(initialUser);
-    } else {
-      // Clear any prior user's offline queue / page state that survived a kill.
-      _transitionToUnauthenticated();
-    }
-  }
-
-  /// Shared path for any transition to signed-out UI state.
-  void _transitionToUnauthenticated() {
-    authErrorMessage.value = null;
-    currentUser.value = null;
-    authStatus.value = AuthStatus.unauthenticated;
-    _setAuthResolving(false);
-    _profileRetryInFlight = false;
-    _requiresPasswordSetup = false;
-    _lastRegisteredNotificationToken = null;
-    _lastRegisteredNotificationUserId = null;
-    _clearUserScopedState();
-  }
-
-  /// Keeps Crashlytics context in sync with auth status.
-  void _setupCrashlyticsWorker() {
-    _crashlyticsWorker = ever(authStatus, (AuthStatus status) {
-      try {
-        FirebaseCrashlytics.instance.setCustomKey('auth_status', status.name);
-      } catch (e, st) {
-        DebugLogger.debug('🟡 Crashlytics auth_status key failed (ignored): $e', e, st);
-      }
+    ref.onDispose(() {
+      _generation++;
+      unawaited(subscription.cancel());
+      if (identical(_client.onUnauthorized, handler)) _client.onUnauthorized = null;
     });
-  }
-
-  void _setupUnauthorizedHandler() {
-    ApiClient.onUnauthorized = _handleUnauthorizedFromApi;
-  }
-
-  Future<void> _handleUnauthorizedFromApi(UnauthorizedEvent event) async {
-    final error = event.error;
-    // MISSING_AUTH_HEADER means the SDK could not mint a token at all (dead
-    // refresh token). It is as fatal to the session as a server 401.
-    if (error.code != AppException.unauthorizedCode &&
-        error.code != AppException.missingAuthHeaderCode) {
-      return;
-    }
-
-    if (authStatus.value == AuthStatus.unauthenticated || _isHandlingUnauthorized) {
-      return;
-    }
-
-    final now = DateTime.now();
-    final lastHandledAt = _lastUnauthorizedHandledAt;
-    if (lastHandledAt != null && now.difference(lastHandledAt) < _unauthorizedHandleCooldown) {
-      return;
-    }
-
-    _isHandlingUnauthorized = true;
-    _lastUnauthorizedHandledAt = now;
-
-    try {
-      DebugLogger.warning(
-        '🔐 [AUTH] Critical unauthorized response detected from ${event.endpoint}.',
-      );
-
-      ErrorHandler.showInfo('session_expired_message'.tr);
-      await _authRepository.signOut();
-    } catch (e, st) {
-      DebugLogger.error(
-        '🔐 [AUTH] Failed to resolve critical '
-        'unauthorized response',
-        e,
-        st,
-      );
-      // Sign-out failed — still clear local user-scoped state so the next
-      // session cannot leak offline queue / page decks / caches.
-      _transitionToUnauthenticated();
-    } finally {
-      _isHandlingUnauthorized = false;
-    }
-  }
-
-  /// Callback triggered when Supabase auth state changes (sign-in, sign-out, token refresh).
-  /// Uses debouncing to prevent duplicate processing.
-  Future<void> _onAuthStateChanged(User? supabaseUser) async {
-    // Cancel any existing debounce timer
-    _debounceTimer?.cancel();
-
-    // Debounce rapid auth state changes to prevent duplicate processing
-    // Using 300ms to ensure Supabase session is fully propagated
-    _debounceTimer = Timer(_authStateDebounce, () {
-      _processAuthStateChange(supabaseUser).catchError((Object error, StackTrace stackTrace) {
-        DebugLogger.error('Unhandled error while processing auth state change', error, stackTrace);
-        authStatus.value = AuthStatus.error;
-        _setAuthResolving(false);
-      });
+    if (_accountId == null) return const AuthState(status: AuthStatus.unauthenticated);
+    Future.microtask(() {
+      if (_isCurrent(generation)) unawaited(_loadProfile(generation));
     });
+    return const AuthState(resolving: true);
   }
 
-  String _buildSessionFingerprint(User? supabaseUser) {
-    final session = _authRepository.currentSession;
-    final token = session?.accessToken ?? '';
-    final tokenSuffix = token.isEmpty
-        ? ''
-        : token.substring(token.length >= 8 ? token.length - 8 : 0);
-    return '${supabaseUser?.id ?? 'signed_out'}|${session?.expiresAt ?? 0}|$tokenSuffix';
-  }
+  bool _isCurrent(int generation) =>
+      ref.mounted && generation == _generation && _auth.currentUser?.id == _accountId;
 
-  /// Process the actual auth state change after debouncing
-  Future<void> _processAuthStateChange(User? supabaseUser) async {
-    final fingerprint = _buildSessionFingerprint(supabaseUser);
-    if (_lastProcessedAuthFingerprint == fingerprint) {
-      DebugLogger.debug('Skipping duplicate auth state change: $fingerprint');
+  void _acceptSession(User? user) {
+    if (!ref.mounted) return;
+    if (user?.id == _accountId && (state.user != null || state.resolving)) return;
+    final generation = ++_generation;
+    if (_accountId != null && _accountId != user?.id) _passwordRequired = false;
+    _accountId = user?.id;
+    _registeredToken = null;
+    _client.cancelPendingRequests();
+    if (user == null) {
+      _passwordRequired = false;
+      state = const AuthState(status: AuthStatus.unauthenticated);
+      AnalyticsService.clearSessionState();
+      unawaited(_telemetry(null));
       return;
     }
+    state = const AuthState(resolving: true);
+    unawaited(_telemetry(user.id));
+    unawaited(_loadProfile(generation));
+  }
 
-    _lastProcessedAuthFingerprint = fingerprint;
-    final generation = ++_authProcessingGeneration;
+  AuthStatus _statusFor(UserModel user) => _passwordRequired
+      ? AuthStatus.requiresPasswordSetup
+      : user.isProfileComplete || state.profileCompletionDeferred
+      ? AuthStatus.authenticated
+      : AuthStatus.requiresProfileCompletion;
 
-    if (supabaseUser == null) {
-      // --- USER IS SIGNED OUT ---
-      DebugLogger.auth('Auth state changed: User is signed out.');
-      _transitionToUnauthenticated();
-      // Clear analytics/Crashlytics user context
-      try {
-        await AnalyticsService.setUserId(null);
-        await FirebaseCrashlytics.instance.setUserIdentifier('');
-      } catch (e, st) {
-        DebugLogger.debug('🟡 Telemetry user reset failed (ignored): $e', e, st);
-      }
-    } else {
-      // --- USER IS SIGNED IN ---
-      DebugLogger.auth(
-        'Auth state changed: User is signed in. '
-        'UID: ${supabaseUser.id}',
+  Future<void> _loadProfile(int generation) async {
+    if (!_isCurrent(generation) || _accountId == null) return;
+    final scope = ref.read(storageScopeProvider);
+    // A cached profile is only useful for the active authenticated SDK account.
+    if (scope.accountId != _accountId) {
+      state = state.copyWith(
+        resolving: false,
+        status: AuthStatus.error,
+        error: AuthenticationException('Account scope is not ready.', code: 'SESSION_NOT_READY'),
       );
-      authErrorMessage.value = null;
-      _setAuthResolving(true);
+      return;
+    }
+    if (state.user == null) {
       try {
-        // Set analytics/Crashlytics user context
-        if (_authProcessingGeneration != generation) return;
-        try {
-          await AnalyticsService.setUserId(supabaseUser.id);
-          await FirebaseCrashlytics.instance.setUserIdentifier(supabaseUser.id);
-        } catch (e, st) {
-          DebugLogger.debug('🟡 Telemetry user identity failed (ignored): $e', e, st);
+        final cached = await _database.readCache(scope: scope, key: 'auth-profile');
+        if (!_isCurrent(generation)) return;
+        if (cached?.value case final Map raw) {
+          final user = UserModel.fromJson(Map<String, dynamic>.from(raw));
+          if (user.supabaseUserId == _accountId) {
+            state = state.copyWith(
+              user: user,
+              status: _statusFor(user),
+              stale: true,
+              resolving: true,
+            );
+          }
         }
-
-        // Ensure access token is available before backend call
-        if (_authProcessingGeneration != generation) return;
-        await _ensureTokenThenLoadProfile();
-      } finally {
-        _setAuthResolving(false);
-        DebugLogger.debug('🔐 [AUTH_BOOT] Auth bootstrap flow finished.');
+      } catch (error, stack) {
+        DebugLogger.warning('Cached profile unavailable', error.runtimeType, stack);
       }
     }
-  }
-
-  Future<void> _ensureTokenThenLoadProfile() async {
-    final policy = RetryPolicy.profileBoot(retryIf: _isTransientError);
-    var attempt = 0;
     try {
-      await policy.execute(() async {
-        attempt++;
-        DebugLogger.auth(
-          '🔐 [AUTH_BOOT] Waiting for access token '
-          '(attempt $attempt/${policy.maxAttempts})',
-        );
-        final token = await _authRepository.waitForAccessToken(
-          timeout: _tokenWaitTimeout,
-          minTtlSeconds: 45,
-        );
-        if (token.isEmpty) {
-          throw Exception('Access token is empty after wait');
-        }
-        DebugLogger.auth(
-          '🔐 [AUTH_BOOT] Access token ready '
-          '(length: ${token.length}). '
-          'Loading user profile...',
-        );
-        await _loadUserProfile();
-      });
-    } catch (e, st) {
-      DebugLogger.error('🔐 [AUTH_BOOT] Failed after $attempt attempt(s)', e, st);
-      final message = e is TimeoutException
-          ? 'profile_load_timeout'.tr
-          : 'profile_load_error_user'.tr;
-      _handleProfileLoadFailure(userMessage: message);
-    }
-  }
-
-  bool _isTransientError(Object error) {
-    if (RetryPolicy.isTransientError(error)) return true;
-    if (error is TimeoutException) return true;
-    final msg = error.toString().toLowerCase();
-    return msg.contains('timeout') ||
-        msg.contains('network') ||
-        msg.contains('socket') ||
-        msg.contains('connection');
-  }
-
-  /// Clears caches and user-scoped in-memory state so the next session cannot
-  /// leak the previous user's data (page decks, ETags, offline queue, etc.).
-  void _clearUserScopedState() {
-    try {
-      if (Get.isRegistered<ApiClient>()) {
-        Get.find<ApiClient>().clearCache();
-      }
-    } catch (e, st) {
-      DebugLogger.warning('Failed to clear ApiClient cache on logout', e, st);
-    }
-
-    try {
-      if (Get.isRegistered<PageStateService>()) {
-        Get.find<PageStateService>().clearSessionData();
-      }
-    } catch (e, st) {
-      DebugLogger.warning('Failed to clear PageStateService on logout', e, st);
-    }
-
-    try {
-      if (Get.isRegistered<OfflineQueueService>()) {
-        Get.find<OfflineQueueService>().clearQueue();
-      }
-    } catch (e, st) {
-      DebugLogger.warning('Failed to clear offline queue on logout', e, st);
-    }
-
-    try {
-      if (Get.isRegistered<PropertiesPort>()) {
-        Get.find<PropertiesPort>().clearCache();
-      }
-    } catch (e, st) {
-      DebugLogger.warning('Failed to clear properties cache on logout', e, st);
-    }
-
-    try {
-      if (Get.isRegistered<AssistantRepository>()) {
-        Get.find<AssistantRepository>().clearWidgetCache();
-      }
-    } catch (e, st) {
-      DebugLogger.warning('Failed to clear AssistantRepository cache on logout', e, st);
-    }
-
-    AnalyticsService.clearSessionState();
-    DebugLogger.info('🧹 User-scoped session state cleared');
-  }
-
-  /// Fetches the user profile from our backend and updates the app's auth status.
-  Future<void> _loadUserProfile() async {
-    final profileLoadStartedAt = DateTime.now();
-    try {
-      DebugLogger.auth(
-        '👤 [AUTH_BOOT] Fetching current user profile '
-        '(timeout: ${_initialProfileLoadTimeout.inSeconds}s)',
+      final token = await _auth.waitForAccessToken(
+        timeout: const Duration(seconds: 10),
+        minTtlSeconds: 45,
       );
-
-      final userProfile = await _profileRepository.getCurrentUserProfile().timeout(
-        _initialProfileLoadTimeout,
+      if (token.isEmpty) {
+        throw AuthenticationException('Session is not ready.', code: 'SESSION_NOT_READY');
+      }
+      if (!_isCurrent(generation)) return;
+      final user = await _profiles.getCurrentUserProfile().timeout(const Duration(seconds: 30));
+      if (!_isCurrent(generation)) return;
+      if (user.supabaseUserId != _accountId) {
+        throw AuthenticationException('Profile account did not match.', code: 'ACCOUNT_MISMATCH');
+      }
+      state = state.copyWith(
+        user: user,
+        status: _statusFor(user),
+        error: null,
+        stale: false,
+        resolving: false,
       );
-
-      final durationMs = DateTime.now().difference(profileLoadStartedAt).inMilliseconds;
-      currentUser.value = userProfile;
-      authErrorMessage.value = null;
-      DebugLogger.success(
-        '👤 [AUTH_BOOT] User profile loaded in ${durationMs}ms: ${userProfile.fullName}',
+      unawaited(_registerPush(generation));
+      await _cacheProfile(user, scope, generation);
+    } catch (error, stack) {
+      if (!_isCurrent(generation)) return;
+      state = state.copyWith(
+        error: authFailure(error),
+        resolving: false,
+        stale: state.user != null,
+        status: state.user == null ? AuthStatus.error : _statusFor(state.user!),
       );
-      unawaited(_registerNotificationTokenIfAvailable(userProfile));
-
-      // Determine the final auth status based on profile completeness.
-      // A pending password-setup requirement (OTP login without a password)
-      // takes precedence and gates entry into the app until resolved.
-      final AuthStatus newStatus;
-      if (_requiresPasswordSetup) {
-        newStatus = AuthStatus.requiresPasswordSetup;
-      } else if (userProfile.isProfileComplete) {
-        newStatus = AuthStatus.authenticated;
-      } else {
-        newStatus = AuthStatus.requiresProfileCompletion;
-      }
-
-      // Only update if status actually changed to prevent unnecessary rebuilds
-      if (authStatus.value != newStatus) {
-        DebugLogger.auth('Changing auth status from ${authStatus.value} to $newStatus');
-        authStatus.value = newStatus;
-
-        if (newStatus == AuthStatus.authenticated) {
-          DebugLogger.auth('User is fully authenticated and profile is complete.');
-        } else {
-          DebugLogger.auth('User authenticated, but $newStatus is required.');
-          // Force a UI rebuild to ensure navigation happens
-          Future.delayed(const Duration(milliseconds: 50), () {
-            authStatus.refresh();
-          });
-        }
-      }
-    } on TimeoutException catch (e, stackTrace) {
-      DebugLogger.error('👤 [AUTH_BOOT] Timed out while loading user profile.', e, stackTrace);
-      // Rethrow so [RetryPolicy.profileBoot] can retry transient timeouts.
-      // Final failure is handled by the caller's catch (no double toast here).
-      rethrow;
-    } catch (e, stackTrace) {
-      DebugLogger.error('Failed to load user profile after sign-in.', e, stackTrace);
-      // Retry only typed transport failures (NetworkException/ServerException/etc.).
-      // Do not rethrow bare Exception just because the message contains "network" —
-      // that string heuristic is for token-wait failures, not profile mapping.
-      if (e is AppException && RetryPolicy.isTransientError(e)) {
-        rethrow;
-      }
-      _handleProfileLoadFailure(userMessage: 'profile_load_error_user'.tr);
+      DebugLogger.warning('Profile request failed', error.runtimeType, stack);
     }
   }
 
-  Future<void> _registerNotificationTokenIfAvailable(UserModel userProfile) async {
-    final token = PushNotificationsService.currentToken;
-    if (token == null || token.isEmpty) {
-      return;
-    }
-
-    final authUserId = _authRepository.currentUser?.id;
-    final resolvedUserId = authUserId != null && authUserId.isNotEmpty
-        ? authUserId
-        : userProfile.supabaseUserId;
-
-    if (resolvedUserId.isEmpty) {
-      DebugLogger.warning('🔔 Skipping device token registration: no authenticated user id');
-      return;
-    }
-
-    if (_lastRegisteredNotificationToken == token &&
-        _lastRegisteredNotificationUserId == resolvedUserId) {
-      return;
-    }
-
-    for (var attempt = 0; attempt < 2; attempt++) {
-      try {
-        final registered = await _notificationsDatasource.registerDeviceToken(
-          token: token,
-          userId: resolvedUserId,
-        );
-        if (registered) {
-          _lastRegisteredNotificationToken = token;
-          _lastRegisteredNotificationUserId = resolvedUserId;
-        }
-        return; // Success
-      } catch (e, st) {
-        DebugLogger.warning(
-          '🔔 Notification token registration '
-          'attempt ${attempt + 1} failed',
-          e,
-          st,
-        );
-        if (attempt == 0) {
-          await Future.delayed(const Duration(seconds: 5));
-        }
-      }
-    }
-  }
-
-  void _handleProfileLoadFailure({required String userMessage}) {
-    // If we already have a user and were authenticated, treat this as a transient refresh failure.
-    // Do not knock the app into an error state; keep current auth status.
-    if (currentUser.value != null && authStatus.value == AuthStatus.authenticated) {
-      DebugLogger.warning('Transient profile refresh failure; preserving authenticated state.');
-      try {
-        if (Get.context != null) {
-          ErrorHandler.showInfo('profile_refresh_failed'.tr);
-        }
-      } catch (_) {}
-      return;
-    }
-
-    // Otherwise, this is initial load failure; set error state so user can retry or sign out.
-    authErrorMessage.value = userMessage;
-    authStatus.value = AuthStatus.error;
-    DebugLogger.warning('👤 [AUTH_BOOT] Profile load failure surfaced to user: $userMessage');
-  }
-
-  /// Unregisters the push-notification device token (best-effort). Shared by
-  /// [signOut] and [deleteAccount] so the device stops receiving notifications
-  /// once the session ends.
-  Future<void> _unregisterPushToken() async {
-    final token = PushNotificationsService.currentToken;
-    if (token != null && token.isNotEmpty) {
-      try {
-        await _notificationsDatasource.unregisterDeviceToken(token);
-      } catch (e, st) {
-        DebugLogger.warning('🔔 Failed to unregister device token during sign-out', e, st);
-      }
-    }
-  }
-
-  /// Signs out the user from Supabase. The `_onAuthStateChanged` listener will handle the rest.
-  Future<void> signOut() async {
+  Future<void> _cacheProfile(UserModel user, StorageScope scope, int generation) async {
     try {
-      isLoading.value = true;
-      await _unregisterPushToken();
-      await _authRepository.signOut();
-      // The listener will automatically set the state to unauthenticated and navigation worker will handle routing
-    } catch (e) {
-      ErrorHandler.handleAuthError(e);
+      final now = DateTime.now().toUtc();
+      await _database.writeCache(
+        scope: scope,
+        key: 'auth-profile',
+        value: user.toJson(),
+        freshUntil: now.add(const Duration(minutes: 5)),
+        expiresAt: now.add(const Duration(hours: 24)),
+      );
+    } catch (error, stack) {
+      if (_isCurrent(generation)) state = state.copyWith(error: authFailure(error));
+      DebugLogger.warning('Profile cache write failed', error.runtimeType, stack);
+    }
+  }
+
+  Future<void> _handleUnauthorized(UnauthorizedEvent event) async {
+    // A 401 that survived the token refresh, or a 403 USER_INACTIVE, ends the session. A refresh
+    // that could not reach Supabase is not proof of an expired session, and a failure raised on
+    // the device carries no status, so neither ends it.
+    if (!event.error.endsSession || _handlingUnauthorized || _accountId == null) return;
+    _handlingUnauthorized = true;
+    final scope = ref.read(storageScopeProvider);
+    try {
+      final signedOut = await signOut();
+      if (!signedOut && ref.mounted && identical(ref.read(storageScopeProvider), scope)) {
+        // A confirmed backend rejection must never leave protected UI active.
+        _client.cancelPendingRequests();
+        _acceptSession(null);
+      }
     } finally {
-      isLoading.value = false;
+      _handlingUnauthorized = false;
     }
   }
 
-  /// Permanently deletes the user's account. Unregisters the push token,
-  /// submits the deletion request to the backend, then clears the local
-  /// session; the auth-state listener routes to login.
-  ///
-  /// Returns `true` on success, `false` on failure so callers (e.g.
-  /// `PrivacyView`) can branch on the outcome instead of always closing
-  /// the confirmation dialog.
-  Future<bool> deleteAccount() async {
-    isDeleting.value = true;
-    try {
-      await _unregisterPushToken();
-      await _authRepository.deleteAccount();
-      await _authRepository.signOut(); // clears session; listener routes to login
-      AppToast.success('success'.tr, 'account_deleted_success'.tr);
-      return true;
-    } catch (e, st) {
-      ErrorHandler.handleAuthError(e, stackTrace: st);
-      DebugLogger.error('Account deletion failed', e, st);
-      return false;
-    } finally {
-      isDeleting.value = false;
-    }
-  }
-
-  /// Allows the UI to retry loading the profile if it fails.
-  /// Forces a fresh bootstrap from the current Supabase session.
-  ///
-  /// Used by the Root boot loader when auth is stuck on [AuthStatus.initial]
-  /// or navigation has stalled after a partial start.
   Future<void> recheckAuthBootstrap() async {
-    DebugLogger.info('🔐 [AUTH_BOOT] Manual recheckAuthBootstrap requested');
-    _lastProcessedAuthFingerprint = null;
-    _debounceTimer?.cancel();
-    final user = _authRepository.currentUser;
-    await _processAuthStateChange(user);
+    if (state.resolving) return;
+    if (_auth.currentUser == null) {
+      _acceptSession(null);
+      return;
+    }
+    _accountId = _auth.currentUser!.id;
+    final generation = ++_generation;
+    state = state.copyWith(resolving: true, error: null);
+    await _loadProfile(generation);
   }
 
   Future<void> retryProfileLoad() async {
-    if (authStatus.value == AuthStatus.error) {
-      if (_profileRetryInFlight) {
-        DebugLogger.debug('Retry profile load ignored: retry already in flight.');
-        return;
-      }
+    if (state.resolving) return;
+    final now = DateTime.now();
+    if (_lastRetry != null && now.difference(_lastRetry!) < const Duration(seconds: 2)) return;
+    _lastRetry = now;
+    await recheckAuthBootstrap();
+  }
 
-      final now = DateTime.now();
-      final lastRetryAttemptAt = _lastProfileRetryAttemptAt;
-      if (lastRetryAttemptAt != null &&
-          now.difference(lastRetryAttemptAt) < _profileRetryCooldown) {
-        DebugLogger.debug('Retry profile load ignored: cooldown active.');
-        AppToast.info('retry_cooldown_title'.tr, 'retry_cooldown_message'.tr);
-        return;
+  Future<bool> signOut() async {
+    if (state.mutation.isLoading) return false;
+    final generation = ++_generation;
+    _client.cancelPendingRequests();
+    state = state.copyWith(
+      resolving: false,
+      mutationKind: AuthMutation.signOut,
+      mutation: const AsyncLoading(),
+    );
+    try {
+      await _unregisterPush();
+      if (!_isCurrent(generation)) return false;
+      await _auth.signOut();
+      if (ref.mounted && generation == _generation) _acceptSession(null);
+      return true;
+    } catch (error, stack) {
+      if (ref.mounted && generation == _generation) {
+        state = state.copyWith(mutation: AsyncError(authFailure(error), stack));
       }
-
-      _profileRetryInFlight = true;
-      _lastProfileRetryAttemptAt = now;
-      DebugLogger.info('Retrying user profile load...');
-      _setAuthResolving(true);
-      try {
-        await _ensureTokenThenLoadProfile();
-      } finally {
-        _profileRetryInFlight = false;
-        _setAuthResolving(false);
-      }
+      return false;
     }
   }
 
-  /// Updates the user profile and refreshes the auth state.
+  Future<bool> deleteAccount() async {
+    if (state.mutation.isLoading) return false;
+    final generation = _generation;
+    state = state.copyWith(
+      mutationKind: AuthMutation.deleteAccount,
+      mutation: const AsyncLoading(),
+    );
+    try {
+      await _unregisterPush();
+      if (!_isCurrent(generation)) return false;
+      await _auth.deleteAccount();
+      if (!_isCurrent(generation)) return false;
+      await _auth.signOut();
+      if (_isCurrent(generation)) _acceptSession(null);
+      return true;
+    } catch (error, stack) {
+      if (_isCurrent(generation)) {
+        state = state.copyWith(mutation: AsyncError(authFailure(error), stack));
+      }
+      return false;
+    }
+  }
+
   Future<bool> updateUserProfile(Map<String, dynamic> profileData) async {
+    if (state.mutation.isLoading) return false;
+    final generation = _generation;
+    final scope = ref.read(storageScopeProvider);
+    state = state.copyWith(
+      mutationKind: AuthMutation.updateProfile,
+      mutation: const AsyncLoading(),
+    );
     try {
-      isLoading.value = true;
-      final updatedUser = await _profileRepository.updateUserProfile(profileData);
-      currentUser.value = updatedUser;
-
-      DebugLogger.info(
-        'Profile update: isComplete=${updatedUser.isProfileComplete}, '
-        'authStatus=${authStatus.value}',
-      );
-
-      // After updating, re-evaluate the auth status.
-      if (updatedUser.isProfileComplete && authStatus.value != AuthStatus.authenticated) {
-        authStatus.value = AuthStatus.authenticated;
+      final user = await _profiles.updateUserProfile(profileData);
+      if (!_isCurrent(generation)) return false;
+      if (user.supabaseUserId != _accountId) {
+        throw AuthenticationException('Profile account did not match.', code: 'ACCOUNT_MISMATCH');
       }
-
-      AppToast.success('success'.tr, 'profile_updated_successfully'.tr);
-      return true;
-    } catch (e) {
-      ErrorHandler.handleNetworkError(e);
+      state = state.copyWith(
+        user: user,
+        status: _statusFor(user),
+        stale: false,
+        error: null,
+        mutation: const AsyncData(null),
+      );
+      await _cacheProfile(user, scope, generation);
+      return _isCurrent(generation);
+    } catch (error, stack) {
+      if (_isCurrent(generation)) {
+        state = state.copyWith(mutation: AsyncError(authFailure(error), stack));
+      }
       return false;
-    } finally {
-      isLoading.value = false;
     }
   }
 
-
-  /// Marks that the just-authenticated OTP session has no password and must
-  /// set one before entering the app. Call this BEFORE verifying the OTP so
-  /// the [_loadUserProfile] status decision routes to the set-password screen.
-  void markRequiresPasswordSetup() {
-    _requiresPasswordSetup = true;
-  }
-
-  /// Clears a pending set-password requirement. Call this if the OTP verify
-  /// that would have established the session fails, so a failed verify can't
-  /// leave a stale set-password gate.
-  void clearRequiresPasswordSetup() {
-    _requiresPasswordSetup = false;
-  }
-
-  bool get requiresPasswordSetup => _requiresPasswordSetup;
-
-  /// Completes the mandatory set-password step: sets the Supabase password,
-  /// clears the pending flag, and re-evaluates the post-auth status so the
-  /// user proceeds into profile completion / home.
-  Future<bool> completePasswordSetup(String newPassword) async {
+  /// Merges [patch] into the stored preferences (`PUT /users/preferences`) and shows the
+  /// preferences the backend now holds.
+  Future<bool> updateUserPreferences(Map<String, dynamic> patch) async {
+    if (state.mutation.isLoading || state.user == null) return false;
+    final generation = _generation;
+    final scope = ref.read(storageScopeProvider);
+    state = state.copyWith(
+      mutationKind: AuthMutation.updateProfile,
+      mutation: const AsyncLoading(),
+    );
     try {
-      isLoading.value = true;
-      await _authRepository.updateUserPassword(newPassword);
-      _requiresPasswordSetup = false;
-      _setAuthResolving(true);
-      await _loadUserProfile();
-      return true;
-    } catch (e, st) {
-      DebugLogger.error('Failed to set password after OTP', e, st);
-      ErrorHandler.handleAuthError(e);
+      final preferences = await _profiles.updateUserPreferences(patch);
+      final current = state.user;
+      if (!_isCurrent(generation) || current == null) return false;
+      final user = current.copyWith(preferences: preferences);
+      state = state.copyWith(user: user, error: null, mutation: const AsyncData(null));
+      await _cacheProfile(user, scope, generation);
+      return _isCurrent(generation);
+    } catch (error, stack) {
+      if (_isCurrent(generation)) {
+        state = state.copyWith(mutation: AsyncError(authFailure(error), stack));
+      }
       return false;
-    } finally {
-      _setAuthResolving(false);
-      isLoading.value = false;
     }
   }
 
-  @override
-  void onClose() {
-    _authSubscription?.cancel();
-    _debounceTimer?.cancel();
-    _authResolvingTimeoutTimer?.cancel();
-    _crashlyticsWorker?.dispose();
-    ApiClient.onUnauthorized = null;
-    super.onClose();
+  Future<bool> updateProfileImage(String imagePath) async {
+    if (state.mutation.isLoading || _accountId == null) return false;
+    final generation = _generation;
+    final scope = ref.read(storageScopeProvider);
+    state = state.copyWith(mutationKind: AuthMutation.updateAvatar, mutation: const AsyncLoading());
+    try {
+      final user = await _profiles.updateProfileImage(imagePath);
+      if (!_isCurrent(generation)) return false;
+      if (user.supabaseUserId != _accountId) {
+        throw AuthenticationException('Profile account did not match.', code: 'ACCOUNT_MISMATCH');
+      }
+      state = state.copyWith(
+        user: user,
+        status: _statusFor(user),
+        stale: false,
+        error: null,
+        mutation: const AsyncData(null),
+      );
+      await _cacheProfile(user, scope, generation);
+      return _isCurrent(generation);
+    } catch (error, stack) {
+      if (_isCurrent(generation)) {
+        state = state.copyWith(mutation: AsyncError(authFailure(error), stack));
+      }
+      return false;
+    }
   }
 
-  // Convenience Getters
-  bool get isAuthenticated => authStatus.value == AuthStatus.authenticated;
-  String? get userEmail => currentUser.value?.email;
-  String? get userId => _authRepository.currentUser?.id;
+  /// Called only after the required purpose preference has been saved.
+  void deferProfileCompletion() {
+    if (_accountId == null || state.user == null || _passwordRequired) return;
+    state = state.copyWith(profileCompletionDeferred: true, status: AuthStatus.authenticated);
+  }
+
+  void markRequiresPasswordSetup() {
+    _passwordRequired = true;
+    if (state.user != null) state = state.copyWith(status: AuthStatus.requiresPasswordSetup);
+  }
+
+  void clearRequiresPasswordSetup() {
+    _passwordRequired = false;
+    if (state.user != null) state = state.copyWith(status: _statusFor(state.user!));
+  }
+
+  bool get requiresPasswordSetup => _passwordRequired;
+
+  Future<bool> completePasswordSetup(String password) async {
+    if (state.mutation.isLoading) return false;
+    final generation = _generation;
+    state = state.copyWith(mutationKind: AuthMutation.setPassword, mutation: const AsyncLoading());
+    try {
+      await _auth.updateUserPassword(password);
+      if (!_isCurrent(generation)) return false;
+      _passwordRequired = false;
+      state = state.copyWith(mutation: const AsyncData(null), resolving: true);
+      await _loadProfile(generation);
+      return true;
+    } catch (error, stack) {
+      if (_isCurrent(generation)) {
+        state = state.copyWith(mutation: AsyncError(authFailure(error), stack));
+      }
+      return false;
+    }
+  }
+
+  Future<void> _registerPush(int generation) async {
+    final token = PushNotificationsService.currentToken;
+    if (token == null || token.isEmpty || token == _registeredToken || _accountId == null) return;
+    try {
+      if (!_isCurrent(generation)) return;
+      final registered = await _notifications.registerDeviceToken(token: token);
+      if (registered && _isCurrent(generation)) _registeredToken = token;
+    } catch (error, stack) {
+      DebugLogger.warning('Device token registration failed', error.runtimeType, stack);
+    }
+  }
+
+  Future<void> _unregisterPush() async {
+    final token = PushNotificationsService.currentToken;
+    if (token == null || token.isEmpty) return;
+    try {
+      await _notifications.unregisterDeviceToken(token).timeout(const Duration(seconds: 5));
+    } catch (error, stack) {
+      DebugLogger.warning('Device token removal failed', error.runtimeType, stack);
+    }
+  }
+
+  Future<void> _telemetry(String? id) async {
+    try {
+      await AnalyticsService.setUserId(id);
+      await FirebaseCrashlytics.instance.setUserIdentifier(id ?? '');
+    } catch (error, stack) {
+      DebugLogger.debug('Session diagnostics unavailable', error.runtimeType, stack);
+    }
+  }
+
+  bool get isAuthenticated => state.isAuthenticated;
+  String? get userEmail => state.user?.email;
+  String? get userId => _accountId;
 }

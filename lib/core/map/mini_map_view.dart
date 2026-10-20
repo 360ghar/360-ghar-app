@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:ghar360/core/design/app_design_tokens.dart';
-import 'package:ghar360/core/map/map_controller.dart';
+
 import 'package:maplibre_gl/maplibre_gl.dart';
+
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_art.dart';
+import 'package:ghar360/core/map/map_controller.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 
 /// A compact single-pin MapLibre map (OpenFreeMap Liberty vector tiles) for
 /// property-detail screens.
@@ -9,7 +14,7 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 /// The map allows pinch-zoom + drag, so the pin cannot simply be centred: it is
 /// drawn as a Flutter [Icon] overlay whose screen position is reprojected from
 /// the geo point on every camera change (and on style load). This keeps the
-/// bespoke `Icons.location_on` look without depending on the style's
+/// bespoke `KnifeIcon.pin` look without depending on the style's
 /// sprite/glyph sheet for a custom marker image.
 class MiniMapView extends StatefulWidget {
   const MiniMapView({required this.latitude, required this.longitude, super.key, this.zoom = 15});
@@ -60,8 +65,9 @@ class _MiniMapViewState extends State<MiniMapView> {
             // Anchor the tip of the pin (icon bottom) on the projected point.
             left: _pinPosition!.dx - 18,
             top: _pinPosition!.dy - 36,
-            child: const IgnorePointer(
-              child: Icon(Icons.location_on, size: 36, color: AppDesignTokens.brandGold),
+            child: IgnorePointer(
+              // The same sindoor pin as the paper scenes: it reads on light and dark tiles.
+              child: PaperIcon(KnifeIcon.pin, size: 36, color: context.design.tone(PaperTone.pin)),
             ),
           ),
       ],

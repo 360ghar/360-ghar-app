@@ -7,8 +7,8 @@ part of 'property_model.dart';
 // **************************************************************************
 
 PropertyAmenity _$PropertyAmenityFromJson(Map<String, dynamic> json) => PropertyAmenity(
-  id: (json['id'] as num?)?.toInt() ?? -1,
-  title: json['title'] as String? ?? 'Unknown',
+  id: (json['id'] as num).toInt(),
+  title: json['title'] as String,
   icon: json['icon'] as String?,
   category: json['category'] as String?,
 );
@@ -20,57 +20,66 @@ Map<String, dynamic> _$PropertyAmenityToJson(PropertyAmenity instance) => <Strin
   'category': instance.category,
 };
 
+PropertyAgent _$PropertyAgentFromJson(Map<String, dynamic> json) => PropertyAgent(
+  id: (json['id'] as num).toInt(),
+  name: json['name'] as String,
+  contactNumber: json['contact_number'] as String?,
+  avatarUrl: json['avatar_url'] as String?,
+);
+
+Map<String, dynamic> _$PropertyAgentToJson(PropertyAgent instance) => <String, dynamic>{
+  'id': instance.id,
+  'name': instance.name,
+  'contact_number': instance.contactNumber,
+  'avatar_url': instance.avatarUrl,
+};
+
 ListingPreferences _$ListingPreferencesFromJson(Map<String, dynamic> json) => ListingPreferences(
-  genderPreference: $enumDecodeNullable(
-    _$ListingGenderPreferenceEnumMap,
-    json['gender_preference'],
-    unknownValue: ListingGenderPreference.any,
-  ),
-  sharingType: $enumDecodeNullable(
-    _$ListingSharingTypeEnumMap,
-    json['sharing_type'],
-    unknownValue: ListingSharingType.privateRoom,
-  ),
+  genderPreference: const ListingGenderPreferenceConverter().fromJson(json['gender_preference']),
+  sharingType: const ListingSharingTypeConverter().fromJson(json['sharing_type']),
 );
 
 Map<String, dynamic> _$ListingPreferencesToJson(ListingPreferences instance) => <String, dynamic>{
-  'gender_preference': _$ListingGenderPreferenceEnumMap[instance.genderPreference],
-  'sharing_type': _$ListingSharingTypeEnumMap[instance.sharingType],
-};
-
-const _$ListingGenderPreferenceEnumMap = {
-  ListingGenderPreference.any: 'any',
-  ListingGenderPreference.male: 'male',
-  ListingGenderPreference.female: 'female',
-};
-
-const _$ListingSharingTypeEnumMap = {
-  ListingSharingType.privateRoom: 'private_room',
-  ListingSharingType.sharedRoom: 'shared_room',
+  'gender_preference': const ListingGenderPreferenceConverter().toJson(instance.genderPreference),
+  'sharing_type': const ListingSharingTypeConverter().toJson(instance.sharingType),
 };
 
 PropertyModel _$PropertyModelFromJson(Map<String, dynamic> json) => $checkedCreate(
   'PropertyModel',
   json,
   ($checkedConvert) {
+    $checkKeys(
+      json,
+      requiredKeys: const [
+        'id',
+        'owner_id',
+        'title',
+        'property_type',
+        'purpose',
+        'base_price',
+        'status',
+        'country',
+        'is_available',
+        'view_count',
+        'like_count',
+        'interest_count',
+        'created_at',
+        'updated_at',
+      ],
+      disallowNullValues: const ['owner_id', 'created_at', 'updated_at'],
+    );
     final val = PropertyModel(
-      id: $checkedConvert('id', (v) => (v as num?)?.toInt() ?? -1),
-      title: $checkedConvert('title', (v) => v as String? ?? 'Unknown Property'),
+      id: $checkedConvert('id', (v) => (v as num).toInt()),
+      ownerId: $checkedConvert('owner_id', (v) => (v as num?)?.toInt()),
+      title: $checkedConvert('title', (v) => v as String),
       description: $checkedConvert('description', (v) => v as String?),
       propertyType: $checkedConvert(
         'property_type',
-        (v) => $enumDecodeNullable(_$PropertyTypeEnumMap, v, unknownValue: PropertyType.house),
+        (v) => const PropertyTypeConverter().fromJson(v),
       ),
-      purpose: $checkedConvert(
-        'purpose',
-        (v) => $enumDecodeNullable(_$PropertyPurposeEnumMap, v, unknownValue: PropertyPurpose.buy),
-      ),
-      basePrice: $checkedConvert('base_price', (v) => (v as num?)?.toDouble() ?? 0.0),
-      status: $checkedConvert(
-        'status',
-        (v) =>
-            $enumDecodeNullable(_$PropertyStatusEnumMap, v, unknownValue: PropertyStatus.available),
-      ),
+      purpose: $checkedConvert('purpose', (v) => const PropertyPurposeConverter().fromJson(v)),
+      basePrice: $checkedConvert('base_price', (v) => (v as num).toDouble()),
+      status: $checkedConvert('status', (v) => const PropertyStatusConverter().fromJson(v)),
       latitude: $checkedConvert('latitude', (v) => (v as num?)?.toDouble()),
       longitude: $checkedConvert('longitude', (v) => (v as num?)?.toDouble()),
       city: $checkedConvert('city', (v) => v as String?),
@@ -87,11 +96,26 @@ PropertyModel _$PropertyModelFromJson(Map<String, dynamic> json) => $checkedCrea
       bathrooms: $checkedConvert('bathrooms', (v) => (v as num?)?.toInt()),
       balconies: $checkedConvert('balconies', (v) => (v as num?)?.toInt()),
       parkingSpaces: $checkedConvert('parking_spaces', (v) => (v as num?)?.toInt()),
+      furnishingLevel: $checkedConvert(
+        'furnishing_level',
+        (v) => const FurnishingLevelConverter().fromJson(v),
+      ),
+      kitchenType: $checkedConvert('kitchen_type', (v) => const KitchenTypeConverter().fromJson(v)),
+      ventilationType: $checkedConvert(
+        'ventilation_type',
+        (v) => const VentilationTypeConverter().fromJson(v),
+      ),
+      windowsCount: $checkedConvert('windows_count', (v) => (v as num?)?.toInt()),
+      ventilationShafts: $checkedConvert('ventilation_shafts', (v) => (v as num?)?.toInt()),
       pricePerSqft: $checkedConvert('price_per_sqft', (v) => (v as num?)?.toDouble()),
       monthlyRent: $checkedConvert('monthly_rent', (v) => (v as num?)?.toDouble()),
       dailyRate: $checkedConvert('daily_rate', (v) => (v as num?)?.toDouble()),
+      nightlyRate: $checkedConvert('nightly_rate', (v) => (v as num?)?.toDouble()),
       securityDeposit: $checkedConvert('security_deposit', (v) => (v as num?)?.toDouble()),
       maintenanceCharges: $checkedConvert('maintenance_charges', (v) => (v as num?)?.toDouble()),
+      setupCost: $checkedConvert('setup_cost', (v) => (v as num?)?.toDouble()),
+      otherCharges: $checkedConvert('other_charges', (v) => (v as num?)?.toDouble()),
+      otherChargesDescription: $checkedConvert('other_charges_description', (v) => v as String?),
       floorNumber: $checkedConvert('floor_number', (v) => (v as num?)?.toInt()),
       totalFloors: $checkedConvert('total_floors', (v) => (v as num?)?.toInt()),
       ageOfProperty: $checkedConvert('age_of_property', (v) => (v as num?)?.toInt()),
@@ -118,6 +142,12 @@ PropertyModel _$PropertyModelFromJson(Map<String, dynamic> json) => $checkedCrea
             ?.map((e) => PropertyImageModel.fromJson(e as Map<String, dynamic>))
             .toList(),
       ),
+      floorPlans: $checkedConvert(
+        'floor_plans',
+        (v) => (v as List<dynamic>?)
+            ?.map((e) => PropertyImageModel.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      ),
       videoTourUrl: $checkedConvert('video_tour_url', (v) => v as String?),
       videoUrls: $checkedConvert(
         'video_urls',
@@ -126,16 +156,20 @@ PropertyModel _$PropertyModelFromJson(Map<String, dynamic> json) => $checkedCrea
       virtualTourUrl: $checkedConvert('virtual_tour_url', (v) => v as String?),
       googleStreetViewUrl: $checkedConvert('google_street_view_url', (v) => v as String?),
       floorPlanUrl: $checkedConvert('floor_plan_url', (v) => v as String?),
-      isAvailable: $checkedConvert('is_active', (v) => v as bool? ?? true),
-      availableFrom: $checkedConvert('available_from', (v) => v as String?),
+      isAvailable: $checkedConvert('is_available', (v) => v as bool),
+      availableFrom: $checkedConvert('available_from', (v) => _dateOnlyFromJson(v)),
       calendarData: $checkedConvert('calendar_data', (v) => v as Map<String, dynamic>?),
       tags: $checkedConvert('tags', (v) => (v as List<dynamic>?)?.map((e) => e as String).toList()),
       ownerName: $checkedConvert('owner_name', (v) => v as String?),
       ownerContact: $checkedConvert('owner_contact', (v) => v as String?),
       builderName: $checkedConvert('builder_name', (v) => v as String?),
-      viewCount: $checkedConvert('view_count', (v) => (v as num?)?.toInt() ?? 0),
-      likeCount: $checkedConvert('like_count', (v) => (v as num?)?.toInt() ?? 0),
-      interestCount: $checkedConvert('interest_count', (v) => (v as num?)?.toInt() ?? 0),
+      agent: $checkedConvert(
+        'agent',
+        (v) => v == null ? null : PropertyAgent.fromJson(v as Map<String, dynamic>),
+      ),
+      viewCount: $checkedConvert('view_count', (v) => (v as num).toInt()),
+      likeCount: $checkedConvert('like_count', (v) => (v as num).toInt()),
+      interestCount: $checkedConvert('interest_count', (v) => (v as num).toInt()),
       createdAt: $checkedConvert(
         'created_at',
         (v) => v == null ? null : DateTime.parse(v as String),
@@ -162,6 +196,7 @@ PropertyModel _$PropertyModelFromJson(Map<String, dynamic> json) => $checkedCrea
     return val;
   },
   fieldKeyMap: const {
+    'ownerId': 'owner_id',
     'propertyType': 'property_type',
     'basePrice': 'base_price',
     'subLocality': 'sub_locality',
@@ -169,11 +204,20 @@ PropertyModel _$PropertyModelFromJson(Map<String, dynamic> json) => $checkedCrea
     'areaType': 'area_type',
     'areaSqft': 'area_sqft',
     'parkingSpaces': 'parking_spaces',
+    'furnishingLevel': 'furnishing_level',
+    'kitchenType': 'kitchen_type',
+    'ventilationType': 'ventilation_type',
+    'windowsCount': 'windows_count',
+    'ventilationShafts': 'ventilation_shafts',
     'pricePerSqft': 'price_per_sqft',
     'monthlyRent': 'monthly_rent',
     'dailyRate': 'daily_rate',
+    'nightlyRate': 'nightly_rate',
     'securityDeposit': 'security_deposit',
     'maintenanceCharges': 'maintenance_charges',
+    'setupCost': 'setup_cost',
+    'otherCharges': 'other_charges',
+    'otherChargesDescription': 'other_charges_description',
     'floorNumber': 'floor_number',
     'totalFloors': 'total_floors',
     'ageOfProperty': 'age_of_property',
@@ -181,12 +225,13 @@ PropertyModel _$PropertyModelFromJson(Map<String, dynamic> json) => $checkedCrea
     'minimumStayDays': 'minimum_stay_days',
     'listingPreferences': 'listing_preferences',
     'mainImageUrl': 'main_image_url',
+    'floorPlans': 'floor_plans',
     'videoTourUrl': 'video_tour_url',
     'videoUrls': 'video_urls',
     'virtualTourUrl': 'virtual_tour_url',
     'googleStreetViewUrl': 'google_street_view_url',
     'floorPlanUrl': 'floor_plan_url',
-    'isAvailable': 'is_active',
+    'isAvailable': 'is_available',
     'availableFrom': 'available_from',
     'calendarData': 'calendar_data',
     'ownerName': 'owner_name',
@@ -206,12 +251,13 @@ PropertyModel _$PropertyModelFromJson(Map<String, dynamic> json) => $checkedCrea
 
 Map<String, dynamic> _$PropertyModelToJson(PropertyModel instance) => <String, dynamic>{
   'id': instance.id,
+  'owner_id': ?instance.ownerId,
   'title': instance.title,
   'description': instance.description,
-  'property_type': _$PropertyTypeEnumMap[instance.propertyType],
-  'purpose': _$PropertyPurposeEnumMap[instance.purpose],
+  'property_type': const PropertyTypeConverter().toJson(instance.propertyType),
+  'purpose': const PropertyPurposeConverter().toJson(instance.purpose),
   'base_price': instance.basePrice,
-  'status': _$PropertyStatusEnumMap[instance.status],
+  'status': const PropertyStatusConverter().toJson(instance.status),
   'latitude': instance.latitude,
   'longitude': instance.longitude,
   'city': instance.city,
@@ -228,11 +274,20 @@ Map<String, dynamic> _$PropertyModelToJson(PropertyModel instance) => <String, d
   'bathrooms': instance.bathrooms,
   'balconies': instance.balconies,
   'parking_spaces': instance.parkingSpaces,
+  'furnishing_level': const FurnishingLevelConverter().toJson(instance.furnishingLevel),
+  'kitchen_type': const KitchenTypeConverter().toJson(instance.kitchenType),
+  'ventilation_type': const VentilationTypeConverter().toJson(instance.ventilationType),
+  'windows_count': instance.windowsCount,
+  'ventilation_shafts': instance.ventilationShafts,
   'price_per_sqft': instance.pricePerSqft,
   'monthly_rent': instance.monthlyRent,
   'daily_rate': instance.dailyRate,
+  'nightly_rate': instance.nightlyRate,
   'security_deposit': instance.securityDeposit,
   'maintenance_charges': instance.maintenanceCharges,
+  'setup_cost': instance.setupCost,
+  'other_charges': instance.otherCharges,
+  'other_charges_description': instance.otherChargesDescription,
   'floor_number': instance.floorNumber,
   'total_floors': instance.totalFloors,
   'age_of_property': instance.ageOfProperty,
@@ -243,58 +298,28 @@ Map<String, dynamic> _$PropertyModelToJson(PropertyModel instance) => <String, d
   'listing_preferences': instance.listingPreferences?.toJson(),
   'main_image_url': instance.mainImageUrl,
   'images': instance.images?.map((e) => e.toJson()).toList(),
+  'floor_plans': instance.floorPlans?.map((e) => e.toJson()).toList(),
   'video_tour_url': instance.videoTourUrl,
   'video_urls': instance.videoUrls,
   'virtual_tour_url': instance.virtualTourUrl,
   'google_street_view_url': instance.googleStreetViewUrl,
   'floor_plan_url': instance.floorPlanUrl,
-  'is_active': instance.isAvailable,
-  'available_from': instance.availableFrom,
+  'is_available': instance.isAvailable,
+  'available_from': _dateOnlyToJson(instance.availableFrom),
   'calendar_data': instance.calendarData,
   'tags': instance.tags,
   'owner_name': instance.ownerName,
   'owner_contact': instance.ownerContact,
   'builder_name': instance.builderName,
+  'agent': instance.agent?.toJson(),
   'view_count': instance.viewCount,
   'like_count': instance.likeCount,
   'interest_count': instance.interestCount,
-  'created_at': instance.createdAt?.toIso8601String(),
-  'updated_at': instance.updatedAt?.toIso8601String(),
+  'created_at': ?instance.createdAt?.toIso8601String(),
+  'updated_at': ?instance.updatedAt?.toIso8601String(),
   'distance_km': instance.distanceKm,
   'liked': instance.liked,
   'user_has_scheduled_visit': instance.userHasScheduledVisit,
   'user_scheduled_visit_count': instance.userScheduledVisitCount,
   'user_next_visit_date': instance.userNextVisitDate?.toIso8601String(),
-};
-
-const _$PropertyTypeEnumMap = {
-  PropertyType.house: 'house',
-  PropertyType.apartment: 'apartment',
-  PropertyType.builderFloor: 'builder_floor',
-  PropertyType.room: 'room',
-  PropertyType.villa: 'villa',
-  PropertyType.plot: 'plot',
-  PropertyType.condo: 'condo',
-  PropertyType.penthouse: 'penthouse',
-  PropertyType.studio: 'studio',
-  PropertyType.loft: 'loft',
-  PropertyType.pg: 'pg',
-  PropertyType.flatmate: 'flatmate',
-  PropertyType.office: 'office',
-  PropertyType.shop: 'shop',
-  PropertyType.warehouse: 'warehouse',
-};
-
-const _$PropertyPurposeEnumMap = {
-  PropertyPurpose.buy: 'buy',
-  PropertyPurpose.rent: 'rent',
-  PropertyPurpose.shortStay: 'short_stay',
-};
-
-const _$PropertyStatusEnumMap = {
-  PropertyStatus.available: 'available',
-  PropertyStatus.sold: 'sold',
-  PropertyStatus.rented: 'rented',
-  PropertyStatus.underOffer: 'under_offer',
-  PropertyStatus.maintenance: 'maintenance',
 };

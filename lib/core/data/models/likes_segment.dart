@@ -7,6 +7,5 @@ enum LikesSegment {
   /// `additionalData` key holding the active segment on the likes page state.
   static const String additionalDataKey = 'currentSegment';
 
-  static LikesSegment tryParse(String? raw) =>
-      raw == 'passed' ? passed : liked;
+  static LikesSegment tryParse(String? raw) => raw == 'passed' ? passed : liked;
 }

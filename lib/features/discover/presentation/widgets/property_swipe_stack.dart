@@ -1,18 +1,25 @@
+import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/design/app_design_tokens.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_art.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/utils/image_cache_service.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
+import 'package:ghar360/features/discover/presentation/widgets/swipe_card_hero_section.dart';
 
 /// Immutable drag state for the swipe gesture, driven by a [ValueNotifier]
 /// so only the transform wrapper rebuilds during drag — not the card content.
@@ -89,10 +96,8 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   late List<PropertyModel> _properties;
   List<PropertyModel>? _pendingProperties;
   late AnimationController _swipeAnimationController;
-  late AnimationController _sparklesAnimationController;
   late AnimationController _entranceController;
   late Animation<double> _swipeAnimation;
-  late Animation<double> _sparklesAnimation;
   late Animation<double> _entranceScale;
 
   /// Drag state driven by ValueNotifier — only the transform wrapper
@@ -107,10 +112,11 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   /// if the widget is disposed mid-animation.
   AnimationController? _snapController;
 
-  bool _showSparkles = false;
-  bool _isSwipingRight = false;
   bool _blockGestures = false;
   bool _isExiting = false;
+
+  /// The next cards whose photos were last prefetched, with the deck height.
+  String? _prefetched;
 
   /// True while the stack must ignore pan gestures (exit, drag block, anim).
   bool get _gesturesLocked => _blockGestures || _isExiting || _swipeAnimationController.isAnimating;
@@ -125,15 +131,6 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
       duration: const Duration(milliseconds: 400),
     );
     _swipeAnimation = CurvedAnimation(parent: _swipeAnimationController, curve: Curves.easeInOut);
-
-    _sparklesAnimationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    _sparklesAnimation = CurvedAnimation(
-      parent: _sparklesAnimationController,
-      curve: Curves.easeOut,
-    );
 
     _entranceController = AnimationController(vsync: this, duration: AppDurations.cardEntrance);
     _entranceScale = Tween<double>(
@@ -156,10 +153,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
           _properties.removeAt(0);
         }
         _swipeAnimationController.reset();
-        _sparklesAnimationController.reset();
         _dragNotifier.value = const _SwipeDragState();
-        _showSparkles = false;
-        _isSwipingRight = false;
         _isExiting = false;
         // setState to rebuild the card deck (next card becomes top card)
         setState(() {});
@@ -170,6 +164,16 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
 
     // Animate first card entrance on initial build
     _entranceController.forward(from: 0);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reduced motion: cards settle and leave at once. Content never waits on it.
+    final still = MediaQuery.disableAnimationsOf(context);
+    _swipeAnimationController.duration = still ? Duration.zero : const Duration(milliseconds: 400);
+    _entranceController.duration = still ? Duration.zero : AppDurations.cardEntrance;
+    if (still) _entranceController.value = 1;
   }
 
   @override
@@ -193,7 +197,6 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     _snapController?.dispose();
     _dragNotifier.dispose();
     _swipeAnimationController.dispose();
-    _sparklesAnimationController.dispose();
     _entranceController.dispose();
     super.dispose();
   }
@@ -317,9 +320,6 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
       return;
     }
     if (isRight) {
-      _isSwipingRight = true;
-      _showSparkles = true;
-      _sparklesAnimationController.forward();
       widget.onSwipeRight(card);
     } else {
       widget.onSwipeLeft(card);
@@ -364,18 +364,11 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
-                ),
-              ),
+              LoadingStates.buttonSpinner(size: 24, color: context.design.accent),
               const SizedBox(height: 12),
               Text(
-                'loading_more_properties'.tr,
-                style: TextStyle(fontSize: 14, color: AppDesign.textSecondary),
+                context.l10n.text('loading_more_properties'),
+                style: TextStyle(fontSize: 14, color: context.design.textSecondary),
               ),
             ],
           ),
@@ -406,12 +399,15 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                 .clamp(1.0, 10000.0);
 
         final top = _properties[0];
+        _prefetchNext(deckHeight);
         return Semantics(
           label: top.title,
           customSemanticsActions: {
-            CustomSemanticsAction(label: 'liked'.tr): () => _commitSwipe(isRight: true),
-            CustomSemanticsAction(label: 'passed'.tr): () => _commitSwipe(isRight: false),
-            CustomSemanticsAction(label: 'view_details'.tr): _openDetails,
+            CustomSemanticsAction(label: context.l10n.text('liked')): () =>
+                _commitSwipe(isRight: true),
+            CustomSemanticsAction(label: context.l10n.text('passed')): () =>
+                _commitSwipe(isRight: false),
+            CustomSemanticsAction(label: context.l10n.text('view_details')): _openDetails,
           },
           child: GestureDetector(
             onHorizontalDragStart: (details) {
@@ -435,27 +431,31 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
             },
             child: Stack(
               fit: StackFit.expand,
-              clipBehavior: Clip.hardEdge,
+              // No clip: the turned sheets reach into the gutters, and a
+              // dragged card is never sliced at the deck's edge.
+              clipBehavior: Clip.none,
               children: [
-                // Background cards (static during drag — no rebuild needed)
-                if (_properties.length > 1)
-                  Positioned.fill(
-                    child: Transform.scale(
-                      scale: 0.95,
-                      child: Opacity(
-                        opacity: 0.8,
-                        child: _buildBackgroundPreviewCard(_properties[1]),
-                      ),
+                // The next cards: blank sheets of the city's card stock,
+                // turned a little either way so their edges show around the
+                // top card, the way a stack of paper lies.
+                if (_properties.length > 2)
+                  const Positioned.fill(
+                    child: _DeckSheet(
+                      seed: 'deck-2',
+                      day: PaperTone.far,
+                      night: PaperTone.far,
+                      offset: Offset(-2, 9),
+                      angle: -_deckTurn,
                     ),
                   ),
-                if (_properties.length > 2)
-                  Positioned.fill(
-                    child: Transform.scale(
-                      scale: 0.9,
-                      child: Opacity(
-                        opacity: 0.6,
-                        child: _buildBackgroundPreviewCard(_properties[2]),
-                      ),
+                if (_properties.length > 1)
+                  const Positioned.fill(
+                    child: _DeckSheet(
+                      seed: 'deck-1',
+                      day: PaperTone.mid,
+                      night: PaperTone.sign,
+                      offset: Offset(3, 2),
+                      angle: _deckTurn,
                     ),
                   ),
 
@@ -512,6 +512,10 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
+                                  // The top card's shadow, cast on the sheet
+                                  // below. The scroll view clips the card's
+                                  // own shadow at the deck edge.
+                                  Positioned.fill(child: _CardShadow(seed: 'card-${top.id}')),
                                   // Fill the deck so scroll constraints stay bounded
                                   // (avoids reassemble/layout hangs from loose stacks).
                                   Positioned.fill(child: cachedScroll!),
@@ -530,17 +534,6 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                     },
                   ),
                 ),
-
-                // Sparkles animation
-                if (_showSparkles && _isSwipingRight)
-                  Positioned.fill(
-                    child: AnimatedBuilder(
-                      animation: _sparklesAnimation,
-                      builder: (context, child) {
-                        return IgnorePointer(child: _SparklesWidget(animation: _sparklesAnimation));
-                      },
-                    ),
-                  ),
               ],
             ),
           ),
@@ -549,11 +542,31 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     );
   }
 
-  /// Scrollable card chrome. Opaque fill prevents stacked cards showing
-  /// through gaps. Card fills the deck viewport for a cleaner swipe UI.
-  Widget _buildScrollableDeck({required double cardWidth, required double deckHeight}) {
-    final trayColor = AppDesign.scaffoldBackground;
+  /// Decodes the first photo of the next two cards at the size their hero
+  /// will ask for, so a card that comes to the top shows its photo at once.
+  void _prefetchNext(double deckHeight) {
+    final next = _properties.skip(1).take(2).toList();
+    final key = '${next.map((p) => p.id).join(',')}@$deckHeight';
+    if (next.isEmpty || key == _prefetched) return;
+    _prefetched = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final (width, height) = SwipeCardHeroSection.decodeSize(context, viewportHeight: deckHeight);
+      final cache = ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(imageCacheServiceProvider);
+      for (final property in next) {
+        final url = property.galleryImageUrls.firstOrNull ?? property.mainImage;
+        if (url.isEmpty) continue;
+        unawaited(precacheNetworkImage(context, cache, url, width: width, height: height));
+      }
+    });
+  }
 
+  /// The top card in its own scroll view. The card fills the deck viewport;
+  /// nothing is painted behind it, so the sheet below shows at its cut edge.
+  Widget _buildScrollableDeck({required double cardWidth, required double deckHeight}) {
     return SingleChildScrollView(
       // Keyed so scroll position resets when the top property changes.
       key: ValueKey('discover.scroll.${_properties[0].id}'),
@@ -562,89 +575,20 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
           : const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: deckHeight),
-        child: ColoredBox(
-          color: trayColor,
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: PropertySwipeCard(
-              property: _properties[0],
-              onTap: _openDetails,
-              onInteractionStart: () {
-                setState(() => _blockGestures = true);
-              },
-              onInteractionEnd: () {
-                setState(() => _blockGestures = false);
-              },
-            ),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: PropertySwipeCard(
+            property: _properties[0],
+            viewportHeight: deckHeight,
+            onTap: _openDetails,
+            onInteractionStart: () {
+              setState(() => _blockGestures = true);
+            },
+            onInteractionEnd: () {
+              setState(() => _blockGestures = false);
+            },
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildBackgroundPreviewCard(PropertyModel property) {
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final memWidth = (MediaQuery.sizeOf(context).width * dpr * 0.95).round().clamp(280, 1200);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppBorderRadius.card),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          RobustNetworkImage(
-            imageUrl: property.mainImage,
-            fit: BoxFit.cover,
-            memCacheWidth: memWidth,
-            placeholder: Container(color: AppDesign.inputBackground),
-            errorWidget: Container(
-              color: AppDesign.surface,
-              alignment: Alignment.center,
-              child: Icon(Icons.home_work_outlined, color: AppDesign.textSecondary),
-            ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [AppDesign.transparent, AppDesign.shadowColor.withValues(alpha: 0.7)],
-                stops: const [0.6, 1.0],
-              ),
-            ),
-          ),
-          Positioned(
-            left: 12,
-            right: 12,
-            bottom: 12,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  property.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppDesignTokens.neutralWhite,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  property.formattedPrice,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppDesign.primaryYellow,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -658,34 +602,6 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
       child: IgnorePointer(
         child: Stack(
           children: [
-            if (likeProgress > 0)
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppBorderRadius.card),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppDesign.transparent,
-                      AppDesign.successGreen.withValues(alpha: 0.18 * likeProgress),
-                    ],
-                  ),
-                ),
-              ),
-            if (passProgress > 0)
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppBorderRadius.card),
-                  gradient: LinearGradient(
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                    colors: [
-                      AppDesign.transparent,
-                      AppDesign.errorRed.withValues(alpha: 0.18 * passProgress),
-                    ],
-                  ),
-                ),
-              ),
             Positioned(
               top: 24,
               left: 24,
@@ -695,9 +611,9 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                   angle: -0.18,
                   child: _buildSwipeDecisionBadge(
                     context,
-                    color: AppDesign.successGreen,
-                    icon: Icons.favorite_rounded,
-                    label: 'liked'.tr.toUpperCase(),
+                    color: context.design.accent,
+                    icon: KnifeIcon.heartSolid,
+                    label: context.l10n.text('liked').toUpperCase(),
                     progress: likeProgress,
                   ),
                 ),
@@ -712,9 +628,9 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                   angle: 0.18,
                   child: _buildSwipeDecisionBadge(
                     context,
-                    color: AppDesign.errorRed,
-                    icon: Icons.close_rounded,
-                    label: 'passed'.tr.toUpperCase(),
+                    color: context.design.favoriteActive,
+                    icon: KnifeIcon.close,
+                    label: context.l10n.text('passed').toUpperCase(),
                     progress: passProgress,
                   ),
                 ),
@@ -726,119 +642,130 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     );
   }
 
+  /// A rubber stamp pressed on the photo: two ink rules round the decision,
+  /// teal for liked and brick for passed, on a slip of paper. No shadow, no
+  /// glow: ink lies flat.
   Widget _buildSwipeDecisionBadge(
     BuildContext context, {
     required Color color,
-    required IconData icon,
+    required KnifeIcon icon,
     required String label,
     required double progress,
   }) {
-    final theme = Theme.of(context);
-    final scale = 0.92 + 0.08 * progress;
-
+    final design = context.design;
     return Transform.scale(
-      scale: scale,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppDesign.darkTextPrimary.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.95), width: 2),
+      scale: 0.92 + 0.08 * progress,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          color: design.surface,
+          shape: CutBorder(
+            seed: 'stamp-$label',
+            side: BorderSide(color: color, width: 3),
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
+        child: Padding(
+          padding: const EdgeInsets.all(5),
+          child: DecoratedBox(
+            decoration: ShapeDecoration(
+              shape: CutBorder(
+                seed: 'stamp-in-$label',
+                amp: 1,
+                side: BorderSide(color: color, width: 1.2),
               ),
             ),
-          ],
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PaperIcon(icon, size: 20, color: color),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.6,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-// Sparkles widget for the enthusiasm animation
-class _SparklesWidget extends StatelessWidget {
-  final Animation<double> animation;
+/// How far the sheets under the top card are turned: 1.5 degrees.
+const _deckTurn = 1.5 * math.pi / 180;
 
-  const _SparklesWidget({required this.animation});
+/// A blank sheet of the deck behind the top card, in the city's card stock
+/// ([day] or [night] tone), shifted by [offset] and turned by [angle]. Its
+/// cut edge is a shade darker than the sheet, so it holds against city paper
+/// of the same tone behind it.
+class _DeckSheet extends StatelessWidget {
+  const _DeckSheet({
+    required this.seed,
+    required this.day,
+    required this.night,
+    required this.offset,
+    required this.angle,
+  });
+
+  final String seed;
+  final PaperTone day;
+  final PaperTone night;
+  final Offset offset;
+  final double angle;
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(painter: _SparklesPainter(animation.value), size: Size.infinite);
+    final design = context.design;
+    final paper = design.tone(design.isDark ? night : day);
+    return IgnorePointer(
+      child: Transform.translate(
+        offset: offset,
+        child: Transform.rotate(
+          angle: angle,
+          child: DecoratedBox(
+            decoration: ShapeDecoration(
+              color: paper,
+              shape: CutBorder(
+                seed: seed,
+                amp: 2.5,
+                side: BorderSide(color: Color.lerp(paper, design.shadowOn(paper), 0.22)!),
+                shadows: paperShadows(PaperElevation.low, design.shadowOn(design.background)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
-class _SparklesPainter extends CustomPainter {
-  final double animationValue;
+/// The top card's outline with its shadow, under the card's scroll view.
+class _CardShadow extends StatelessWidget {
+  const _CardShadow({required this.seed});
 
-  _SparklesPainter(this.animationValue);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppDesign.primaryYellow.withValues(alpha: 0.8)
-      ..style = PaintingStyle.fill;
-
-    final sparklePositions = [
-      Offset(size.width * 0.2, size.height * 0.3),
-      Offset(size.width * 0.8, size.height * 0.2),
-      Offset(size.width * 0.6, size.height * 0.5),
-      Offset(size.width * 0.3, size.height * 0.7),
-      Offset(size.width * 0.7, size.height * 0.8),
-      Offset(size.width * 0.1, size.height * 0.6),
-      Offset(size.width * 0.9, size.height * 0.4),
-      Offset(size.width * 0.4, size.height * 0.2),
-    ];
-
-    for (int i = 0; i < sparklePositions.length; i++) {
-      final position = sparklePositions[i];
-      final delay = i * 0.1;
-      final sparkleAnimation = ((animationValue - delay) / (1 - delay)).clamp(0.0, 1.0);
-
-      if (sparkleAnimation > 0) {
-        final sparkleSize = 8.0 * sparkleAnimation * (1 - sparkleAnimation * 0.5);
-        final sparkleOpacity = (1 - sparkleAnimation).clamp(0.0, 1.0);
-
-        paint.color = AppDesign.primaryYellow.withValues(alpha: sparkleOpacity * 0.8);
-
-        _drawStar(canvas, paint, position, sparkleSize);
-      }
-    }
-  }
-
-  void _drawStar(Canvas canvas, Paint paint, Offset center, double size) {
-    final path = ui.Path();
-    final outerRadius = size;
-    final innerRadius = size * 0.4;
-
-    for (int i = 0; i < 8; i++) {
-      final angle = (i * 45) * (3.14159 / 180);
-      final radius = i.isEven ? outerRadius : innerRadius;
-      final x = center.dx + radius * math.cos(angle);
-      final y = center.dy + radius * math.sin(angle);
-
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-
-    path.close();
-    canvas.drawPath(path, paint);
-  }
+  final String seed;
 
   @override
-  bool shouldRepaint(_SparklesPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue;
+  Widget build(BuildContext context) {
+    final design = context.design;
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          color: design.surface,
+          shape: CutBorder(
+            seed: seed,
+            amp: 2.5,
+            shadows: paperShadows(PaperElevation.mid, design.shadowOn(design.tone(PaperTone.mid))),
+          ),
+        ),
+      ),
+    );
   }
 }

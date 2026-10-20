@@ -9,6 +9,7 @@ abstract class AppRoutes {
   static const dashboard = '/dashboard';
   static const discover = '/discover'; // Swipe deck interface
   static const propertyDetails = '/property-details';
+  static String detailsFor(int id) => '$propertyDetails?id=$id';
   // Deep link routes for property sharing
   static const propertyShortLink = '/p/:id'; // Short link: 360ghar.com/p/123
   static const propertyDeepLink = '/property/:id'; // Full link: 360ghar.com/property/123

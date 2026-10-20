@@ -1,68 +1,93 @@
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:get/get.dart';
-
+import 'package:ghar360/core/bootstrap/provider_policy.dart';
 import 'package:ghar360/core/utils/formatters.dart';
 
-class CarpetAreaController extends GetxController {
-  final TextEditingController superBuiltUpController = TextEditingController();
-  final RxDouble loadingPercentage = 25.0.obs;
-  final RxBool hasCalculated = false.obs;
-  final RxString validationError = ''.obs;
+class CarpetAreaResult {
+  const CarpetAreaResult({
+    required this.carpetArea,
+    required this.builtUpArea,
+    required this.usablePercentage,
+  });
+  final double carpetArea;
+  final double builtUpArea;
+  final double usablePercentage;
+}
 
-  // Results
-  final RxDouble carpetArea = 0.0.obs;
-  final RxDouble builtUpArea = 0.0.obs;
-  final RxDouble usablePercentage = 0.0.obs;
+class CarpetAreaState {
+  const CarpetAreaState({
+    this.superBuiltUp = '',
+    this.loadingPercentage = 25,
+    this.result,
+    this.validationKey,
+    this.validationField,
+  });
+  final String superBuiltUp;
+  final double loadingPercentage;
+  final CarpetAreaResult? result;
+  final String? validationKey;
+  final String? validationField;
+  bool get hasCalculated => result != null;
+  double get carpetArea => result?.carpetArea ?? 0;
+  double get builtUpArea => result?.builtUpArea ?? 0;
+  double get usablePercentage => result?.usablePercentage ?? 0;
+  CarpetAreaState copyWith({
+    String? superBuiltUp,
+    double? loadingPercentage,
+    CarpetAreaResult? result,
+    String? validationKey,
+    String? validationField,
+  }) => CarpetAreaState(
+    superBuiltUp: superBuiltUp ?? this.superBuiltUp,
+    loadingPercentage: loadingPercentage ?? this.loadingPercentage,
+    result: result,
+    validationKey: validationKey,
+    validationField: validationField,
+  );
+}
+
+final carpetAreaProvider = NotifierProvider.autoDispose<CarpetAreaController, CarpetAreaState>(
+  CarpetAreaController.new,
+  retry: noProviderRetry,
+);
+
+class CarpetAreaController extends Notifier<CarpetAreaState> {
+  @override
+  CarpetAreaState build() => const CarpetAreaState();
+
+  void updateInputs({String? superBuiltUp}) {
+    if ((superBuiltUp == null || superBuiltUp == state.superBuiltUp)) return;
+    state = state.copyWith(superBuiltUp: superBuiltUp);
+  }
 
   void calculate() {
-    final superBuiltUp = double.tryParse(superBuiltUpController.text) ?? 0;
-
-    if (!Formatters.isPositiveFinite(superBuiltUp)) {
-      validationError.value = 'please_enter_valid_amounts'.tr;
-      hasCalculated.value = false;
+    final area = double.tryParse(state.superBuiltUp.trim()) ?? 0;
+    if (!Formatters.isPositiveFinite(area) ||
+        !state.loadingPercentage.isFinite ||
+        state.loadingPercentage < 0 ||
+        state.loadingPercentage > 100) {
+      state = state.copyWith(
+        validationKey: 'please_enter_valid_amounts',
+        validationField: 'superBuiltUp',
+      );
       return;
     }
-
-    validationError.value = '';
-
-    // Super built-up includes common areas (loading)
-    // Built-up = Super built-up - common area loading
-    // Carpet = Built-up - wall thickness (typically 10-15%)
-
-    final loading = loadingPercentage.value / 100;
-    final builtUp = superBuiltUp / (1 + loading);
-
-    // Wall thickness typically reduces by 10-15%
-    const wallThicknessReduction = 0.12;
-    final carpet = builtUp * (1 - wallThicknessReduction);
-
-    builtUpArea.value = builtUp;
-    carpetArea.value = carpet;
-    usablePercentage.value = (carpet / superBuiltUp) * 100;
-    hasCalculated.value = true;
+    final builtUp = area / (1 + state.loadingPercentage / 100);
+    final carpet = builtUp * .88;
+    state = state.copyWith(
+      result: CarpetAreaResult(
+        builtUpArea: builtUp,
+        carpetArea: carpet,
+        usablePercentage: carpet / area * 100,
+      ),
+    );
   }
 
   void onLoadingChanged(double value) {
-    loadingPercentage.value = value;
-    if (hasCalculated.value) {
-      calculate();
-    }
+    final recalculate = state.hasCalculated;
+    state = state.copyWith(loadingPercentage: value);
+    if (recalculate) calculate();
   }
 
-  void clear() {
-    superBuiltUpController.clear();
-    loadingPercentage.value = 25.0;
-    hasCalculated.value = false;
-    validationError.value = '';
-    carpetArea.value = 0;
-    builtUpArea.value = 0;
-    usablePercentage.value = 0;
-  }
-
-  @override
-  void onClose() {
-    superBuiltUpController.dispose();
-    super.onClose();
-  }
+  void clear() => state = const CarpetAreaState();
 }

@@ -1,254 +1,145 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/design/app_design_extensions.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/features/tools/presentation/controllers/loan_eligibility_controller.dart';
 import 'package:ghar360/features/tools/presentation/widgets/calculator_widgets.dart';
 
-class LoanEligibilityView extends GetView<LoanEligibilityController> {
+class LoanEligibilityView extends ConsumerStatefulWidget {
   const LoanEligibilityView({super.key});
+  @override
+  ConsumerState<LoanEligibilityView> createState() => _LoanEligibilityViewState();
+}
+
+class _LoanEligibilityViewState extends ConsumerState<LoanEligibilityView> {
+  LoanEligibilityController get controller => ref.read(loanEligibilityProvider.notifier);
+  LoanEligibilityState get state => ref.read(loanEligibilityProvider);
+  late final TextEditingController _income;
+  late final TextEditingController _age;
+  late final TextEditingController _existingEmi;
+
+  @override
+  void initState() {
+    super.initState();
+    _income = TextEditingController(text: state.income)..addListener(_syncInputs);
+    _age = TextEditingController(text: state.age)..addListener(_syncInputs);
+    _existingEmi = TextEditingController(text: state.existingEmi)..addListener(_syncInputs);
+  }
+
+  void _syncInputs() =>
+      controller.updateInputs(income: _income.text, age: _age.text, existingEmi: _existingEmi.text);
+  void _clear() {
+    _income.clear();
+    _age.clear();
+    _existingEmi.clear();
+    controller.clear();
+  }
+
+  @override
+  void dispose() {
+    _income.dispose();
+    _age.dispose();
+    _existingEmi.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: const ValueKey('qa.tools.loan_eligibility.screen'),
-      backgroundColor: AppDesign.background,
-      appBar: AppBar(
-        backgroundColor: AppDesign.appBarBackground,
-        elevation: 0,
-        title: Text(
-          'loan_eligibility'.tr,
-          style: TextStyle(color: AppDesign.appBarText, fontSize: 20, fontWeight: FontWeight.w600),
+    ref.watch(loanEligibilityProvider);
+    final l10n = context.l10n;
+    final lang = l10n.locale.languageCode;
+    String? fieldError(String field) => state.validationField == field
+        ? l10n.text(state.validationKey!, params: const {'years': '50'})
+        : null;
+    return CalculatorScaffold(
+      screenKey: 'qa.tools.loan_eligibility.screen',
+      title: l10n.text('loan_eligibility'),
+      onReset: _clear,
+      inputs: [
+        CalculatorTextField(
+          label: l10n.text('monthly_income'),
+          controller: _income,
+          errorText: fieldError('income'),
+          prefix: '₹',
         ),
-        leading: IconButton(
-          tooltip: 'back'.tr,
-          icon: Icon(Icons.arrow_back, color: AppDesign.iconColor),
-          onPressed: () => Get.back(),
+        const SizedBox(height: 16),
+        CalculatorTextField(
+          label: l10n.text('your_age'),
+          controller: _age,
+          errorText: fieldError('age'),
+          suffix: l10n.text('years'),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh, color: AppDesign.iconColor),
-            onPressed: controller.clear,
+        const SizedBox(height: 16),
+        CalculatorTextField(
+          label: l10n.text('existing_emi'),
+          controller: _existingEmi,
+          errorText: fieldError('existingEmi'),
+          prefix: '₹',
+          hint: l10n.text('optional'),
+        ),
+        const SizedBox(height: 24),
+        CalculatorSlider(
+          label: l10n.text('credit_score'),
+          value: state.creditScore,
+          min: 300,
+          max: 900,
+          divisions: 60,
+          format: (value) => value.toInt().toString(),
+          onChanged: controller.setCreditScore,
+        ),
+        const SizedBox(height: 16),
+        CalculatorSlider(
+          label: l10n.text('interest_rate'),
+          value: state.interestRate,
+          min: 6.0,
+          max: 15.0,
+          divisions: 90,
+          format: (value) => '${value.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '')}%',
+          onChanged: controller.setInterestRate,
+        ),
+        const SizedBox(height: 24),
+        Semantics(
+          identifier: 'qa.tools.loan_eligibility.calculate',
+          child: FilledButton(
+            key: const ValueKey('qa.tools.loan_eligibility.calculate'),
+            onPressed: controller.calculate,
+            child: Text(l10n.text('calculate')),
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Card(
-              color: AppDesign.cardBackground,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CalculatorTextField(
-                      label: 'monthly_income'.tr,
-                      controller: controller.incomeController,
-                      prefix: '₹',
-                    ),
-                    const SizedBox(height: 16),
-                    CalculatorTextField(
-                      label: 'your_age'.tr,
-                      controller: controller.ageController,
-                      suffix: 'years'.tr,
-                    ),
-                    const SizedBox(height: 16),
-                    CalculatorTextField(
-                      label: 'existing_emi'.tr,
-                      controller: controller.existingEmiController,
-                      prefix: '₹',
-                      hint: 'optional'.tr,
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'credit_score'.tr,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppDesign.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Obx(
-                      () => Column(
-                        children: [
-                          Slider(
-                            value: controller.creditScore.value,
-                            min: 300,
-                            max: 900,
-                            divisions: 60,
-                            activeColor: AppDesign.primaryYellow,
-                            inactiveColor: AppDesign.inputBackground,
-                            label: controller.creditScore.value.toInt().toString(),
-                            onChanged: (value) => controller.creditScore.value = value,
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '300',
-                                style: TextStyle(fontSize: 12, color: AppDesign.textTertiary),
-                              ),
-                              Text(
-                                controller.creditScore.value.toInt().toString(),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppDesign.primaryYellow,
-                                ),
-                              ),
-                              Text(
-                                '900',
-                                style: TextStyle(fontSize: 12, color: AppDesign.textTertiary),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'interest_rate'.tr,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppDesign.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Obx(
-                      () => Column(
-                        children: [
-                          Slider(
-                            value: controller.interestRate.value,
-                            min: 6.0,
-                            max: 15.0,
-                            divisions: 90,
-                            activeColor: AppDesign.primaryYellow,
-                            inactiveColor: AppDesign.inputBackground,
-                            label: '${controller.interestRate.value.toStringAsFixed(1)}%',
-                            onChanged: (value) => controller.interestRate.value = value,
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '6%',
-                                style: TextStyle(fontSize: 12, color: AppDesign.textTertiary),
-                              ),
-                              Text(
-                                '${controller.interestRate.value.toStringAsFixed(1)}%',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppDesign.primaryYellow,
-                                ),
-                              ),
-                              Text(
-                                '15%',
-                                style: TextStyle(fontSize: 12, color: AppDesign.textTertiary),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: Semantics(
-                label: 'qa.tools.loan_eligibility.calculate',
-                identifier: 'qa.tools.loan_eligibility.calculate',
-                child: FilledButton(
-                  key: const ValueKey('qa.tools.loan_eligibility.calculate'),
-                  onPressed: controller.calculate,
-                  child: Text('calculate'.tr),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Obx(() {
-              if (controller.validationError.value.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: ErrorStates.inlineError(message: controller.validationError.value),
-              );
-            }),
-            Obx(() {
-              if (!controller.hasCalculated.value) {
-                return const SizedBox.shrink();
-              }
-              return Card(
-                color: AppDesign.cardBackground,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'eligibility_result'.tr,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppDesign.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      CalculatorResultRow(
-                        'max_loan_amount'.tr,
-                        IndianCurrency.compact(controller.maxLoanAmount.value),
-                        isHighlight: true,
-                      ),
-                      const Divider(height: 24),
-                      CalculatorResultRow(
-                        'eligible_emi'.tr,
-                        '${IndianCurrency.compact(controller.eligibleEmi.value)}/mo',
-                      ),
-                      const SizedBox(height: 8),
-                      CalculatorResultRow(
-                        'max_tenure'.tr,
-                        '${controller.maxTenure.value} ${'years'.tr}',
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppDesign.accentBlue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.info_outline, color: AppDesign.accentBlue, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'loan_eligibility_note'.tr,
-                                style: const TextStyle(fontSize: 12, color: AppDesign.accentBlue),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ],
         ),
-      ),
+        if (state.validationKey != null && state.validationField == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: ErrorStates.inlineError(
+              message: l10n.text(state.validationKey!, params: const {'years': '50'}),
+            ),
+          ),
+      ],
+      result: state.hasCalculated
+          ? [
+              CalculatorSectionTitle(l10n.text('eligibility_result')),
+              const SizedBox(height: 14),
+              CalculatorHeadline(
+                label: l10n.text('max_loan_amount'),
+                value: state.maxLoanAmount,
+                format: (value) => IndianCurrency.compact(value, languageCode: lang),
+                valueKey: const ValueKey('qa.tools.loan_eligibility.max_loan'),
+              ),
+              const SizedBox(height: 14),
+              CalculatorResultRow(
+                l10n.text('eligible_emi'),
+                '${IndianCurrency.compact(state.eligibleEmi, languageCode: lang)}/mo',
+              ),
+              CalculatorResultRow(
+                l10n.text('max_tenure'),
+                '${state.maxTenure} ${l10n.text('years')}',
+              ),
+              const SizedBox(height: 16),
+              CalculatorNote(l10n.text('loan_eligibility_note')),
+            ]
+          : null,
     );
   }
 }

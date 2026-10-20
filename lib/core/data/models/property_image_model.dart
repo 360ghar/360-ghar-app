@@ -1,24 +1,32 @@
 import 'package:json_annotation/json_annotation.dart';
 
+import 'package:ghar360/core/data/models/wire_enums.dart';
+
+export 'package:ghar360/core/data/models/wire_enums.dart' show ImageCategory;
+
 part 'property_image_model.g.dart';
 
+/// `PropertyImage`. Photos arrive in `Property.images`. Floor plans arrive in
+/// `Property.floor_plans`, never in `images`.
 @JsonSerializable()
 class PropertyImageModel {
+  @JsonKey(required: true)
   final int id;
-  @JsonKey(name: 'property_id')
+  @JsonKey(name: 'property_id', required: true)
   final int propertyId;
-  @JsonKey(name: 'image_url', defaultValue: '')
+  @JsonKey(name: 'image_url', required: true)
   final String imageUrl;
   final String? caption;
-  @JsonKey(name: 'display_order', defaultValue: 0)
+  @JsonKey(name: 'display_order')
   final int displayOrder;
-  @JsonKey(name: 'is_main_image', defaultValue: false)
+  @JsonKey(name: 'is_main_image')
   final bool isMainImage;
-  // Backend now also sends a lightweight flag for the main asset plus a media category
-  @JsonKey(name: 'is_main', defaultValue: false)
-  final bool isMain;
-  @JsonKey(defaultValue: 'gallery')
-  final String category;
+
+  /// A room name, `others` or `floor_plan`. The backend defaults it to `others`. Null for a value
+  /// this app does not know.
+  @JsonKey(name: 'image_category')
+  @ImageCategoryConverter()
+  final ImageCategory? category;
 
   const PropertyImageModel({
     required this.id,
@@ -27,8 +35,7 @@ class PropertyImageModel {
     this.caption,
     this.displayOrder = 0,
     this.isMainImage = false,
-    this.isMain = false,
-    this.category = 'gallery',
+    this.category = ImageCategory.others,
   });
 
   factory PropertyImageModel.fromJson(Map<String, dynamic> json) =>
@@ -43,20 +50,12 @@ class PropertyImageModel {
   // Helper methods
   bool get isValid => imageUrl.isNotEmpty;
 
-  /// Payload-friendly map that keeps both main-image flags in sync.
-  Map<String, dynamic> toApiJson() {
-    final payload = toJson();
-    payload['is_main'] = isMain || isMainImage;
-    payload['is_main_image'] = isMainImage || isMain;
-    payload['category'] = category.isEmpty ? 'gallery' : category;
-    return payload;
-  }
+  bool get isPrimary => isMainImage;
 
-  bool get isPrimary => isMain || isMainImage;
+  bool get isFloorPlan => category == ImageCategory.floorPlan;
 
-  String get resolvedCategory => category.isEmpty ? 'gallery' : category;
-  bool get isGallery => resolvedCategory == 'gallery' || resolvedCategory == 'photo';
-  bool get isFloorPlan => resolvedCategory == 'floor_plan';
+  /// Every photo that is not a floor plan belongs in the gallery.
+  bool get isGallery => !isFloorPlan;
 
   String get thumbnailUrl {
     // If using a CDN, can append thumbnail parameters

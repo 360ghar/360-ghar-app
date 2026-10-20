@@ -6,7 +6,7 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Ghar360 - Transform your property search with 360° virtual tours, exact location mapping, and an engaging Bumble-inspired swipe interface.">
+  <meta name="description" content="360 Ghar: verified homes in Gurugram. Swipe through listings, walk in with a 360° tour, and book a visit.">
   <meta name="keywords" content="real estate, property search, 360 tours, virtual tours, property listings, house hunting, apartment search, home buying">
   
   <!-- Preload critical images -->
@@ -20,7 +20,8 @@
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   
   <!-- Android PWA -->
-  <meta name="theme-color" content="#FFBC05">
+  <meta name="theme-color" content="#DDEFE9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0F2826" media="(prefers-color-scheme: dark)">
   
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
@@ -109,14 +110,17 @@
   <link rel="manifest" href="manifest.json">
   
   <style>
-    /* Loading screen styles */
+    /* The page itself carries the app's page tone, so nothing flashes white
+       between the loader and the first Flutter frame. */
+    html, body { margin: 0; background: #DDEFE9; }
+    @media (prefers-color-scheme: dark) { html, body { background: #0F2826; } }
+
+    /* Loading screen: the app's page tone (sky paper) with the bare logo mark,
+       so the first Flutter frame paints the same colour. */
     #loading {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(135deg, #FFBC05 0%, #FF6B35 100%);
+      inset: 0;
+      background: #DDEFE9;
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -124,45 +128,46 @@
       z-index: 9999;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
-    
+
     .loading-logo {
-      width: 80px;
-      height: 80px;
-      border-radius: 16px;
-      background: rgba(255, 255, 255, 0.2);
-      backdrop-filter: blur(10px);
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      margin-bottom: 24px;
-      font-size: 32px;
-      font-weight: bold;
-      color: white;
+      width: 72px;
+      height: 72px;
+      margin-bottom: 20px;
+      background: url('assets/assets/icons/logo_mark.png') center / contain no-repeat;
     }
-    
+
     .loading-spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid rgba(255, 255, 255, 0.3);
-      border-top: 3px solid white;
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(12, 106, 97, 0.18);
+      border-top-color: #0C6A61;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 16px;
+      animation: spin 0.9s linear infinite;
+      margin-bottom: 14px;
     }
-    
+
     .loading-text {
-      color: white;
-      font-size: 16px;
-      font-weight: 500;
-      opacity: 0.9;
+      color: #4B5955;
+      font-size: 15px;
+      font-weight: 600;
     }
-    
+
+    @media (prefers-color-scheme: dark) {
+      #loading { background: #0F2826; }
+      .loading-logo { background-image: url('assets/assets/icons/logo_mark_dark.png'); }
+      .loading-spinner { border-color: rgba(92, 196, 182, 0.2); border-top-color: #5CC4B6; }
+      .loading-text { color: #B6C5C0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .loading-spinner { animation: none; }
+    }
+
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-    
+
     /* Hide loading screen when Flutter app loads */
     .flutter-loaded #loading {
       display: none;
@@ -172,9 +177,9 @@
 <body>
   <!-- Loading Screen -->
   <div id="loading">
-    <div class="loading-logo">360</div>
+    <div class="loading-logo" role="img" aria-label="360 Ghar"></div>
     <div class="loading-spinner"></div>
-    <div class="loading-text">Loading Ghar360...</div>
+    <div class="loading-text">Loading 360 Ghar</div>
   </div>
   
   <script src="flutter_bootstrap.js" async></script>
