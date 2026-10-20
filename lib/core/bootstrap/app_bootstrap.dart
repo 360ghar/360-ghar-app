@@ -1,11 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/storage/app_database.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Max wait for Supabase init so a dead network cannot pin the native splash.
 const Duration kSupabaseInitTimeout = Duration(seconds: 15);

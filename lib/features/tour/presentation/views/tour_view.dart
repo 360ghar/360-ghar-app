@@ -1,8 +1,4 @@
 import 'package:flutter/material.dart';
-
-import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
@@ -15,6 +11,8 @@ import 'package:ghar360/core/widgets/common/tour_webview.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
 import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
+import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// The native WebView and its timers belong to the mounted media widget.
 class TourView extends StatelessWidget {

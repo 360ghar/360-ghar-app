@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
@@ -11,6 +9,8 @@ import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/storage/storage_failure.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/property_query_test_support.dart';
 import '../../../helpers/test_data.dart';
 

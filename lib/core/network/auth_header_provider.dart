@@ -1,9 +1,8 @@
 import 'dart:async';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Provides authentication headers for API requests.
 class AuthHeaderProvider {

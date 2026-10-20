@@ -2,10 +2,6 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
-import 'package:go_router/go_router.dart';
-import 'package:smart_auth/smart_auth.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
@@ -14,6 +10,8 @@ import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/features/auth/data/auth_failure.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
+import 'package:go_router/go_router.dart';
+import 'package:smart_auth/smart_auth.dart';
 
 String authLocation(BuildContext context, String route) {
   final from = GoRouterState.of(context).uri.queryParameters['from'];

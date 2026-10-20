@@ -1,13 +1,11 @@
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/features/auth/data/auth_failure.dart';
 import 'package:ghar360/features/profile/data/support_repository.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 final supportRepositoryProvider = Provider<SupportRepository>(
   (ref) => SupportRepository(apiClient: ref.watch(apiClientProvider)),

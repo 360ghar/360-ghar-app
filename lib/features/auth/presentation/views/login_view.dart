@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
@@ -13,6 +10,7 @@ import 'package:ghar360/features/auth/presentation/controllers/login_controller.
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
 import 'package:ghar360/features/auth/presentation/widgets/otp_input_field.dart';
+import 'package:go_router/go_router.dart';
 
 class LoginView extends ConsumerStatefulWidget {
   const LoginView({super.key, this.args});

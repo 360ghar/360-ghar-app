@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/providers/auth_providers.dart';
@@ -15,6 +11,8 @@ import 'package:ghar360/features/auth/presentation/controllers/phone_entry_contr
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
 import 'package:ghar360/features/auth/presentation/widgets/google_sign_in_button.dart';
+import 'package:go_router/go_router.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class PhoneEntryView extends ConsumerStatefulWidget {
   const PhoneEntryView({super.key});

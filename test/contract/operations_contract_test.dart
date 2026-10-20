@@ -5,8 +5,6 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/app_update_models.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
@@ -25,6 +23,8 @@ import 'package:ghar360/features/properties/data/datasources/properties_remote_d
 import 'package:ghar360/features/splash/data/app_update_repository.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
 import '../helpers/mocks.dart';
 import '../helpers/property_query_test_support.dart';
 import 'contract_support.dart';

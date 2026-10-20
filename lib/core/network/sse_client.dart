@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/network/auth_header_provider.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:http/http.dart' as http;
 
 /// Parsed Server-Sent Event.
 class SseEvent {

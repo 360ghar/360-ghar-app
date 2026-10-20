@@ -1,16 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/bootstrap/app_bootstrap.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/main.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'helpers/settings_test_database.dart';
 
 void main() {

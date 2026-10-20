@@ -1,6 +1,5 @@
-import 'package:json_annotation/json_annotation.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
+import 'package:json_annotation/json_annotation.dart';
 
 part 'unified_property_response.g.dart';
 

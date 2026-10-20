@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-
-import 'package:share_plus/share_plus.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ShareUtils {
   static Uri _propertyUri(int id) => Uri.https('360ghar.com', '/p/$id');

@@ -1,9 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
@@ -47,6 +44,7 @@ import 'package:ghar360/features/tools/presentation/views/tools_view.dart';
 import 'package:ghar360/features/tour/presentation/views/tour_view.dart';
 import 'package:ghar360/features/visits/presentation/views/visits_view.dart';
 import 'package:ghar360/root.dart';
+import 'package:go_router/go_router.dart';
 
 /// Stable router identity: authentication changes refresh redirects without
 /// rebuilding branch navigators or losing their scroll/map state.

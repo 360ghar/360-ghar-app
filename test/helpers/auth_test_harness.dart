@@ -1,10 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mocktail/mocktail.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show User;
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
 import 'package:ghar360/core/network/api_client.dart';
@@ -17,6 +13,9 @@ import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/auth/data/last_auth_method_store.dart';
 import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
 import 'package:ghar360/features/profile/data/profile_repository.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 class MockAuthRepository extends Mock implements AuthRepository {}
 

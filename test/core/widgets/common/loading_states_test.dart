@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shimmer/shimmer.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_theme.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:shimmer/shimmer.dart';
+
 import '../../../helpers/provider_test_app.dart';
 
 Future<void> _pump(WidgetTester tester, Widget child, {bool still = false, bool dark = false}) =>

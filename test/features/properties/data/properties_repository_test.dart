@@ -6,11 +6,11 @@
 // - getPropertyDetail success
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/properties/data/properties_repository.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/mocks.dart';
 
 void main() {

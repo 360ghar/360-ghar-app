@@ -1,10 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:ghar360/core/providers/auth_providers.dart';
 import 'package:ghar360/core/routes/app_pages.dart';
 import 'package:ghar360/core/services/deep_link_service.dart';

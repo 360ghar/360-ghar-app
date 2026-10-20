@@ -1,13 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
-
 import 'package:chewie/chewie.dart';
-import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:video_player/video_player.dart';
-
+import 'package:flutter/material.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
@@ -25,6 +20,9 @@ import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/property/property_facts.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/fullscreen_photo_gallery.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_image_gallery.dart';
+import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 /// Horizontal media experience strip — photos, 360°, video, floor plan, street view.
 /// No eager WebViews; tours navigate to [AppRoutes.tour] like Discover.

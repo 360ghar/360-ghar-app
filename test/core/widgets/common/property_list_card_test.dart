@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_theme.dart';
@@ -11,6 +8,8 @@ import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/widgets/common/property_list_card.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../../helpers/knife_finders.dart';
 import '../../../helpers/provider_test_app.dart';
 

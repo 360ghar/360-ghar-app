@@ -1,6 +1,5 @@
-import 'package:json_annotation/json_annotation.dart';
-
 import 'package:ghar360/core/data/models/wire_enums.dart';
+import 'package:json_annotation/json_annotation.dart';
 
 export 'package:ghar360/core/data/models/wire_enums.dart' show ImageCategory;
 

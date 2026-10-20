@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/features/auth/presentation/controllers/phone_entry_controller.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException, AuthResponse;
 
-import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/auth/presentation/controllers/phone_entry_controller.dart';
 import '../../../../helpers/auth_form_harness.dart';
 
 void main() {

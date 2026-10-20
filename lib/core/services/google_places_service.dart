@@ -2,11 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-
 import 'package:ghar360/core/data/models/popular_city.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:http/http.dart' as http;
 
 class PlaceSuggestion {
   const PlaceSuggestion({

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/routes/app_pages.dart';
+import 'package:go_router/go_router.dart';
 
 /// Two tabs show the same home under one hero tag, and a details route above
 /// the shell uses the tag too, as the Explore strip, Saved and the details

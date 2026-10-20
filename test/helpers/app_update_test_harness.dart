@@ -2,14 +2,13 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/controllers/app_update_controller.dart';
 import 'package:ghar360/core/data/models/app_update_models.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/features/splash/data/app_update_platform.dart';
 import 'package:ghar360/features/splash/data/app_update_repository.dart';
+import 'package:mocktail/mocktail.dart';
 
 const updateAvailable = AppVersionCheckResponse(
   updateAvailable: true,

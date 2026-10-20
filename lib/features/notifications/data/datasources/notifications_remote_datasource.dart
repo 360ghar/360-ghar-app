@@ -1,11 +1,9 @@
 import 'package:flutter/foundation.dart';
-
-import 'package:package_info_plus/package_info_plus.dart';
-
 import 'package:ghar360/core/data/models/wire_enums.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// Data source for notification-related API calls.
 /// Handles device token registration with the backend.

@@ -1,14 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
 import 'package:ghar360/features/visits/data/visits_repository.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/visits_test_support.dart';
 
 class MockRemoteVisits extends Mock implements VisitsRemoteDatasource {}

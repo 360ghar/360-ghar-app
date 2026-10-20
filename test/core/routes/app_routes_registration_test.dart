@@ -1,12 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_pages.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../helpers/profile_test_harness.dart';
 import '../../helpers/visits_test_support.dart';
 

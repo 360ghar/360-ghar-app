@@ -1,14 +1,8 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-import 'package:mocktail/mocktail.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show AuthResponse;
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
@@ -20,6 +14,11 @@ import 'package:ghar360/features/profile/data/support_repository.dart';
 import 'package:ghar360/features/profile/presentation/controllers/feedback_controller.dart';
 import 'package:ghar360/features/profile/presentation/views/about_view.dart';
 import 'package:ghar360/features/profile/presentation/views/policy_page_view.dart';
+import 'package:go_router/go_router.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthResponse;
+
 import 'auth_test_harness.dart' show profile, sdkUser, MockAuthRepository;
 
 export 'auth_test_harness.dart' show profile, sdkUser;

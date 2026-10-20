@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/features/profile/data/notification_settings_repository.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/api_fixtures.dart';
 
 class MockApiClient extends Mock implements ApiClient {}

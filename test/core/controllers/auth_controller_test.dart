@@ -1,14 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
@@ -17,6 +14,8 @@ import 'package:ghar360/core/firebase/push_notifications_service.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../helpers/auth_test_harness.dart';
 
 void main() {

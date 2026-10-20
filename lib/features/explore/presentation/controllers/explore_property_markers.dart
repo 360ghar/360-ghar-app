@@ -1,7 +1,6 @@
-import 'package:maplibre_gl/maplibre_gl.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
 
 class PropertyMarker {
   const PropertyMarker({

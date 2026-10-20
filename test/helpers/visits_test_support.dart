@@ -1,6 +1,3 @@
-import 'package:mocktail/mocktail.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
 import 'package:ghar360/core/data/models/agent_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
@@ -9,6 +6,8 @@ import 'package:ghar360/core/providers/pending_actions_provider.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/features/visits/data/visits_repository.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class MockVisitRepository extends Mock implements VisitsRepository {}
 

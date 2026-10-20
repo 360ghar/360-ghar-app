@@ -7,8 +7,6 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
@@ -18,6 +16,8 @@ import 'package:ghar360/core/network/etag_cache.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/properties/data/datasources/properties_remote_datasource.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/mocks.dart';
 import '../../../helpers/test_data.dart';
 

@@ -2,13 +2,11 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-
-import 'package:shimmer/shimmer.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/core/design/paper/paper_cut.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:shimmer/shimmer.dart';
 
 /// Loading placeholders. Each skeleton has the shape of the screen it stands
 /// in for, appears only after [Skeleton.delay], and stops its sheen when the

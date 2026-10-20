@@ -1,10 +1,8 @@
 import 'package:flutter/widgets.dart';
-
-import 'package:intl/intl.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
+import 'package:intl/intl.dart';
 
 final _grouped = NumberFormat.decimalPattern('en_IN');
 

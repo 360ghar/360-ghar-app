@@ -1,13 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-import 'package:maplibre_gl/maplibre_gl.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
@@ -29,6 +25,9 @@ import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
 import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
+import 'package:go_router/go_router.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
+
 import '../../../../helpers/fake_explore_map_platform.dart';
 import '../../../../helpers/image_test_cache.dart';
 import '../../../../helpers/property_query_test_support.dart';

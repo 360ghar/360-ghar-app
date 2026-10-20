@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
@@ -18,6 +15,7 @@ import 'package:ghar360/core/widgets/paper/paper_strip.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_visit_dialog.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 import 'package:ghar360/features/visits/presentation/widgets/visit_edit_dialog.dart';
+import 'package:go_router/go_router.dart';
 
 class PropertyDetailsBottomBar extends ConsumerWidget {
   const PropertyDetailsBottomBar({super.key, required this.property});

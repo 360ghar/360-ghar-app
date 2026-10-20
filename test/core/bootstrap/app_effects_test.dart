@@ -1,11 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/bootstrap/app_effects.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/controllers/app_update_controller.dart';
@@ -16,6 +13,8 @@ import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_pages.dart';
 import 'package:ghar360/core/services/deep_link_service.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../helpers/location_test_harness.dart';
 
 class _Updates extends AppUpdateController {

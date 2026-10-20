@@ -1,13 +1,11 @@
 // The old navigation timer service is replaced by a deterministic redirect.
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/routes/route_policy.dart';
+import 'package:go_router/go_router.dart';
 
 void main() {
   String? redirect(AuthStatus status, String location, {bool seen = true}) =>

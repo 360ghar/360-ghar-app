@@ -1,11 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_scene_data.dart';
 import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
@@ -20,6 +17,8 @@ import 'package:ghar360/features/assistant/presentation/widgets/chat_message_bub
 import 'package:ghar360/features/assistant/presentation/widgets/chat_widget_bubble.dart';
 import 'package:ghar360/features/assistant/presentation/widgets/suggested_prompts.dart';
 import 'package:ghar360/features/assistant/presentation/widgets/tool_call_indicator.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/assistant_test_harness.dart';
 import '../../../../helpers/fake_webview_platform.dart';
 import '../../../../helpers/knife_finders.dart';

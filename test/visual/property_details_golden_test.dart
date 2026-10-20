@@ -4,14 +4,12 @@
 
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-
 import 'package:file/local.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_theme.dart';
@@ -26,6 +24,7 @@ import 'package:ghar360/features/properties/application/swipe_history.dart';
 import 'package:ghar360/features/property_details/presentation/controllers/property_details_controller.dart';
 import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
+
 import '../helpers/image_test_cache.dart';
 import '../helpers/load_app_fonts.dart';
 import '../helpers/visits_test_support.dart';

@@ -1,14 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/profile/presentation/widgets/profile_sheet_page.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 final packageVersionProvider = FutureProvider<PackageInfo?>((ref) async {
   try {

@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
@@ -18,6 +16,7 @@ import 'package:ghar360/features/properties/application/property_filters.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class TestScope extends StorageScopeNotifier {
   @override

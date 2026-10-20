@@ -1,11 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/design/app_design_theme.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
@@ -15,6 +12,8 @@ import 'package:ghar360/features/assistant/data/models/conversation_model.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_history_controller.dart';
 import 'package:ghar360/features/assistant/presentation/views/assistant_view.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/assistant_test_harness.dart';
 import '../../../../helpers/fake_webview_platform.dart';
 import '../../../../helpers/provider_test_app.dart';

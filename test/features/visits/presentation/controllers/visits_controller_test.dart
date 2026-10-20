@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
@@ -11,6 +9,8 @@ import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/visits/data/visits_repository.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/visits_test_support.dart';
 
 void main() {

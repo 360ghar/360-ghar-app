@@ -1,17 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-
 import 'package:file/local.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/features/discover/presentation/views/discover_view.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_stack.dart';
 import 'package:ghar360/features/likes/presentation/views/likes_view.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
+
 import '../helpers/load_app_fonts.dart';
 import '../helpers/property_query_test_support.dart';
 import '../helpers/property_screen_harness.dart';

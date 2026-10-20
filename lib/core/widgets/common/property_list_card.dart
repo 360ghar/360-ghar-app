@@ -1,9 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
@@ -17,6 +14,7 @@ import 'package:ghar360/core/widgets/common/animated_tap_wrapper.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:go_router/go_router.dart';
 
 /// The hero tag of a home's photo. The details gallery uses the same tag, so
 /// the photo carries over when a home opens.

@@ -1,10 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/providers/auth_providers.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
 import 'package:ghar360/features/auth/data/models/auth_flow_args.dart';
 import 'package:ghar360/features/auth/presentation/controllers/auth_form_state.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final phoneEntryProvider = NotifierProvider.autoDispose<PhoneEntryController, AuthFormState>(
   PhoneEntryController.new,

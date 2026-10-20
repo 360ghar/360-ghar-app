@@ -1,8 +1,7 @@
 import 'dart:async';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Typed errors cross the application boundary; views choose localized text.
 AppException authFailure(Object error) {

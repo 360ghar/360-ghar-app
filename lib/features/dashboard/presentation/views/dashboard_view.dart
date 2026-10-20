@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/widgets/navigation/bottom_nav_bar.dart';
+import 'package:go_router/go_router.dart';
 
 /// Each branch owns its navigation stack and retained view state. Inactive
 /// branch tickers are disabled by StatefulShellRoute.indexedStack.

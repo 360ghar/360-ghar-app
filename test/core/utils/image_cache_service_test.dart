@@ -4,9 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_cache_manager/file.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/utils/image_cache_service.dart';
+import 'package:mocktail/mocktail.dart';
 
 class _CacheManager extends Mock implements BaseCacheManager {}
 

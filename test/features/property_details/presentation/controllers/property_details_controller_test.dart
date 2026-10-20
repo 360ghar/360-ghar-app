@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/ports/properties_port.dart';
 import 'package:ghar360/core/network/cache_policy.dart';
@@ -13,6 +11,8 @@ import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/property_details/presentation/controllers/property_details_controller.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/visits_test_support.dart';
 
 class MockDetailRepository extends Mock implements PropertiesPort {}

@@ -1,17 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show AuthResponse;
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/auth/presentation/controllers/login_controller.dart';
 import 'package:ghar360/features/auth/presentation/views/login_view.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthResponse;
+
 import '../../../../helpers/auth_form_harness.dart';
 
 Finder _knife(KnifeIcon icon) =>

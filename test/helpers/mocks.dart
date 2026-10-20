@@ -12,8 +12,6 @@
 // interfaces), so callers must reference these mocks via the concrete type
 // name (e.g. `MockProfileRepository`) rather than a shared abstraction.
 
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/agent_model.dart';
@@ -35,6 +33,7 @@ import 'package:ghar360/features/properties/data/properties_repository.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
 import 'package:ghar360/features/visits/data/visits_repository.dart';
+import 'package:mocktail/mocktail.dart';
 
 // ---------------------------------------------------------------------------
 // ApiClient

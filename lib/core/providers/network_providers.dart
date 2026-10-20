@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/auth_header_provider.dart';
@@ -12,6 +10,7 @@ import 'package:ghar360/core/network/sse_client.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Bootstrap owns Supabase; tests override this composition dependency.
 final supabaseClientProvider = Provider<SupabaseClient>((ref) => Supabase.instance.client);

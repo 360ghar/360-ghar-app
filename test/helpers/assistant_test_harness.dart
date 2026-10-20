@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/bootstrap/provider_policy.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
@@ -11,6 +9,7 @@ import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_history_controller.dart';
+import 'package:mocktail/mocktail.dart';
 
 class MockAssistantRepository extends Mock implements AssistantRepository {}
 

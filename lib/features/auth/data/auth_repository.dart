@@ -2,13 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:crypto/crypto.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'package:flutter/foundation.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
@@ -19,6 +14,9 @@ import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
 import 'package:ghar360/features/auth/data/last_auth_method_store.dart';
 import 'package:ghar360/features/auth/data/models/identifier_status.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // lib/features/auth/data/auth_repository.dart
 

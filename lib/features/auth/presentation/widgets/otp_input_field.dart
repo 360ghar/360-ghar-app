@@ -3,14 +3,12 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import 'package:sms_autofill/sms_autofill.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:sms_autofill/sms_autofill.dart';
 
 /// Reusable 6-digit OTP input with Android SMS autofill (`CodeAutoFill`) and
 /// `autofillHints: oneTimeCode` for the iOS keyboard suggestion bar.

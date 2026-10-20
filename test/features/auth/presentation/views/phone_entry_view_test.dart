@@ -1,14 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/presentation/controllers/phone_entry_controller.dart';
 import 'package:ghar360/features/auth/presentation/views/phone_entry_view.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/auth_form_harness.dart';
 
 void main() {

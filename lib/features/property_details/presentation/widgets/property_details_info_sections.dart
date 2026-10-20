@@ -1,9 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
@@ -15,6 +12,7 @@ import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/property/property_facts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// What kind of home it is: type, purpose, tenant rules and age.
 class PropertyDetailsInfoSection extends StatelessWidget {

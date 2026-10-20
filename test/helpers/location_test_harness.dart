@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
@@ -15,6 +13,7 @@ import 'package:ghar360/features/location/application/location_backend_sync.dart
 import 'package:ghar360/features/location/application/location_search_controller.dart';
 import 'package:ghar360/features/location/application/location_source.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:mocktail/mocktail.dart';
 
 class LocationTestScope extends Fake implements StorageScope {
   LocationTestScope(this.accountId);

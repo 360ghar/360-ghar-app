@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
-
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/services/google_places_service.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
 import '../../helpers/fake_location_platform.dart';
 
 void main() {

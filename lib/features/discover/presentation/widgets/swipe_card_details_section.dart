@@ -1,8 +1,4 @@
 import 'package:flutter/material.dart';
-
-import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
@@ -15,6 +11,8 @@ import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/property/property_facts.dart';
+import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// The scrollable half of a swipe card below the photo. Dense and flat:
 /// highlights, the facts, amenities, description, the 360° tour and the map.

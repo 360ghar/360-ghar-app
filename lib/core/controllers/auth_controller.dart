@@ -1,11 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show User;
-
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
 import 'package:ghar360/core/firebase/analytics_service.dart';
@@ -21,6 +18,7 @@ import 'package:ghar360/features/auth/data/auth_failure.dart';
 import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
 import 'package:ghar360/features/profile/data/profile_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 const _unchanged = Object();
 

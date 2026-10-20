@@ -4,13 +4,13 @@
 // Injects an API client into the real repository.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/data/models/static_page_model.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/profile/data/static_page_repository.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/api_fixtures.dart';
 
 class MockApiClient extends Mock implements ApiClient {}

@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:maplibre_gl/maplibre_gl.dart';
-
 import 'package:ghar360/core/controllers/localization_controller.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
@@ -11,6 +8,8 @@ import 'package:ghar360/features/explore/presentation/widgets/explore_map.dart';
 import 'package:ghar360/features/explore/presentation/widgets/property_marker_chip.dart';
 import 'package:ghar360/features/properties/application/property_filters.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
+
 import '../../../../helpers/explore_test_harness.dart';
 import '../../../../helpers/fake_explore_map_platform.dart';
 import '../../../../helpers/provider_test_app.dart';

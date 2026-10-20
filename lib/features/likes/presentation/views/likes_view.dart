@@ -2,10 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
@@ -35,6 +32,7 @@ import 'package:ghar360/features/properties/application/property_filters.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
+import 'package:go_router/go_router.dart';
 
 PropertyFeed _feedFor(LikesSegment segment) =>
     segment == LikesSegment.liked ? PropertyFeed.liked : PropertyFeed.passed;

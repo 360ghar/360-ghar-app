@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
@@ -13,6 +10,7 @@ import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
 import 'package:ghar360/features/profile/presentation/controllers/change_password_controller.dart';
 import 'package:ghar360/features/profile/presentation/widgets/profile_sheet_page.dart';
+import 'package:go_router/go_router.dart';
 
 class PrivacyView extends StatelessWidget {
   const PrivacyView({super.key});

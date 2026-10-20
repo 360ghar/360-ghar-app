@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/features/auth/presentation/controllers/login_controller.dart';
 import 'package:ghar360/features/auth/presentation/controllers/otp_resend_timer.dart';
 import 'package:ghar360/features/auth/presentation/controllers/profile_completion_controller.dart';
 import 'package:ghar360/features/auth/presentation/controllers/signup_controller.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/auth_form_harness.dart';
 import '../../../../helpers/auth_test_harness.dart' show profile;
 

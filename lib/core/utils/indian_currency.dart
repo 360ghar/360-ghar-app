@@ -1,6 +1,5 @@
-import 'package:intl/intl.dart';
-
 import 'package:ghar360/core/translations/app_messages.dart';
+import 'package:intl/intl.dart';
 
 /// Formats rupee amounts the way Indian users actually read them.
 ///

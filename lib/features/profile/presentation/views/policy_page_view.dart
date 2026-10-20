@@ -1,11 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:ghar360/core/data/models/static_page_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
@@ -21,6 +18,7 @@ import 'package:ghar360/core/widgets/paper/paper_scroll_page.dart';
 import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
 import 'package:ghar360/features/profile/data/static_page_repository.dart';
 import 'package:ghar360/features/profile/presentation/widgets/paper_parts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final staticPageRepositoryProvider = Provider<StaticPageRepository>(
   (ref) => StaticPageRepository(apiClient: ref.watch(apiClientProvider)),

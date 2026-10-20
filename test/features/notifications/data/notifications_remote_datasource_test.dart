@@ -4,13 +4,12 @@
 // Mocks [ApiClient] to verify device-token registration and unregistration.
 
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/log_capture.dart';
 import '../../../helpers/mocks.dart';
 

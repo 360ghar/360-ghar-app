@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-
-import 'package:intl/intl.dart';
-
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/core/presentation/property_labels.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:intl/intl.dart';
 
 /// One visit as a visit pass: a tear-off date stub, a column of punched
 /// holes, then the home, the time and status as text, and the actions.

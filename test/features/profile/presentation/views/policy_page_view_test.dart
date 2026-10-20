@@ -1,12 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/data/models/static_page_model.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
@@ -15,6 +12,8 @@ import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/features/profile/presentation/views/policy_page_view.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/profile_test_harness.dart';
 import '../../../../helpers/visits_test_support.dart';
 

@@ -2,10 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
@@ -16,6 +13,7 @@ import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 /// Wrapper HTML that acts as an MCP host for widget iframes.
 ///

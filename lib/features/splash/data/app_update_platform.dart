@@ -1,11 +1,9 @@
 import 'package:flutter/foundation.dart';
-
+import 'package:ghar360/core/data/models/app_update_models.dart';
+import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-import 'package:ghar360/core/data/models/app_update_models.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
 
 enum NativeUpdateResult { handled, notOnStore, unsupported }
 

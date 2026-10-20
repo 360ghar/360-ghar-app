@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/features/profile/presentation/views/about_view.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
 import '../../../../helpers/knife_finders.dart';
 import '../../../../helpers/profile_test_harness.dart';
 

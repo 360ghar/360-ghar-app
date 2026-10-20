@@ -2,12 +2,9 @@
 // scrolled from top to bottom, with its dialogs open.
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/controllers/localization_controller.dart';
 import 'package:ghar360/core/data/models/static_page_model.dart';
@@ -29,6 +26,8 @@ import 'package:ghar360/features/profile/presentation/views/policy_page_view.dar
 import 'package:ghar360/features/profile/presentation/views/preferences_view.dart';
 import 'package:ghar360/features/profile/presentation/views/privacy_view.dart';
 import 'package:ghar360/features/profile/presentation/views/profile_view.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/c_notification_settings.dart';
 import '../../../../helpers/profile_test_harness.dart';
 import '../../../../helpers/settings_test_database.dart';

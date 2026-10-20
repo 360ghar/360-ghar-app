@@ -4,11 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
@@ -45,6 +41,8 @@ import 'package:ghar360/features/property_details/presentation/widgets/property_
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_overview.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_section_nav.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_media_hub.dart';
+import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PropertyDetailsView extends ConsumerStatefulWidget {
   const PropertyDetailsView({

@@ -1,12 +1,11 @@
-import 'package:flutter/material.dart';
-
 import 'package:chewie/chewie.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_player_platform_interface/video_player_platform_interface.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_media_hub.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+
 import '../../../../helpers/fake_video_platform.dart';
 import '../../../../helpers/provider_test_app.dart';
 

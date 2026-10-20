@@ -3,9 +3,8 @@
 // Each enum reads a missing or unknown wire value as null and logs the enum type. It never
 // falls back to a real member. `toJson` returns the wire value.
 
-import 'package:json_annotation/json_annotation.dart';
-
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:json_annotation/json_annotation.dart';
 
 /// An enum with a backend wire value.
 abstract interface class WireEnum {

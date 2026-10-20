@@ -1,8 +1,7 @@
 import 'package:flutter_cache_manager/file.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/utils/image_cache_service.dart';
+import 'package:mocktail/mocktail.dart';
 
 /// Images remain in the loading state unless a test supplies a response. This
 /// avoids network requests, platform channels, disk files, and cleanup timers.

@@ -1,11 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
-
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
 import 'package:ghar360/core/firebase/push_notifications_service.dart';
@@ -21,6 +18,7 @@ import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/widgets/common/app_update_host.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:go_router/go_router.dart';
 
 /// Owns effects that require the active app and route, not a retained tab.
 class AppEffects extends ConsumerStatefulWidget {

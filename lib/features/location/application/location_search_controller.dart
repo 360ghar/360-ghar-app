@@ -1,14 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
-
 import 'package:ghar360/core/bootstrap/provider_policy.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/services/google_places_service.dart';
+import 'package:http/http.dart' as http;
 
 final googlePlacesServiceProvider = Provider<GooglePlacesService>((ref) {
   final config = AppConfig.instance;

@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/design/app_design_theme.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/features/dashboard/presentation/views/dashboard_view.dart';
+import 'package:go_router/go_router.dart';
 
 const shellPaths = ['/discover', '/explore', '/likes', '/visits', '/profile'];
 const shellIds = ['discover', 'explore_properties', 'saved', 'visits', 'profile'];

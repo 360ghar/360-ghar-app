@@ -2,17 +2,16 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:maplibre_gl/maplibre_gl.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/features/discover/presentation/controllers/discover_controller.dart';
 import 'package:ghar360/features/discover/presentation/views/discover_view.dart';
 import 'package:ghar360/features/explore/presentation/views/explore_view.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
+
 import '../helpers/explore_test_harness.dart';
 import '../helpers/fake_explore_map_platform.dart';
 import '../helpers/load_app_fonts.dart';

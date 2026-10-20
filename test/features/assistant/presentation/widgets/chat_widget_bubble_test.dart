@@ -1,16 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-import 'package:shimmer/shimmer.dart';
-
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
 import 'package:ghar360/features/assistant/presentation/widgets/chat_widget_bubble.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:shimmer/shimmer.dart';
+
 import '../../../../helpers/assistant_test_harness.dart';
 import '../../../../helpers/fake_webview_platform.dart';
 import '../../../../helpers/provider_test_app.dart';

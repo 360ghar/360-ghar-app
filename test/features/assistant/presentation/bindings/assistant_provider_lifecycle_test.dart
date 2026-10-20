@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
@@ -10,6 +8,8 @@ import 'package:ghar360/features/assistant/data/models/assistant_frame.dart';
 import 'package:ghar360/features/assistant/data/models/conversation_model.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_history_controller.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/assistant_test_harness.dart';
 
 ConversationModel _conversation(int id) =>

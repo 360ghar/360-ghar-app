@@ -3,11 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
@@ -34,6 +30,8 @@ import 'package:ghar360/features/visits/presentation/widgets/agent_card.dart';
 import 'package:ghar360/features/visits/presentation/widgets/visit_card.dart';
 import 'package:ghar360/features/visits/presentation/widgets/visit_edit_dialog.dart';
 import 'package:ghar360/features/visits/presentation/widgets/visit_failure_message.dart';
+import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Formats a phone number for dialing/WhatsApp.
 ///

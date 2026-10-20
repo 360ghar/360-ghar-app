@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
@@ -11,6 +8,7 @@ import 'package:ghar360/features/auth/presentation/controllers/forgot_password_c
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
 import 'package:ghar360/features/auth/presentation/widgets/otp_input_field.dart';
+import 'package:go_router/go_router.dart';
 
 class ForgotPasswordView extends ConsumerStatefulWidget {
   const ForgotPasswordView({super.key, this.identifier});

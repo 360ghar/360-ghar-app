@@ -2,8 +2,6 @@
 // starts false, allowing the enabled init() path to run end-to-end with
 // mocked Firebase platform interfaces (no real Firebase / network).
 
-import 'package:flutter/foundation.dart';
-
 import 'package:firebase_analytics_platform_interface/firebase_analytics_platform_interface.dart';
 import 'package:firebase_app_check_platform_interface/firebase_app_check_platform_interface.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -13,12 +11,12 @@ import 'package:firebase_in_app_messaging_platform_interface/firebase_in_app_mes
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_performance_platform_interface/firebase_performance_platform_interface.dart';
 import 'package:firebase_remote_config_platform_interface/firebase_remote_config_platform_interface.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 // ---------------------------------------------------------------------------
 // Firebase core mock with Crashlytics plugin constants

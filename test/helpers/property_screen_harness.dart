@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/design/app_design_theme.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
@@ -16,6 +13,8 @@ import 'package:ghar360/core/utils/image_cache_service.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
+import 'package:go_router/go_router.dart';
+
 import 'image_test_cache.dart';
 import 'property_query_test_support.dart';
 

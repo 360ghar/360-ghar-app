@@ -2,12 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
-import 'package:mocktail/mocktail.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
@@ -16,6 +11,10 @@ import 'package:ghar360/features/auth/data/auth_repository.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
 import 'package:ghar360/features/auth/data/last_auth_method_store.dart';
 import 'package:ghar360/features/auth/data/models/identifier_status.dart';
+import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../helpers/settings_test_database.dart';
 
 // test/features/auth/data/auth_repository_test.dart

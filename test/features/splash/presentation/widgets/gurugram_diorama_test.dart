@@ -3,14 +3,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sensors_plus/sensors_plus.dart';
-
 import 'package:ghar360/core/design/app_design_theme.dart';
 import 'package:ghar360/core/design/paper/paper_art.dart';
 import 'package:ghar360/core/design/paper/paper_scene_data.dart';
 import 'package:ghar360/features/splash/presentation/widgets/gurugram_diorama.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+
 import '../../../../helpers/provider_test_app.dart';
 
 const _rect = Rect.fromLTWH(10, 100, 200, 300);

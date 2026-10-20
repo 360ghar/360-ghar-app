@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/auth/presentation/controllers/forgot_password_controller.dart';
 import 'package:ghar360/features/auth/presentation/views/forgot_password_view.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../../helpers/auth_form_harness.dart';
 
 void main() {

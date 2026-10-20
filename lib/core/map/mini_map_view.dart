@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-
-import 'package:maplibre_gl/maplibre_gl.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_art.dart';
 import 'package:ghar360/core/map/map_controller.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
 
 /// A compact single-pin MapLibre map (OpenFreeMap Liberty vector tiles) for
 /// property-detail screens.

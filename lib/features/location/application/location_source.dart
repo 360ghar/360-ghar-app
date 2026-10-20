@@ -4,12 +4,11 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-
 import 'package:ghar360/core/bootstrap/provider_policy.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:http/http.dart' as http;
 
 final deviceLocationSourceProvider = Provider<DeviceLocationSource>((ref) {
   final source = DeviceLocationSource(http.Client());

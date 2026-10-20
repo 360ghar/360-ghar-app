@@ -4,14 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sensors_plus/sensors_plus.dart';
-
 import 'package:ghar360/core/design/paper/paper_art.dart';
 import 'package:ghar360/core/design/paper/paper_scene_data.dart';
 import 'package:ghar360/core/widgets/paper/baked_paper_scene.dart';
 import 'package:ghar360/features/splash/presentation/widgets/tilt_filter.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 
 /// Gyroscope samples for tilt parallax. Empty on the web; tests override it.
 final gyroscopeProvider = Provider<Stream<GyroscopeEvent>>(

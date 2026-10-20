@@ -1,11 +1,9 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-
-import 'package:firebase_core/firebase_core.dart';
-import 'package:logger/logger.dart';
-
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:logger/logger.dart';
 
 class DebugLogger {
   static late final Logger _logger;

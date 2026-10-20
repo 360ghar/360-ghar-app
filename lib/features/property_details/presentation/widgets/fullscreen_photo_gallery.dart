@@ -1,10 +1,6 @@
-import 'package:flutter/material.dart';
-
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
@@ -12,6 +8,8 @@ import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/image_cache_service.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:photo_view/photo_view_gallery.dart';
 
 /// Light type and icons over a photo carry one tight shadow instead of a box.
 const onPhoto = [Shadow(color: Color(0x99000000), blurRadius: 6, offset: Offset(0, 1))];

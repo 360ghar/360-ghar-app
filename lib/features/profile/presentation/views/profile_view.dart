@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
@@ -21,6 +18,7 @@ import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
 import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
 import 'package:ghar360/features/auth/data/auth_failure.dart';
 import 'package:ghar360/features/profile/presentation/widgets/paper_parts.dart';
+import 'package:go_router/go_router.dart';
 
 /// The Profile tab: the home scene, the account on the top sheet, then each
 /// menu group as its own sheet on the sky with its title above it.

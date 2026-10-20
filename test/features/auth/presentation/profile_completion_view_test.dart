@@ -1,10 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
@@ -12,6 +9,8 @@ import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
 import 'package:ghar360/features/auth/presentation/controllers/profile_completion_controller.dart';
 import 'package:ghar360/features/auth/presentation/views/profile_completion_view.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/auth_form_harness.dart';
 import '../../../helpers/auth_test_harness.dart' show profile, sdkUser;
 

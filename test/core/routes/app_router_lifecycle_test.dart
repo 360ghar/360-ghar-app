@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/providers/app_database_provider.dart';
@@ -18,6 +15,8 @@ import 'package:ghar360/core/utils/image_cache_service.dart';
 import 'package:ghar360/features/property_details/presentation/controllers/property_details_controller.dart';
 import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/tour/presentation/views/tour_view.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../helpers/auth_form_harness.dart';
 import '../../helpers/auth_test_harness.dart' show profile;
 import '../../helpers/fake_webview_platform.dart';

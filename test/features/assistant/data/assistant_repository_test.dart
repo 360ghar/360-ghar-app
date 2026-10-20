@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/sse_client.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
 import 'package:ghar360/features/assistant/data/models/assistant_frame.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
+import 'package:mocktail/mocktail.dart';
+
 import '../../../helpers/api_fixtures.dart';
 import '../../../helpers/mocks.dart';
 

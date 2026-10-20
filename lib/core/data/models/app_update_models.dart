@@ -1,8 +1,7 @@
 // lib/core/data/models/app_update_models.dart
 
-import 'package:json_annotation/json_annotation.dart';
-
 import 'package:ghar360/core/data/models/wire_enums.dart';
+import 'package:json_annotation/json_annotation.dart';
 
 part 'app_update_models.g.dart';
 

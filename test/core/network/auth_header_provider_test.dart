@@ -2,10 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:ghar360/core/network/auth_header_provider.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   group('AuthHeaderProvider', () {

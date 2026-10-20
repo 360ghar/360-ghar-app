@@ -1,10 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/popular_city.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
@@ -21,6 +18,7 @@ import 'package:ghar360/features/location/application/location_search_controller
 import 'package:ghar360/features/location/application/location_source.dart';
 import 'package:ghar360/features/properties/application/property_filters.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 Future<void> showLocationPicker(BuildContext context, {required PageType pageType}) {
   final container = ProviderScope.containerOf(context);

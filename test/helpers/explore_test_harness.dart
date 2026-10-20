@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
@@ -17,6 +15,8 @@ import 'package:ghar360/features/location/application/location_source.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
+import 'package:mocktail/mocktail.dart';
+
 import 'location_test_harness.dart';
 
 export 'location_test_harness.dart' show delhi, mumbai;

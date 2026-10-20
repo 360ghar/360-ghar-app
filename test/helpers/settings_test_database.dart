@@ -1,6 +1,5 @@
-import 'package:mocktail/mocktail.dart';
-
 import 'package:ghar360/core/storage/app_database.dart';
+import 'package:mocktail/mocktail.dart';
 
 /// State tests control writes; real SQLite guarantees are tested separately.
 class SettingsTestDatabase extends Fake implements AppDatabase {

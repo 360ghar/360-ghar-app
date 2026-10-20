@@ -4,12 +4,12 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
-
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/location/application/location_source.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
 import '../../../helpers/fake_location_platform.dart';
 
 class _PermissionFailure extends FakeGeolocatorPlatform {
