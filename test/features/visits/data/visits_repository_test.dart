@@ -108,9 +108,13 @@ void main() {
   });
   test('account switch during POST cannot write new-account action status', () async {
     final pending = Completer<VisitModel>();
-    booking(() => pending.future);
+    final started = Completer<void>();
+    booking(() {
+      if (!started.isCompleted) started.complete();
+      return pending.future;
+    });
     final result = send();
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await started.future;
     scope = db.activateScope(environment: 'test', accountId: 'b');
     pending.complete(visitFixture());
     await result;

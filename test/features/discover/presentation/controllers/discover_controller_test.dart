@@ -156,6 +156,8 @@ void main() {
     expect(h.state(PropertyFeed.discover).phase, PropertyLoadPhase.failure);
     h.properties.response = (_) async => queryPage([1]);
     await controller().retryLoading();
+    // A late location fix can restart the load; wait for the settled result.
+    await waitForQuery(() => controller().deck.length == 1);
     expect(controller().deck.length, 1);
   });
   for (final purpose in ['buy', 'rent', 'short_stay']) {
