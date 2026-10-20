@@ -1,10 +1,17 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file describes the implemented application architecture and contributor workflow.
+Read the workspace `../CLAUDE.md` for repository boundaries and the personal GitHub
+account rule. Use the `github.com-personal` SSH alias for GitHub operations.
 
-## Project Overview
+## Project overview
 
-**ghar360** is a Flutter real estate application using GetX for state management with a Bumble-inspired swipe interface design. The app transforms property browsing into an engaging, dating-app-like experience with 360° virtual tours, exact location mapping, and detailed property information.
+360 Ghar is a Flutter property discovery application. It supports Discover swipes,
+map/list exploration, saved and passed properties, property details and tours,
+visit scheduling, Assistant conversations, profile settings, and property tools.
+Manual Riverpod providers own shared state. Flutter widgets own presentation state.
+GoRouter owns declarative navigation. See `PRODUCT.md` for product requirements and
+`docs/migration/riverpod-checklist.md` for completed verification and remaining native limits.
 
 ## Common Development Commands
 
@@ -85,6 +92,11 @@ flutter build ios --release
 flutter build web
 ```
 
+**Store releases must be built with Shorebird** (`shorebird release android` /
+`shorebird release ios`) so the binaries can receive OTA patches; shipping a
+plain `flutter build` binary to the stores silently breaks code push. See
+`docs/shorebird.md` for the release/patch workflow and CI wiring.
+
 ### Platform-Specific Setup
 ```bash
 # Clean Flutter build cache
@@ -94,251 +106,163 @@ flutter clean
 flutter pub get
 ```
 
-## Architecture Overview
+## Architecture
 
-### GetX Clean Architecture Pattern
-The app follows a Core vs. Features modular architecture with clear separation of concerns:
-
-```
+```text
 lib/
-├── core/                  # Core infrastructure and shared components
-│   ├── bindings/          # Global dependency injection
-│   │   └── initial_binding.dart
-│   ├── controllers/       # Core business logic controllers
-│   │   ├── auth_controller.dart         # Authentication management
-│   │   ├── app_update_controller.dart   # App update management
-│   │   ├── filter_service.dart          # Filtering and search service
-│   │   ├── localization_controller.dart # Multi-language support
-│   │   ├── location_controller.dart     # Location services
-│   │   ├── offline_queue_service.dart   # Offline request queue
-│   │   ├── page_state_service.dart      # Page state management
-│   │   └── theme_controller.dart        # Theme management (light/dark)
-│   ├── data/
-│   │   ├── models/        # Data models with JSON serialization
-│   │   ├── providers/     # API clients and data sources
-│   │   └── repositories/  # Data access layer
-│   ├── middlewares/       # Route guards and interceptors
-│   ├── mixins/            # Reusable behavior mixins
-│   ├── routes/            # Navigation configuration
-│   ├── translations/      # Internationalization
-│   ├── utils/             # Theme, constants, helpers, error handling
-│   └── widgets/           # Core shared widgets
-├── features/              # Feature-based modules
-│   ├── auth/              # Authentication and profile completion
-│   ├── booking/           # Property booking system
-│   ├── dashboard/         # Dashboard feature
-│   ├── discover/          # Property discovery and swipe functionality
-│   ├── explore/           # Map exploration feature
-│   ├── filters/           # Advanced filtering system
-│   ├── likes/             # Liked/passed properties management
-│   ├── onboarding/        # App onboarding flow
-│   ├── profile/           # User profile management
-│   ├── property_details/  # Property details view
-│   ├── property_details/  # Property details view
-│   ├── splash/            # Splash screen
-│   ├── tour/              # 360° tour feature
-│   └── visits/            # Property visits management
-├── widgets/               # Reusable UI components
-│   ├── common/            # Common widgets
-│   ├── navigation/        # Navigation components
-│   ├── property/          # Property-specific widgets
-│   └── splash/            # Splash-specific widgets
-├── main.dart             # App entry point
-└── root.dart             # Root authentication state router
+  main.dart                    bootstrap and application ProviderScope
+  root.dart                    session resolution and recoverable startup UI
+  core/
+    bootstrap/                 startup, application effects, provider retry policy
+    providers/                 database, network, and authentication composition
+    controllers/               session, settings, update, durable queue owners
+    data/models/               shared immutable models and JSON serialization
+    data/ports/                narrow injected repository contracts
+    network/                   ApiClient, ApiResponse, scoped ETag cache, SSE
+    storage/                   AppDatabase and read-only legacy importer
+    routes/                    GoRouter routes and pure redirect/link policy
+    translations/              message catalog and Flutter localization delegate
+    design/                    theme data, context palette, design tokens
+    widgets/                   reusable presentation components
+  features/<feature>/
+    application/               focused feature state and query providers
+    data/                      constructor-injected repositories and datasources
+    presentation/
+      controllers/             manual Riverpod Notifiers where applicable
+      views/                   ConsumerWidget / ConsumerStatefulWidget screens
+      widgets/                 feature widgets
 ```
 
-### Key Architecture Components
+Paths follow the existing feature. Do not add empty layers or pass-through
+controllers to match a template. Retired bindings and page-service managers have
+no replacement compatibility wrapper.
 
-#### 0. Root Authentication Router (`lib/root.dart`)
-The app uses a centralized authentication state router that manages the entire app's authentication flow:
-- **Root Widget**: Listens to `AuthController.authStatus` and routes users to appropriate screens
-- **AuthStatus States**: `initial`, `authenticated`, `unauthenticated`, `requiresProfileCompletion`, `error`
-- **Dynamic Controller Registration**: Registers controllers only when needed for performance optimization
-- **Error Handling**: Provides retry and logout options for authentication errors
+### State and dependency ownership
 
-#### 1. Controllers (GetX State Management)
+Use manual `Provider`, `NotifierProvider`, and `AsyncNotifierProvider` declarations.
+Do not add generator annotations for providers. `build_runner` remains for JSON
+models. State must be immutable, including nested collections received from JSON
+or caller-owned lists. Publish a new state value after a change.
 
-**Core Controllers** (`lib/core/controllers/`):
-- **AuthController**: User authentication and session management (phone-based login with OTP)
-- **LocationController**: Handles location permissions and GPS services
-- **LocalizationController**: Multi-language support and localization
-- **ThemeController**: Light/dark theme management and user preferences
-- **PageStateService**: Manages page state across app navigation
+Widgets use `ref.watch` for rendered state and `ref.read(provider.notifier)` for
+user actions. Select narrow values when a widget does not need the whole state.
+Keep text controllers, focus, form keys, scroll controllers, animation, and local
+visibility in the widget that owns them. Repositories receive their clients in
+constructors; they do not find services, translate text, navigate, or show UI.
 
-**Feature Controllers** (`lib/features/*/controllers/`):
-- **DashboardController**: Manages dashboard data and navigation (`features/dashboard/`)
-- **DiscoverController**: Property discovery main interface with integrated swipe mechanics (`features/discover/`)
-- **ExploreController**: Map functionality and location-based exploration (`features/explore/`)
-- **LikesController**: Manages liked/passed properties and favorites (`features/likes/`)
-- **VisitsController**: Property visits and scheduling management (`features/visits/`)
-- **ProfileControllers**: Multiple controllers for profile management (`features/profile/`)
-- **PhoneEntryController**: Phone number entry logic (`features/auth/`)
-- **LoginController**: Phone-based authentication with OTP verification (`features/auth/`)
+The root scope uses `noProviderRetry`. Network transport owns bounded safe read
+retries. Mutations need an explicit server replay contract; provider retry must
+not submit them again. Record a generation and account scope before asynchronous
+work. Reject late results after input changes, account changes, or disposal.
+Register timers, streams, clients, and database cleanup with `ref.onDispose` or
+the owning widget's `dispose`. Inactive shell branches can remain mounted, so
+visibility must stop GPS, prefetch, video, WebView work, and other active resources.
 
-#### 2. Data Layer (`lib/core/data/`)
-- **Models** (`core/data/models/`): JSON serializable with `json_annotation`
-  - **PropertyModel**: Complete property data with images, pricing, and features
-  - **PropertyImageModel**: Property image metadata and URLs
-  - **UserModel**: User authentication and profile details
-  - **BookingModel**: Property booking and scheduling data
-  - **VisitModel**: Property visit tracking and management
-  - **FiltersModel**: Search and filter parameters
-  - **SwipeHistoryModel**: User swipe interactions tracking
-  - **UnifiedFilterModel**: Advanced filtering system
-  - **UnifiedPropertyResponse**: API response wrapper for properties
-  - **AppUpdateModel**: App update information
-  - **AgentModel**: Real estate agent information
-- **Providers** (`core/data/providers/`): 
-  - **ApiService**: Primary API integration with error handling and authentication
-- **Services** (`core/services/`):
-  - **Auth/session tokens**: Managed by the Supabase SDK (`supabase_flutter`) rather than a custom secure-storage manager
-  - **DeepLinkService**: Handles deep links and navigation
-- **Repositories** (`core/data/repositories/`): Abstraction layer between controllers and data sources
-  - **PropertiesRepository**: Property data access, caching, and filtering
-  - **SwipesRepository**: Swipe interaction tracking and history
-  - **ProfileRepository**: User profile data management and updates
-  - **AuthRepository**: Authentication data handling and token management (`features/auth/data/`)
-  - **AppUpdateRepository**: App update data access
+### Startup, session, and routing
 
-#### 3. Module Structure
-**Core Infrastructure** (`lib/core/`):
+`bootstrapAppCore` validates configuration, opens `AppDatabase`, and initializes
+Supabase. A failed attempt closes its database and renders a retry screen. The
+successful application's provider scope owns the database. Supabase owns credential
+storage and token refresh; application tables never store access or refresh tokens.
+
+`authProvider` is the single session owner. It exposes status, user, typed error,
+resolving state, mutation state, and stale cached profile state. An offline profile
+refresh can retain the matching account's cached profile. A transient missing auth
+header must not force logout. Mandatory password setup cannot be skipped. Profile
+completion Skip requires persisted purpose and defers completion only for that
+account's current session.
+
+`MaterialApp.router` reads `appRouterProvider`. The `StatefulShellRoute` has five
+independent branches: Discover, Explore, Saved, Visits, Profile. Assistant has
+labeled entries in Discover and Profile. Route declarations and names live in
+`core/routes/app_pages.dart` and `app_routes.dart`. Pure `route_policy.dart` owns
+redirects, safe intended destinations, public property links, and notification
+route mapping. Deep links and notifications enter that same routing policy.
+
+Use `context.push`, `context.go`, and `context.pop` in presentation code. Controllers
+do not navigate. Do not add navigation recovery timers or imperatively force a
+route from session callbacks. Keep passwords, OTPs, tokens, and user identifiers out
+of route URLs and diagnostics. Account-keyed forms remount when the session changes.
+
+### Property queries and durable mutations
+
+`propertyFiltersProvider` owns device preferences. Purpose and property type apply
+to all feeds; price, search, and other detailed filters belong to one feed.
+`propertyLocationProvider(page)` owns the account-scoped selected area and GPS
+lifecycle. `propertyQueryProvider(feed)` owns request identity, content, refresh,
+cursor progression, and separate pagination failure. `swipeHistoryProvider` owns
+the shared like/pass projection and pending operation review.
+
+Refresh retains usable content. Pagination retry retains rows and scroll position.
+Request identity includes account/environment, endpoint/feed, filters, search,
+location, sort, limit, and cursor. Reject stale completions. Discover does not
+restore a cached server deck that can reintroduce swiped cards.
+
+Discover supports horizontal Like/Pass gestures, explicit accessible Like/Pass
+buttons, and details navigation. Vertical card scrolling remains scrolling. There
+is no swipe-up, double-tap, or super-like API. Swipe operations are written before
+network submission. A pending action has a durable operation ID and visible retry
+or discard state. Retry must refer to that same operation and reject superseded
+intents.
+
+Visit creation has no verified backend idempotency key or uniqueness contract.
+A lost response is `needsReconciliation`, not proof that the booking failed. Do not
+automatically replay the POST. Reconcile with authoritative GET results and keep
+pending/failed/confirmed states distinct. See `docs/migration/visits.md`.
+
+### Persistence and transport
+
+One `AppDatabase` uses SQLite (`sqflite`) for JSON preferences, account/environment
+cache rows, drafts, and actions. Await writes before claiming data is saved. Expose
+storage failure and explicit retry separately from network failure. A scope lease
+rejects prior account work, including an A → B → A transition.
+
+The importer reads legacy `GetStorage.gs` / `GetStorage.bak` without modifying
+those files. It transactionally imports allowed semantic preferences and
+quarantines unowned actions. It does not import old property lists, cursors,
+loading state, caches, or credentials. Runtime code does not use GetStorage.
+See `docs/persistence.md` for schema, migration, retention, and recovery policy.
+
+`core/network/api_client.dart` uses `package:http` and plain `ApiResponse`.
+Providers inject auth headers, SQLite ETag storage, HTTP, and SSE clients. Account
+changes cancel current work and block late cache writes. Cache clearing deletes
+actual records. Booking POST is not marked idempotent.
+
+`imageCacheServiceProvider` owns one image cache manager shared by displayed
+images and prefetch. Widgets borrow it and never dispose the shared owner. The
+cache has a 200-entry bound and 24-hour stale period; do not claim a byte quota or
+fake cache statistics. Tests override it with `ImageTestCache`.
+
+## Theme, localization, and recovery UI
+
+The design system lives in `lib/core/design/`. Use `context.design` for adaptive
+palette colors and `Theme.of(context).textTheme` for typography. `AppDesign` supplies
+fixed tokens. Never look up theme through a controller or global service locator.
+Check contrast in light and dark themes. Flutter owns system brightness changes.
+
+`themeProvider` and `localizationProvider` persist settings through the database.
+UI uses `context.l10n.text(key, params: ...)` from `AppLocalizations`. English and
+Hindi share the same keys in `core/translations/app_messages.dart`. Add entries to
+both maps and test narrow layouts and large text. Data and state layers expose
+typed failures; the UI maps those to safe localized messages.
+
+Use `AppToast` for brief top-of-screen feedback. `AppToastHost` owns its Flutter
+overlay and timers. Important recoverable errors also need a persistent inline
+message and retry control. Do not use a toast as the only record of an unresolved
+booking, failed save, or failed page load.
+
+```dart
+final session = ref.watch(authProvider);
+final label = context.l10n.text('retry');
+final color = context.design.textPrimary;
+// A user action calls the state owner; it does not find a global service.
+await ref.read(authProvider.notifier).retryProfileLoad();
 ```
-core/
-├── bindings/          # Global dependency injection
-├── controllers/       # Core business logic controllers
-├── data/             
-│   ├── models/        # Shared data models
-│   ├── providers/     # API clients and data sources
-│   └── repositories/  # Data access layer
-├── middlewares/       # Route guards and interceptors
-├── mixins/            # Reusable behavior mixins
-├── routes/            # Navigation configuration
-├── translations/      # Internationalization
-├── utils/             # Shared utilities and helpers
-└── widgets/           # Core shared widgets
-```
 
-**Feature Modules** (`lib/features/<feature_name>/`):
-Each feature follows the same pattern:
-```
-feature_name/
-├── bindings/
-│   └── feature_binding.dart
-├── controllers/
-│   └── feature_controller.dart
-├── views/
-│   └── feature_view.dart
-└── widgets/           # Feature-specific widgets (if needed)
-    └── feature_widget.dart
-```
-
-#### 4. Swipe Mechanics (Bumble-Style)
-**Core Implementation**: Located in `lib/features/discover/presentation/widgets/`:
-- **PropertySwipeStack**: Main swipe container with card stack management
-- **PropertySwipeCard**: Individual property cards with swipe gestures
-- **DiscoverController**: Handles swipe logic and state management (integrated into main discover controller)
-
-**Swipe Actions** (these two, and only these two, are implemented):
-- **Swipe Right**: Like property (mark as favorite)
-- **Swipe Left**: Pass on property (mark as not interested)
-- **Tap**: Open property details (the hero area, the "View details" CTA, and the
-  accessibility action all route here)
-
-There is deliberately **no swipe-up and no double-tap**. Only
-`onHorizontalDragStart/Update/End` are registered; vertical drag belongs to the card's
-own scroll view. A "super like" would also need a backend change, since `recordSwipe`
-takes a boolean `isLiked` and has no priority concept.
-
-**Visual Feedback**:
-- **Rotation**: up to ±45° during drag, scaled by a 0.7 factor
-- **Scaling**: 0.93 → 1.0 entrance animation (there is no interaction scale-down)
-- **Color Hints**: Green for like, red for pass
-- **Overlay Badges**: LIKE / PASS, using `AppDesign` colors
-- **Animation**: Spring curve for completion, snap-back on cancel or rejection
-
-**Data Integration**:
-- Records swipes via `SwipesRepository.recordSwipe({required int propertyId, required bool isLiked})`,
-  reached through `PageStateService`, not called directly from the controller
-- Updates favorites through `LikesController` for like actions
-- A swipe whose network call fails is reverted and surfaced to the user, rather than
-  silently dropped
-
-### Navigation System
-- **GetX routing** with named routes
-- **AuthMiddleware** for protected routes (`core/middlewares/auth_middleware.dart`)
-- **Bottom navigation** with 5 tabs: **Profile → Explore → Discover → Likes → Visits** (Order: 0, 1, 2, 3, 4)
-  - **Profile**: User management and preferences
-  - **Explore**: Map view with property markers  
-  - **Discover**: Main swipe interface (center/home position)
-  - **Likes**: Favorited and passed properties
-  - **Visits**: Agent appointments and scheduled tours
-- **Route definitions** in `core/routes/app_routes.dart`
-- **Page configuration** in `core/routes/app_pages.dart` using `GetPage` with bindings
-- **Deep linking** support for sharing properties and direct navigation
-- **Localized navigation** with multi-language support
-- **Navigation consistency**: Tabs available across primary screens via `lib/widgets/navigation/bottom_nav_bar.dart`
-
-## Theme and Design System
-
-### Design System
-The design system lives in **`lib/core/design/`**. There is no `lib/core/utils/theme.dart`
-and no `app_colors.dart` — those paths are gone.
-
-- `app_design_extensions.dart` — **`AppDesign`**, the class you almost always want.
-  Import this one. Most-used tokens: `primaryYellow`, `textPrimary`, `textSecondary`,
-  `surface`, `border`, `iconColor`, `inputBackground`, `overlayLight`, `overlayDark`,
-  `errorRed`, `buttonText`, `transparent`. Also defines `AppPalette`.
-- `app_design_tokens.dart` — `AppDesignTokens`, `AppDesignOpacity` (raw values)
-- `app_design_components.dart` — `AppDesignComponents`, including `textTheme(Brightness)`
-- `app_design_theme.dart` — `AppDesignTheme`, the assembled light/dark `ThemeData`
-
-Typography comes from the theme's `textTheme` (`Theme.of(context).textTheme.*`), which
-`AppDesignComponents.textTheme(brightness)` builds per brightness.
-
-**IMPORTANT**: Never use hardcoded `Colors.*` — always use `AppDesign` tokens, so light
-and dark both stay correct. When picking a token for text, check it actually clears
-contrast against its background in **both** themes; the brand yellow is legible on dark
-surfaces but fails against white.
-
-### Dark Theme Support
-Complete dark theme implementation with:
-- **Dark backgrounds**: `Color(0xFF000000)` and `Color(0xFF1C1C1E)`
-- **Dark surfaces**: `Color(0xFF2C2C2E)` for cards and components
-- **Adaptive text**: `Color(0xFFFFFFFF)` primary, `Color(0xFFE5E5E7)` secondary
-- **Consistent accent colors**: Primary yellow maintained across themes
-
-### Typography
-- **Google Fonts Inter** integration
-- **Responsive text scales** for different screen sizes
-- **Consistent spacing** and letter spacing
-- **Dark theme aware** text colors
-
-## API Integration
-
-### Backend Services
-The app supports multiple backend integrations:
-- **Supabase**: Backend as a Service with PostgreSQL database, real-time subscriptions, and authentication
-- **Real API**: Production backend with full CRUD operations
-- **Development**: Environment-based configuration switching
-- **Error Handling**: Centralized error management with user-friendly messages
-- **Authentication**: Token-based authentication system with Supabase Auth
-
-### API Service Architecture
-Located in `lib/core/data/providers/api_service.dart`:
-- Uses Dart's built-in `http` package for HTTP requests
-- Centralized error handling with comprehensive exception types (`ApiException`, `ApiAuthException`)
-- Response wrapper with type-safe `ApiResponse<T>` and `PaginatedResponse<T>` classes
-- Authentication token management integrated with Supabase Auth
-- Environment-based endpoint configuration with timeout support
-- Comprehensive error mapping and user-friendly error handling
-
-### Supabase Integration
-The app uses Supabase as the primary backend service:
-- **Database**: PostgreSQL database for property listings, user profiles, and bookings
-- **Authentication**: Built-in authentication with social login support
-- **Real-time**: Live updates for property availability and new listings
-- **Storage**: File storage via Cloudinary (accessed through backend API) for property images and user avatars
-- **Row Level Security**: Database-level security policies for data protection
+Loading placeholders must fit the eventual layout and respect reduced motion.
+Retain content during refresh, form drafts during failure, and control dimensions
+during submit. Use semantic labels for icon controls. Test 320-pixel width, 2x text,
+keyboard insets, safe areas, both themes, and English/Hindi where relevant.
 
 ## Environment Configuration
 
@@ -373,407 +297,90 @@ LOG_API_CALLS=true
 - **Android**: Minimum SDK version 21
 - **Web**: Chrome support enabled
 
-## Key Dependencies
+## Contributor rules
 
-### Core Framework
-- **flutter**: SDK framework
-- **get**: ^4.6.6 - State management and routing
-- **json_annotation**: ^4.9.0 / **json_serializable**: ^6.7.1 - Model serialization
-- **http**: ^1.2.2 - HTTP client for API calls
-- **supabase_flutter**: ^2.10.0 - Backend as a Service integration
-- **get_storage**: ^2.1.1 - Local data persistence
+Keep changes scoped and remove obsolete paths when replacing an API. Do not keep
+GetX wrappers, global service locators, parallel authoritative state, or duplicate
+HTTP clients. Reuse focused providers and injected repositories. Add an abstraction
+only when real call sites need it.
 
-### UI/UX
-- **google_fonts**: ^6.2.1 - Typography (Inter font family)
-- **cached_network_image**: ^3.4.1 - Image caching and optimization
-- **flutter_svg**: ^2.0.15+1 - SVG icon support
-- **shimmer**: ^3.0.0 - Loading animations and skeletons
-- **flutter_rating_bar**: ^4.0.1 - Property ratings
-- **cupertino_icons**: ^1.0.2 - iOS-style icons
-- **image_network**: ^2.1.2 - Advanced network image handling
-- **flutter_cache_manager**: ^3.3.1 - Advanced caching management
+Use two-space indentation, `snake_case.dart` filenames, `UpperCamelCase` types,
+and `lowerCamelCase` members. Follow `analysis_options.yaml`. Format the files you
+change. Preserve other contributors' uncommitted edits, especially native signing,
+release workflows, and Shorebird configuration.
 
-### Functionality
-- **geolocator**: ^14.0.1 - Location services and GPS
-- **geocoding**: ^4.0.0 - Address geocoding
-- **flutter_map**: ^8.1.1 - Interactive map integration
-- **latlong2**: ^0.9.0 - Latitude/longitude calculations
-- **webview_flutter**: ^4.4.2 - 360° tour viewing
-- **webview_flutter_web**: ^0.2.2+4 - Web platform support for WebView
-- **connectivity_plus**: ^6.1.5 - Network connectivity status
-- **flutter_localizations**: Internationalization support
-- **intl**: ^0.20.2 - Date/time formatting and localization
-- **shared_preferences**: ^2.3.2 - Platform-specific persistent storage
-- **logger**: ^2.0.2+1 - Structured logging and debugging
-- **url_launcher**: ^6.3.0 - External URL and app launching
-
-## Development Guidelines
-
-**NOTE**: Additional repository guidelines and commit standards are available in `AGENTS.md` in the project root.
-
-### Change Scope and Minimal-Change Policy
-- Implement only what is explicitly requested. Avoid opportunistic refactors or UI changes unless asked.
-- Make the least necessary edits to achieve the requirement while upholding best practices for Flutter, GetX, and HTTP/Supabase integration.
-- Prefer modifying existing code over adding parallel/new implementations. Do not keep legacy code alongside new code; remove obsolete code paths.
-- Avoid redundant code intended for backward compatibility. The codebase is in active development; prioritize cleanliness over temporary shims.
-- Reuse existing widgets, controllers, repositories, and helpers whenever possible. Do not create duplicates.
-- Keep behavior and public APIs stable unless the task requires changes. If APIs change, update all affected call sites and remove the old API.
-- Do not introduce new UI components or visual tweaks unless the task requests them. Preserve current UI/UX.
-- Keep commits small, focused, and reversible. Include clear rationale in PR descriptions.
-- Maintain testability and quality: update or add only the minimal tests needed for the change; fix broken tests caused by removed code instead of adding workarounds.
-- Remove dead code and unused assets/imports discovered in the touched areas as part of the edit.
-
-### When minimal edits require refactor
-- If a small, surgical refactor reduces complexity or eliminates duplication in the touched scope, do it; keep it scoped.
-- Prefer in-place refactors over broad rewrites. Avoid wide-ranging renames that are not required for the task.
-
-### Code Organization
-1. **Follow existing module structure** when adding new features
-2. **Use GetX controllers** for all state management
-3. **Create reusable widgets** in `lib/widgets/` directory
-4. **Implement proper error handling** with user-friendly messages
-5. **Add loading states** for all async operations
-6. **Module structure**: Place feature code under `lib/features/<feature>/{views,controllers,bindings,widgets}`
-7. **Use dependency injection** through bindings instead of `Get.put` in widgets
-8. **Apply route guards** with `AuthMiddleware` where needed
-
-### Dart and GetX Coding Standards
-
-#### Naming Conventions
-- **Classes/types**: PascalCase
-- **Variables, methods, params**: camelCase
-- **Constants**: lowerCamelCase (unless part of enums)
-- **Prefer meaningful, verbose names** over abbreviations
-
-#### Type Safety and Control Flow
-- **Annotate public APIs** and exports; avoid `dynamic`/`var` when type is known
-- **Avoid force casts**; handle nullability explicitly with null-aware operators
-- **Use guard clauses** to avoid deep nesting; handle errors/edge cases first
-- **Handle errors gracefully** with try/catch blocks and proper error mapping
-
-#### GetX State Management Standards
-- **Use `.obs` for reactive state**; prefer `GetxController` over `StatefulWidget` for complex state
-- **Expose immutable getters** for external read; mutate only inside controller methods
-- **Initialize work in `onInit()`**; clean up in `onClose()`
-- **Use dependency injection** through bindings instead of `Get.put` in widgets
-- **Access controllers with `Get.find<T>()`**, registered via the feature's binding. (`SafeGetView` was removed; it had no remaining users.)
-
-#### Theme and Styling Standards
-- **Never hardcode colors**: Use `AppDesign` tokens from `lib/core/design/app_design_extensions.dart`
-- **Use the theme's typography**: `Theme.of(context).textTheme.headlineLarge`, `.titleLarge`, etc.
-- **Consistent spacing**: Use standard paddings (8/12/16/24); avoid magic numbers
-- **Card styling**: 16px border radius; take elevation from the theme's card styling rather than hand-rolled shadows
-
-#### Internationalization Standards
-- **No hardcoded user-facing strings**: Add keys in `lib/core/translations/app_translations.dart`
-- **Use localization**: Always use `'translation_key'.tr` for user-facing text
-- **Test with multiple languages** to ensure proper text overflow handling
-
-#### Async and Error Handling Standards
-- **Wrap async calls** in try/catch blocks
-- **Map errors** via `lib/core/utils/error_mapper.dart`
-- **Handle errors** with `lib/core/utils/error_handler.dart`
-- **Log with DebugLogger**: Use `lib/core/utils/debug_logger.dart` for development logging
-- **Follow lint rules**: Adhere to `analysis_options.yaml`; fix lints in files you touch
-
-#### Code Formatting and Analysis Standards
-- **Line length**: Maximum 100 characters (configured in `analysis_options.yaml`)
-- **Linting**: Uses `package:flutter_lints/flutter.yaml` for standard Flutter lints
-- **Formatting**: Run `dart format .` to apply consistent Dart formatting
-- **Analysis**: Run `flutter analyze` to catch static analysis issues
-- **File naming**: Use `snake_case.dart` for file names (e.g., `property_details_view.dart`)
-- **Build generation**: Always run `dart run build_runner build --delete-conflicting-outputs` after model changes
-
-### GetX Best Practices
-```dart
-// ✅ Reactive variables
-final RxList<PropertyModel> properties = <PropertyModel>[].obs;
-final RxBool isLoading = false.obs;
-
-// ✅ Proper controller lifecycle
-@override
-void onInit() {
-  super.onInit();
-  loadProperties();
-}
-
-// ✅ Error handling with proper error mapping
-void loadProperties() async {
-  try {
-    isLoading.value = true;
-    properties.value = await repository.getProperties();
-  } catch (error, stackTrace) {
-    ErrorHandler.handle(ErrorMapper.map(error));
-    DebugLogger.error('Failed to load properties', error, stackTrace);
-  } finally {
-    isLoading.value = false;
-  }
-}
-```
-
-### Widget Development Standards
-- **Parameterize components** for reusability
-- **Use `AppDesign` tokens** instead of hardcoded values
-- **Make widgets responsive** to different screen sizes
-- **Follow naming conventions**: PascalCase for classes, camelCase for variables
-- **Access controllers with `Get.find<T>()`**, registered via the feature's binding
-- **Use guard clauses** to avoid deep nesting
-- **No hardcoded strings** - use translation keys with `.tr` from `core/translations/app_translations.dart`
-
-### Error Handling
-The app uses centralized error handling:
-- **ErrorHandler** utility in `lib/core/utils/error_handler.dart`
-- **Custom exceptions** for different error types
-- **User-friendly error messages** with AppToast
-- **DebugLogger** for development logging and debugging (`lib/core/utils/debug_logger.dart`)
-- **Graceful fallbacks** for network and API failures
-
-### AppToast - Notification System
-
-**ALWAYS use `AppToast` for all notifications/toasts** - Never use `Get.snackbar()` directly.
-
-Located in `lib/core/utils/app_toast.dart`:
-- **Position**: All toasts appear at `SnackPosition.TOP` (never bottom)
-- **Minimal styling**: Compact padding, 8px border radius, 3s duration
-- **Consistent appearance**: Unified colors via `AppDesign` tokens
-
-#### Usage Examples:
-```dart
-// Success message
-AppToast.success('Profile saved', 'Your changes have been saved');
-
-// Error message
-AppToast.error('Error', 'Failed to load data');
-
-// Warning message
-AppToast.warning('Warning', 'Please check your connection');
-
-// Info message
-AppToast.info('Info', 'New features available');
-
-// Custom styling (rarely needed)
-AppToast.custom(
-  title: 'Custom',
-  message: 'Your message here',
-  backgroundColor: AppDesign.primaryYellow,
-  duration: const Duration(seconds: 2),
-);
-```
-
-#### Migration from Get.snackbar:
-```dart
-// ❌ DON'T use Get.snackbar directly
-Get.snackbar('Error', 'Failed to load', snackPosition: SnackPosition.BOTTOM);
-
-// ✅ DO use AppToast
-AppToast.error('Error', 'Failed to load');
-```
-
-### Dependency Management
-- Prefer constructor injection for repositories (`ApiClient`, datasources).
-- Register property/swipe repos via `RepositoryRegistration` so both concrete
-  types and core ports (`PropertiesPort`, `SwipesPort`) are available.
-- Use GetX bindings for feature controllers; let the binding own the lifecycle so disposal is automatic.
+Never log tokens, OAuth secrets, OTPs, passwords, raw profile data, exact coordinates,
+or full auth/location URLs. Log safe failure categories and request stages. Never
+send real bookings, account deletions, or production writes during verification.
 
 ## Testing
 
-### Test Structure
-Currently, the project structure supports testing but test files need to be created:
-- **Model tests**: Create `test/models/` for JSON serialization testing  
-- **Widget tests**: Create `test/widgets/` for UI component testing
-- **Unit tests**: Create `test/controllers/` for business logic testing
-- **Integration tests**: Create `test/integration/` for full app flow testing
+`test/` mirrors source features. Use a `ProviderContainer` for state tests and a
+`ProviderScope` for widget tests. Override external boundaries: database, repository,
+HTTP, native plugins, and image cache. Use `test/helpers/provider_test_app.dart`
+for a localized Flutter shell with a test image cache and `AppToastHost`.
+Use `test/helpers/auth_test_harness.dart` for session transitions and real SQLite;
+feature harnesses provide narrower fixtures.
 
-### Running Tests
-```bash
-# Run all tests (once test files are created)
-flutter test
+Preserve observable behavior when retiring architecture-specific tests. Replace
+binding registration and mutable-field assertions with provider identity, immutable
+state, disposal, and visible UI assertions. Do not suppress render errors or weaken
+assertions to accept either success or failure. Tests for disk atomicity and restart
+must use `sqflite_common_ffi`; a map fake does not prove durability.
 
-# Run with coverage
-flutter test --coverage
+Run focused tests after changes, then the required full suite and analyzer before
+completion. Keep the CI coverage gate at 85%. Regenerate JSON files when models
+change. Native OAuth, GPS, camera/gallery, maps, video, WebView, notification delivery,
+and accessibility checks still require available native targets. Widget platform
+fakes do not establish device behavior. Record any blocked native target explicitly.
+See the migration checklist for full-suite, coverage, visual and native evidence,
+plus remaining device and credential checks; do not infer completion from focused test counts.
 
-# Generate coverage report (requires lcov installed)
-genhtml coverage/lcov.info -o coverage/html
+## Build troubleshooting
 
-# Create test directory structure
-mkdir -p test/{models,widgets,controllers,integration}
-```
+### Model generation
 
-## Debugging and Development Workflow
-
-### DebugLogger Usage
-The app includes a comprehensive debugging system via `lib/core/utils/debug_logger.dart`:
-```dart
-// In controllers and services
-DebugLogger.info('User login initiated');
-DebugLogger.success('API call completed successfully'); 
-DebugLogger.warning('Location permission denied');
-DebugLogger.error('Failed to load properties', error, stackTrace);
-DebugLogger.api('🔍 Searching properties with filters');
-```
-
-### Development Workflow
-1. **Hot reload** for UI changes: `r` in terminal or IDE shortcut
-2. **Hot restart** for logic changes: `R` in terminal
-3. **Check reactive state**: inspect controller `.obs` values directly, or use the Flutter DevTools inspector
-4. **Monitor API calls**: Check DebugLogger output for API request/response logging
-5. **Location testing**: Use device simulator location or physical device GPS
-
-### GetX DevTools Integration
-Monitor GetX state and routing:
-```dart
-// Enable GetX logging in main.dart (development only)
-GetMaterialApp(
-  enableLog: true,  // Shows navigation logs
-  logWriterCallback: (text, {isError = false}) {
-    DebugLogger.debug('GetX: $text');
-  },
-);
-```
-
-## Common Issues and Solutions
-
-### Model Generation
-If you modify models with `@JsonSerializable()`, run:
-```bash
-dart run build_runner build --delete-conflicting-outputs
-```
+Run `dart run build_runner build --delete-conflicting-outputs` after changing JSON
+model structure. Do not hand-edit generated serializers.
 
 ### iOS Build Issues
 - Ensure Xcode is updated to latest version
 - iOS uses Swift Package Manager (no CocoaPods / Podfile). Run `flutter pub get` then
   `flutter build ios --config-only` if packages fail to resolve
 - Check iOS deployment target in `ios/Runner.xcodeproj` (currently 15.0)
+- **`flutter pub get` breaks Xcode builds.** It regenerates
+  `ios/Flutter/ephemeral/.../FlutterGeneratedPluginSwiftPackage/Package.swift` with a
+  hardcoded `.iOS("13.0")`, and the Firebase plugin packages require 15.0, so Xcode
+  fails with *"requires minimum platform version 15.0 ... but this target supports
+  13.0"*. Only `flutter build ios/ipa` raises it back to the project's 15.0. After any
+  `flutter pub get` or `flutter clean`, run `./tool/verify_ios_release.sh --fix`
+  (fastest, and it leaves `Generated.xcconfig` and your dart-defines alone) or
+  `flutter build ios --config-only`, before building or archiving in Xcode.
 
 ### Android Build Issues
 - Verify Android SDK and build tools are installed
 - Check `android/app/build.gradle` for compatibility
 - Ensure proper signing configuration
 
-### GetX Controller Issues
-- Use `Get.find()` with proper tags
-- Ensure controllers are registered in bindings
-- Check for duplicate registrations
-- Use `Get.delete()` for proper cleanup
+### Provider and lifecycle issues
 
-## Authentication Flow
+Inspect the provider state and its scope overrides. Verify a current generation
+and scope after every awaited boundary. Check that the owner disposes timers,
+streams, media, and clients. An inactive tab can remain mounted. Do not fix a
+lifecycle error with a delay, forced rebuild, global registration, or swallowed
+exception.
 
-### Phone-Based Login Process
-1. User enters phone number in PhoneEntryView/LoginView
-2. System sends OTP via SMS for verification
-3. AuthController validates OTP and calls AuthRepository
-4. Backend handles authentication and returns secure tokens
-5. Session tokens are persisted and refreshed by the Supabase SDK (`supabase_flutter`)
-6. User redirected to profile completion or home based on setup status
+## Key files
 
-### Profile Completion Flow
-- **ProfileCompletionView**: Collects additional user information
-- **Progressive disclosure**: Step-by-step profile setup
-- **Validation**: Real-time form validation
-- **Image upload**: Profile picture selection and upload
+| Concern | Path |
+| --- | --- |
+| Application composition | `lib/main.dart`, `lib/core/bootstrap/` |
+| Session and auth dependencies | `lib/core/controllers/auth_controller.dart`, `lib/core/providers/auth_providers.dart` |
+| Router and policy | `lib/core/routes/app_pages.dart`, `lib/core/routes/route_policy.dart` |
+| Data and caches | `lib/core/network/`, `lib/core/storage/` |
+| Product state | `lib/features/properties/application/`, feature presentation controllers |
+| Theme and messages | `lib/core/design/`, `lib/core/translations/` |
+| Migration evidence | `docs/migration/riverpod-checklist.md`, `docs/persistence.md` |
 
-### Protected Routes
-- **AuthMiddleware**: Checks authentication status for protected routes
-- **Automatic redirect**: Redirects to login if not authenticated
-- **Route preservation**: Maintains intended route for post-login redirect
-- **Session management**: Handles token refresh and expiration
-
-## State Management Patterns
-
-### Controller Communication
-- Use GetX's reactive programming for inter-controller communication
-- Example: PropertyController listens to UserController favorites
-- Avoid direct controller dependencies when possible
-
-### Data Flow
-1. View triggers controller action
-2. Controller calls repository method
-3. Repository uses provider (API/Mock)
-4. Data flows back through layers
-5. Controller updates reactive state
-6. View rebuilds automatically
-
-## Performance Optimizations
-
-### Image Handling
-- Use CachedNetworkImage for all remote images
-- Implement proper placeholders and error widgets
-- Lazy load images in lists
-- Optimize image sizes for different screen densities
-
-### List Performance
-- Use ListView.builder for long lists
-- Implement pagination for property listings
-- Add pull-to-refresh functionality
-- Cache frequently accessed data
-
-### Memory Management
-- Let feature bindings own controller lifecycles so disposal happens automatically
-- Clear image cache periodically
-- Use const constructors where possible
-- Minimize widget rebuilds with GetX reactivity
-- Implement proper controller lifecycle management
-
-## Internationalization
-
-### Multi-Language Support
-The app supports multiple languages with complete localization:
-- **LocalizationController**: Manages language preferences
-- **AppTranslations**: Contains all translation strings
-- **Dynamic switching**: Users can change language in preferences
-- **Persistent storage**: Language preference saved locally
-
-### Supported Languages
-- **English**: Default language
-- **Hindi**: Complete Hindi translation
-- **RTL Support**: Ready for Arabic/Hebrew if needed
-
-### Adding New Languages
-1. Add translation strings to `core/translations/app_translations.dart`
-2. Update LocalizationController with new locale
-3. Test all screens with new language
-4. Ensure proper text overflow handling
-
-## Quick Reference
-
-### Most Used Commands
-```bash
-flutter run                                              # Start development  
-dart run build_runner build --delete-conflicting-outputs # Regenerate models
-flutter analyze && dart format .                         # Code quality check
-flutter pub get                                          # Deps (iOS via SPM)
-```
-
-### Key File Locations  
-- **Controllers**: `lib/core/controllers/` and `lib/features/*/controllers/`
-- **Models**: `lib/core/data/models/` (with .g.dart generated files)
-- **Authentication Models**: `lib/core/models/auth_status.dart`
-- **API Service**: `lib/core/data/providers/api_service.dart`
-- **Root Router**: `lib/root.dart`
-- **Routes**: `lib/core/routes/app_routes.dart` and `app_pages.dart`
-- **Design system**: `lib/core/design/` (`AppDesign` in `app_design_extensions.dart`)  
-- **Translations**: `lib/core/translations/app_translations.dart`
-- **Environment**: `.env.development` and `.env.production`
-
-### Architecture Pattern
-```
-Root Router → View (GetView/Obx) → Controller (GetxController) → Repository → ApiService → Supabase
-                                                              (auth/session tokens via Supabase SDK)
-```
-
-### Essential GetX Patterns
-- Use `Get.find<ControllerType>()` to access controllers
-- Reactive variables: `final RxBool isLoading = false.obs;`
-- Update UI: `isLoading.value = true;` triggers automatic rebuilds
-- Bindings handle dependency injection in `onInit()` methods
-
-## Additional Guidelines
-
-### MCP Integration
-The project includes MCP (Model Context Protocol) server integration for Dart/Flutter development tools. Key MCP tools available:
-- **Dart analysis**: `mcp__dart__analyze_files` for project-wide error analysis
-- **Test running**: `mcp__dart__run_tests` instead of direct `flutter test` commands
-- **Hot reload**: `mcp__dart__hot_reload` for development workflow
-- **Code generation**: `mcp__dart__dart_format` for consistent formatting
-
-**Important**: Always prefer MCP tools over direct shell commands when available for better integration with the development environment.
+Use available Dart/Flutter MCP tools when they provide the required operation.
+The documented Flutter/Dart CLI commands remain the fallback.
