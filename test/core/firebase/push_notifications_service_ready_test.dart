@@ -326,28 +326,32 @@ void main() {
     expect(initializes, 2);
   });
 
-  test('getToken returns null when APNS never becomes ready', () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    var apnsCalls = 0;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      fcmChannel,
-      (MethodCall call) async {
-        switch (call.method) {
-          case 'Messaging#getAPNSToken':
-            apnsCalls++;
-            return {'token': null};
-          case 'Messaging#getToken':
-            return {'token': 'should-not-be-used'};
-          default:
-            return null;
-        }
-      },
-    );
+  test(
+    'getToken returns null when APNS never becomes ready',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      var apnsCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        fcmChannel,
+        (MethodCall call) async {
+          switch (call.method) {
+            case 'Messaging#getAPNSToken':
+              apnsCalls++;
+              return {'token': null};
+            case 'Messaging#getToken':
+              return {'token': 'should-not-be-used'};
+            default:
+              return null;
+          }
+        },
+      );
 
-    final token = await PushNotificationsService.getToken();
-    expect(token, isNull);
-    expect(apnsCalls, greaterThanOrEqualTo(8));
-  }, timeout: const Timeout(Duration(seconds: 20)));
+      final token = await PushNotificationsService.getToken();
+      expect(token, isNull);
+      expect(apnsCalls, greaterThanOrEqualTo(8));
+    },
+    timeout: const Timeout(Duration(seconds: 20)),
+  );
 
   test('getToken handles apns-token-not-set FirebaseException', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

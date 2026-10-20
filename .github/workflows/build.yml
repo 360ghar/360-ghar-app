@@ -116,7 +116,7 @@ jobs:
           exit 1
         fi
 
-        yes | "${SDKMANAGER}" --licenses >/dev/null
+        yes | "${SDKMANAGER}" --licenses >/dev/null || true
 
         if [ ! -d "${ANDROID_SDK_ROOT}/platforms/android-36" ]; then
           "${SDKMANAGER}" "platforms;android-36"
