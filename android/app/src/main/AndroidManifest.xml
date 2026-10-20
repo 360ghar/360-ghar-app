@@ -45,6 +45,9 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
+            <!-- app_links owns native links and OAuth callbacks. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues
