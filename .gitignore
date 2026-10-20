@@ -133,3 +133,13 @@ ios/fastlane/test_output
 # App Store Connect API keys
 AuthKey_*.p8
 **/private_keys/
+
+# Any local env file except templates
+.env
+!.env.example
+
+# Scratch verification evidence (not committed)
+docs/migration/screenshots/
+docs/migration/baseline-working-tree.txt
+docs/verification/native-evidence/
+docs/verification/*.json
