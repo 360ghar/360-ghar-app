@@ -5,6 +5,9 @@ on:
     branches: [ main, develop, feature/**, bugfix/**, hotfix/** ]
   pull_request:
     branches: [ main, develop ]
+  # Manual Shorebird release. Requires SHOREBIRD_TOKEN secret and a bumped
+  # version in pubspec.yaml (Shorebird rejects versions that already exist).
+  workflow_dispatch:
 
 # Grant the minimal permissions needed. The default GITHUB_TOKEN is read-only.
 # We need write access to comment on PRs/issues.
@@ -16,6 +19,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    env:
+      SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
 
     steps:
     - name: Checkout code
@@ -139,7 +145,52 @@ jobs:
     - name: Get Flutter dependencies
       run: flutter pub get
 
+    # --- Shorebird release path (workflow_dispatch only) ---
+
+    - name: Fail if SHOREBIRD_TOKEN is not configured (dispatch)
+      if: github.event_name == 'workflow_dispatch' && env.SHOREBIRD_TOKEN == ''
+      run: |
+        echo "::error::SHOREBIRD_TOKEN secret is not configured. Add it (see docs/shorebird.md) before dispatching this workflow."
+        exit 1
+
+    - name: Configure Android release signing (keystore)
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      run: |
+        set -euo pipefail
+        if [ -z "${ANDROID_KEYSTORE_BASE64}" ] || [ -z "${ANDROID_KEYSTORE_ALIAS}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD}" ]; then
+          echo "::error::Android keystore secrets missing. Set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_ALIAS, ANDROID_KEYSTORE_PASSWORD (see docs/shorebird.md)."
+          exit 1
+        fi
+        printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${GITHUB_WORKSPACE}/android/keystore.jks"
+        cat > "${GITHUB_WORKSPACE}/android/key.properties" <<EOF
+        keyAlias=${ANDROID_KEYSTORE_ALIAS}
+        keyPassword=${ANDROID_KEYSTORE_PASSWORD}
+        storeFile=${GITHUB_WORKSPACE}/android/keystore.jks
+        storePassword=${ANDROID_KEYSTORE_PASSWORD}
+        EOF
+        echo "key.properties written (values not printed)"
+
+    - name: Setup Shorebird
+      if: github.event_name == 'workflow_dispatch'
+      uses: shorebirdtech/setup-shorebird@v1
+      with:
+        cache: true
+
+    - name: Shorebird release
+      if: github.event_name == 'workflow_dispatch'
+      run: >
+        echo y | shorebird release android --artifact apk
+        --flutter-version 3.44.8
+        --dart-define-from-file=dart_defines.json
+
+    # --- push/PR build (no Shorebird dependency) ---
+
     - name: Build APK
+      if: github.event_name != 'workflow_dispatch'
       run: >
         flutter build apk --release
         --target-platform android-arm,android-arm64,android-x64
@@ -186,6 +237,15 @@ jobs:
         name: ${{ steps.artifact-name.outputs.name }}-mapping
         path: build/app/outputs/mapping/release/mapping.txt
         retention-days: ${{ steps.artifact-name.outputs.retention_days }}
+        if-no-files-found: warn
+
+    - name: Upload AAB (Shorebird release)
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ghar360-release-aab
+        path: build/app/outputs/bundle/release/app-release.aab
+        retention-days: 30
         if-no-files-found: warn
 
     - name: Comment on PR with build status

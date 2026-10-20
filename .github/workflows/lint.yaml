@@ -53,6 +53,9 @@ jobs:
       - name: Analyze code
         run: flutter analyze
 
+      - name: Contract tests
+        run: flutter test test/contract
+
       - name: Run tests
         run: flutter test --machine --coverage
 
