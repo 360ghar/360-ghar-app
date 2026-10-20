@@ -10,14 +10,22 @@ appId: com.the360ghar.ghar360
       - tapOn: "Change"
 - extendedWaitUntil:
     visible:
-      id: qa.auth.phone_entry.phone_input
+      id: qa.auth.phone_entry.identifier_input
     timeout: 20000
+- runFlow: ../_shared/dismiss_auth_keyboard.yaml
+- scrollUntilVisible:
+    element:
+      id: qa.auth.phone_entry.continue
 - tapOn:
     id: qa.auth.phone_entry.continue
-- assertVisible: "Please enter your phone number"
+- assertVisible: "Please enter your email or phone number"
 - tapOn:
-    id: qa.auth.phone_entry.phone_input
+    id: qa.auth.phone_entry.identifier_input
 - inputText: "1234"
+- runFlow: ../_shared/dismiss_auth_keyboard.yaml
+- scrollUntilVisible:
+    element:
+      id: qa.auth.phone_entry.continue
 - tapOn:
     id: qa.auth.phone_entry.continue
-- assertVisible: "Enter 10 digits or +91 followed by 10 digits"
+- assertVisible: "Enter a valid email or phone number"

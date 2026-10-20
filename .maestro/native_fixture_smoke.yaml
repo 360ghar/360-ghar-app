@@ -1,0 +1,72 @@
+appId: com.the360ghar.ghar360
+---
+# Requires tool/verification/native_fixture_server.py and a loopback debug build.
+# This flow checks native rendering/navigation, not production authentication.
+- runFlow: auth/onboarding_next_get_started.yaml
+- takeScreenshot: /tmp/360ghar-native-phone-entry-keyboard
+- runFlow: _shared/dismiss_auth_keyboard.yaml
+- takeScreenshot: /tmp/360ghar-native-phone-entry
+- setLocation:
+    latitude: 28.6139
+    longitude: 77.2090
+- runFlow: _shared/login.yaml
+- assertVisible: '(?s).*Garden Court Residence 1\b.*'
+- takeScreenshot: /tmp/360ghar-native-discover
+- tapOn:
+    id: qa.dashboard.nav.explore_properties
+- extendedWaitUntil:
+    visible:
+      id: qa.location.selector.trigger.explore
+    timeout: 30000
+- assertVisible: '(?s).*Garden Court Residence 1\b.*'
+- takeScreenshot: /tmp/360ghar-native-explore
+- tapOn:
+    id: qa.dashboard.nav.saved
+- assertVisible:
+    id: qa.likes.tab.liked
+- assertVisible: '(?s).*Garden Court Residence 7\b.*'
+- takeScreenshot: /tmp/360ghar-native-saved
+- tapOn:
+    id: qa.likes.tab.passed
+- assertVisible: '(?s).*Garden Court Residence 8\b.*'
+- tapOn:
+    id: qa.likes.tab.liked
+- tapOn: '(?s).*Garden Court Residence 7\b.*'
+- extendedWaitUntil:
+    visible:
+      id: qa.property_details.screen
+    timeout: 15000
+- takeScreenshot: /tmp/360ghar-native-details
+- scrollUntilVisible:
+    element:
+      text: "360° Virtual Tour"
+- tapOn: "360° Virtual Tour"
+- extendedWaitUntil:
+    visible:
+      text: "Native WebView rendered this page."
+    timeout: 20000
+- takeScreenshot: /tmp/360ghar-native-tour
+- tapOn: "Back"
+- assertVisible:
+    id: qa.property_details.screen
+- tapOn: "Back"
+- tapOn:
+    id: qa.dashboard.nav.visits
+- assertVisible:
+    id: qa.visits.scheduled
+- assertVisible: '(?s).*Garden Court Residence 7\b.*'
+- takeScreenshot: /tmp/360ghar-native-visits
+- tapOn:
+    id: qa.visits.past
+- assertVisible:
+    id: qa.visits.past
+- tapOn:
+    id: qa.dashboard.nav.profile
+- assertVisible:
+    id: qa.profile.menu.preferences
+- takeScreenshot: /tmp/360ghar-native-profile
+- tapOn:
+    id: qa.profile.menu.preferences
+- assertVisible:
+    id: qa.profile.preferences.screen
+- takeScreenshot: /tmp/360ghar-native-preferences

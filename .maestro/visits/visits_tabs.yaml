@@ -4,8 +4,8 @@ appId: com.the360ghar.ghar360
 - tapOn:
     id: qa.dashboard.nav.visits
 - assertVisible:
-    id: qa.visits.tab.scheduled
+    id: qa.visits.scheduled
 - tapOn:
-    id: qa.visits.tab.past
+    id: qa.visits.past
 - assertVisible:
-    id: qa.visits.tab.past
+    id: qa.visits.past

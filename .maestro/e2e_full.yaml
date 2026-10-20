@@ -58,10 +58,10 @@ appId: com.the360ghar.ghar360
 # ----------------------------------------------------------------
 - extendedWaitUntil:
     visible:
-      id: qa.dashboard.nav.liked
+      id: qa.dashboard.nav.saved
     timeout: 15000
 - tapOn:
-    id: qa.dashboard.nav.liked
+    id: qa.dashboard.nav.saved
 - assertVisible:
     id: qa.likes.tab.liked
 
@@ -83,19 +83,19 @@ appId: com.the360ghar.ghar360
 - tapOn:
     id: qa.dashboard.nav.visits
 - assertVisible:
-    id: qa.visits.tab.scheduled
+    id: qa.visits.scheduled
 
 # Switch to Past tab
 - tapOn:
-    id: qa.visits.tab.past
+    id: qa.visits.past
 - assertVisible:
-    id: qa.visits.tab.past
+    id: qa.visits.past
 
 # Switch back to Scheduled tab
 - tapOn:
-    id: qa.visits.tab.scheduled
+    id: qa.visits.scheduled
 - assertVisible:
-    id: qa.visits.tab.scheduled
+    id: qa.visits.scheduled
 
 # Reschedule dialog (only if a visit card with Reschedule exists)
 - tapOn:

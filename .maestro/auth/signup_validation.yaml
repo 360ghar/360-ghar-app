@@ -10,17 +10,25 @@ appId: com.the360ghar.ghar360
       - tapOn: "Change"
 - extendedWaitUntil:
     visible:
-      id: qa.auth.phone_entry.phone_input
+      id: qa.auth.phone_entry.identifier_input
     timeout: 20000
 - tapOn:
-    id: qa.auth.phone_entry.phone_input
-- inputText: "9999999998"
+    id: qa.auth.phone_entry.identifier_input
+- inputText: "${TEST_NEW_IDENTIFIER}"
+- runFlow: ../_shared/dismiss_auth_keyboard.yaml
+- scrollUntilVisible:
+    element:
+      id: qa.auth.phone_entry.continue
 - tapOn:
     id: qa.auth.phone_entry.continue
 - extendedWaitUntil:
     visible:
       id: qa.auth.signup.next
     timeout: 20000
+- runFlow: ../_shared/dismiss_auth_keyboard.yaml
+- scrollUntilVisible:
+    element:
+      id: qa.auth.signup.next
 - tapOn:
     id: qa.auth.signup.next
 - assertVisible: "Full name is required"

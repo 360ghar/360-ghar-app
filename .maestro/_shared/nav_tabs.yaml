@@ -15,13 +15,13 @@ appId: com.the360ghar.ghar360
 - assertVisible:
     id: qa.location.selector.trigger.discover
 - tapOn:
-    id: qa.dashboard.nav.liked
+    id: qa.dashboard.nav.saved
 - assertVisible:
     id: qa.likes.tab.liked
 - tapOn:
     id: qa.dashboard.nav.visits
 - assertVisible:
-    id: qa.visits.tab.scheduled
+    id: qa.visits.scheduled
 - tapOn:
     id: qa.dashboard.nav.discover
 - assertVisible:

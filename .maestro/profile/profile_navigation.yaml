@@ -12,6 +12,9 @@ appId: com.the360ghar.ghar360
     timeout: 15000
 - assertVisible:
     id: qa.profile.preferences.theme_selector
+- scrollUntilVisible:
+    element:
+      id: qa.profile.preferences.language_selector
 - assertVisible:
     id: qa.profile.preferences.language_selector
 
@@ -46,15 +49,18 @@ appId: com.the360ghar.ghar360
     timeout: 15000
 - scrollUntilVisible:
     element:
-      text: "Send Feedback"
+      id: qa.profile.help.send_feedback
 - tapOn:
-    text: "Send Feedback"
+    id: qa.profile.help.send_feedback
 - extendedWaitUntil:
     visible:
       id: qa.profile.feedback.screen
     timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: qa.profile.feedback.submit
 - assertVisible:
-    text: "Send Feedback"
+    id: qa.profile.feedback.submit
 
 # About
 - runFlow: ../_shared/login.yaml

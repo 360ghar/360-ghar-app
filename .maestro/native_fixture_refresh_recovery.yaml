@@ -1,0 +1,11 @@
+appId: com.the360ghar.ghar360
+---
+# Restart the loopback fixture server after native_fixture_refresh_failure.
+- tapOn:
+    id: qa.likes.content.retry
+- extendedWaitUntil:
+    notVisible:
+      text: "(?s).*Could not refresh. Your loaded results are still available.*"
+    timeout: 20000
+- assertVisible: '(?s).*Garden Court Residence 7\b.*'
+- takeScreenshot: /tmp/360ghar-native-saved-refresh-recovered

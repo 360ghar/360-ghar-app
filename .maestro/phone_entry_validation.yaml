@@ -1,15 +1,3 @@
 appId: com.the360ghar.ghar360
 ---
-- launchApp:
-    clearState: true
-    clearKeychain: true
-- tapOn: "Skip"
-- extendedWaitUntil:
-    visible: "Enter your mobile number"
-    timeout: 15000
-- tapOn: "Continue"
-- assertVisible: "Please enter your phone number"
-- tapOn: "10-digit mobile number"
-- inputText: "1234"
-- tapOn: "Continue"
-- assertVisible: "Enter 10 digits or +91 followed by 10 digits"
+- runFlow: auth/phone_entry_validation.yaml

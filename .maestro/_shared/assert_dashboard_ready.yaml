@@ -9,6 +9,6 @@ appId: com.the360ghar.ghar360
 - assertVisible:
     id: qa.dashboard.nav.explore_properties
 - assertVisible:
-    id: qa.dashboard.nav.liked
+    id: qa.dashboard.nav.saved
 - assertVisible:
     id: qa.dashboard.nav.visits

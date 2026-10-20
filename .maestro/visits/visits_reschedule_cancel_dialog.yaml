@@ -4,14 +4,34 @@ appId: com.the360ghar.ghar360
 - tapOn:
     id: qa.dashboard.nav.visits
 - assertVisible:
-    id: qa.visits.tab.scheduled
+    id: qa.visits.scheduled
+- scrollUntilVisible:
+    element:
+      text: "^Reschedule$"
+    timeout: 20000
 - tapOn:
-    text: "Reschedule"
-    optional: true
+    text: "^Reschedule$"
+    index: 0
 - assertVisible:
     text: "Reschedule Visit"
+# Close the reschedule form without changing the appointment.
 - tapOn:
-    text: "Cancel"
-    optional: true
+    text: "^Cancel$"
+- assertNotVisible:
+    text: "Reschedule Visit"
+- assertVisible:
+    id: qa.visits.scheduled
+# Open the appointment's cancellation form, then dismiss it without submitting.
+- tapOn:
+    text: "^Cancel$"
+    index: 0
 - assertVisible:
     text: "Cancel Visit"
+- assertVisible:
+    text: "Yes, Cancel"
+- tapOn:
+    text: "^Cancel$"
+- assertNotVisible:
+    text: "Cancel Visit"
+- assertVisible:
+    id: qa.visits.scheduled
