@@ -65,13 +65,68 @@ receiving **no dSYMs at all** (not even `Runner.app`'s).
 - The App Store Connect crash view loses the same symbolication.
 
 
-## Why this cannot be fully "fixed" by configuration
+## Why no *build setting* fixes this
 
-There is no build setting, script, or archive option that can produce a dSYM for
-a prebuilt binary that does not contain debug info. The only theoretical paths
-(build MapLibre from source, wait for vendors to publish dSYMs) are heavy /
-out of our control. The fix therefore makes the pipeline upload **everything
-that exists**, reports the residual gaps explicitly, and prevents silent no-ops.
+No build setting or archive option makes Xcode emit a dSYM for a binary it never
+compiled. `DEBUG_INFORMATION_FORMAT = dwarf-with-dsym` only governs local code.
+
+**But a dSYM can still be derived from the shipped binary** — see the update
+below. The original conclusion here ("cannot be fully fixed") was wrong.
+
+---
+
+# UPDATE 2026-08-13: the six warnings are now fixed
+
+`dsymutil` will build a dSYM directly from a stripped dylib. The output carries
+the binary's real `LC_UUID` — which is the only thing App Store Connect and
+Crashlytics match on — plus whatever symbol table survived stripping. Measured on
+the frameworks we actually ship:
+
+| Framework | Symbols recovered | What the dSYM buys |
+|---|---|---|
+| MapLibre | **2962** | Real function-level symbolication (`atos` resolves e.g. `FT_Activate_Size (in MapLibre)`). Our largest third-party crash surface. |
+| FirebaseAnalytics | 0 | UUID match only — clears the warning |
+| GoogleAppMeasurement | 0 | UUID match only |
+| GoogleAppMeasurementIdentitySupport | 0 | UUID match only |
+| GoogleAdsOnDeviceConversion | 0 | UUID match only |
+| RecaptchaEnterpriseSDK | 0 | UUID match only |
+
+Be precise about what this does and does not achieve: for the five Google
+frameworks the vendor binaries are fully stripped (`nm -a` returns 0 symbols), so
+the generated dSYM is a UUID-matching container. It ends the "Upload Symbols
+Failed" report; it **cannot** add symbolication that the binary does not contain.
+MapLibre is the case where real symbolication is gained.
+
+## Fix (implemented)
+
+`tool/generate_binary_dsyms.sh`, invoked from the Runner target's **last** build
+phase (the FlutterFire/Crashlytics phase, which runs after Embed Frameworks and
+Thin Binary):
+
+- Walks `Runner.app/Frameworks/*.framework` and reads each binary's UUIDs.
+- Skips any UUID already covered by a dSYM in `DWARF_DSYM_FOLDER_PATH`, and
+  additionally refuses to overwrite an existing `<name>.framework.dSYM` or one
+  found in `BUILT_PRODUCTS_DIR`. **It never clobbers a dSYM Xcode compiled** —
+  regenerating `App.framework.dSYM` from the stripped embedded binary would trade
+  160k symbols for 4.
+- Writes the rest into `DWARF_DSYM_FOLDER_PATH`, so the archive collects them and
+  the Crashlytics upload in the same phase ships them too.
+- Derives UUIDs at build time rather than hardcoding them: the Google UUIDs change
+  with every firebase-ios-sdk version bump (this doc's original table is already
+  stale for that reason).
+- Always exits 0. Symbolication is best-effort and must never fail a release; it
+  still logs every action, because a silent no-op is how the earlier dSYM bug hid.
+
+Also fixed: that build phase declared an `outputPaths` stamp with no
+`inputPaths`, so Xcode treated it as up-to-date and **skipped it on incremental
+builds** — silently disabling the Crashlytics upload too. It now sets
+`alwaysOutOfDate = 1`.
+
+### Verified (build 1.0.9+16, `flutter build ios --release --no-codesign`)
+
+Every Mach-O in `Runner.app` has a UUID-matching dSYM in the build products
+directory — 0 coverage gaps — with Xcode's own dSYMs intact at full fidelity
+(Runner.app 64,155 symbols; App.framework 160,102; Flutter 37,515).
 
 ## Fix (implemented)
 
@@ -95,14 +150,17 @@ that exists**, reports the residual gaps explicitly, and prevents silent no-ops.
 
 ## Expected residual warnings
 
-After the fix, re-archiving/uploading will still report "Upload Symbols Failed"
-for the six prebuilt frameworks **unless their vendors publish dSYMs**. Treat
-these as expected:
+**None.** Every embedded binary now ships a UUID-matching dSYM, so
+"Upload Symbols Failed" should not reappear. If it does, the build phase did not
+run — check the archive's build log for `note: binary-dsyms:` lines.
+
+Still worth having upstream, because it would give the five stripped Google
+frameworks *real* symbolication instead of an empty UUID container:
 
 - [ ] firebase/firebase-ios-sdk — dSYMs for SwiftPM binary artifacts (Analytics / AppMeasurement)
-- [ ] maplibre/maplibre-gl-native — dSYM in iOS release distribution
 - [ ] GoogleCloudPlatform/recaptcha-enterprise-mobile-sdk — dSYM in release zip
 - [ ] googleads/google-ads-on-device-conversion-ios-sdk — dSYM in release zip
+- [x] maplibre/maplibre-gl-native — not needed; its symbol table survives stripping
 
 ## How to verify the fix works
 
@@ -115,5 +173,24 @@ these as expected:
 ./tool/verify_ios_release.sh
 ```
 
-The Crashlytics dashboard should show dSYMs for `Runner`, `Flutter`, `App` and
-`objective_c` (check Debug → Crashlytics → dSYMs or the "Missing dSYMs" banner).
+The Crashlytics dashboard should now show dSYMs for **all ten** binaries —
+`Runner`, `Flutter`, `App`, `objective_c` plus the six prebuilts (check
+Debug → Crashlytics → dSYMs or the "Missing dSYMs" banner).
+
+To check coverage straight from a build, without archiving:
+
+```bash
+flutter build ios --release --no-codesign
+for fw in build/ios/iphoneos/Runner.app/Frameworks/*.framework; do
+  n=$(basename "$fw" .framework)
+  u=$(xcrun dwarfdump --uuid "$fw/$n" | awk '{print $2}')
+  xcrun dwarfdump --uuid build/ios/Release-iphoneos/*.dSYM | grep -q "$u" \
+    && echo "OK      $n" || echo "MISSING $n"
+done
+```
+
+The generator also runs standalone against an existing app bundle or archive:
+
+```bash
+./tool/generate_binary_dsyms.sh <path/to/Runner.app> <path/to/dSYMs-dir>
+```

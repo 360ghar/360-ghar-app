@@ -13,6 +13,12 @@
 #   Crashlytics, and prints a per-framework coverage report so the expected
 #   gaps are visible instead of silent.
 #
+#   As of 2026-08-13 those six gaps are CLOSED at build time:
+#   tool/generate_binary_dsyms.sh runs from the Runner target's last build phase
+#   and derives a UUID-matching dSYM from each embedded prebuilt binary, so the
+#   archive carries all of them. A "[expected]" gap below now means the build
+#   phase did not run -- investigate rather than shrug. See the RCA doc.
+#
 # Usage:
 #   ./tool/upload_ios_symbols.sh [--dry-run] [path/to.xcarchive]
 #
@@ -142,16 +148,17 @@ if [ "${#EMBED_UUIDS[@]}" -gt "${#COLLECTED_UUIDS[@]}" ]; then
     if ! contains "$u" "${COLLECTED_UUIDS[@]}"; then
       case "${EMBED_NAMES[$i]}" in
         FirebaseAnalytics.framework|GoogleAppMeasurement.framework|GoogleAppMeasurementIdentitySupport.framework|MapLibre.framework|RecaptchaEnterpriseSDK.framework|GoogleAdsOnDeviceConversion.framework)
-          echo "  [expected] ${EMBED_NAMES[$i]}  $u  (prebuilt SwiftPM binary - no upstream dSYM; non-fatal)" ;;
+          echo "  [regression] ${EMBED_NAMES[$i]}  $u  (prebuilt binary - tool/generate_binary_dsyms.sh should have covered this; did the Runner build phase run?)" ;;
         *)
           echo "  [missing] ${EMBED_NAMES[$i]}  $u" ;;
       esac
     fi
   done
   echo
-  echo "Note: 'Upload Symbols Failed' warnings from App Store Connect for the"
-  echo "expected gaps above are non-fatal - the build still uploads/processes."
-  echo "See docs/dSYM_UPLOAD_RCA.md."
+  echo "Any gap above now means the archive is missing a dSYM it should have had:"
+  echo "the prebuilt frameworks are covered at build time by"
+  echo "tool/generate_binary_dsyms.sh. Re-archive and check the build log for"
+  echo "'note: binary-dsyms:' lines. See docs/dSYM_UPLOAD_RCA.md."
   echo
 fi
 

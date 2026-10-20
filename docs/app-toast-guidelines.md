@@ -1,270 +1,76 @@
-# AppToast Usage Guidelines
+# AppToast usage
 
-This document provides comprehensive guidelines for using the `AppToast` notification system in the 360Ghar Flutter application.
+Use `AppToast` for transient application notifications. Use field errors and inline retry controls when users must correct input or recover a failed screen request. A toast must not be the only recovery control.
 
-## Overview
+## Ownership
 
-**AppToast** is the centralized toast notification system located at `lib/core/utils/app_toast.dart`. It provides a consistent, minimal, and user-friendly way to display notifications across the application.
+`AppToastHost` renders notifications above the app's Navigator. `MaterialApp.router.builder` installs one host in `main.dart`. The host owns its dismissal timer and cancels it when disposed. Tests that show toasts must use a host, for example through `pumpProviderApp`.
 
-## Key Requirements
-
-**ALWAYS use `AppToast` for all notifications/toasts** - Never use `Get.snackbar()` directly in any view, controller, or service.
-
-## Why AppToast?
-
-1. **Consistent Position**: All toasts appear at the top of the screen (`SnackPosition.TOP`)
-2. **Minimal Design**: Clean, non-intrusive styling with proper spacing
-3. **Unified Appearance**: Consistent colors and typography via `AppDesign` tokens
-4. **Simplified API**: Type-safe methods for common use cases
-5. **Maintainability**: Single point of control for toast behavior
-
-## Usage Methods
-
-### 1. Success Messages
-
-Use for successful operations, confirmations, and positive feedback.
+The interface accepts already-localized text. Presentation code translates messages; repositories and transport return typed failures and do not show notifications.
 
 ```dart
-AppToast.success('Profile saved', 'Your changes have been saved successfully');
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_toast.dart';
 
-// Or with just title
-AppToast.success('Visit scheduled');
+AppToast.success(
+  context.l10n.text('success'),
+  context.l10n.text('profile_updated_successfully'),
+);
+
+AppToast.warning(
+  context.l10n.text('location_services'),
+  context.l10n.text('enable_location_services_message'),
+);
 ```
 
-**When to use:**
-- Profile updates saved
-- Visit booked successfully
-- Preferences saved
-- Data synchronized
-- Actions completed successfully
+## Standard methods
 
-### 2. Error Messages
+`success`, `error`, `warning`, and `info` accept a required title and an optional message. Select the method that matches the result. Announce a visit as confirmed only after the server confirms it. A locally persisted unresolved request needs its own pending status.
 
-Use for failures, errors, and negative feedback.
+For typed failures, use the shared presentation mapper. Do not display exception strings or server response bodies.
 
 ```dart
-AppToast.error('Error', 'Failed to load properties. Please try again.');
+import 'package:ghar360/core/utils/error_mapper.dart';
 
-// Or with just title
-AppToast.error('Network error');
+ErrorMapper.showErrorSnackbar(context, failure);
 ```
 
-**When to use:**
-- API failures
-- Network errors
-- Validation errors
-- Permission denied
-- Action failed
+If an asynchronous action uses a widget context after `await`, first check `context.mounted`. Notifiers expose result or mutation state; the view handles the notification.
 
-### 3. Warning Messages
+## Custom messages
 
-Use for cautionary messages that require user attention but aren't errors.
-
-```dart
-AppToast.warning('Warning', 'Please check your internet connection');
-
-// Or with just title
-AppToast.warning('Location services disabled');
-```
-
-**When to use:**
-- Location services disabled
-- Low storage warning
-- Session expiring soon
-- Missing optional information
-- Connection issues
-
-### 4. Info Messages
-
-Use for informational messages and general notifications.
-
-```dart
-AppToast.info('Info', 'New features are now available');
-
-// Or with just title
-AppToast.info('Language changed');
-```
-
-**When to use:**
-- Feature announcements
-- Tips and hints
-- Status updates
-- Language changed
-- General information
-
-### 5. Custom Styling (Rarely Needed)
-
-For special cases where standard styling doesn't fit:
+Use `custom` only when standard methods cannot express the message. Keep shared design tokens and provide localized text.
 
 ```dart
 AppToast.custom(
-  title: 'Coming Soon',
-  message: 'This feature will be available in the next update',
-  backgroundColor: AppDesign.accentBlue,
-  textColor: AppDesign.textDark,
+  title: context.l10n.text('success'),
+  message: context.l10n.text('profile_updated_successfully'),
+  backgroundColor: AppDesignTokens.success,
   duration: const Duration(seconds: 4),
 );
 ```
 
-**When to use:**
-- Feature coming soon
-- Special announcements
-- Beta features
-- Custom branding needs
+Import `core/design/app_design_tokens.dart` for `AppDesignTokens`. The optional `mainButton` accepts a `TextButton`. With accessible navigation enabled, an actionable toast stays visible until dismissed. Use `AppToast.dismiss()` to dismiss the current message explicitly.
 
-## Migration Guide
+## Presentation behavior
 
-### From Get.snackbar
+- Notifications appear at the top, inside the safe area, with a 12-pixel margin and a maximum width of 560 pixels.
+- The host uses an 8-pixel corner radius and 16-pixel horizontal / 12-pixel vertical padding.
+- A standard notification expires after three seconds and supports horizontal swipe dismissal.
+- A new message replaces the current message and resets its timer; messages do not queue.
+- The host exposes a live-region announcement and selects contrasting text for the background color.
 
-**Before:**
-```dart
-// ❌ DON'T use Get.snackbar directly
-Get.snackbar(
-  'Error',
-  'Failed to load data',
-  snackPosition: SnackPosition.BOTTOM,
-  backgroundColor: Colors.red,
-  colorText: Colors.white,
-  duration: const Duration(seconds: 3),
-);
-
-Get.snackbar(
-  'Success',
-  'Profile saved',
-  snackPosition: SnackPosition.TOP,
-  backgroundColor: Colors.green,
-);
-```
-
-**After:**
-```dart
-// ✅ DO use AppToast
-AppToast.error('Error', 'Failed to load data');
-AppToast.success('Success', 'Profile saved');
-```
-
-### Common Patterns
-
-**Controller Error Handling:**
-```dart
-try {
-  await repository.saveData(data);
-  AppToast.success('Saved', 'Your data has been saved');
-} catch (e) {
-  AppToast.error('Error', 'Failed to save data');
-}
-```
-
-**View Actions:**
-```dart
-void _handleButtonPress() {
-  if (!isValid) {
-    AppToast.warning('Warning', 'Please fill all required fields');
-    return;
-  }
-  // Proceed with action
-}
-```
-
-**Auth Flow:**
-```dart
-Future<void> login() async {
-  try {
-    await authRepository.login(credentials);
-    AppToast.success('Welcome back!', 'You are now logged in');
-  } on AuthException catch (e) {
-    AppToast.error('Login failed', e.message);
-  }
-}
-```
-
-## Styling Defaults
-
-### Position
-- **Default**: `SnackPosition.TOP`
-- **Margin**: 12px from edges
-- **Never use**: `SnackPosition.BOTTOM`
-
-### Appearance
-- **Border Radius**: 8px
-- **Padding**: 16px horizontal, 12px vertical
-- **Duration**: 3 seconds (default)
-- **Dismissible**: Yes (swipe horizontally)
-
-### Colors
-All colors use the `AppDesign` token system:
-- **Success**: `AppDesign.successGreen`
-- **Error**: `AppDesign.errorRed`
-- **Warning**: `AppDesign.warningAmber`
-- **Info**: `AppDesign.accentBlue`
-- **Text**: Automatically determined based on background
-
-## Best Practices
-
-1. **Keep messages concise**: Title should be 1-3 words, message should be brief
-2. **Use appropriate types**: Success for good news, Error for problems, Warning for caution, Info for neutral
-3. **Avoid stacking**: Don't show multiple toasts at once; they will queue
-4. **Translate strings**: Use translation keys with `.tr` for internationalization
-5. **Test in both themes**: Verify visibility in both light and dark modes
-
-## Examples by Feature
-
-### Authentication
-```dart
-AppToast.success('otp_sent'.tr, 'otp_resent_message'.tr);
-AppToast.error('auth_required'.tr, 'login_to_book_visit'.tr);
-```
-
-### Property/Likes
-```dart
-AppToast.success('Removed', '${property.title} removed from liked properties');
-AppToast.success('Added', '${property.title} moved to liked properties');
-```
-
-### Visits
-```dart
-AppToast.success('visit_scheduled'.tr, 'Your visit has been scheduled');
-AppToast.error('error'.tr, 'could_not_cancel_visit'.tr);
-```
-
-### Location
-```dart
-AppToast.warning('location_services'.tr, 'enable_location_services_message'.tr);
-AppToast.error('location_error'.tr, 'failed_to_get_location_message'.tr);
-```
-
-### Profile
-```dart
-AppToast.success('success'.tr, 'profile_updated_successfully'.tr);
-AppToast.info('change_password_snackbar_title'.tr, 'change_password_snackbar_message'.tr);
-```
+Keep titles and messages short. Add both English and Hindi catalog entries. Verify narrow layouts, large text, both themes, dismissal, and the notification lifetime. Avoid repeated notifications from provider rebuilds.
 
 ## Troubleshooting
 
-### Toast not showing
-- Ensure you have imported `AppToast`: `import 'package:ghar360/core/utils/app_toast.dart';`
-- Check that the overlay context is available (not during app initialization)
+If a toast does not appear, check that `AppToastHost` is mounted. Calls before host initialization or after disposal have no visible effect. Do not add a global widget context or service locator to show a startup notification; use the startup error screen.
 
-### Wrong position
-- Never pass `position` parameter to custom method unless absolutely necessary
-- Default is always `SnackPosition.TOP`
+The host fixes the position at the top. `custom` has no position argument. Use the shared tokens instead of hard-coded colors.
 
-### Styling issues
-- Don't override colors unless necessary
-- Use `AppToast.custom()` only when standard colors don't fit
+## References
 
-## File Location
-
-```
-lib/core/utils/app_toast.dart
-```
-
-## Related Files
-
-- `lib/core/design/app_design_extensions.dart` - Design tokens
-- `lib/core/utils/error_handler.dart` - Error handling utilities
-- `lib/core/utils/error_mapper.dart` - Error mapping utilities
-
-## Enforcement
-
-All new code must use `AppToast`. Direct `Get.snackbar()` usage will be flagged during code review. The codebase has been fully migrated - no legacy `Get.snackbar()` calls should remain.
+- [Implementation](../lib/core/utils/app_toast.dart)
+- [Localization](../lib/core/translations/app_localizations.dart)
+- [Typed error presentation](../lib/core/utils/error_mapper.dart)
+- [Notification tests](../test/core/utils/app_toast_test.dart)

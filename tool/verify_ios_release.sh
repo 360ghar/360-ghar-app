@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
+# Usage: verify_ios_release.sh [--fix] [path/to/Runner.app]
+#
+# --fix repairs the one thing that is routinely and legitimately broken: the
+# generated SwiftPM plugin manifest, which `flutter pub get` rewrites to
+# .iOS("13.0") every time (hardcoded in flutter_tools). Everything else is
+# checked only, never touched.
 set -euo pipefail
+
+FIX_MODE=""
+if [ "${1:-}" = "--fix" ]; then
+  FIX_MODE="fix"
+  shift
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_PLIST="$ROOT_DIR/ios/Runner/Info.plist"
@@ -33,7 +45,7 @@ else
 fi
 
 
-python3 - "$SOURCE_PLIST" "$PRIVACY_MANIFEST" "$APP_FRAMEWORK_INFO" "$PROJECT_PBXPROJ" "$PUBSPEC" "$GENERATED_PACKAGE" "$EXPECTED_DEPLOYMENT_TARGET" "${1:-}" <<'PY'
+python3 - "$SOURCE_PLIST" "$PRIVACY_MANIFEST" "$APP_FRAMEWORK_INFO" "$PROJECT_PBXPROJ" "$PUBSPEC" "$GENERATED_PACKAGE" "$EXPECTED_DEPLOYMENT_TARGET" "${1:-}" "$FIX_MODE" <<'PY'
 import plistlib
 import re
 import sys
@@ -48,6 +60,7 @@ pubspec_path = Path(args[4])
 generated_package_path = Path(args[5])
 expected_deployment_target = args[6]
 built_app = Path(args[7]) if len(args) > 7 and args[7] else None
+fix_mode = len(args) > 8 and args[8] == "fix"
 
 ok = True
 
@@ -135,11 +148,25 @@ if not generated_package_path.exists():
 else:
     package_text = generated_package_path.read_text()
     if f'.iOS("{expected_deployment_target}")' not in package_text:
-        fail(
-            f"generated SwiftPM plugin package does not declare .iOS(\"{expected_deployment_target}\"). "
-            f"This causes 'requires minimum platform version ... but this target supports 13.0' errors. "
-            f"Re-run `flutter build ios --config-only` after any `flutter pub get`."
+        # flutter_tools hardcodes .iOS("13.0") when generating this manifest and only
+        # raises it to the project's real deployment target inside `flutter build
+        # ios/ipa`. So `flutter pub get` followed by an Xcode build always fails.
+        patched, count = re.subn(
+            r'\.iOS\("[0-9.]+"\)', f'.iOS("{expected_deployment_target}")', package_text, count=1
         )
+        if fix_mode and count == 1:
+            generated_package_path.write_text(patched)
+            print(
+                f"FIXED [FlutterGeneratedPluginSwiftPackage]: platforms -> "
+                f".iOS({expected_deployment_target})"
+            )
+        else:
+            fail(
+                f"generated SwiftPM plugin package does not declare .iOS(\"{expected_deployment_target}\"). "
+                f"This causes 'requires minimum platform version ... but this target supports 13.0' errors. "
+                f"Re-run `flutter build ios --config-only` (or this script with --fix) "
+                f"after any `flutter pub get`."
+            )
     else:
         print(f"PASS [FlutterGeneratedPluginSwiftPackage]: platforms == .iOS({expected_deployment_target})")
 

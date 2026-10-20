@@ -172,12 +172,22 @@ in the manifest.
 
 ### Build the IPA
 
+The binary **must be built with Shorebird** so it can receive OTA patches
+(see [`shorebird.md`](./shorebird.md)). Bump the version in `pubspec.yaml`
+first — Shorebird refuses duplicate versions.
+
 ```bash
-flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+dart run tool/env_to_dart_defines.dart .env.production > /tmp/ghar360_defines.json
+shorebird release ios \
+  --dart-define-from-file=/tmp/ghar360_defines.json \
+  --export-options-plist=ios/ExportOptions.plist
+rm -f /tmp/ghar360_defines.json
 ```
 
 - Artifact lands in **`build/ios/ipa/`** (e.g. `build/ios/ipa/ghar360.ipa`).
 - The archive is also written under `build/ios/archive/`.
+- The `--export-options-plist` flag is required: without it the export cannot
+  resolve the App Store provisioning profile for the app's entitlements.
 
 ### Upload to App Store Connect (choose one)
 
