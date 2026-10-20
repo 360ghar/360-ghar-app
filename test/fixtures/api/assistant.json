@@ -1,0 +1,418 @@
+{
+  "conversations_page": {
+    "has_more": true,
+    "items": [
+      {
+        "created_at": "2026-09-30T10:15:02Z",
+        "id": 42,
+        "message_count": 6,
+        "title": "2BHK under 30k",
+        "updated_at": "2026-09-30T10:15:02Z"
+      }
+    ],
+    "limit": 20,
+    "next_cursor": "eyJrIjpbIjIwMjYtMDktMzAiLDQyXSwiZiI6ImFiYyJ9",
+    "total": null
+  },
+  "error_frame": {
+    "data": {
+      "code": "AGENT_ERROR",
+      "message": "The assistant could not finish this reply. Try again."
+    },
+    "event": "error"
+  },
+  "error_stream": "event: error\ndata: {\"code\":\"AGENT_ERROR\",\"message\":\"The assistant could not finish this reply. Try again.\"}\n\n",
+  "frames": [
+    {
+      "data": {
+        "conversation_id": 42
+      },
+      "event": "conversation_info"
+    },
+    {
+      "data": {
+        "text": "Here are "
+      },
+      "event": "text_chunk"
+    },
+    {
+      "data": {
+        "call_id": "call_a",
+        "tool": "discovery_search"
+      },
+      "event": "tool_call_start"
+    },
+    {
+      "data": {
+        "call_id": "call_b",
+        "tool": "discovery_property_get"
+      },
+      "event": "tool_call_start"
+    },
+    {
+      "data": {
+        "call_id": "call_a",
+        "success": true,
+        "tool": "discovery_search"
+      },
+      "event": "tool_call_end"
+    },
+    {
+      "data": {
+        "call_id": "call_b",
+        "success": false,
+        "tool": "discovery_property_get"
+      },
+      "event": "tool_call_end"
+    },
+    {
+      "data": {
+        "structured_content": {
+          "has_more": false,
+          "items": [
+            {
+              "amenities": [
+                {
+                  "category": "recreation",
+                  "icon": "pool",
+                  "id": 11,
+                  "title": "Swimming Pool"
+                },
+                {
+                  "category": "utilities",
+                  "icon": "battery",
+                  "id": 12,
+                  "title": "Power Backup"
+                }
+              ],
+              "area_sqft": 1450,
+              "available_from": "2026-11-01T00:00:00Z",
+              "base_price": 8500000,
+              "bathrooms": 2,
+              "bedrooms": 3,
+              "city": "Gurugram",
+              "created_at": "2026-09-30T10:15:02Z",
+              "description": "Corner flat with two balconies and morning light.",
+              "features": [
+                "Corner unit",
+                "Vastu compliant"
+              ],
+              "id": 1,
+              "images": [
+                {
+                  "display_order": 1,
+                  "id": 11,
+                  "image_category": "hall",
+                  "image_url": "https://cdn.example.com/p1/hall-1.jpg",
+                  "is_main_image": true,
+                  "property_id": 1
+                },
+                {
+                  "display_order": 2,
+                  "id": 12,
+                  "image_category": "kitchen",
+                  "image_url": "https://cdn.example.com/p1/kitchen-2.jpg",
+                  "is_main_image": false,
+                  "property_id": 1
+                },
+                {
+                  "display_order": 3,
+                  "id": 13,
+                  "image_category": "floor_plan",
+                  "image_url": "https://cdn.example.com/p1/floor_plan-3.jpg",
+                  "is_main_image": false,
+                  "property_id": 1
+                }
+              ],
+              "interest_count": 1,
+              "is_available": true,
+              "latitude": 28.4231,
+              "like_count": 3,
+              "locality": "Sector 51",
+              "longitude": 77.0851,
+              "main_image_url": "https://cdn.example.com/p1/main.jpg",
+              "owner_contact": "+911800000360",
+              "owner_id": 7,
+              "owner_name": "Meera Shah",
+              "property_type": "apartment",
+              "purpose": "buy",
+              "status": "available",
+              "title": "3 BHK in Sector 51",
+              "updated_at": "2026-09-30T10:15:02Z",
+              "view_count": 12
+            }
+          ],
+          "limit": 5,
+          "next_cursor": null,
+          "total": null
+        },
+        "widget_name": "PropertySearchWidget"
+      },
+      "event": "widget"
+    },
+    {
+      "data": {
+        "text": "three options."
+      },
+      "event": "text_chunk"
+    },
+    {
+      "data": {
+        "response_text": "Here are three options."
+      },
+      "event": "done"
+    }
+  ],
+  "messages_page": {
+    "has_more": true,
+    "items": [
+      {
+        "content": "2BHK in Gurgaon under 30k",
+        "created_at": "2026-09-30T10:15:02Z",
+        "id": 311,
+        "role": "user",
+        "tool_args": null,
+        "tool_name": null,
+        "tool_result": null,
+        "widget_data": null,
+        "widget_name": null
+      },
+      {
+        "content": null,
+        "created_at": "2026-09-30T10:15:02Z",
+        "id": 312,
+        "role": "widget",
+        "tool_args": null,
+        "tool_name": "PropertySearchWidget",
+        "tool_result": {
+          "has_more": false,
+          "items": [
+            {
+              "amenities": [
+                {
+                  "category": "recreation",
+                  "icon": "pool",
+                  "id": 11,
+                  "title": "Swimming Pool"
+                },
+                {
+                  "category": "utilities",
+                  "icon": "battery",
+                  "id": 12,
+                  "title": "Power Backup"
+                }
+              ],
+              "area_sqft": 1450,
+              "available_from": "2026-11-01T00:00:00Z",
+              "base_price": 8500000,
+              "bathrooms": 2,
+              "bedrooms": 3,
+              "city": "Gurugram",
+              "created_at": "2026-09-30T10:15:02Z",
+              "description": "Corner flat with two balconies and morning light.",
+              "features": [
+                "Corner unit",
+                "Vastu compliant"
+              ],
+              "id": 1,
+              "images": [
+                {
+                  "display_order": 1,
+                  "id": 11,
+                  "image_category": "hall",
+                  "image_url": "https://cdn.example.com/p1/hall-1.jpg",
+                  "is_main_image": true,
+                  "property_id": 1
+                },
+                {
+                  "display_order": 2,
+                  "id": 12,
+                  "image_category": "kitchen",
+                  "image_url": "https://cdn.example.com/p1/kitchen-2.jpg",
+                  "is_main_image": false,
+                  "property_id": 1
+                },
+                {
+                  "display_order": 3,
+                  "id": 13,
+                  "image_category": "floor_plan",
+                  "image_url": "https://cdn.example.com/p1/floor_plan-3.jpg",
+                  "is_main_image": false,
+                  "property_id": 1
+                }
+              ],
+              "interest_count": 1,
+              "is_available": true,
+              "latitude": 28.4231,
+              "like_count": 3,
+              "locality": "Sector 51",
+              "longitude": 77.0851,
+              "main_image_url": "https://cdn.example.com/p1/main.jpg",
+              "owner_contact": "+911800000360",
+              "owner_id": 7,
+              "owner_name": "Meera Shah",
+              "property_type": "apartment",
+              "purpose": "buy",
+              "status": "available",
+              "title": "3 BHK in Sector 51",
+              "updated_at": "2026-09-30T10:15:02Z",
+              "view_count": 12
+            }
+          ],
+          "limit": 5,
+          "next_cursor": null,
+          "total": null
+        },
+        "widget_data": {
+          "has_more": false,
+          "items": [
+            {
+              "amenities": [
+                {
+                  "category": "recreation",
+                  "icon": "pool",
+                  "id": 11,
+                  "title": "Swimming Pool"
+                },
+                {
+                  "category": "utilities",
+                  "icon": "battery",
+                  "id": 12,
+                  "title": "Power Backup"
+                }
+              ],
+              "area_sqft": 1450,
+              "available_from": "2026-11-01T00:00:00Z",
+              "base_price": 8500000,
+              "bathrooms": 2,
+              "bedrooms": 3,
+              "city": "Gurugram",
+              "created_at": "2026-09-30T10:15:02Z",
+              "description": "Corner flat with two balconies and morning light.",
+              "features": [
+                "Corner unit",
+                "Vastu compliant"
+              ],
+              "id": 1,
+              "images": [
+                {
+                  "display_order": 1,
+                  "id": 11,
+                  "image_category": "hall",
+                  "image_url": "https://cdn.example.com/p1/hall-1.jpg",
+                  "is_main_image": true,
+                  "property_id": 1
+                },
+                {
+                  "display_order": 2,
+                  "id": 12,
+                  "image_category": "kitchen",
+                  "image_url": "https://cdn.example.com/p1/kitchen-2.jpg",
+                  "is_main_image": false,
+                  "property_id": 1
+                },
+                {
+                  "display_order": 3,
+                  "id": 13,
+                  "image_category": "floor_plan",
+                  "image_url": "https://cdn.example.com/p1/floor_plan-3.jpg",
+                  "is_main_image": false,
+                  "property_id": 1
+                }
+              ],
+              "interest_count": 1,
+              "is_available": true,
+              "latitude": 28.4231,
+              "like_count": 3,
+              "locality": "Sector 51",
+              "longitude": 77.0851,
+              "main_image_url": "https://cdn.example.com/p1/main.jpg",
+              "owner_contact": "+911800000360",
+              "owner_id": 7,
+              "owner_name": "Meera Shah",
+              "property_type": "apartment",
+              "purpose": "buy",
+              "status": "available",
+              "title": "3 BHK in Sector 51",
+              "updated_at": "2026-09-30T10:15:02Z",
+              "view_count": 12
+            }
+          ],
+          "limit": 5,
+          "next_cursor": null,
+          "total": null
+        },
+        "widget_name": "PropertySearchWidget"
+      },
+      {
+        "content": "Here are three options.",
+        "created_at": "2026-09-30T10:15:02Z",
+        "id": 313,
+        "role": "assistant",
+        "tool_args": null,
+        "tool_name": null,
+        "tool_result": null,
+        "widget_data": null,
+        "widget_name": null
+      }
+    ],
+    "limit": 30,
+    "next_cursor": "eyJrIjpbIjIwMjYtMDktMzAiLDMxMV19",
+    "total": null
+  },
+  "stream": "event: conversation_info\ndata: {\"conversation_id\":42}\n\nevent: text_chunk\ndata: {\"text\":\"Here are \"}\n\nevent: tool_call_start\ndata: {\"call_id\":\"call_a\",\"tool\":\"discovery_search\"}\n\nevent: tool_call_start\ndata: {\"call_id\":\"call_b\",\"tool\":\"discovery_property_get\"}\n\nevent: tool_call_end\ndata: {\"call_id\":\"call_a\",\"tool\":\"discovery_search\",\"success\":true}\n\nevent: tool_call_end\ndata: {\"call_id\":\"call_b\",\"tool\":\"discovery_property_get\",\"success\":false}\n\nevent: widget\ndata: {\"widget_name\":\"PropertySearchWidget\",\"structured_content\":{\"items\":[{\"id\":1,\"owner_id\":7,\"title\":\"3 BHK in Sector 51\",\"description\":\"Corner flat with two balconies and morning light.\",\"property_type\":\"apartment\",\"purpose\":\"buy\",\"base_price\":8500000,\"area_sqft\":1450,\"status\":\"available\",\"is_available\":true,\"available_from\":\"2026-11-01T00:00:00Z\",\"view_count\":12,\"like_count\":3,\"interest_count\":1,\"created_at\":\"2026-09-30T10:15:02Z\",\"updated_at\":\"2026-09-30T10:15:02Z\",\"city\":\"Gurugram\",\"locality\":\"Sector 51\",\"latitude\":28.4231,\"longitude\":77.0851,\"bedrooms\":3,\"bathrooms\":2,\"main_image_url\":\"https://cdn.example.com/p1/main.jpg\",\"owner_name\":\"Meera Shah\",\"owner_contact\":\"+911800000360\",\"features\":[\"Corner unit\",\"Vastu compliant\"],\"images\":[{\"id\":11,\"property_id\":1,\"image_url\":\"https://cdn.example.com/p1/hall-1.jpg\",\"image_category\":\"hall\",\"display_order\":1,\"is_main_image\":true},{\"id\":12,\"property_id\":1,\"image_url\":\"https://cdn.example.com/p1/kitchen-2.jpg\",\"image_category\":\"kitchen\",\"display_order\":2,\"is_main_image\":false},{\"id\":13,\"property_id\":1,\"image_url\":\"https://cdn.example.com/p1/floor_plan-3.jpg\",\"image_category\":\"floor_plan\",\"display_order\":3,\"is_main_image\":false}],\"amenities\":[{\"id\":11,\"title\":\"Swimming Pool\",\"icon\":\"pool\",\"category\":\"recreation\"},{\"id\":12,\"title\":\"Power Backup\",\"icon\":\"battery\",\"category\":\"utilities\"}]}],\"total\":null,\"limit\":5,\"has_more\":false,\"next_cursor\":null}}\n\nevent: text_chunk\ndata: {\"text\":\"three options.\"}\n\nevent: done\ndata: {\"response_text\":\"Here are three options.\"}\n\n",
+  "tool_names": [
+    "admin_system_status",
+    "agent_bookings_list_all",
+    "agent_bookings_update_status",
+    "agent_dashboard_overview",
+    "agent_leases_create",
+    "agent_leases_list",
+    "agent_leases_terminate",
+    "agent_maintenance_list",
+    "agent_maintenance_update_status",
+    "agent_properties_create_for_owner",
+    "agent_properties_get",
+    "agent_properties_list",
+    "agent_properties_verify",
+    "agent_rent_list_due",
+    "agent_rent_record_payment",
+    "bookings_cancel",
+    "bookings_check_availability",
+    "bookings_create",
+    "bookings_get",
+    "bookings_get_pricing",
+    "bookings_list",
+    "discovery_amenities",
+    "discovery_feed",
+    "discovery_property_get",
+    "discovery_recommendations",
+    "discovery_search",
+    "discovery_shortlist",
+    "discovery_swipe",
+    "owner_dashboard_overview",
+    "owner_leases_get",
+    "owner_leases_list",
+    "owner_leases_terminate",
+    "owner_maintenance_list",
+    "owner_maintenance_update",
+    "owner_properties_create",
+    "owner_properties_get",
+    "owner_properties_list",
+    "owner_properties_toggle_availability",
+    "owner_properties_update",
+    "owner_rent_history",
+    "owner_rent_record_payment",
+    "owner_rent_status",
+    "tenant_lease_current",
+    "tenant_maintenance_create",
+    "tenant_maintenance_list",
+    "tenant_rent_dues",
+    "tenant_rent_history",
+    "user_system_status",
+    "visits_cancel",
+    "visits_get",
+    "visits_list",
+    "visits_schedule"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "push_property": {
+    "_meta": "{\"type_key\":\"property_recommendation\",\"channel\":\"push\",\"priority\":\"high\"}",
+    "property_id": "12",
+    "route": "/property/12",
+    "type_key": "property_recommendation"
+  },
+  "push_type_only": {
+    "_meta": "{\"type_key\":\"visit_reminder\",\"channel\":\"push\",\"priority\":\"high\"}",
+    "type_key": "visit_reminder"
+  },
+  "push_unknown_route": {
+    "_meta": "{\"type_key\":\"flatmate_new_message\",\"channel\":\"push\",\"priority\":\"high\"}",
+    "route": "/chats/5",
+    "type_key": "flatmate_new_message"
+  },
+  "push_visits": {
+    "_meta": "{\"type_key\":\"visit_reminder\",\"channel\":\"push\",\"priority\":\"high\"}",
+    "route": "/visits",
+    "type_key": "visit_reminder"
+  },
+  "registration": {
+    "app_key": "ghar",
+    "app_version": "3.2.0+41",
+    "last_seen": "2026-09-30T10:15:02Z",
+    "locale": "en_IN",
+    "platform": "ios"
+  }
+}

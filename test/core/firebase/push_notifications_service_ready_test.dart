@@ -1,23 +1,26 @@
-// Dedicated process for PushNotificationsService paths that depend on the
-// static `_initialized` flag being false (initializeForegroundHandling full
-// path). Kept separate so other test files can exercise the early-exit path.
+// Native messaging lifecycle contracts. Each test releases all subscriptions
+// and callbacks through the same disposal path used by the application.
 
 import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:firebase_messaging_platform_interface/firebase_messaging_platform_interface.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
+
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
 import 'package:ghar360/core/firebase/push_notifications_service.dart';
+import '../../helpers/log_capture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(PushNotificationsService.dispose);
+  tearDown(PushNotificationsService.dispose);
 
   const flnChannel = MethodChannel('dexterous.com/flutter/local_notifications');
   const fcmChannel = MethodChannel('plugins.flutter.io/firebase_messaging');
@@ -98,7 +101,6 @@ void main() {
     FirebaseRuntimeState.isReady = true;
     PushNotificationsService.onNotificationTap = null;
     PushNotificationsService.onTokenRegistration = null;
-    Get.testMode = true;
 
     await setupFlnMock();
     await setupFcmMock();
@@ -128,21 +130,7 @@ void main() {
         openedData = data;
       };
 
-      await tester.pumpWidget(
-        GetMaterialApp(
-          initialRoute: '/home',
-          getPages: [
-            GetPage(
-              name: '/home',
-              page: () => const Scaffold(body: SizedBox()),
-            ),
-            GetPage(
-              name: '/property/:id',
-              page: () => const Scaffold(body: Text('property')),
-            ),
-          ],
-        ),
-      );
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
       await PushNotificationsService.initializeForegroundHandling();
 
@@ -187,33 +175,11 @@ void main() {
         openedData = data;
       };
 
-      await tester.pumpWidget(
-        GetMaterialApp(
-          initialRoute: '/home',
-          getPages: [
-            GetPage(
-              name: '/home',
-              page: () => const Scaffold(body: SizedBox()),
-            ),
-            GetPage(
-              name: '/property/:id',
-              page: () => const Scaffold(body: Text('property')),
-            ),
-          ],
-        ),
-      );
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
-      // Fresh process: _initialized is false. If a prior test already initialized
-      // in this file, the initial-message path may have been skipped — still must
-      // complete without throwing.
       await PushNotificationsService.initializeForegroundHandling();
-
-      // Allow the 500ms delayed navigation from initial message handler.
-      await tester.pump(const Duration(milliseconds: 600));
       await tester.pumpAndSettle();
-
-      // openedData may be set if this was the first init in the process.
-      expect(openedData == null || openedData!['property_id'] == '12', isTrue);
+      expect(openedData, {'property_id': '12'});
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
@@ -244,45 +210,145 @@ void main() {
       (_) {},
     );
 
-    // MethodChannelFirebaseMessaging.setMethodCallHandlers must be installed.
-    // If the plugin hasn't registered handlers yet, fall back to direct stream.
-    if (registered == null) {
-      // Force register path via getToken.
-      final token = await PushNotificationsService.getToken();
-      expect(token, isNotNull);
-    } else {
-      await completer.future.timeout(const Duration(seconds: 2));
-      expect(registered, 'refreshed-token-999');
-    }
+    await completer.future.timeout(const Duration(seconds: 2));
+    expect(registered, 'refreshed-token-999');
+    expect(PushNotificationsService.currentToken, 'refreshed-token-999');
   });
 
-  test(
-    'getToken returns null when APNS never becomes ready',
-    () async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      var apnsCalls = 0;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-        fcmChannel,
-        (MethodCall call) async {
-          switch (call.method) {
-            case 'Messaging#getAPNSToken':
-              apnsCalls++;
-              return {'token': null};
-            case 'Messaging#getToken':
-              return {'token': 'should-not-be-used'};
-            default:
-              return null;
-          }
-        },
-      );
+  test('dispose cancels stream callbacks and a later owner gets one listener', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    var opens = 0;
+    var tokens = 0;
+    PushNotificationsService.onNotificationTap = (_) => opens++;
+    PushNotificationsService.onTokenRegistration = (_) async {
+      tokens++;
+    };
+    final first = PushNotificationsService.initializeForegroundHandling();
+    final duplicate = PushNotificationsService.initializeForegroundHandling();
+    expect(duplicate, same(first));
+    await first;
+    FirebaseMessagingPlatform.onMessageOpenedApp.add(
+      const RemoteMessage(data: {'property_id': '1'}),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(opens, 1);
 
-      final token = await PushNotificationsService.getToken();
-      expect(token, isNull);
-      expect(apnsCalls, greaterThanOrEqualTo(8));
-    },
-    timeout: const Timeout(Duration(seconds: 20)),
-  );
+    await PushNotificationsService.dispose();
+    // New callbacks must not revive listeners owned by the previous lifecycle.
+    PushNotificationsService.onNotificationTap = (_) => opens++;
+    PushNotificationsService.onTokenRegistration = (_) async {
+      tokens++;
+    };
+    FirebaseMessagingPlatform.onMessageOpenedApp.add(
+      const RemoteMessage(data: {'property_id': '2'}),
+    );
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
+      fcmChannel.name,
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('Messaging#onTokenRefresh', 'old-owner-token'),
+      ),
+      (_) {},
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(opens, 1);
+    expect(tokens, 0);
+    expect(PushNotificationsService.currentToken, isNull);
+
+    await PushNotificationsService.initializeForegroundHandling();
+    FirebaseMessagingPlatform.onMessageOpenedApp.add(
+      const RemoteMessage(data: {'property_id': '3'}),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(opens, 2);
+  });
+
+  test('late token response after dispose cannot restore token or register', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final response = Completer<Map<String, dynamic>>();
+    final requested = Completer<void>();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      fcmChannel,
+      (call) async {
+        if (call.method == 'Messaging#getAPNSToken') return {'token': 'apns-present'};
+        if (call.method == 'Messaging#getToken') {
+          requested.complete();
+          return response.future;
+        }
+        return null;
+      },
+    );
+    var registrations = 0;
+    PushNotificationsService.onTokenRegistration = (_) async {
+      registrations++;
+    };
+    final request = PushNotificationsService.getToken();
+    expect(PushNotificationsService.getToken(), same(request));
+    await requested.future;
+    await PushNotificationsService.dispose();
+    PushNotificationsService.onTokenRegistration = (_) async {
+      registrations++;
+    };
+    response.complete({'token': 'expired-owner-token'});
+    expect(await request, isNull);
+    expect(PushNotificationsService.currentToken, isNull);
+    expect(registrations, 0);
+  });
+
+  test('late initialization cannot break a new owner initialization guard', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final firstResponse = Completer<bool>();
+    final secondResponse = Completer<bool>();
+    var initializes = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      flnChannel,
+      (call) async {
+        if (call.method == 'initialize') {
+          initializes++;
+          return initializes == 1 ? firstResponse.future : secondResponse.future;
+        }
+        return null;
+      },
+    );
+    final oldOwner = PushNotificationsService.initializeForegroundHandling();
+    await Future<void>.delayed(Duration.zero);
+    expect(initializes, 1);
+    await PushNotificationsService.dispose();
+    final currentOwner = PushNotificationsService.initializeForegroundHandling();
+    await Future<void>.delayed(Duration.zero);
+    expect(initializes, 2);
+    firstResponse.complete(true);
+    await oldOwner;
+    final duplicate = PushNotificationsService.initializeForegroundHandling();
+    // Release all requests before asserting, even if an obsolete completion
+    // incorrectly started a third native initialization.
+    secondResponse.complete(true);
+    await Future.wait([currentOwner, duplicate]);
+    expect(duplicate, same(currentOwner));
+    expect(initializes, 2);
+  });
+
+  test('getToken returns null when APNS never becomes ready', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    var apnsCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      fcmChannel,
+      (MethodCall call) async {
+        switch (call.method) {
+          case 'Messaging#getAPNSToken':
+            apnsCalls++;
+            return {'token': null};
+          case 'Messaging#getToken':
+            return {'token': 'should-not-be-used'};
+          default:
+            return null;
+        }
+      },
+    );
+
+    final token = await PushNotificationsService.getToken();
+    expect(token, isNull);
+    expect(apnsCalls, greaterThanOrEqualTo(8));
+  }, timeout: const Timeout(Duration(seconds: 20)));
 
   test('getToken handles apns-token-not-set FirebaseException', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -326,6 +392,18 @@ void main() {
 
     final token = await PushNotificationsService.getToken();
     expect(token, anyOf(isNull, isEmpty));
+  });
+
+  test('token registration failure logs type without token or server message', () async {
+    final logs = LogCapture();
+    addTearDown(logs.close);
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await setupFcmMock(token: 'private-fcm-token');
+    PushNotificationsService.onTokenRegistration = (_) async =>
+        throw StateError('private-fcm-token private-server-response');
+    expect(await PushNotificationsService.getToken(), 'private-fcm-token');
+    expect(logs.text, contains('StateError'));
+    expect(logs.text, isNot(contains('private-')));
   });
 
   test('getToken outer catch returns null on unexpected errors', () async {

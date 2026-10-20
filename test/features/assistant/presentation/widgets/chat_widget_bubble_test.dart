@@ -1,16 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:shimmer/shimmer.dart';
+
+import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
 import 'package:ghar360/features/assistant/presentation/widgets/chat_widget_bubble.dart';
-import 'package:mocktail/mocktail.dart';
-import 'package:shimmer/shimmer.dart';
-
+import '../../../../helpers/assistant_test_harness.dart';
 import '../../../../helpers/fake_webview_platform.dart';
-import '../../../../helpers/mocks.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 ChatMessageModel _widgetMessage({
   String? widgetName = 'property_card',
@@ -27,36 +30,24 @@ ChatMessageModel _widgetMessage({
 }
 
 void main() {
+  MockAssistantRepository? repository;
   setUp(() {
-    Get.testMode = true;
-    Get.reset();
+    repository = null;
     // Register a fake WebView platform so WebViewController can be created
     // in the headless test environment.
     installFakeWebViewPlatform();
-    // Suppress RenderFlex overflow errors that arise from constrained test
-    // surfaces — the widget is designed for full-screen chat, not the small
-    // test surface.
-    FlutterError.onError = (details) {
-      if (!details.summary.toString().contains('overflowed')) {
-        FlutterError.presentError(details);
-      }
-    };
   });
 
   tearDown(() {
-    FlutterError.onError = FlutterError.presentError;
     uninstallFakeWebViewPlatform();
-    Get.reset();
   });
 
   Future<void> pumpBubble(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: Center(child: child)),
-      ),
+    await tester.pumpProviderApp(
+      Scaffold(body: Center(child: child)),
+      overrides: [
+        if (repository != null) assistantRepositoryProvider.overrideWithValue(repository!),
+      ],
     );
     // Pump a few frames to let initState async work settle without
     // pumpAndSettle (which can hang on infinite animations like Shimmer).
@@ -137,7 +128,7 @@ void main() {
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
 
       final clipRRect = tester.widget<ClipRRect>(find.byType(ClipRRect));
-      expect(clipRRect.borderRadius, BorderRadius.circular(16));
+      expect(clipRRect.borderRadius, BorderRadius.circular(AppBorderRadius.md));
     });
 
     testWidgets('applies left/right/bottom padding via Padding widget', (tester) async {
@@ -150,17 +141,11 @@ void main() {
       expect(edges.bottom, 8);
     });
 
-    testWidgets('shows loading overlay with widgets icon in initial state', (tester) async {
+    testWidgets('shows the shared spinner and a label while the widget loads', (tester) async {
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
 
-      // The loading overlay shows a widgets_outlined icon.
-      expect(find.byIcon(Icons.widgets_outlined), findsWidgets);
-    });
-
-    testWidgets('uses Shimmer for loading animation', (tester) async {
-      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
-
-      expect(find.byType(Shimmer), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(Shimmer), findsNothing);
     });
 
     testWidgets('renders without crashing for null widget name', (tester) async {
@@ -185,16 +170,16 @@ void main() {
       expect(find.byType(ClipRRect), findsOneWidget);
     });
 
-    testWidgets('renders container with border decoration', (tester) async {
+    testWidgets('renders a flat container with no border', (tester) async {
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
 
-      // Find the inner Container that has a BoxDecoration with a border.
+      // Dense chat rows stay flat: no drawn outline around the widget.
       final containers = tester.widgetList<Container>(find.byType(Container));
       final hasBorderedContainer = containers.any((c) {
         final decoration = c.decoration;
         return decoration is BoxDecoration && decoration.border != null;
       });
-      expect(hasBorderedContainer, isTrue);
+      expect(hasBorderedContainer, isFalse);
     });
 
     testWidgets('loading overlay covers the full widget area', (tester) async {
@@ -209,16 +194,15 @@ void main() {
       expect(positioned.bottom, 0);
     });
 
-    testWidgets('loading overlay contains a Column with icon and text', (tester) async {
+    testWidgets('loading overlay contains a spinner and text', (tester) async {
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
 
-      // The loading overlay has a Column with an Icon and Text.
-      final columns = tester.widgetList<Column>(find.byType(Column));
-      final loadingColumn = columns.where((col) {
-        return col.children.any((child) => child is Icon) &&
-            col.children.any((child) => child is Text);
-      });
-      expect(loadingColumn, isNotEmpty);
+      final overlay = find.byType(Positioned);
+      expect(
+        find.descendant(of: overlay, matching: find.byType(CircularProgressIndicator)),
+        findsOneWidget,
+      );
+      expect(find.descendant(of: overlay, matching: find.byType(Text)), findsOneWidget);
     });
 
     testWidgets('uses AutomaticKeepAliveClientMixin (wantKeepAlive is true)', (tester) async {
@@ -325,7 +309,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('assistant_widget_unavailable'.tr), findsOneWidget);
+      expect(find.text('Widget unavailable'), findsOneWidget);
       expect(find.byType(Shimmer), findsNothing);
     });
 
@@ -336,7 +320,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('assistant_widget_unavailable'.tr), findsOneWidget);
+      expect(find.text('Widget unavailable'), findsOneWidget);
     });
 
     testWidgets('shows error when repository is missing', (tester) async {
@@ -346,14 +330,14 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      // Get.find throws → catch path sets _hasError.
-      expect(find.text('assistant_widget_unavailable'.tr), findsOneWidget);
+      // A missing composition dependency produces a local error fallback.
+      expect(find.text('Widget unavailable'), findsOneWidget);
     });
 
     testWidgets('shows error when getWidgetHtml returns null', (tester) async {
       final mockRepo = MockAssistantRepository();
       when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) async => null);
-      Get.put<AssistantRepository>(mockRepo);
+      repository = mockRepo;
 
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
 
@@ -361,13 +345,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('assistant_widget_unavailable'.tr), findsOneWidget);
+      expect(find.text('Widget unavailable'), findsOneWidget);
     });
 
     testWidgets('shows error when getWidgetHtml throws', (tester) async {
       final mockRepo = MockAssistantRepository();
       when(() => mockRepo.getWidgetHtml(any())).thenThrow(Exception('network'));
-      Get.put<AssistantRepository>(mockRepo);
+      repository = mockRepo;
 
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
 
@@ -375,13 +359,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('assistant_widget_unavailable'.tr), findsOneWidget);
+      expect(find.text('Widget unavailable'), findsOneWidget);
     });
 
     testWidgets('loads widget HTML and clears loading overlay on success', (tester) async {
       final mockRepo = MockAssistantRepository();
       when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) async => '<html>widget</html>');
-      Get.put<AssistantRepository>(mockRepo);
+      repository = mockRepo;
 
       await pumpBubble(
         tester,
@@ -392,7 +376,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('assistant_widget_unavailable'.tr), findsNothing);
+      expect(find.text('Widget unavailable'), findsNothing);
       expect(find.byType(Shimmer), findsNothing);
       expect(lastWebViewController?.runJavaScriptCalls, greaterThanOrEqualTo(2));
       final scripts = lastWebViewController?.runJavaScriptScripts ?? [];
@@ -404,7 +388,7 @@ void main() {
     testWidgets('loads widget without injectToolResult when widgetData is null', (tester) async {
       final mockRepo = MockAssistantRepository();
       when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) async => '<html>ok</html>');
-      Get.put<AssistantRepository>(mockRepo);
+      repository = mockRepo;
 
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage(widgetData: null)));
 
@@ -421,18 +405,14 @@ void main() {
     testWidgets('uses dark theme string when Theme is dark', (tester) async {
       final mockRepo = MockAssistantRepository();
       when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) async => '<html>ok</html>');
-      Get.put<AssistantRepository>(mockRepo);
+      repository = mockRepo;
 
-      await tester.pumpWidget(
-        GetMaterialApp(
-          translations: AppTranslations(),
-          locale: const Locale('en', 'US'),
-          fallbackLocale: const Locale('en', 'US'),
-          theme: ThemeData.dark(),
-          home: Scaffold(
-            body: Center(child: ChatWidgetBubble(message: _widgetMessage())),
-          ),
+      await tester.pumpProviderApp(
+        Scaffold(
+          body: Center(child: ChatWidgetBubble(message: _widgetMessage())),
         ),
+        theme: ThemeData.dark(),
+        overrides: [assistantRepositoryProvider.overrideWithValue(mockRepo)],
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -454,13 +434,13 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('assistant_widget_unavailable'.tr), findsOneWidget);
+      expect(find.text('Widget unavailable'), findsOneWidget);
     });
 
     testWidgets('WidgetAction channel ignores empty and oversized messages', (tester) async {
       final mockRepo = MockAssistantRepository();
       when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) async => '<html>ok</html>');
-      Get.put<AssistantRepository>(mockRepo);
+      repository = mockRepo;
 
       await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
 
@@ -473,7 +453,9 @@ void main() {
       expect(find.byType(ChatWidgetBubble), findsOneWidget);
     });
 
-    testWidgets('WidgetAction channel forwards message to AssistantController', (tester) async {
+    testWidgets('WidgetAction channel forwards message to the current conversation callback', (
+      tester,
+    ) async {
       final mockRepo = MockAssistantRepository();
       when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) async => '<html>ok</html>');
       when(
@@ -482,21 +464,43 @@ void main() {
           conversationId: any(named: 'conversationId'),
         ),
       ).thenAnswer((_) => const Stream.empty());
-      Get.put<AssistantRepository>(mockRepo);
+      repository = mockRepo;
 
-      // Minimal controller registration: only need sendMessage path.
-      final assistant = AssistantController();
-      // Avoid onInit network; put instance and set deps if needed.
-      Get.put<AssistantController>(assistant);
-
-      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
-
+      String? action;
+      await pumpBubble(
+        tester,
+        ChatWidgetBubble(message: _widgetMessage(), onAction: (text) => action = text),
+      );
       lastWebViewController!.simulateJavaScriptMessage('WidgetAction', 'show more homes');
       await tester.pump();
+      expect(action, 'show more homes');
+    });
+    testWidgets('wrapper startup times out locally and retries', (tester) async {
+      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
+      await tester.pump(const Duration(seconds: 15));
+      expect(find.text('Widget unavailable'), findsOneWidget);
+      await tester.tap(find.text('Retry'));
+      await tester.pump();
+      expect(find.text('Widget unavailable'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
 
-      // sendMessage should have been invoked (adds user message).
-      expect(assistant.messages.isNotEmpty, isTrue);
-      expect(assistant.messages.first.content, 'show more homes');
+    testWidgets('disposed widget rejects a late HTML response', (tester) async {
+      final result = Completer<String?>();
+      final mockRepo = MockAssistantRepository();
+      repository = mockRepo;
+      when(() => mockRepo.getWidgetHtml(any())).thenAnswer((_) => result.future);
+      await pumpBubble(tester, ChatWidgetBubble(message: _widgetMessage()));
+      lastNavigationDelegate!.pageFinishedCallback!('about:blank');
+      final webView = lastWebViewController!;
+      await tester.pumpWidget(const SizedBox.shrink());
+      result.complete('<html>late private data</html>');
+      await tester.pump();
+      expect(
+        webView.runJavaScriptScripts.where((script) => script.contains('late private data')),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 }

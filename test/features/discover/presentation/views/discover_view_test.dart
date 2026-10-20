@@ -1,283 +1,191 @@
-// test/features/discover/presentation/views/discover_view_test.dart
-
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/controllers/location_controller.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
-import 'package:ghar360/core/data/models/likes_segment.dart';
-import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/discover/presentation/controllers/discover_controller.dart';
 import 'package:ghar360/features/discover/presentation/views/discover_view.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_stack.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
-import '../../../../helpers/pump_app.dart';
-
-// ---------------------------------------------------------------------------
-// Mock PageStateService — provides the reactive page states and the handful
-// of helpers the DiscoverTopBar / LocationSelector read while rendering.
-// ---------------------------------------------------------------------------
-
-class _MockPageStateService extends GetxServiceMock implements PageStateService {
-  @override
-  final Rx<PageStateModel> discoverState = PageStateModel.initial(PageType.discover).obs;
-  @override
-  final Rx<PageStateModel> likesState = PageStateModel.initial(PageType.likes).obs;
-  @override
-  final Rx<PageStateModel> exploreState = PageStateModel.initial(PageType.explore).obs;
-  @override
-  final Rx<PageType> currentPageType = PageType.discover.obs;
-
-  final RxBool _discoverRefreshing = false.obs;
-
-  @override
-  bool isSearchVisible(PageType pageType) => false;
-
-  @override
-  bool isPageRefreshing(PageType pageType) {
-    // Read the reactive flag so the Obx in UnifiedTopBar detects an observable.
-    if (pageType == PageType.discover) return _discoverRefreshing.value;
-    return false;
-  }
-
-  @override
-  PageStateModel getStateForPage(PageType pageType) {
-    switch (pageType) {
-      case PageType.explore:
-        return exploreState.value;
-      case PageType.discover:
-        return discoverState.value;
-      case PageType.likes:
-        return likesState.value;
-    }
-  }
-
-  @override
-  LikesSegment get currentLikesSegment => LikesSegment.tryParse(
-      likesState.value.getAdditionalData<String>('currentSegment'));
-}
-
-// ---------------------------------------------------------------------------
-// Test DiscoverController — skips the onInit/onReady workers that wire up
-// page-activation and state-sync listeners, so tests drive state directly.
-// ---------------------------------------------------------------------------
-
-class _TestDiscoverController extends DiscoverController {
-  @override
-  // ignore: must_call_super — skip workers; tests set [state] explicitly.
-  void onInit() {}
-
-  @override
-  void onReady() {
-    // No page-activation worker or auto-loading.
-  }
-}
-
-PropertyModel _property({int id = 100}) => testPropertyModel(id: id);
-
-/// Pumps the DiscoverView while suppressing RenderFlex overflow errors that
-/// the shimmer skeletons emit under the constrained test surface.
-Future<void> _pumpDiscover(WidgetTester tester) async {
-  FlutterError.onError = (FlutterErrorDetails details) {
-    if (details.summary.toString().contains('overflowed')) return;
-    FlutterError.presentError(details);
-  };
-  await tester.pumpApp(const DiscoverView());
-}
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import 'package:ghar360/features/properties/application/swipe_history.dart';
+import '../../../../helpers/property_query_test_support.dart';
+import '../../../../helpers/property_screen_harness.dart';
 
 void main() {
-  late _MockPageStateService pageStateService;
-  late _TestDiscoverController controller;
+  Future<PropertyScreenHarness> setup(
+    WidgetTester tester,
+    PropertyPageState page, {
+    Size size = const Size(390, 844),
+    double scale = 1,
+    bool dark = false,
+    Locale locale = const Locale('en', 'US'),
+  }) async {
+    final data = (await tester.runAsync(PropertyQueryHarness.create))!;
+    final h = PropertyScreenHarness(data, pages: {PropertyFeed.discover: page});
+    await h.pump(
+      tester,
+      const DiscoverView(),
+      size: size,
+      scale: scale,
+      dark: dark,
+      locale: locale,
+    );
+    return h;
+  }
 
-  void Function(FlutterErrorDetails)? originalOnError;
-
-  setUp(() {
-    GetxTestBinding.init();
-    pageStateService = _MockPageStateService();
-    // Suppress RenderFlex overflow errors thrown by skeleton/shimmer widgets
-    // under the constrained test surface size.
-    originalOnError = FlutterError.onError;
-    FlutterError.onError = (FlutterErrorDetails details) {
-      final summary = details.summary.toString();
-      if (summary.contains('overflowed')) return;
-      originalOnError?.call(details);
-    };
-    // Register PageStateService before constructing the controller, since
-    // DiscoverController resolves it in a field initializer.
-    GetxTestBinding.bind()
-      ..register<PageStateService>(pageStateService)
-      ..register<LocationController>(_FakeLocationController());
-    controller = _TestDiscoverController();
-    GetxTestBinding.bind().register<DiscoverController>(controller);
-  });
-
-  tearDown(() {
-    FlutterError.onError = originalOnError;
-    GetxTestBinding.reset();
-  });
-
-  group('DiscoverView', () {
-    testWidgets('renders screen semantics and top bar', (tester) async {
-      controller.state.value = DiscoverState.loading;
-
-      await _pumpDiscover(tester);
-
+  PropertyPageState content() => PropertyPageState(
+    phase: PropertyLoadPhase.content,
+    items: [queryProperty(1), queryProperty(2)],
+  );
+  for (final phase in [
+    PropertyLoadPhase.idle,
+    PropertyLoadPhase.loading,
+    PropertyLoadPhase.paginating,
+  ]) {
+    testWidgets('empty $phase shows loading instead of an exhausted deck', (tester) async {
+      final h = await setup(tester, PropertyPageState(phase: phase));
       expect(find.byKey(const ValueKey('qa.discover.screen')), findsOneWidget);
+      expect(find.text('You have seen every home here'), findsNothing);
+      expect(find.byType(PropertySwipeStack), findsNothing);
+      expect(tester.takeException(), isNull);
+      await h.close(tester);
     });
-
-    testWidgets('shows loading state with skeleton', (tester) async {
-      controller.state.value = DiscoverState.loading;
-      controller.isPrefetching.value = false;
-
-      await _pumpDiscover(tester);
-
-      expect(find.byIcon(Icons.travel_explore_rounded), findsOneWidget);
-      expect(find.text('discovering_properties_message'.tr), findsOneWidget);
-    });
-
-    testWidgets('shows loading state with prefetch indicator', (tester) async {
-      controller.state.value = DiscoverState.loading;
-      controller.isPrefetching.value = true;
-
-      await _pumpDiscover(tester);
-
-      expect(find.text('loading_more_properties'.tr), findsOneWidget);
-    });
-
-    testWidgets('shows error state with retry button', (tester) async {
-      controller.state.value = DiscoverState.error;
-      controller.error.value = NetworkException('Connection failed');
-
-      await tester.pumpApp(const DiscoverView());
-      await tester.pump();
-
-      expect(find.text('Connection failed'), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
-    });
-
-    testWidgets('error state with null error renders empty SizedBox', (tester) async {
-      controller.state.value = DiscoverState.error;
-      controller.error.value = null;
-
-      await tester.pumpApp(const DiscoverView());
-      await tester.pump();
-
-      // No error text shown when error is null.
-      expect(find.byIcon(Icons.refresh), findsNothing);
-    });
-
-    testWidgets('shows empty state with refresh and change filters buttons', (tester) async {
-      controller.state.value = DiscoverState.empty;
-
-      await tester.pumpApp(const DiscoverView());
-      await tester.pump();
-
-      expect(find.text('no_more_properties'.tr), findsOneWidget);
-      expect(find.text('change_filters'.tr), findsOneWidget);
-      expect(find.text('refresh'.tr), findsOneWidget);
-    });
-
-    testWidgets('shows swipe interface when loaded', (tester) async {
-      pageStateService.discoverState.value = PageStateModel(
-        pageType: PageType.discover,
-        filters: const UnifiedFilterModel(),
-        properties: [_property(id: 1), _property(id: 2)],
-      );
-      controller.state.value = DiscoverState.loaded;
-      controller.totalSwipesInSession.value = 5;
-
-      await tester.pumpApp(const DiscoverView());
-      await tester.pump();
-
-      expect(find.byType(PropertySwipeStack), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.discover.swipe_stack')), findsOneWidget);
-    });
-
-    testWidgets('loaded state does not show like/pass/info action buttons', (tester) async {
-      pageStateService.discoverState.value = PageStateModel(
-        pageType: PageType.discover,
-        filters: const UnifiedFilterModel(),
-        properties: [_property(id: 1)],
-      );
-      controller.state.value = DiscoverState.loaded;
-
-      await tester.pumpApp(const DiscoverView());
-      await tester.pump();
-
-      expect(find.byType(PropertySwipeStack), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.discover.action.like')), findsNothing);
-      expect(find.byKey(const ValueKey('qa.discover.action.pass')), findsNothing);
-      expect(find.byKey(const ValueKey('qa.discover.action.details')), findsNothing);
-      expect(find.text('Swipe right to like | Swipe left to pass'), findsNothing);
-    });
-
-    testWidgets('empty deck mid-prefetch shows the loader, not "No More Properties"', (
+  }
+  testWidgets('initial network failure is localized and retry invokes the current query', (
+    tester,
+  ) async {
+    final h = await setup(
+      tester,
+      PropertyPageState(
+        phase: PropertyLoadPhase.failure,
+        error: NetworkException('private-response'),
+      ),
+    );
+    expect(find.textContaining('private-response'), findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(h.query(PropertyFeed.discover).loads, 1);
+    expect(h.query(PropertyFeed.discover).refreshed, isTrue);
+    await h.close(tester);
+  });
+  testWidgets('empty deck offers refresh and filter recovery', (tester) async {
+    final h = await setup(tester, PropertyPageState(phase: PropertyLoadPhase.empty));
+    expect(find.text('You have seen every home here'), findsOneWidget);
+    expect(find.text('Adjust Filters'), findsOneWidget);
+    await tester.tap(find.text('Refresh'));
+    await tester.pump();
+    expect(h.query(PropertyFeed.discover).loads, 1);
+    await h.close(tester);
+  });
+  testWidgets('content includes explicit Like Pass and a labeled Assistant entry', (tester) async {
+    final h = await setup(tester, content());
+    expect(find.byType(PropertySwipeStack), findsOneWidget);
+    for (final action in ['like', 'pass']) {
+      final button = find.byKey(ValueKey('qa.discover.action.$action'));
+      expect(button, findsOneWidget);
+      expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+    }
+    expect(find.text('Like'), findsOneWidget);
+    expect(find.text('Pass'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qa.discover.assistant')));
+    await tester.pumpAndSettle();
+    expect(find.text('Assistant destination'), findsOneWidget);
+    await h.close(tester);
+  });
+  for (final liked in [true, false]) {
+    testWidgets('explicit ${liked ? 'Like' : 'Pass'} calls the same ledger as a swipe', (
       tester,
     ) async {
-      // End-to-end wiring check: the deck drains while the next page is still
-      // in flight. Telling the user the catalogue is exhausted here — and
-      // offering "Change Filters" — makes them reset a live session.
-      pageStateService.discoverState.value = const PageStateModel(
-        pageType: PageType.discover,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        hasMore: true,
-      );
-      controller.state.value = DiscoverState.prefetching;
-      controller.isPrefetching.value = true;
-
-      await tester.pumpApp(const DiscoverView());
+      final h = await setup(tester, content());
+      await tester.tap(find.byKey(ValueKey('qa.discover.action.${liked ? 'like' : 'pass'}')));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
-
-      expect(find.text('no_more_properties'.tr), findsNothing);
-      expect(find.text('change_filters'.tr), findsNothing);
+      expect(h.data.swipes.mutations, [(id: 1, liked: liked)]);
+      expect(h.container.read(swipeHistoryProvider).excluded, contains(1));
+      await h.close(tester);
     });
-
-    testWidgets('prefetching state renders swipe interface', (tester) async {
-      pageStateService.discoverState.value = PageStateModel(
-        pageType: PageType.discover,
-        filters: const UnifiedFilterModel(),
-        properties: [_property(id: 1)],
-      );
-      controller.state.value = DiscoverState.prefetching;
-
-      await tester.pumpApp(const DiscoverView());
-      await tester.pump();
-
-      expect(find.byType(PropertySwipeStack), findsOneWidget);
-    });
-
-    testWidgets('shows refresh indicator when page is refreshing', (tester) async {
-      pageStateService.discoverState.value = PageStateModel(
-        pageType: PageType.discover,
-        filters: const UnifiedFilterModel(),
-        properties: [_property(id: 1)],
-        isRefreshing: true,
-      );
-      controller.state.value = DiscoverState.loaded;
-
-      await tester.pumpApp(const DiscoverView());
-      await tester.pump();
-
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
-    });
+  }
+  for (final pagination in [true, false]) {
+    testWidgets(
+      '${pagination ? 'pagination' : 'refresh'} failure retains content and retries the failed stage',
+      (tester) async {
+        final p = content().copyWith(
+          error: pagination ? null : NetworkException('offline'),
+          paginationError: pagination ? NetworkException('offline') : null,
+          stale: true,
+        );
+        final h = await setup(tester, p);
+        expect(find.byType(PropertySwipeStack), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('qa.discover.content.retry')));
+        await tester.pump();
+        expect(
+          pagination ? h.query(PropertyFeed.discover).more : h.query(PropertyFeed.discover).loads,
+          1,
+        );
+        expect(
+          pagination
+              ? h.query(PropertyFeed.discover).retried
+              : h.query(PropertyFeed.discover).refreshed,
+          isTrue,
+        );
+        await h.close(tester);
+      },
+    );
+  }
+  testWidgets('refresh and pagination show progress while the card stays usable', (tester) async {
+    final h = await setup(tester, content().copyWith(phase: PropertyLoadPhase.refreshing));
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(PropertySwipeStack), findsOneWidget);
+    h.query(PropertyFeed.discover).emit(content().copyWith(phase: PropertyLoadPhase.paginating));
+    await tester.pump();
+    expect(find.byType(PropertySwipeStack), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await h.close(tester);
   });
-}
-
-// ---------------------------------------------------------------------------
-// Minimal fake LocationController for the top bar's LocationSelector.
-// ---------------------------------------------------------------------------
-
-class _FakeLocationController extends LocationController {
-  @override
-  void clearPlaceSuggestions() {}
-
-  @override
-  bool get hasLocation => false;
+  testWidgets('swipe failure is announced without exposing diagnostics', (tester) async {
+    final h = await setup(tester, content());
+    h.history.emit(
+      SwipeHistoryState(hydrated: true, failures: {1: ServerException('private-diagnostic')}),
+    );
+    await tester.pump();
+    expect(find.textContaining('could not be saved'), findsOneWidget);
+    expect(find.textContaining('private-diagnostic'), findsNothing);
+    await h.close(tester);
+  });
+  testWidgets('property tap retains the numeric details destination', (tester) async {
+    final h = await setup(tester, content());
+    final card = tester.widget<PropertySwipeStack>(find.byType(PropertySwipeStack));
+    card.onSwipeUp(queryProperty(1));
+    await tester.pumpAndSettle();
+    expect(find.text('Details 1'), findsOneWidget);
+    await h.close(tester);
+  });
+  for (final dark in [false, true]) {
+    for (final size in [const Size(320, 740), const Size(1024, 768)]) {
+      testWidgets('content ${size.width}px Hindi2x dark=$dark has no layout errors', (
+        tester,
+      ) async {
+        final p = PropertyModel.fromJson({
+          ...queryProperty(1).toJson(),
+          'title': 'A long readable property title with complete information',
+          'bedrooms': 3,
+          'bathrooms': 2,
+          'area_sqft': 1400,
+          'city': 'New Delhi',
+        });
+        final h = await setup(
+          tester,
+          PropertyPageState(phase: PropertyLoadPhase.content, items: [p]),
+          size: size,
+          scale: 2,
+          dark: dark,
+          locale: const Locale('hi', 'IN'),
+        );
+        expect(find.byType(PropertySwipeStack), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await h.close(tester);
+      });
+    }
+  }
 }

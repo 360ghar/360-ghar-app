@@ -2,10 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/utils/null_check_trap.dart';
-import '../../helpers/getx_test_binding.dart';
-import '../../helpers/mocks.dart';
 
 void main() {
   // NullCheckTrap uses private static _fired / _stringFired flags that cannot
@@ -13,14 +10,6 @@ void main() {
   // so the flags start false here, but within this file they persist across
   // tests. Tests are therefore ordered so the initial-state check runs first,
   // followed by the non-firing case, then the firing case, then idempotency.
-
-  setUp(() {
-    GetxTestBinding.init();
-  });
-
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
 
   group('NullCheckTrap.hasFired', () {
     test('is false before any null-check exception is captured', () {
@@ -49,9 +38,9 @@ void main() {
       expect(NullCheckTrap.hasFired, isTrue);
     });
 
-    test('does not throw when PageStateService is not registered', () {
+    test('does not throw when no provider container exists', () {
       // _fired is already true, so this is a no-op, but we verify the method
-      // is safe to call without a registered PageStateService.
+      // is safe to call without a provider container.
       expect(
         () => NullCheckTrap.capture(_NullCheckError(), StackTrace.current, source: 'no-service'),
         returnsNormally,
@@ -111,19 +100,6 @@ void main() {
           'Null check operator used on a null value',
           source: 'mapper-test-2',
         ),
-        returnsNormally,
-      );
-    });
-  });
-
-  group('NullCheckTrap with registered PageStateService', () {
-    test('logs context without throwing when service is registered', () {
-      // _fired is already true so capture is a no-op; but we verify registering
-      // a PageStateService does not cause issues.
-      GetxTestBinding.bind().register<PageStateService>(MockPageStateService());
-
-      expect(
-        () => NullCheckTrap.capture(_NullCheckError(), StackTrace.current, source: 'with-service'),
         returnsNormally,
       );
     });

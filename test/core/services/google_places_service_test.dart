@@ -2,783 +2,347 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:ghar360/core/config/app_config.dart';
-import 'package:ghar360/core/data/models/unified_filter_model.dart';
-import 'package:ghar360/core/services/google_places_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/core/services/google_places_service.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
+import '../../helpers/fake_location_platform.dart';
+
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  /// Standard AppConfig with a non-empty API key so the service proceeds
-  /// past the guard branch and makes an HTTP request (which we intercept).
-  void initConfigWithKey() {
-    AppConfig.initialize(
-      overrides: const <String, String>{
-        'API_BASE_URL': 'https://api.360ghar.com',
-        'SUPABASE_URL': 'https://example.supabase.co',
-        'SUPABASE_PUBLISHABLE_KEY': 'key',
-        'GOOGLE_PLACES_API_KEY': 'test-api-key',
-        'DEFAULT_COUNTRY': 'in',
-      },
-    );
-  }
-
-  void initConfigWithoutKey() {
-    AppConfig.initialize(
-      overrides: const <String, String>{
-        'API_BASE_URL': 'https://api.360ghar.com',
-        'SUPABASE_URL': 'https://example.supabase.co',
-        'SUPABASE_PUBLISHABLE_KEY': 'key',
-        'GOOGLE_PLACES_API_KEY': '',
-        'DEFAULT_COUNTRY': 'in',
-      },
-    );
-  }
-
-  /// Builds a [MockClient] that returns canned responses for Google Places
-  /// autocomplete and details endpoints based on the request URL path.
-  http.Client buildMockClient({
-    Map<String, String> autocompleteResponses = const {},
-    Map<String, String> detailsResponses = const {},
-    int autocompleteStatusCode = 200,
-    int detailsStatusCode = 200,
+  http.Response response(Object body, [int status = 200]) =>
+      http.Response(jsonEncode(body), status);
+  const osm = [
+    {'lat': '28.6', 'lon': '77.2', 'display_name': 'Delhi, India', 'osm_id': 1, 'osm_type': 'node'},
+  ];
+  GooglePlacesService service(
+    Future<http.Response> Function(http.Request) send, {
+    String key = 'test-key',
+    int radius = 25000,
+    bool strict = false,
   }) {
-    return MockClient((request) async {
-      final path = request.url.path;
-      final query = request.url.queryParameters;
-
-      String body;
-      int statusCode;
-
-      if (path.contains('autocomplete')) {
-        final input = query['input'] ?? '';
-        body =
-            autocompleteResponses[input] ??
-            jsonEncode(<String, dynamic>{'status': 'INVALID_REQUEST'});
-        statusCode = autocompleteStatusCode;
-      } else if (path.contains('details')) {
-        final placeId = query['place_id'] ?? '';
-        body = detailsResponses[placeId] ?? jsonEncode(<String, dynamic>{'status': 'NOT_FOUND'});
-        statusCode = detailsStatusCode;
-      } else {
-        body = jsonEncode(<String, dynamic>{'status': 'INVALID_REQUEST'});
-        statusCode = 400;
-      }
-
-      return http.Response(body, statusCode);
-    });
+    final value = GooglePlacesService(
+      client: MockClient(send),
+      apiKey: key,
+      radiusMeters: radius,
+      strictBounds: strict,
+      wait: (_) async {},
+    );
+    addTearDown(value.dispose);
+    return value;
   }
 
-  group('GooglePlacesService.getPlaceSuggestions (no network)', () {
-    late GooglePlacesService service;
-
-    setUp(() {
-      initConfigWithoutKey();
-      service = GooglePlacesService();
-      service.clearPlaceSuggestions();
+  for (final query in ['', '   ', 'x']) {
+    test('short query "$query" returns empty without network', () async {
+      final places = service((_) => throw StateError('No network expected'));
+      expect(await places.getPlaceSuggestions(query), isEmpty);
     });
-
-    tearDown(() {
-      AppConfig.resetForTest();
-    });
-
-    test('returns empty list and clears suggestions for empty query', () async {
-      final result = await service.getPlaceSuggestions('');
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('returns empty list for whitespace-only query', () async {
-      final result = await service.getPlaceSuggestions('   ');
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('returns empty list for single-character query (length < 2)', () async {
-      final result = await service.getPlaceSuggestions('a');
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('resets isSearchingPlaces to false after empty-query early return', () async {
-      await service.getPlaceSuggestions('');
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
-
-    test('resets isSearchingPlaces to false after short-query early return', () async {
-      await service.getPlaceSuggestions('x');
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
-
-    test('returns empty list when API key is empty (guard branch)', () async {
-      final result = await service.getPlaceSuggestions('kathmandu');
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('resets isSearchingPlaces to false after API-key-missing return', () async {
-      await service.getPlaceSuggestions('kathmandu');
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
+  }
+  test('missing key uses OSM only on explicit search', () async {
+    final calls = <Uri>[];
+    final places = service((request) async {
+      calls.add(request.url);
+      return response(osm);
+    }, key: '');
+    expect(await places.getPlaceSuggestions('Delhi', allowFallback: false), isEmpty);
+    expect(calls, isEmpty);
+    final result = await places.getPlaceSuggestions('Delhi');
+    expect(result.single.mainText, 'Delhi');
+    expect(result.single.secondaryText, 'India');
+    expect(result.single.description, 'Delhi, India');
+    expect(result.single.hasCoordinates, isTrue);
+    expect(calls.single.host, 'nominatim.openstreetmap.org');
   });
-
-  group('GooglePlacesService.getPlaceDetails (no network)', () {
-    late GooglePlacesService service;
-
-    setUp(() {
-      initConfigWithoutKey();
-      service = GooglePlacesService();
-    });
-
-    tearDown(() {
-      AppConfig.resetForTest();
-    });
-
-    test('returns null when API key is empty', () async {
-      final result = await service.getPlaceDetails('place-id-1');
-
-      expect(result, isNull);
-    });
-
-    test('returns null when API key is empty even with preferredName', () async {
-      final result = await service.getPlaceDetails('place-id-1', preferredName: 'My Place');
-
-      expect(result, isNull);
-    });
-  });
-
-  group('GooglePlacesService reactive state', () {
-    setUp(() {
-      initConfigWithoutKey();
-    });
-
-    tearDown(() {
-      AppConfig.resetForTest();
-    });
-
-    test('placeSuggestions starts empty', () {
-      final service = GooglePlacesService();
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('isSearchingPlaces starts false', () {
-      final service = GooglePlacesService();
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
-
-    test('clearPlaceSuggestions empties the list', () {
-      final service = GooglePlacesService();
-      service.clearPlaceSuggestions();
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('clearPlaceSuggestions is callable multiple times', () {
-      final service = GooglePlacesService();
-      expect(() {
-        service.clearPlaceSuggestions();
-        service.clearPlaceSuggestions();
-      }, returnsNormally);
-    });
-  });
-
-  group('PlaceSuggestion value object', () {
-    test('stores all fields correctly', () {
-      final suggestion = PlaceSuggestion(
-        placeId: 'abc',
-        description: 'Kathmandu, Nepal',
-        mainText: 'Kathmandu',
-        secondaryText: 'Nepal',
-      );
-
-      expect(suggestion.placeId, 'abc');
-      expect(suggestion.description, 'Kathmandu, Nepal');
-      expect(suggestion.mainText, 'Kathmandu');
-      expect(suggestion.secondaryText, 'Nepal');
-    });
-
-    test('supports empty text fields', () {
-      final suggestion = PlaceSuggestion(
-        placeId: 'xyz',
+  test('value objects retain fields and reject invalid coordinates', () {
+    const suggestion = PlaceSuggestion(
+      placeId: 'a',
+      description: 'City, Region',
+      mainText: 'City',
+      secondaryText: 'Region',
+      latitude: 28,
+      longitude: 77,
+    );
+    expect(suggestion.placeId, 'a');
+    expect(suggestion.description, 'City, Region');
+    expect(suggestion.mainText, 'City');
+    expect(suggestion.secondaryText, 'Region');
+    expect(suggestion.hasCoordinates, isTrue);
+    expect(
+      const PlaceSuggestion(
+        placeId: '',
         description: '',
         mainText: '',
         secondaryText: '',
-      );
-
-      expect(suggestion.placeId, 'xyz');
-      expect(suggestion.description, '');
-      expect(suggestion.mainText, '');
-      expect(suggestion.secondaryText, '');
-    });
+        latitude: 95,
+        longitude: 77,
+      ).hasCoordinates,
+      isFalse,
+    );
+    const location = LocationData(name: 'Delhi', latitude: 28, longitude: 77);
+    expect(location.name, 'Delhi');
+    expect(location.latitude, 28);
+    expect(location.longitude, 77);
   });
-
-  group('LocationData value object', () {
-    test('stores name and coordinates', () {
-      const data = LocationData(name: 'Lalitpur', latitude: 27.67, longitude: 85.32);
-
-      expect(data.name, 'Lalitpur');
-      expect(data.latitude, 27.67);
-      expect(data.longitude, 85.32);
-    });
+  test('Google predictions preserve names and tolerate missing formatting', () async {
+    final places = service(
+      (_) async => response({
+        'status': 'OK',
+        'predictions': [
+          {
+            'place_id': 'one',
+            'description': 'Delhi, India',
+            'structured_formatting': {'main_text': 'Delhi', 'secondary_text': 'India'},
+          },
+          {'place_id': 'two', 'description': 'Gurgaon'},
+          {'description': 'missing id'},
+          42,
+        ],
+      }),
+    );
+    final result = await places.getPlaceSuggestions('Delhi');
+    expect(result, hasLength(2));
+    expect(result.first.placeId, 'one');
+    expect(result.first.mainText, 'Delhi');
+    expect(result.first.secondaryText, 'India');
+    expect(result.first.description, 'Delhi, India');
+    expect(result.last.mainText, '');
+    expect(result.last.secondaryText, '');
+    expect(() => result.clear(), throwsUnsupportedError);
   });
-
-  // ─────────────────────────────────────────────────────────────────────
-  // HTTP-mocked tests: exercise the actual JSON parsing and status-code
-  // branches by intercepting HTTP requests via [http.runWithClient].
-  // ─────────────────────────────────────────────────────────────────────
-
-  group('GooglePlacesService.getPlaceSuggestions (HTTP mocked)', () {
-    late GooglePlacesService service;
-
-    setUp(() {
-      initConfigWithKey();
-      service = GooglePlacesService();
-      service.clearPlaceSuggestions();
+  for (final status in [
+    'ZERO_RESULTS',
+    'OVER_QUERY_LIMIT',
+    'REQUEST_DENIED',
+    'INVALID_REQUEST',
+    'UNKNOWN_ERROR',
+  ]) {
+    test('$status falls back and keeps real empty results distinct from failure', () async {
+      final places = service(
+        (request) async =>
+            request.url.host.contains('google') ? response({'status': status}) : response(osm),
+      );
+      expect((await places.getPlaceSuggestions('Delhi')).single.mainText, 'Delhi');
     });
-
-    tearDown(() {
-      AppConfig.resetForTest();
+  }
+  for (final malformed in [false, true]) {
+    test('Google ${malformed ? 'malformed JSON' : 'HTTP error'} falls back', () async {
+      final places = service(
+        (request) async => request.url.host.contains('google')
+            ? http.Response(malformed ? '{bad' : '', malformed ? 200 : 503)
+            : response(osm),
+      );
+      expect((await places.getPlaceSuggestions('Delhi')).single.latitude, 28.6);
     });
-
-    test('parses OK response with predictions', () async {
-      final client = buildMockClient(
-        autocompleteResponses: {
-          'kathmandu': jsonEncode(<String, dynamic>{
-            'status': 'OK',
-            'predictions': [
-              {
-                'place_id': 'place-1',
-                'description': 'Kathmandu, Nepal',
-                'structured_formatting': {'main_text': 'Kathmandu', 'secondary_text': 'Nepal'},
-              },
-              {
-                'place_id': 'place-2',
-                'description': 'Kathmandu Valley, Nepal',
-                'structured_formatting': {
-                  'main_text': 'Kathmandu Valley',
-                  'secondary_text': 'Nepal',
-                },
-              },
-            ],
-          }),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('kathmandu'),
-        () => client,
-      );
-
-      expect(result, hasLength(2));
-      expect(result[0].placeId, 'place-1');
-      expect(result[0].description, 'Kathmandu, Nepal');
-      expect(result[0].mainText, 'Kathmandu');
-      expect(result[0].secondaryText, 'Nepal');
-      expect(result[1].placeId, 'place-2');
-      expect(service.placeSuggestions, hasLength(2));
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
-
-    test('parses OK response with missing structured_formatting', () async {
-      final client = buildMockClient(
-        autocompleteResponses: {
-          'test': jsonEncode(<String, dynamic>{
-            'status': 'OK',
-            'predictions': [
-              {'place_id': 'place-x', 'description': 'Test Place'},
-            ],
-          }),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('test'),
-        () => client,
-      );
-
-      expect(result, hasLength(1));
-      expect(result[0].placeId, 'place-x');
-      expect(result[0].mainText, '');
-      expect(result[0].secondaryText, '');
-    });
-
-    test('handles ZERO_RESULTS status', () async {
-      final client = buildMockClient(
-        autocompleteResponses: {
-          'nowhere': jsonEncode(<String, dynamic>{
-            'status': 'ZERO_RESULTS',
-            'predictions': <dynamic>[],
-          }),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('nowhere'),
-        () => client,
-      );
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
-    test('clears stale suggestions as soon as Google returns zero results', () async {
-      // A previous search left suggestions on screen.
-      service.placeSuggestions.add(
-        PlaceSuggestion(
-          placeId: 'old-1',
-          description: 'Old Place',
-          mainText: 'Old',
-          secondaryText: 'Previous query',
-        ),
-      );
-      // Hang the throttled Nominatim fallback so the mid-flight state is
-      // observable: with the fix, the stale list is gone the moment Google's
-      // ZERO_RESULTS arrives, not only when the fallback settles (~1.1s).
-      final nominatimGate = Completer<http.Response>();
-      final client = MockClient((request) async {
-        if (request.url.path.contains('autocomplete')) {
-          return http.Response(
-            jsonEncode(<String, dynamic>{'status': 'ZERO_RESULTS', 'predictions': <dynamic>[]}),
-            200,
-          );
+  }
+  test('zero results from both providers are a successful empty search', () async {
+    final places = service(
+      (request) async =>
+          request.url.host.contains('google') ? response({'status': 'ZERO_RESULTS'}) : response([]),
+    );
+    expect(await places.getPlaceSuggestions('Nowhere'), isEmpty);
+  });
+  test('fallback HTTP failure and malformed response throw typed errors', () async {
+    for (final reply in [http.Response('', 503), response({}), http.Response('{bad', 200)]) {
+      final places = service((_) async => reply, key: '');
+      await expectLater(places.getPlaceSuggestions('Delhi'), throwsA(isA<LocationException>()));
+    }
+  });
+  test('Google cooldown lasts ten minutes and does not leak raw errors', () async {
+    var now = DateTime(2026);
+    var googleCalls = 0;
+    final places = GooglePlacesService(
+      client: MockClient((request) async {
+        if (request.url.host.contains('google')) {
+          googleCalls++;
+          return response({'status': 'REQUEST_DENIED', 'error_message': 'private raw body'});
         }
-        return nominatimGate.future;
-      });
-      final search = http.runWithClient(() => service.getPlaceSuggestions('nowhere'), () => client);
-
-      // Let Google's ZERO_RESULTS response be processed; fallback still pending.
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(service.placeSuggestions, isEmpty, reason: 'stale results must clear immediately');
-      expect(service.isSearchingPlaces.value, isTrue, reason: 'fallback still in flight');
-
-      nominatimGate.complete(http.Response(jsonEncode(<dynamic>[]), 200));
-      await search;
-      expect(service.placeSuggestions, isEmpty);
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
-
-    test('handles OVER_QUERY_LIMIT status', () async {
-      final client = buildMockClient(
-        autocompleteResponses: {
-          'query': jsonEncode(<String, dynamic>{'status': 'OVER_QUERY_LIMIT'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('query'),
-        () => client,
-      );
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('handles REQUEST_DENIED status', () async {
-      final client = buildMockClient(
-        autocompleteResponses: {
-          'denied': jsonEncode(<String, dynamic>{'status': 'REQUEST_DENIED'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('denied'),
-        () => client,
-      );
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('handles INVALID_REQUEST status', () async {
-      final client = buildMockClient(
-        autocompleteResponses: {
-          'invalid': jsonEncode(<String, dynamic>{'status': 'INVALID_REQUEST'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('invalid'),
-        () => client,
-      );
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('handles unknown status', () async {
-      final client = buildMockClient(
-        autocompleteResponses: {
-          'unknown': jsonEncode(<String, dynamic>{'status': 'SOME_NEW_STATUS'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('unknown'),
-        () => client,
-      );
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-    });
-
-    test('handles non-200 HTTP status code', () async {
-      final client = buildMockClient(autocompleteStatusCode: 500);
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('error'),
-        () => client,
-      );
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
-
-    test('includes location and radius when currentPosition is provided', () async {
-      final client = buildMockClient(
-        autocompleteResponses: {
-          'nearby': jsonEncode(<String, dynamic>{
-            'status': 'OK',
-            'predictions': [
-              {
-                'place_id': 'nearby-1',
-                'description': 'Nearby Place',
-                'structured_formatting': {'main_text': 'Nearby', 'secondary_text': 'Place'},
-              },
-            ],
-          }),
-        },
-      );
-
-      final position = Position(
-        latitude: 27.7172,
-        longitude: 85.3240,
-        timestamp: DateTime.now(),
-        accuracy: 0,
-        altitude: 0,
-        altitudeAccuracy: 0,
-        heading: 0,
-        headingAccuracy: 0,
-        speed: 0,
-        speedAccuracy: 0,
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('nearby', currentPosition: position),
-        () => client,
-      );
-
-      expect(result, hasLength(1));
-      expect(result[0].placeId, 'nearby-1');
-    });
-
-    test('handles JSON decode error gracefully', () async {
-      final client = MockClient((request) async {
-        return http.Response('not valid json {{{', 200);
-      });
-
-      final result = await http.runWithClient(
-        () => service.getPlaceSuggestions('badjson'),
-        () => client,
-      );
-
-      expect(result, isEmpty);
-      expect(service.placeSuggestions, isEmpty);
-      expect(service.isSearchingPlaces.value, isFalse);
-    });
+        return response([]);
+      }),
+      apiKey: 'key',
+      now: () => now,
+      wait: (duration) async {
+        now = now.add(duration);
+      },
+    );
+    addTearDown(places.dispose);
+    await places.getPlaceSuggestions('one');
+    await places.getPlaceSuggestions('two');
+    expect(googleCalls, 1);
+    now = now.add(const Duration(minutes: 10));
+    await places.getPlaceSuggestions('three');
+    expect(googleCalls, 2);
   });
-
-  group('GooglePlacesService.getPlaceDetails (HTTP mocked)', () {
-    late GooglePlacesService service;
-
-    setUp(() {
-      initConfigWithKey();
-      service = GooglePlacesService();
+  test('location bias preserves configured radius and optional strict bounds', () async {
+    for (final radius in [25, 25000, 999999]) {
+      Uri? uri;
+      final places = service(
+        (request) async {
+          uri = request.url;
+          return response({'status': 'ZERO_RESULTS'});
+        },
+        radius: radius,
+        strict: true,
+      );
+      await places.getPlaceSuggestions(
+        'Delhi',
+        currentPosition: testPosition(),
+        allowFallback: false,
+      );
+      expect(uri!.queryParameters['radius'], '${radius.clamp(1, 200000)}');
+      expect(uri!.queryParameters['strictbounds'], 'true');
+      expect(uri!.queryParameters['location'], '28.6139,77.209');
+      expect(uri!.queryParameters['components'], 'country:in');
+      expect(uri!.queryParameters, isNot(contains('types')));
+    }
+  });
+  test('OSM requests are serialized, cached, identified, and validate coordinates', () async {
+    var now = DateTime(2026);
+    final starts = <DateTime>[];
+    final places = GooglePlacesService(
+      client: MockClient((request) async {
+        starts.add(now);
+        expect(request.headers['User-Agent'], contains('360Ghar'));
+        return response([
+          ...osm,
+          {'lat': 'NaN', 'lon': '77', 'display_name': 'Invalid'},
+        ]);
+      }),
+      apiKey: '',
+      now: () => now,
+      wait: (duration) async {
+        now = now.add(duration);
+      },
+    );
+    addTearDown(places.dispose);
+    final results = await Future.wait([
+      places.getPlaceSuggestions('one'),
+      places.getPlaceSuggestions('two'),
+      places.getPlaceSuggestions('three'),
+    ]);
+    expect(results.every((result) => result.length == 1), isTrue);
+    expect(
+      starts[1].difference(starts[0]),
+      greaterThanOrEqualTo(const Duration(milliseconds: 1100)),
+    );
+    expect(
+      starts[2].difference(starts[1]),
+      greaterThanOrEqualTo(const Duration(milliseconds: 1100)),
+    );
+    await places.getPlaceSuggestions('ONE');
+    expect(starts, hasLength(3));
+  });
+  test('superseded request does not start fallback or publish a result', () async {
+    final gate = Completer<http.Response>();
+    var current = true;
+    var calls = 0;
+    final places = service((_) {
+      calls++;
+      return gate.future;
     });
-
-    tearDown(() {
-      AppConfig.resetForTest();
+    final request = places.getPlaceSuggestions('Delhi', isCurrent: () => current);
+    current = false;
+    gate.complete(response({'status': 'ZERO_RESULTS'}));
+    expect(await request, isEmpty);
+    expect(calls, 1);
+  });
+  for (final status in [
+    'ZERO_RESULTS',
+    'NOT_FOUND',
+    'OVER_QUERY_LIMIT',
+    'REQUEST_DENIED',
+    'INVALID_REQUEST',
+    'UNKNOWN_ERROR',
+  ]) {
+    test('details $status returns a typed failure', () async {
+      final places = service((_) async => response({'status': status}));
+      await expectLater(places.getPlaceDetails('one'), throwsA(isA<LocationException>()));
     });
-
-    test('parses OK response with locality and city', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-1': jsonEncode(<String, dynamic>{
-            'status': 'OK',
-            'result': {
-              'name': 'Connaught Place',
-              'geometry': {
-                'location': {'lat': 28.6315, 'lng': 77.2167},
-              },
-              'address_components': [
-                {
-                  'long_name': 'Connaught Place',
-                  'types': ['locality'],
-                },
-                {
-                  'long_name': 'New Delhi',
-                  'types': ['administrative_area_level_2'],
-                },
-              ],
+  }
+  for (final components in <List<Map<String, Object>>>[
+    [
+      {
+        'types': ['locality'],
+        'long_name': 'Locality',
+      },
+      {
+        'types': ['administrative_area_level_2'],
+        'long_name': 'City',
+      },
+    ],
+    [
+      {
+        'types': ['locality'],
+        'long_name': 'Locality',
+      },
+    ],
+    [
+      {
+        'types': ['administrative_area_level_2'],
+        'long_name': 'City',
+      },
+    ],
+    [],
+  ]) {
+    test('details preserve address-name fallback $components', () async {
+      final places = service(
+        (_) async => response({
+          'status': 'OK',
+          'result': {
+            'name': 'Fallback',
+            'geometry': {
+              'location': {'lat': 28, 'lng': 77},
             },
-          }),
-        },
+            'address_components': components,
+          },
+        }),
       );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-1'),
-        () => client,
-      );
-
-      expect(result, isNotNull);
-      expect(result!.name, 'Connaught Place, New Delhi');
-      expect(result.latitude, 28.6315);
-      expect(result.longitude, 77.2167);
+      final expected = components.isEmpty
+          ? 'Fallback'
+          : components.map((item) => item['long_name']).join(', ');
+      final details = await places.getPlaceDetails('one');
+      expect(details.name, expected);
+      expect(details.latitude, 28);
+      expect(details.longitude, 77);
+      expect((await places.getPlaceDetails('one', preferredName: 'Chosen')).name, 'Chosen');
     });
-
-    test('uses preferredName when provided', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-2': jsonEncode(<String, dynamic>{
-            'status': 'OK',
-            'result': {
-              'name': 'Some Random Name',
-              'geometry': {
-                'location': {'lat': 27.0, 'lng': 85.0},
-              },
-              'address_components': <dynamic>[],
-            },
-          }),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-2', preferredName: 'My Custom Name'),
-        () => client,
-      );
-
-      expect(result, isNotNull);
-      expect(result!.name, 'My Custom Name');
+  }
+  test('malformed details never silently become coordinates 0,0', () async {
+    for (final reply in [
+      response({'status': 'OK', 'result': null}),
+      response({
+        'status': 'OK',
+        'result': {'geometry': {}},
+      }),
+      http.Response('{bad', 200),
+      http.Response('', 503),
+    ]) {
+      final places = service((_) async => reply);
+      await expectLater(places.getPlaceDetails('one'), throwsA(isA<LocationException>()));
+    }
+  });
+  test('popular/OSM details resolve offline and reject malformed coordinates', () async {
+    final places = service((_) => throw StateError('No HTTP'), key: '');
+    expect((await places.getPlaceDetails('popular:Delhi|28.6|77.2')).name, 'Delhi');
+    expect(
+      (await places.getPlaceDetails('osm:node1|28.6|77.2', preferredName: 'Local name')).name,
+      'Local name',
+    );
+    for (final id in ['popular:bad', 'osm:x|99|77', 'osm:x|NaN|77']) {
+      await expectLater(places.getPlaceDetails(id), throwsA(isA<LocationException>()));
+    }
+    await expectLater(places.getPlaceDetails('google-id'), throwsA(isA<LocationException>()));
+  });
+  test('timeout retry is bounded to two Google calls', () async {
+    var calls = 0;
+    final places = service((_) async {
+      calls++;
+      throw TimeoutException('test');
     });
-
-    test('falls back to name when no locality or city found', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-3': jsonEncode(<String, dynamic>{
-            'status': 'OK',
-            'result': {
-              'name': 'Just A Name',
-              'geometry': {
-                'location': {'lat': 27.0, 'lng': 85.0},
-              },
-              'address_components': <dynamic>[],
-            },
-          }),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-3'),
-        () => client,
-      );
-
-      expect(result, isNotNull);
-      expect(result!.name, 'Just A Name');
-    });
-
-    test('uses city only when locality is missing', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-4': jsonEncode(<String, dynamic>{
-            'status': 'OK',
-            'result': {
-              'name': 'Some Area',
-              'geometry': {
-                'location': {'lat': 27.0, 'lng': 85.0},
-              },
-              'address_components': [
-                {
-                  'long_name': 'Kathmandu',
-                  'types': ['administrative_area_level_2'],
-                },
-              ],
-            },
-          }),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-4'),
-        () => client,
-      );
-
-      expect(result, isNotNull);
-      expect(result!.name, 'Kathmandu');
-    });
-
-    test('uses locality only when city is missing', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-5': jsonEncode(<String, dynamic>{
-            'status': 'OK',
-            'result': {
-              'name': 'Some Area',
-              'geometry': {
-                'location': {'lat': 27.0, 'lng': 85.0},
-              },
-              'address_components': [
-                {
-                  'long_name': 'Patan',
-                  'types': ['locality'],
-                },
-              ],
-            },
-          }),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-5'),
-        () => client,
-      );
-
-      expect(result, isNotNull);
-      expect(result!.name, 'Patan');
-    });
-
-    test('returns null when result is null in OK response', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-null': jsonEncode(<String, dynamic>{'status': 'OK', 'result': null}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-null'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
-
-    test('handles ZERO_RESULTS status', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-zr': jsonEncode(<String, dynamic>{'status': 'ZERO_RESULTS'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-zr'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
-
-    test('handles OVER_QUERY_LIMIT status', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-ql': jsonEncode(<String, dynamic>{'status': 'OVER_QUERY_LIMIT'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-ql'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
-
-    test('handles REQUEST_DENIED status', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-rd': jsonEncode(<String, dynamic>{'status': 'REQUEST_DENIED'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-rd'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
-
-    test('handles INVALID_REQUEST status', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-ir': jsonEncode(<String, dynamic>{'status': 'INVALID_REQUEST'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-ir'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
-
-    test('handles NOT_FOUND status', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-nf': jsonEncode(<String, dynamic>{'status': 'NOT_FOUND'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-nf'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
-
-    test('handles unknown status', () async {
-      final client = buildMockClient(
-        detailsResponses: {
-          'place-unknown': jsonEncode(<String, dynamic>{'status': 'WEIRD_STATUS'}),
-        },
-      );
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-unknown'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
-
-    test('handles non-200 HTTP status code', () async {
-      final client = buildMockClient(detailsStatusCode: 403);
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-err'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
-
-    test('handles JSON decode error gracefully', () async {
-      final client = MockClient((request) async {
-        return http.Response('not valid json {{{', 200);
-      });
-
-      final result = await http.runWithClient(
-        () => service.getPlaceDetails('place-badjson'),
-        () => client,
-      );
-
-      expect(result, isNull);
-    });
+    await expectLater(
+      places.getPlaceSuggestions('Delhi', allowFallback: false),
+      throwsA(isA<LocationException>().having((error) => error.code, 'code', 'PLACES_TIMEOUT')),
+    );
+    expect(calls, 2);
   });
 }

@@ -1,468 +1,297 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/controllers/location_controller.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/services/google_places_service.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/widgets/common/location_selector.dart';
-import '../../../helpers/getx_test_binding.dart';
-import '../../../helpers/mocks.dart';
-
-/// A fake [LocationController] that exposes real reactive place-suggestion
-/// state without needing the real Google Places HTTP service.
-class _FakeLocationController extends GetxController implements LocationController {
-  @override
-  final RxList<PlaceSuggestion> placeSuggestions = <PlaceSuggestion>[].obs;
-
-  @override
-  final RxBool isSearchingPlaces = false.obs;
-
-  @override
-  final RxString placesError = ''.obs;
-
-  @override
-  final Rxn<Position> currentPosition = Rxn<Position>();
-
-  @override
-  final RxBool isLocationEnabled = false.obs;
-
-  @override
-  final RxBool isLocationPermissionGranted = false.obs;
-
-  @override
-  final RxBool isLoading = false.obs;
-
-  @override
-  final RxString locationError = ''.obs;
-
-  @override
-  final RxString currentAddress = ''.obs;
-
-  @override
-  bool get hasLocation => currentPosition.value != null;
-
-  @override
-  void clearPlaceSuggestions() => placeSuggestions.clear();
-
-  @override
-  Future<List<PlaceSuggestion>> getPlaceSuggestions(
-    String query, {
-    Position? currentPosition,
-  }) async {
-    isSearchingPlaces.value = true;
-    await Future.delayed(const Duration(milliseconds: 10));
-    if (query == 'Delhi') {
-      placeSuggestions.value = [
-        PlaceSuggestion(
-          placeId: '1',
-          description: 'Delhi, India',
-          mainText: 'Delhi',
-          secondaryText: 'India',
-        ),
-      ];
-    } else {
-      placeSuggestions.clear();
-    }
-    isSearchingPlaces.value = false;
-    return placeSuggestions.toList();
-  }
-
-  @override
-  Future<LocationData?> getPlaceDetails(String placeId, {String? preferredName}) async {
-    return LocationData(name: preferredName ?? 'Delhi', latitude: 28.6, longitude: 77.2);
-  }
-
-  @override
-  Future<LocationData> getInitialLocation() async {
-    return const LocationData(name: 'Current Location', latitude: 28.6, longitude: 77.2);
-  }
-
-  // The remaining members of LocationController are not used by
-  // LocationSelector/LocationPickerModal; stubs satisfy the interface.
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-/// A minimal fake [PageStateService] with reactive page states.
-class _FakePageStateService extends GetxServiceMock implements PageStateService {
-  _FakePageStateService({LocationData? location}) {
-    if (location != null) {
-      exploreState.value = exploreState.value.copyWith(selectedLocation: location);
-      discoverState.value = discoverState.value.copyWith(selectedLocation: location);
-      likesState.value = likesState.value.copyWith(selectedLocation: location);
-    }
-  }
-
-  @override
-  final Rx<PageStateModel> exploreState = PageStateModel.initial(
-    PageType.explore,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  final Rx<PageStateModel> discoverState = PageStateModel.initial(
-    PageType.discover,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  final Rx<PageStateModel> likesState = PageStateModel.initial(
-    PageType.likes,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  final Rx<PageType> currentPageType = PageType.discover.obs;
-
-  @override
-  PageStateModel getStateForPage(PageType pageType) {
-    switch (pageType) {
-      case PageType.explore:
-        return exploreState.value;
-      case PageType.discover:
-        return discoverState.value;
-      case PageType.likes:
-        return likesState.value;
-    }
-  }
-
-  @override
-  void updatePageState(PageType pageType, PageStateModel newState) {
-    switch (pageType) {
-      case PageType.explore:
-        exploreState.value = newState;
-        break;
-      case PageType.discover:
-        discoverState.value = newState;
-        break;
-      case PageType.likes:
-        likesState.value = newState;
-        break;
-    }
-  }
-
-  @override
-  TextEditingController getOrCreateSearchController(PageType pageType, {String? seedText}) {
-    return TextEditingController(text: seedText);
-  }
-
-  @override
-  bool isSearchVisible(PageType pageType) {
-    final state = getStateForPage(pageType);
-    return state.getAdditionalData<bool>('searchVisible') ?? false;
-  }
-
-  @override
-  void setSearchVisible(PageType pageType, bool visible) {
-    final state = getStateForPage(pageType);
-    updatePageState(pageType, state.updateAdditionalData('searchVisible', visible));
-  }
-
-  @override
-  void toggleSearch(PageType pageType) {
-    setSearchVisible(pageType, !isSearchVisible(pageType));
-  }
-
-  @override
-  bool isPageRefreshing(PageType pageType) => false;
-
-  @override
-  Future<void> updateLocationForPage(
-    PageType pageType,
-    LocationData location, {
-    LocationSource source = LocationSource.manual,
-  }) async {
-    final state = getStateForPage(pageType);
-    updatePageState(pageType, state.copyWith(selectedLocation: location));
-  }
-
-  @override
-  Future<void> useCurrentLocationForPage(PageType pageType) async {
-    final state = getStateForPage(pageType);
-    updatePageState(
-      pageType,
-      state.copyWith(
-        selectedLocation: const LocationData(
-          name: 'Current Location',
-          latitude: 28.6,
-          longitude: 77.2,
-        ),
-      ),
-    );
-  }
-
-  @override
-  void updatePageFilters(PageType pageType, UnifiedFilterModel filters) {
-    final state = getStateForPage(pageType);
-    updatePageState(pageType, state.copyWith(filters: filters));
-  }
-}
+import 'package:ghar360/features/location/application/location_search_controller.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import '../../../helpers/knife_finders.dart';
+import '../../../helpers/location_test_harness.dart';
+import '../../../helpers/provider_test_app.dart';
 
 void main() {
-  late _FakeLocationController locationController;
-  late _FakePageStateService pageStateService;
-
-  setUp(() {
-    GetxTestBinding.init();
-    locationController = _FakeLocationController();
-    pageStateService = _FakePageStateService();
-    GetxTestBinding.bind()
-      ..register<LocationController>(locationController)
-      ..register<PageStateService>(pageStateService);
-  });
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
-
-  /// Installs a temporary error handler that suppresses known source-widget
-  /// issues (ListTile background color + RenderFlex overflow) while forwarding
-  /// real errors to the framework's original handler. Returns a function that
-  /// restores the original handler.
-  void Function() suppressFrameworkErrors() {
-    final originalOnError = FlutterError.onError;
-    FlutterError.onError = (FlutterErrorDetails details) {
-      final fullText = '${details.toString()}\n${details.exception}';
-      if (fullText.contains('ListTile background color') || fullText.contains('overflowed')) {
-        return;
-      }
-      originalOnError?.call(details);
-    };
-    return () => FlutterError.onError = originalOnError;
-  }
-
-  Future<void> pumpWidget(WidgetTester tester, Widget child) async {
-    final restore = suppressFrameworkErrors();
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: Material(child: child)),
+  late LocationTestHarness harness;
+  setUp(() => harness = LocationTestHarness());
+  tearDown(() => harness.dispose());
+  Future<void> pump(
+    WidgetTester tester, [
+    PageType page = PageType.discover,
+    double scale = 1,
+    ThemeData? theme,
+  ]) async {
+    await tester.pumpProviderApp(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: Scaffold(body: LocationSelector(pageType: page)),
       ),
+      textScale: scale,
+      theme: theme,
     );
-    restore();
+    await tester.pumpAndSettle();
   }
 
-  /// Opens the location picker modal, suppressing framework errors during the
-  /// bottom sheet animation.
-  Future<void> openModal(WidgetTester tester, PageType pageType) async {
-    await pumpWidget(tester, LocationSelector(pageType: pageType));
-    final restore = suppressFrameworkErrors();
+  Future<void> open(
+    WidgetTester tester, [
+    PageType page = PageType.discover,
+    double scale = 1,
+    ThemeData? theme,
+  ]) async {
+    await pump(tester, page, scale, theme);
     await tester.tap(find.byType(LocationSelector));
     await tester.pumpAndSettle();
-    restore();
   }
 
-  testWidgets('renders the location icon and current location text', (tester) async {
-    await pumpWidget(tester, const LocationSelector(pageType: PageType.discover));
+  Future<void> type(WidgetTester tester, String value) async {
+    await tester.enterText(find.byType(TextField), value);
+    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pumpAndSettle();
+  }
 
-    expect(find.byType(LocationSelector), findsOneWidget);
-    // Location pin icon.
-    expect(find.byIcon(Icons.location_on), findsOneWidget);
-    // Dropdown arrow icon.
-    expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
-    // Default text when no location set is "Select Location".
+  Future<void> disposeWidget(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('renders icons, selected label, native identifier, and 48px target', (tester) async {
+    await pump(tester);
+    expect(findKnife(KnifeIcon.pin), findsOneWidget);
+    expect(findKnife(KnifeIcon.chevronDown), findsOneWidget);
     expect(find.text('Select Location'), findsOneWidget);
+    final target = find.byKey(const ValueKey('qa.location.selector.trigger.discover'));
+    expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+    final node = tester.getSemantics(target);
+    expect(node.identifier, 'qa.location.selector.trigger.discover');
+    expect(node.label, isNot(contains('qa.')));
+    await disposeWidget(tester);
   });
-
-  testWidgets('shows the saved location name when a location is set', (tester) async {
-    pageStateService.discoverState.value = pageStateService.discoverState.value.copyWith(
-      selectedLocation: const LocationData(name: 'New Delhi', latitude: 28.6, longitude: 77.2),
+  testWidgets('shows saved location and uses Current Location for empty name', (tester) async {
+    await harness.location(PageType.discover).select(delhi);
+    await pump(tester);
+    expect(
+      find.descendant(of: find.byType(LocationSelector), matching: find.text('Delhi')),
+      findsOneWidget,
     );
-
-    await pumpWidget(tester, const LocationSelector(pageType: PageType.discover));
-
-    expect(find.text('New Delhi'), findsOneWidget);
-    expect(find.text('Select Location'), findsNothing);
-  });
-
-  testWidgets('shows "Current Location" when location name is empty', (tester) async {
-    pageStateService.discoverState.value = pageStateService.discoverState.value.copyWith(
-      selectedLocation: const LocationData(name: '', latitude: 28.6, longitude: 77.2),
-    );
-
-    await pumpWidget(tester, const LocationSelector(pageType: PageType.discover));
-
+    await harness
+        .location(PageType.discover)
+        .select(const LocationData(name: '', latitude: 28.6, longitude: 77.2));
+    await tester.pumpAndSettle();
     expect(find.text('Current Location'), findsOneWidget);
+    await disposeWidget(tester);
   });
-
-  testWidgets('opens location picker modal on tap', (tester) async {
-    await openModal(tester, PageType.discover);
-
-    expect(find.byIcon(Icons.my_location), findsOneWidget);
-    expect(find.text('Use Current Location'), findsOneWidget);
+  testWidgets('opens picker with search, current location, radius, and close', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await open(tester, PageType.explore);
+      expect(
+        find.bySemanticsIdentifier('qa.location.selector.search_input.explore'),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsIdentifier('qa.location.selector.use_current_location.explore'),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel(RegExp(r'qa\.location')), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byType(Slider), findsOneWidget);
+      expect(find.text('Search radius'), findsOneWidget);
+      expect(findKnife(KnifeIcon.locate), findsOneWidget);
+      expect(find.text('Use Current Location'), findsOneWidget);
+      await tester.tap(findKnife(KnifeIcon.close));
+      await tester.pumpAndSettle();
+      expect(find.byType(LocationPickerModal), findsNothing);
+      await disposeWidget(tester);
+    } finally {
+      semantics.dispose();
+    }
   });
-
-  testWidgets('location picker modal shows search input and radius selector', (tester) async {
-    await openModal(tester, PageType.explore);
-
-    expect(find.byType(TextField), findsOneWidget);
-    expect(find.byType(Slider), findsOneWidget);
-    expect(find.text('Search radius'), findsOneWidget);
-  });
-
-  testWidgets('location picker modal can be dismissed via close button', (tester) async {
-    await openModal(tester, PageType.discover);
-
-    final restore = suppressFrameworkErrors();
-    await tester.tap(find.byIcon(Icons.close).last);
-    await tester.pumpAndSettle();
-    restore();
-
-    expect(find.text('Use Current Location'), findsNothing);
-  });
-
-  testWidgets('typing a search query fetches and displays suggestions', (tester) async {
-    await openModal(tester, PageType.explore);
-
-    final restore = suppressFrameworkErrors();
-    await tester.enterText(find.byType(TextField), 'Delhi');
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
-    restore();
-
-    // "India" appears in the popular Delhi tile's subtitle ("Delhi, India").
+  testWidgets('typing fetches suggestions and clear removes remote results', (tester) async {
+    await open(tester, PageType.explore);
+    await type(tester, 'Delhi');
     expect(find.textContaining('India'), findsOneWidget);
-    // "Delhi" appears in both the text field and the suggestion tile.
     expect(find.text('Delhi'), findsNWidgets(2));
+    expect(harness.places.requests.single.fallback, isFalse);
+    // The sheet close and the field clear are both bare close marks.
+    expect(find.byTooltip('Clear Search'), findsOneWidget);
+    await tester.tap(find.byTooltip('Clear Search'));
+    await tester.pumpAndSettle();
+    expect(harness.container.read(locationSearchProvider(PageType.explore)).suggestions, isEmpty);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
+    await disposeWidget(tester);
   });
-
-  testWidgets('clearing the search field clears suggestions', (tester) async {
-    await openModal(tester, PageType.explore);
-
-    final restore = suppressFrameworkErrors();
-    await tester.enterText(find.byType(TextField), 'Delhi');
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byIcon(Icons.clear));
-    await tester.pumpAndSettle();
-    restore();
-
-    // Suggestion list is cleared — "India" no longer shown.
-    expect(find.text('India'), findsNothing);
-  });
-
-  testWidgets('shows "No locations found" when search yields no results', (tester) async {
-    await openModal(tester, PageType.explore);
-
-    final restore = suppressFrameworkErrors();
-    await tester.enterText(find.byType(TextField), 'zzzzz');
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
-    restore();
-
+  testWidgets('empty response shows no locations and no error', (tester) async {
+    await open(tester, PageType.explore);
+    await type(tester, 'zzzzz');
     expect(find.text('No locations found'), findsOneWidget);
-    expect(find.byIcon(Icons.location_off), findsOneWidget);
+    expect(find.byKey(const ValueKey('failed_to_search_locations')), findsNothing);
+    await disposeWidget(tester);
   });
-
-  testWidgets('tapping a suggestion selects the place and updates page state', (tester) async {
-    await openModal(tester, PageType.explore);
-
-    final restore = suppressFrameworkErrors();
-    await tester.enterText(find.byType(TextField), 'Delhi');
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Delhi').last);
-    await tester.pumpAndSettle();
-    restore();
-
-    expect(pageStateService.exploreState.value.selectedLocation?.name, 'Delhi');
-  });
-
-  testWidgets('use current location updates page state', (tester) async {
-    await openModal(tester, PageType.discover);
-
-    final restore = suppressFrameworkErrors();
+  for (final page in [PageType.explore, PageType.likes]) {
+    testWidgets('selecting a suggestion updates ${page.name} and selector', (tester) async {
+      await open(tester, page);
+      await type(tester, 'Delhi');
+      await tester.tap(find.text('Delhi').last);
+      await tester.pumpAndSettle();
+      expect(harness.state(page).location?.name, 'Delhi');
+      expect(harness.state(page).source, LocationSource.manual);
+      expect(find.byType(LocationPickerModal), findsNothing);
+      expect(
+        find.descendant(of: find.byType(LocationSelector), matching: find.text('Delhi')),
+        findsOneWidget,
+      );
+      await disposeWidget(tester);
+    });
+  }
+  testWidgets('current location updates page and closes on committed result', (tester) async {
+    await open(tester);
     await tester.tap(find.text('Use Current Location'));
     await tester.pumpAndSettle();
-    restore();
-
-    expect(pageStateService.discoverState.value.selectedLocation?.name, 'Current Location');
+    expect(harness.state(PageType.discover).location?.name, 'Delhi');
+    expect(harness.state(PageType.discover).source, LocationSource.gps);
+    expect(find.byType(LocationPickerModal), findsNothing);
+    await disposeWidget(tester);
   });
-
-  testWidgets('radius slider updates the page filter radius', (tester) async {
-    await openModal(tester, PageType.explore);
-
+  testWidgets('radius range and changes update page filter', (tester) async {
+    await open(tester, PageType.explore);
     final slider = tester.widget<Slider>(find.byType(Slider));
     expect(slider.min, 5);
     expect(slider.max, 50);
-
-    final restore = suppressFrameworkErrors();
-    await tester.tap(find.byType(Slider));
+    slider.onChanged!(30);
+    slider.onChangeEnd!(30);
     await tester.pumpAndSettle();
-    restore();
-
-    final radius = pageStateService.exploreState.value.filters.radiusKm;
-    expect(radius, isNotNull);
-    expect(radius! >= 5 && radius <= 50, isTrue);
+    expect(harness.container.read(propertyFiltersProvider).forPage(PageType.explore).radiusKm, 30);
+    await disposeWidget(tester);
   });
-
-  testWidgets('shows loading indicator when searching places', (tester) async {
-    await openModal(tester, PageType.explore);
-
-    locationController.isSearchingPlaces.value = true;
+  testWidgets('loading, search failure, retained input, and retry are distinct from empty', (
+    tester,
+  ) async {
+    final pending = Completer<List<PlaceSuggestion>>();
+    harness.places.response = (_) => pending.future;
+    await open(tester, PageType.explore);
+    await tester.enterText(find.byType(TextField), 'zzzzz');
+    await tester.pump(const Duration(milliseconds: 450));
     await tester.pump();
-
-    // With an empty query the popular-cities list is visible, so only the
-    // search-field suffix spinner renders (the results-area spinner is gated
-    // on an empty suggestion list).
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-
-    locationController.isSearchingPlaces.value = false;
-    await tester.pump();
-  });
-
-  testWidgets('shows clear icon when search text is present and not searching', (tester) async {
-    await openModal(tester, PageType.explore);
-
-    final restore = suppressFrameworkErrors();
-    await tester.enterText(find.byType(TextField), 'Del');
-    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.text('No locations found'), findsNothing);
+    pending.completeError(NetworkException('secret response'));
     await tester.pumpAndSettle();
-    restore();
-
-    expect(find.byIcon(Icons.clear), findsOneWidget);
-  });
-
-  testWidgets('selector reflects updated location after selecting a place', (tester) async {
-    await openModal(tester, PageType.likes);
-
-    final restore = suppressFrameworkErrors();
-    await tester.enterText(find.byType(TextField), 'Delhi');
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Delhi').last);
-    await tester.pumpAndSettle();
-    restore();
-
-    expect(find.text('Delhi'), findsOneWidget);
-  });
-
-  testWidgets('location tile with empty subtitle renders without subtitle text', (tester) async {
-    await openModal(tester, PageType.explore);
-
-    // Populate suggestions after the modal is open (initState clears them).
-    final restore = suppressFrameworkErrors();
-    locationController.placeSuggestions.value = [
-      PlaceSuggestion(
-        placeId: '2',
-        description: 'Mumbai, India',
-        mainText: 'Mumbai',
+    expect(find.byKey(const ValueKey('failed_to_search_locations')), findsOneWidget);
+    expect(find.text('No locations found'), findsNothing);
+    expect(find.textContaining('secret response'), findsNothing);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'zzzzz');
+    harness.places.response = (_) async => [
+      const PlaceSuggestion(
+        placeId: 'test',
+        description: 'Local area',
+        mainText: 'Local area',
         secondaryText: '',
       ),
     ];
+    await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
-    restore();
-
-    // Mumbai renders below the popular-cities header in the lazy list; it is
-    // built but offstage, so query the full tree to assert the empty-subtitle
-    // tile is present.
-    expect(find.text('Mumbai', skipOffstage: false), findsOneWidget);
+    expect(find.text('Local area'), findsOneWidget);
+    expect(find.byKey(const ValueKey('failed_to_search_locations')), findsNothing);
+    await disposeWidget(tester);
   });
+  testWidgets('place details failure keeps query and offers retry without closing', (tester) async {
+    harness.places.response = (_) async => [
+      const PlaceSuggestion(
+        placeId: 'test',
+        description: 'Central',
+        mainText: 'Central',
+        secondaryText: '',
+      ),
+    ];
+    harness.places.details = () async => throw NetworkException('details');
+    await open(tester, PageType.explore);
+    await type(tester, 'Central');
+    await tester.tap(find.text('Central').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(LocationPickerModal), findsOneWidget);
+    expect(find.byKey(const ValueKey('location_details_failed')), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'Central');
+    harness.places.details = () async => mumbai;
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(harness.state().location?.name, 'Mumbai');
+    expect(find.byType(LocationPickerModal), findsNothing);
+    await disposeWidget(tester);
+  });
+  testWidgets('GPS denial preserves manual location and manual search remains available', (
+    tester,
+  ) async {
+    await harness.location(PageType.discover).select(mumbai);
+    harness.device.response = () async =>
+        throw LocationException('denied', code: 'LOCATION_DENIED_FOREVER');
+    await open(tester);
+    await tester.tap(find.text('Use Current Location'));
+    await tester.pumpAndSettle();
+    expect(harness.state(PageType.discover).location?.name, 'Mumbai');
+    expect(find.byKey(const ValueKey('location_permission_permanently_denied')), findsOneWidget);
+    await tester.ensureVisible(find.text('Open Settings'));
+    await tester.tap(find.text('Open Settings'));
+    await tester.pumpAndSettle();
+    expect(harness.device.settingsCalls, 1);
+    await type(tester, 'Delhi');
+    final item = find.text('Delhi').last;
+    await tester.ensureVisible(item);
+    await tester.tap(item);
+    await tester.pumpAndSettle();
+    expect(harness.state(PageType.discover).location?.name, 'Delhi');
+    await disposeWidget(tester);
+  });
+  testWidgets('disk failure retains selected area and exposes retry before closing', (
+    tester,
+  ) async {
+    harness.database.writeError = StorageFailure('disk full');
+    await open(tester, PageType.explore);
+    await type(tester, 'Delhi');
+    await tester.tap(find.text('Delhi').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(LocationPickerModal), findsOneWidget);
+    expect(harness.state().location?.name, 'Delhi');
+    expect(find.byKey(const ValueKey('location_storage_failed')), findsOneWidget);
+    harness.database.writeError = null;
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(harness.state().save.hasError, isFalse);
+    expect(find.byKey(const ValueKey('location_storage_failed')), findsNothing);
+    await disposeWidget(tester);
+  });
+  testWidgets('account transition clears local input and previous results', (tester) async {
+    await open(tester, PageType.explore);
+    await type(tester, 'Delhi');
+    harness.changeAccount('b');
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
+    expect(harness.container.read(locationSearchProvider(PageType.explore)).suggestions, isEmpty);
+    await disposeWidget(tester);
+  });
+  for (final dark in [false, true]) {
+    testWidgets(
+      'narrow ${dark ? 'dark' : 'light'} picker supports large text and keyboard without overflow',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 720);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await open(tester, PageType.explore, 2, dark ? ThemeData.dark() : ThemeData.light());
+        tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+        addTearDown(tester.view.resetViewInsets);
+        await tester.pump();
+        await type(tester, 'Delhi');
+        expect(tester.takeException(), isNull);
+        expect(find.byType(LocationPickerModal), findsOneWidget);
+        await disposeWidget(tester);
+      },
+    );
+  }
 }

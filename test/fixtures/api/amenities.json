@@ -1,0 +1,28 @@
+{
+  "page": {
+    "has_more": true,
+    "items": [
+      {
+        "category": "recreation",
+        "created_at": "2026-09-30T10:15:02Z",
+        "icon": "pool",
+        "id": 11,
+        "is_active": true,
+        "title": "Swimming Pool",
+        "updated_at": "2026-09-30T10:15:02Z"
+      },
+      {
+        "category": "utilities",
+        "created_at": "2026-09-30T10:15:02Z",
+        "icon": "battery",
+        "id": 12,
+        "is_active": true,
+        "title": "Power Backup",
+        "updated_at": "2026-09-30T10:15:02Z"
+      }
+    ],
+    "limit": 100,
+    "next_cursor": "eyJrIjpbIlBvd2VyIEJhY2t1cCIsMTJdLCJmIjoiYWJjIn0",
+    "total": null
+  }
+}

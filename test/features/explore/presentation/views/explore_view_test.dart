@@ -1,602 +1,381 @@
 import 'package:flutter/material.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/controllers/location_controller.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
+
+import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
-import 'package:ghar360/core/services/google_places_service.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/data/ports/properties_port.dart';
+import 'package:ghar360/core/design/app_design_theme.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/providers/pending_actions_provider.dart';
+import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
 import 'package:ghar360/features/explore/presentation/views/explore_view.dart';
 import 'package:ghar360/features/explore/presentation/widgets/explore_map.dart';
-import 'package:maplibre_gl/maplibre_gl.dart';
-import 'package:mocktail/mocktail.dart';
+import 'package:ghar360/features/explore/presentation/widgets/property_detail_pane.dart';
+import 'package:ghar360/features/explore/presentation/widgets/property_horizontal_list.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
+import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
+import '../../../../helpers/explore_test_harness.dart';
+import '../../../../helpers/fake_explore_map_platform.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
+import '../../../../helpers/visits_test_support.dart';
 
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
-
-/// Fake [ExploreController] that exposes only the surface used by
-/// [ExploreView]. Uses [GetxServiceMock] to satisfy the type requirement
-/// without triggering the real constructor's Get.find dependencies.
-class _FakeExploreController extends GetxServiceMock implements ExploreController {
-  _FakeExploreController({List<PropertyModel> initial = const []}) {
-    properties.assignAll(initial);
-  }
-
+class _DetailPort extends Fake implements PropertiesPort {
   @override
-  final Rx<ExploreState> state = ExploreState.loaded.obs;
-  @override
-  final RxList<PropertyModel> properties = <PropertyModel>[].obs;
-  @override
-  final Rxn<AppException> error = Rxn<AppException>();
-  @override
-  final Rx<PropertyModel?> selectedProperty = Rx<PropertyModel?>(null);
-  @override
-  final RxBool isListCollapsed = false.obs;
-  @override
-  final Rx<LatLng> currentCenter = const LatLng(28.6139, 77.2090).obs;
-  @override
-  final RxDouble currentZoom = 12.0.obs;
-  @override
-  final RxDouble currentRadius = 5.0.obs;
-  @override
-  final RxInt markersRevision = 0.obs;
-  @override
-  final RxBool isMapReady = false.obs;
-  @override
-  final RxString searchQuery = ''.obs;
-  @override
-  final RxMap<int, bool> likedOverrides = <int, bool>{}.obs;
-
-  int zoomInCalls = 0;
-  int zoomOutCalls = 0;
-  int recenterCalls = 0;
-  int fitBoundsCalls = 0;
-  int searchCalls = 0;
-  int retryCalls = 0;
-  int toggleCollapseCalls = 0;
-  int expandCalls = 0;
-  int collapseCalls = 0;
-  int selectCalls = 0;
-
-  @override
-  bool hasMore = false;
-  @override
-  bool isLoadingMore = false;
-
-  @override
-  String get currentAreaText => '5.0 km';
-
-  @override
-  void zoomIn() => zoomInCalls++;
-
-  @override
-  void zoomOut() => zoomOutCalls++;
-
-  @override
-  void recenterToCurrentLocation() => recenterCalls++;
-
-  @override
-  void fitBoundsToProperties() => fitBoundsCalls++;
-
-  @override
-  void updateSearchQuery(String query) => searchCalls++;
-
-  @override
-  void retryLoading() => retryCalls++;
-
-  @override
-  void toggleListCollapsed() => toggleCollapseCalls++;
-
-  @override
-  void expandList() => expandCalls++;
-
-  @override
-  void collapseList() => collapseCalls++;
-
-  @override
-  void selectProperty(PropertyModel property) => selectCalls++;
-
-  @override
-  void highlightPropertyFromCard(PropertyModel property) {}
-
-  @override
-  bool isPropertyLiked(PropertyModel property) => likedOverrides[property.id] ?? property.liked;
-
-  @override
-  Future<void> toggleLike(PropertyModel property) async {
-    likedOverrides[property.id] = !isPropertyLiked(property);
-  }
-
-  @override
-  Future<void> loadMoreProperties() async {}
-
-  @override
-  void attachMap(MapLibreMapController controller) {}
-
-  @override
-  void onMapReady() {
-    isMapReady.value = true;
-  }
-
-  @override
-  void onCameraIdle(LatLng center, double zoom) {}
-
-  @override
-  List<PropertyMarker> get propertyMarkers => const [];
-
-  @override
-  String get locationDisplayText => 'Test Location';
-
-  @override
-  String get propertiesCountText => '${properties.length} properties';
-
-  @override
-  List<PropertyModel> get propertiesWithLocation => properties;
-}
-
-PropertyModel _property({int id = 100}) {
-  return PropertyModel(
-    id: id,
-    title: 'Property $id',
-    basePrice: 5000000,
-    isAvailable: true,
-    viewCount: 0,
-    likeCount: 0,
-    interestCount: 0,
-  );
-}
-
-/// Finder for a [Semantics] widget whose [identifier] matches [id].
-Finder _findBySemanticsIdentifier(String id) {
-  return find.byWidgetPredicate((w) => w is Semantics && w.properties.identifier == id);
+  Future<PropertyModel> getPropertyDetail(int propertyId) async => exploreProperty(propertyId);
 }
 
 void main() {
-  late _FakeExploreController controller;
-  late MockPageStateService mockPageStateService;
-  late MockLocationController mockLocationController;
-  late MockGooglePlacesService mockGooglePlacesService;
-  late Rx<PageStateModel> exploreState;
-  late Rx<PageType> currentPageType;
-  late TextEditingController searchController;
-
-  setUpAll(() {
-    registerFallbackValue(LocationSource.manual);
-    registerFallbackValue(PageType.explore);
-    registerFallbackValue(const UnifiedFilterModel());
-    registerFallbackValue(const LocationData(name: '', latitude: 0, longitude: 0));
-  });
-
+  late ExploreTestHarness harness;
+  late MapLibrePlatform Function() original;
   setUp(() {
-    GetxTestBinding.init();
-
-    mockPageStateService = MockPageStateService();
-    mockLocationController = MockLocationController();
-    mockGooglePlacesService = MockGooglePlacesService();
-    searchController = TextEditingController();
-
-    exploreState = PageStateModel.initial(PageType.explore).obs;
-    currentPageType = PageType.explore.obs;
-
-    // Stub PageStateService reactive fields
-    when(() => mockPageStateService.exploreState).thenReturn(exploreState);
-    when(() => mockPageStateService.currentPageType).thenReturn(currentPageType);
-    when(
-      () => mockPageStateService.discoverState,
-    ).thenReturn(PageStateModel.initial(PageType.discover).obs);
-    when(
-      () => mockPageStateService.likesState,
-    ).thenReturn(PageStateModel.initial(PageType.likes).obs);
-
-    // Stub PageStateService methods
-    when(() => mockPageStateService.isSearchVisible(any())).thenReturn(false);
-    when(() => mockPageStateService.isPageRefreshing(any())).thenReturn(false);
-    when(
-      () =>
-          mockPageStateService.getOrCreateSearchController(any(), seedText: any(named: 'seedText')),
-    ).thenReturn(searchController);
-    when(
-      () => mockPageStateService.getCurrentPageState(),
-    ).thenReturn(PageStateModel.initial(PageType.explore));
-    when(() => mockPageStateService.updatePageFilters(any(), any())).thenReturn(null);
-    when(() => mockPageStateService.updatePageSearch(any(), any())).thenReturn(null);
-    when(
-      () => mockPageStateService.loadPageData(
-        any(),
-        forceRefresh: any(named: 'forceRefresh'),
-        backgroundRefresh: any(named: 'backgroundRefresh'),
-      ),
-    ).thenAnswer((_) async {});
-    when(() => mockPageStateService.loadMorePageData(any())).thenAnswer((_) async {});
-    when(() => mockPageStateService.loadMoreData(any())).thenAnswer((_) async {});
-    when(
-      () => mockPageStateService.recordSwipe(
-        propertyId: any(named: 'propertyId'),
-        isLiked: any(named: 'isLiked'),
-      ),
-    ).thenAnswer((_) async {});
-    when(
-      () => mockPageStateService.updateLocationForPage(any(), any(), source: any(named: 'source')),
-    ).thenAnswer((_) async {});
-
-    // Stub LocationController
-    when(() => mockLocationController.currentPosition).thenReturn(Rxn());
-    when(() => mockLocationController.hasLocation).thenReturn(false);
-    when(
-      () => mockLocationController.getCurrentLocation(forceRefresh: any(named: 'forceRefresh')),
-    ).thenAnswer((_) async {});
-    when(() => mockLocationController.getIpLocation()).thenAnswer((_) async => null);
-    when(() => mockLocationController.getInitialLocation()).thenAnswer(
-      (_) async => const LocationData(name: 'Test', latitude: 28.6139, longitude: 77.2090),
-    );
-
-    controller = _FakeExploreController(initial: [_property(id: 1), _property(id: 2)]);
-
-    GetxTestBinding.bind()
-      ..register<PageStateService>(mockPageStateService)
-      ..register<LocationController>(mockLocationController)
-      ..register<GooglePlacesService>(mockGooglePlacesService)
-      ..register<ExploreController>(controller);
+    harness = ExploreTestHarness(items: [exploreProperty(1), exploreProperty(2)]);
+    original = MapLibrePlatform.createInstance;
+    MapLibrePlatform.createInstance = FakeExploreMapPlatform.new;
   });
-
-  tearDown(() {
-    searchController.dispose();
-    GetxTestBinding.reset();
+  tearDown(() async {
+    MapLibrePlatform.createInstance = original;
+    await harness.dispose();
   });
-
-  Future<void> pumpExploreView(
+  Future<void> pump(
     WidgetTester tester, {
     Size size = const Size(400, 800),
+    bool dark = false,
+    double scale = 1,
     ThemeData? theme,
+    Locale locale = const Locale('en', 'US'),
   }) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        theme: theme ?? ThemeData.light(),
-        home: MediaQuery(
-          data: MediaQueryData(size: size),
-          child: const ExploreView(),
-        ),
-      ),
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpProviderApp(
+      UncontrolledProviderScope(container: harness.container, child: const ExploreView()),
+      textScale: scale,
+      locale: locale,
+      theme: theme ?? (dark ? ThemeData.dark() : ThemeData.light()),
     );
-    // Use pump (not pumpAndSettle) because the map may have infinite
-    // animations and async platform calls that never settle.
     await tester.pump();
-    // Drain any pending async exceptions (image loads, platform channel
-    // errors from the headless MapLibreMap, etc.) so they don't fail the test.
-    tester.takeException();
+    await tester.pump(const Duration(milliseconds: 300));
   }
 
-  group('ExploreView — state rendering', () {
-    testWidgets('renders map interface in loaded state (compact)', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
+  Future<void> dispose(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  }
 
-      // The screen-level Semantics with identifier 'qa.explore.screen' should exist.
-      expect(_findBySemanticsIdentifier('qa.explore.screen'), findsOneWidget);
-      // The ExploreMap widget should be rendered.
+  void seed(
+    PropertyLoadPhase phase, {
+    bool empty = false,
+    AppException? error,
+    AppException? paginationError,
+  }) => harness.query.seed(
+    PropertyPageState(
+      phase: phase,
+      items: empty ? [] : [exploreProperty(1), exploreProperty(2)],
+      error: error,
+      paginationError: paginationError,
+      nextCursor: paginationError == null ? null : 'next',
+    ),
+  );
+  for (final dark in [false, true]) {
+    testWidgets(
+      'loaded ${dark ? 'dark' : 'light'} screen keeps map, count, controls and QA identifier',
+      (tester) async {
+        await pump(tester, dark: dark);
+        expect(find.byType(ExploreMap), findsOneWidget);
+        expect(
+          find.byWidgetPredicate(
+            (widget) => widget is Semantics && widget.properties.identifier == 'qa.explore.screen',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('2 properties'), findsOneWidget);
+        expect(find.textContaining('10 km'), findsOneWidget);
+        expect(findKnife(KnifeIcon.plus), findsOneWidget);
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+        await dispose(tester);
+      },
+    );
+    testWidgets('empty ${dark ? 'dark' : 'light'} screen preserves map and filter recovery', (
+      tester,
+    ) async {
+      seed(PropertyLoadPhase.empty, empty: true);
+      await pump(tester, dark: dark);
       expect(find.byType(ExploreMap), findsOneWidget);
+      // The empty state takes the list's place; the map and its controls stay clear.
+      expect(find.byKey(const ValueKey('qa.explore.empty.action')), findsOneWidget);
+      expect(findKnife(KnifeIcon.plus), findsOneWidget);
+      expect(find.text('Adjust Filters'), findsOneWidget);
+      await tester.ensureVisible(find.text('Adjust Filters'));
+      await tester.pump();
+      await tester.tap(find.text('Adjust Filters'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Filter Properties'), findsOneWidget);
+      await dispose(tester);
     });
-
-    testWidgets('renders loading state without location', (tester) async {
-      controller.state.value = ExploreState.loading;
-      exploreState.value = PageStateModel.initial(PageType.explore);
-      await pumpExploreView(tester);
-
-      // Loading state shows a skeleton map icon.
-      expect(find.byIcon(Icons.map), findsOneWidget);
-    });
-
-    testWidgets('renders map interface in loading state with location', (tester) async {
-      controller.state.value = ExploreState.loading;
-      exploreState.value = const PageStateModel(
-        pageType: PageType.explore,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        selectedLocation: LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
-      );
-      await pumpExploreView(tester);
-
-      // With location, loading state should show the map interface.
+    testWidgets('refresh failure ${dark ? 'dark' : 'light'} retains map/cards and retry', (
+      tester,
+    ) async {
+      seed(PropertyLoadPhase.content, error: NetworkException('raw private details'));
+      await pump(tester, dark: dark);
       expect(find.byType(ExploreMap), findsOneWidget);
+      expect(find.text('Property 1'), findsOneWidget);
+      expect(find.textContaining('raw private details'), findsNothing);
+      final retry = find.byKey(const ValueKey('qa.explore.content.retry'));
+      expect(retry, findsOneWidget);
+      await tester.tap(retry);
+      await tester.pump();
+      expect(harness.query.refreshCalls, 1);
+      await dispose(tester);
     });
-
-    testWidgets('renders error state with retry button', (tester) async {
-      controller.state.value = ExploreState.error;
-      // Use a retryable ServerException (statusCode >= 500).
-      controller.error.value = ServerException('Test error', statusCode: 500);
-      await pumpExploreView(tester);
-
-      // Error state shows a retry button.
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
-    });
-
-    testWidgets('renders empty state with adjust filters text', (tester) async {
-      controller.state.value = ExploreState.empty;
-      await pumpExploreView(tester);
-
-      // Empty state shows the location_off icon.
-      expect(find.byIcon(Icons.location_off), findsOneWidget);
-    });
-
-    testWidgets('renders loadingMore state with map and indicator', (tester) async {
-      controller.state.value = ExploreState.loadingMore;
-      await pumpExploreView(tester);
-
-      // Map interface should be visible.
-      expect(find.byType(ExploreMap), findsOneWidget);
-    });
-
-    testWidgets('renders initial state without location as loading', (tester) async {
-      controller.state.value = ExploreState.initial;
-      exploreState.value = PageStateModel.initial(PageType.explore);
-      await pumpExploreView(tester);
-
-      // Initial state without location shows loading skeleton.
-      expect(find.byIcon(Icons.map), findsOneWidget);
-    });
-
-    testWidgets('renders initial state with location as map', (tester) async {
-      controller.state.value = ExploreState.initial;
-      exploreState.value = const PageStateModel(
-        pageType: PageType.explore,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        selectedLocation: LocationData(name: 'Test', latitude: 28.61, longitude: 77.21),
-      );
-      await pumpExploreView(tester);
-
-      expect(find.byType(ExploreMap), findsOneWidget);
-    });
-  });
-
-  group('ExploreView — refresh indicator', () {
-    testWidgets('shows LinearProgressIndicator when refreshing', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      exploreState.value = PageStateModel(
-        pageType: PageType.explore,
-        filters: const UnifiedFilterModel(),
-        properties: [_property(id: 1)],
-        isRefreshing: true,
-      );
-      await pumpExploreView(tester);
-
+  }
+  for (final phase in [PropertyLoadPhase.loading, PropertyLoadPhase.idle]) {
+    testWidgets('$phase without location shows loading; same phase with location keeps map', (
+      tester,
+    ) async {
+      await harness.dispose();
+      harness = ExploreTestHarness(located: false);
+      seed(phase, empty: true);
+      await pump(tester);
       expect(find.byType(LinearProgressIndicator), findsOneWidget);
-    });
-
-    testWidgets('hides LinearProgressIndicator when not refreshing', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      exploreState.value = PageStateModel(
-        pageType: PageType.explore,
-        filters: const UnifiedFilterModel(),
-        properties: [_property(id: 1)],
-        isRefreshing: false,
-      );
-      await pumpExploreView(tester);
-
-      expect(find.byType(LinearProgressIndicator), findsNothing);
-    });
-  });
-
-  group('ExploreView — map controls', () {
-    testWidgets('tapping zoom in calls controller.zoomIn', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
-
-      await tester.tap(find.byIcon(Icons.add));
+      expect(find.byType(ExploreMap), findsNothing);
+      await harness.location.select(delhi);
+      await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
-
-      expect(controller.zoomInCalls, 1);
-    });
-
-    testWidgets('tapping zoom out calls controller.zoomOut', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
-
-      await tester.tap(find.byIcon(Icons.remove));
-      await tester.pump();
-
-      expect(controller.zoomOutCalls, 1);
-    });
-
-    testWidgets('tapping recenter calls controller.recenterToCurrentLocation', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
-
-      await tester.tap(find.byIcon(Icons.my_location));
-      await tester.pump();
-
-      expect(controller.recenterCalls, 1);
-    });
-
-    testWidgets('tapping fit bounds calls controller.fitBoundsToProperties', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
-
-      await tester.tap(find.byIcon(Icons.center_focus_strong));
-      await tester.pump();
-
-      expect(controller.fitBoundsCalls, 1);
-    });
-  });
-
-  group('ExploreView — property list handle', () {
-    testWidgets('tapping the list handle toggles collapse', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
-
-      // The handle area has a GestureDetector with the collapse/expand semantics.
-      // Tap the handle area (the drag handle bar).
-      final handleFinder = find.byIcon(Icons.keyboard_arrow_down);
-      expect(handleFinder, findsOneWidget);
-
-      await tester.tap(handleFinder);
-      await tester.pump();
-
-      expect(controller.toggleCollapseCalls, 1);
-    });
-
-    testWidgets('shows property count in handle', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
-
-      // The handle shows "2 properties" text.
-      expect(find.textContaining('2'), findsWidgets);
-    });
-
-    testWidgets('shows expand icon when collapsed', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      controller.isListCollapsed.value = true;
-      await pumpExploreView(tester);
-
-      expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
-    });
-
-    testWidgets('handle area is present and tappable in loaded state', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
-
-      // The GestureDetector for the handle (it has onVerticalDragEnd).
-      final handleGestureFinder = find.byWidgetPredicate(
-        (w) => w is GestureDetector && w.onVerticalDragEnd != null,
-      );
-      expect(handleGestureFinder, findsOneWidget);
-    });
-
-    testWidgets('handle area is present when collapsed', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      controller.isListCollapsed.value = true;
-      await pumpExploreView(tester);
-
-      final handleGestureFinder = find.byWidgetPredicate(
-        (w) => w is GestureDetector && w.onVerticalDragEnd != null,
-      );
-      expect(handleGestureFinder, findsOneWidget);
-    });
-  });
-
-  group('ExploreView — info panel', () {
-    testWidgets('shows property count and area text in info panel', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester);
-
-      // The info panel shows the area text.
-      expect(find.text('5.0 km'), findsOneWidget);
-    });
-  });
-
-  group('ExploreView — two-pane (tablet) layout', () {
-    testWidgets('renders side panel for expanded size class', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester, size: const Size(1000, 800));
-
-      // In two-pane mode, the map should still be present.
       expect(find.byType(ExploreMap), findsOneWidget);
+      await dispose(tester);
     });
-
-    testWidgets('renders side panel for large size class', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester, size: const Size(1400, 900));
-
+  }
+  testWidgets('refresh progress retains cards and pagination retry follows failed cursor', (
+    tester,
+  ) async {
+    seed(PropertyLoadPhase.refreshing);
+    await pump(tester);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.text('Property 1'), findsOneWidget);
+    seed(PropertyLoadPhase.content, paginationError: NetworkException('offline'));
+    await tester.pump();
+    final retry = find.byKey(const ValueKey('qa.explore.content.retry'));
+    await tester.tap(retry);
+    await tester.pump();
+    expect(harness.query.lastRetry, isTrue);
+    expect(find.text('Property 1'), findsOneWidget);
+    await dispose(tester);
+  });
+  for (final size in [const Size(400, 800), const Size(1000, 800), const Size(1400, 900)]) {
+    testWidgets('map controls and loading-more layout work at width ${size.width}', (tester) async {
+      seed(PropertyLoadPhase.paginating);
+      await pump(tester, size: size);
       expect(find.byType(ExploreMap), findsOneWidget);
-    });
-
-    testWidgets('shows loading more chip in two-pane layout', (tester) async {
-      controller.state.value = ExploreState.loadingMore;
-      await pumpExploreView(tester, size: const Size(1000, 800));
-
-      expect(find.byType(ExploreMap), findsOneWidget);
-    });
-
-    testWidgets('tapping zoom in works in two-pane layout', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester, size: const Size(1000, 800));
-
-      await tester.tap(find.byIcon(Icons.add));
-      await tester.pump();
-
-      expect(controller.zoomInCalls, 1);
-    });
-
-    testWidgets('tapping recenter works in two-pane layout', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester, size: const Size(1000, 800));
-
-      await tester.tap(find.byIcon(Icons.my_location));
-      await tester.pump();
-
-      expect(controller.recenterCalls, 1);
-    });
-  });
-
-  group('ExploreView — dark theme', () {
-    testWidgets('renders correctly in dark theme', (tester) async {
-      controller.state.value = ExploreState.loaded;
-      await pumpExploreView(tester, theme: ThemeData.dark());
-
-      expect(find.byType(ExploreMap), findsOneWidget);
-    });
-
-    testWidgets('renders error state in dark theme', (tester) async {
-      controller.state.value = ExploreState.error;
-      controller.error.value = ServerException('Dark error', statusCode: 500);
-      await pumpExploreView(tester, theme: ThemeData.dark());
-
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
-    });
-
-    testWidgets('renders empty state in dark theme', (tester) async {
-      controller.state.value = ExploreState.empty;
-      await pumpExploreView(tester, theme: ThemeData.dark());
-
-      expect(find.byIcon(Icons.location_off), findsOneWidget);
-    });
-
-    testWidgets('renders loading state in dark theme', (tester) async {
-      controller.state.value = ExploreState.loading;
-      exploreState.value = PageStateModel.initial(PageType.explore);
-      await pumpExploreView(tester, theme: ThemeData.dark());
-
-      expect(find.byIcon(Icons.map), findsOneWidget);
-    });
-  });
-
-  group('ExploreView — error state retry', () {
-    testWidgets('tapping retry button calls controller.retryLoading', (tester) async {
-      controller.state.value = ExploreState.error;
-      controller.error.value = ServerException('Retry test', statusCode: 500);
-      await pumpExploreView(tester);
-
-      await tester.tap(find.byIcon(Icons.refresh));
-      await tester.pump();
-
-      expect(controller.retryCalls, 1);
-    });
-  });
-
-  group('ExploreView — empty state action', () {
-    testWidgets('empty state shows adjust filters button', (tester) async {
-      controller.state.value = ExploreState.empty;
-      await pumpExploreView(tester);
-
-      // The empty state has an action button.
-      expect(find.byType(ElevatedButton), findsOneWidget);
-    });
-  });
-
-  group('ExploreView — loading more indicator (single-pane)', () {
-    testWidgets('shows loading more indicator in single-pane layout', (tester) async {
-      controller.state.value = ExploreState.loadingMore;
-      await pumpExploreView(tester);
-
-      // The loading more indicator text should be present.
       expect(find.byType(CircularProgressIndicator), findsWidgets);
+      expect(find.byType(PropertyHorizontalList), findsOneWidget);
+      expect(find.byType(PropertyDetailPane), size.width >= 840 ? findsOneWidget : findsNothing);
+      await tester.tap(findKnife(KnifeIcon.plus));
+      await tester.pump();
+      expect(harness.state.zoom, 13);
+      await tester.tap(findKnife(KnifeIcon.minus));
+      await tester.pump();
+      expect(harness.state.zoom, 12);
+      await tester.tap(findKnife(KnifeIcon.map));
+      await tester.pump();
+      expect(harness.state.fitBounds, isTrue);
+      await tester.tap(findKnife(KnifeIcon.locate));
+      await tester.pump();
+      expect(harness.device.currentCalls, 1);
+      await dispose(tester);
+    });
+  }
+  testWidgets('phone list handle supports collapse and expand with count retained', (tester) async {
+    await pump(tester);
+    final gesture = find.byWidgetPredicate(
+      (widget) => widget is GestureDetector && widget.onVerticalDragEnd != null,
+    );
+    expect(gesture, findsOneWidget);
+    await tester.tap(gesture);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(harness.state.collapsed, isTrue);
+    expect(findKnife(KnifeIcon.chevronUp), findsOneWidget);
+    await tester.tap(gesture);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(harness.state.collapsed, isFalse);
+    expect(find.text('2 properties'), findsOneWidget);
+    await dispose(tester);
+  });
+  testWidgets('search slip over the map writes the Explore search; controls clear the list', (
+    tester,
+  ) async {
+    await pump(tester, size: const Size(320, 800), scale: 2);
+    final input = find.byKey(const ValueKey('qa.topbar.search_input.explore'));
+    expect(input, findsOneWidget);
+    final map = tester.getRect(find.byType(ExploreMap));
+    expect(map.contains(tester.getRect(input).center), isTrue);
+    await tester.enterText(input, 'Sector 57');
+    await tester.pump();
+    expect(
+      harness.container.read(propertyFiltersProvider).forPage(PageType.explore).searchQuery,
+      'Sector 57',
+    );
+    // The map controls hang under the slip and stay above the list sheet.
+    final fit = tester.getRect(find.byTooltip('Fit map to properties'));
+    expect(fit.bottom, lessThan(tester.getRect(find.text('2 properties')).top));
+    expect(tester.takeException(), isNull);
+    await dispose(tester);
+  });
+  testWidgets('GPS failure retains usable map with location-specific retry', (tester) async {
+    harness.device.response = () async => throw LocationException('GPS unavailable');
+    await pump(tester);
+    await tester.tap(findKnife(KnifeIcon.locate));
+    await tester.pump();
+    expect(find.byType(ExploreMap), findsOneWidget);
+    expect(find.byKey(const ValueKey('qa.explore.location.gps_retry')), findsOneWidget);
+    expect(find.text('Property 1'), findsOneWidget);
+    await dispose(tester);
+  });
+  testWidgets('saved content and cache persistence failure remain visible beside the map', (
+    tester,
+  ) async {
+    harness.query.seed(
+      PropertyPageState(phase: PropertyLoadPhase.content, items: [exploreProperty(1)], stale: true),
+    );
+    await pump(tester);
+    expect(find.text('Showing saved properties. Refresh to check for changes.'), findsOneWidget);
+    expect(find.byType(ExploreMap), findsOneWidget);
+    harness.query.seed(
+      PropertyPageState(
+        phase: PropertyLoadPhase.content,
+        items: [exploreProperty(1)],
+        storageError: StorageFailure('full'),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qa.properties.save.retry')));
+    await tester.pump();
+    expect(harness.query.refreshCalls, 1);
+    expect(find.byType(ExploreMap), findsOneWidget);
+    await dispose(tester);
+  });
+  testWidgets('filter-save retry persists draft without clearing usable map or cards', (
+    tester,
+  ) async {
+    harness.database.writeError = StorageFailure('full');
+    await harness.container
+        .read(propertyFiltersProvider.notifier)
+        .update(PageType.explore, const UnifiedFilterModel(purpose: 'rent'));
+    await pump(tester);
+    expect(find.byKey(const ValueKey('qa.filters.save.retry')), findsOneWidget);
+    expect(find.text('Property 1'), findsOneWidget);
+    harness.database.writeError = null;
+    await tester.tap(find.byKey(const ValueKey('qa.filters.save.retry')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('qa.filters.save.retry')), findsNothing);
+    expect(find.byType(ExploreMap), findsOneWidget);
+    await dispose(tester);
+  });
+  testWidgets('320px large-text content has no suppressed overflow errors', (tester) async {
+    await pump(tester, size: const Size(320, 800), scale: 2);
+    expect(find.byType(ExploreMap), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await dispose(tester);
+  });
+  testWidgets('320px Hindi 2x dark paper theme has no overflow', (tester) async {
+    await pump(
+      tester,
+      size: const Size(320, 700),
+      scale: 2,
+      theme: AppDesignTheme.dark(),
+      locale: const Locale('hi', 'IN'),
+    );
+    expect(find.byType(ExploreMap), findsOneWidget);
+    expect(find.text('Property 1'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await dispose(tester);
+  });
+  testWidgets('camera moves and highlights do not rebuild the screen frame', (tester) async {
+    await pump(tester);
+    var frames = 0;
+    final prior = debugOnRebuildDirtyWidget;
+    debugOnRebuildDirtyWidget = (element, builtOnce) {
+      if (element.widget is ExploreView) frames++;
+      prior?.call(element, builtOnce);
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = prior);
+    harness.controller.onCameraIdle(const LatLng(28.7, 77.3), 13);
+    await tester.pump();
+    harness.controller.highlightPropertyFromCard(exploreProperty(2));
+    await tester.pump();
+    debugOnRebuildDirtyWidget = prior;
+    expect(frames, 0);
+    await dispose(tester);
+  });
+
+  group('two panes from 840 px', () {
+    // The detail pane reads the app configuration.
+    setUp(
+      () => AppConfig.initialize(
+        overrides: {'API_BASE_URL': 'https://test.invalid', 'GOOGLE_PLACES_API_KEY': ''},
+      ),
+    );
+    tearDown(AppConfig.resetForTest);
+    Future<ProviderContainer> pumpPanes(WidgetTester tester, Size size) async {
+      final container = ProviderContainer(
+        overrides: [
+          ...harness.overrides,
+          propertiesRepositoryProvider.overrideWithValue(_DetailPort()),
+          visitsProvider.overrideWith(
+            () => SeededVisitsController(VisitsState(phase: VisitLoadPhase.content)),
+          ),
+          pendingActionsProvider.overrideWith(SeededPendingActions.new),
+        ],
+        retry: (_, _) => null,
+      );
+      addTearDown(container.dispose);
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpProviderApp(
+        UncontrolledProviderScope(container: container, child: const ExploreView()),
+        theme: AppDesignTheme.light(),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      return container;
+    }
+
+    testWidgets('1280x800: map and strip left; a tapped card opens in the right pane', (
+      tester,
+    ) async {
+      await pumpPanes(tester, const Size(1280, 800));
+      expect(find.byType(ExploreMap), findsOneWidget);
+      expect(find.text('Pick a home'), findsOneWidget);
+      await tester.tap(find.text('Property 2'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final pane = tester.widget<PropertyDetailsView>(find.byType(PropertyDetailsView));
+      expect(pane.propertyId, 2);
+      expect(pane.embedded, isTrue);
+      expect(find.text('Pick a home'), findsNothing);
+      // The pane opened in place: no route was pushed.
+      expect(find.byType(ExploreView), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await dispose(tester);
+    });
+
+    testWidgets('834x1112 portrait tablet stays one pane', (tester) async {
+      await pumpPanes(tester, const Size(834, 1112));
+      expect(find.byType(PropertyDetailPane), findsNothing);
+      expect(find.byType(PropertyHorizontalList), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await dispose(tester);
     });
   });
 }

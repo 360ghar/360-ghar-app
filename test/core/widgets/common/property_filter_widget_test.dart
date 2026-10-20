@@ -1,113 +1,153 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
+import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/app_design_theme.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
-import '../../../helpers/getx_test_binding.dart';
-import '../../../helpers/mocks.dart';
+import 'package:ghar360/features/properties/application/amenities.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import '../../../helpers/knife_finders.dart';
+import '../../../helpers/location_test_harness.dart';
+import '../../../helpers/provider_test_app.dart';
 
-class _FakePageStateService extends GetxServiceMock implements PageStateService {
+/// The location fake plus an in-memory cache table.
+class _AmenityDatabase extends LocationTestDatabase {
+  final cache = <String, CachedEntry>{};
+  int cacheWrites = 0;
   @override
-  Rx<PageStateModel> discoverState = PageStateModel.initial(
-    PageType.discover,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  Rx<PageStateModel> exploreState = PageStateModel.initial(
-    PageType.explore,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  Rx<PageStateModel> likesState = PageStateModel.initial(
-    PageType.likes,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  final Rx<PageType> currentPageType = PageType.discover.obs;
-
-  PageType? lastUpdatedPage;
-  UnifiedFilterModel? lastUpdatedFilters;
+  Future<CachedEntry?> readCache({
+    required StorageScope scope,
+    required String key,
+    int expectedSchemaVersion = 1,
+    DateTime? now,
+  }) async => cache['${scope.key}:$key'];
 
   @override
-  PageStateModel getStateForPage(PageType pageType) {
-    switch (pageType) {
-      case PageType.discover:
-        return discoverState.value;
-      case PageType.explore:
-        return exploreState.value;
-      case PageType.likes:
-        return likesState.value;
-    }
+  Future<void> writeCache({
+    required StorageScope scope,
+    required String key,
+    required Object? value,
+    required DateTime freshUntil,
+    required DateTime expiresAt,
+    String? etag,
+    int schemaVersion = 1,
+    DateTime? createdAt,
+  }) async {
+    cacheWrites++;
+    cache['${scope.key}:$key'] = CachedEntry(
+      value: value,
+      createdAt: createdAt ?? DateTime.now(),
+      freshUntil: freshUntil,
+      expiresAt: expiresAt,
+      schemaVersion: schemaVersion,
+    );
   }
 
-  @override
-  void updatePageFilters(PageType pageType, UnifiedFilterModel filters) {
-    lastUpdatedPage = pageType;
-    lastUpdatedFilters = filters;
-    final state = getStateForPage(pageType).copyWith(filters: filters);
-    switch (pageType) {
-      case PageType.discover:
-        discoverState.value = state;
-        break;
-      case PageType.explore:
-        exploreState.value = state;
-        break;
-      case PageType.likes:
-        likesState.value = state;
-        break;
-    }
+  void seedCache(List<String> titles, {required bool fresh}) {
+    final now = DateTime.now();
+    cache['${scope.key}:${Amenities.cacheKey}'] = CachedEntry(
+      value: [
+        for (final (index, title) in titles.indexed) {'id': index + 1, 'title': title},
+      ],
+      createdAt: now,
+      freshUntil: fresh
+          ? now.add(const Duration(hours: 1))
+          : now.subtract(const Duration(hours: 1)),
+      expiresAt: now.add(const Duration(days: 30)),
+      schemaVersion: 1,
+    );
   }
 }
 
+List<PropertyAmenity> _amenities(List<String> titles) => [
+  for (final (index, title) in titles.indexed) PropertyAmenity(id: index + 1, title: title),
+];
+
+const _backendTitles = ['Gym', 'Parking', 'Security', 'Swimming Pool'];
+
 void main() {
-  late _FakePageStateService pageStateService;
-
+  late _AmenityDatabase database;
+  late ProviderContainer container;
+  late int fetches;
+  late Future<List<PropertyAmenity>> Function() response;
   setUp(() {
-    GetxTestBinding.init();
-    pageStateService = _FakePageStateService();
-    GetxTestBinding.bind().register<PageStateService>(pageStateService);
+    database = _AmenityDatabase();
+    fetches = 0;
+    response = () async => _amenities(_backendTitles);
+    container = ProviderContainer(
+      overrides: [
+        appDatabaseProvider.overrideWithValue(database),
+        storageScopeProvider.overrideWith(() => LocationScopeNotifier(database)),
+        amenitiesFetchProvider.overrideWithValue(() {
+          fetches++;
+          return response();
+        }),
+      ],
+      retry: (_, _) => null,
+    );
   });
-
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
-
-  // Suppress RenderFlex overflow errors from the dense filter chip layouts.
-  FlutterError.onError = (FlutterErrorDetails details) {
-    if (!details.summary.toString().contains('overflowed')) {
-      FlutterError.presentError(details);
-    }
-  };
-
+  tearDown(() => container.dispose());
+  UnifiedFilterModel filters(PageType page) =>
+      container.read(propertyFiltersProvider).forPage(page);
+  Future<void> pumpHost(
+    WidgetTester tester,
+    Widget child, {
+    Locale locale = const Locale('en', 'US'),
+    double scale = 1,
+    ThemeData? theme,
+  }) => tester.pumpProviderApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: Scaffold(body: child),
+    ),
+    locale: locale,
+    textScale: scale,
+    theme: theme,
+  );
   Future<void> pumpFilterSheet(
     WidgetTester tester, {
     PageType pageType = PageType.explore,
     VoidCallback? onFiltersApplied,
+    Locale locale = const Locale('en', 'US'),
+    double scale = 1,
+    ThemeData? theme,
   }) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => Center(
-              child: PropertyFilterWidget(pageType: pageType, onFiltersApplied: onFiltersApplied),
+    await pumpHost(
+      tester,
+      Builder(
+        builder: (context) => Center(
+          child: TextButton(
+            onPressed: () => showPropertyFilterBottomSheet(
+              context,
+              pageType: pageType,
+              onFiltersApplied: onFiltersApplied,
             ),
+            child: const Text('Open filters'),
           ),
         ),
       ),
+      locale: locale,
+      scale: scale,
+      theme: theme,
     );
-    await tester.tap(find.byType(PropertyFilterWidget));
+    await tester.tap(find.text('Open filters'));
     await tester.pumpAndSettle();
   }
 
-  /// Scrolls the bottom sheet until [finder] is visible, then taps it.
+  bool chipSelected(WidgetTester tester, String label) =>
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label)).selected;
+
   Future<void> scrollAndTap(WidgetTester tester, Finder finder) async {
     await tester.scrollUntilVisible(finder, 200, scrollable: find.byType(Scrollable).last);
     await tester.pumpAndSettle();
@@ -115,65 +155,35 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Pumps past the AppToast snackbar timer so no timers remain pending.
   Future<void> clearToasts(WidgetTester tester) async {
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle(const Duration(seconds: 1));
   }
 
-  testWidgets('applies filters to the page that opened the sheet, not the active tab', (
+  testWidgets('applies local ranges to opening page and shared purpose to all pages', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => ElevatedButton(
-              onPressed: () => showPropertyFilterBottomSheet(context, pageType: PageType.explore),
-              child: const Text('Open filters'),
-            ),
-          ),
+    await pumpHost(
+      tester,
+      Builder(
+        builder: (context) => ElevatedButton(
+          onPressed: () => showPropertyFilterBottomSheet(context, pageType: PageType.explore),
+          child: const Text('Open filters'),
         ),
       ),
     );
-
     await tester.tap(find.text('Open filters'));
     await tester.pumpAndSettle();
-
-    expect(find.text('Filter Properties'), findsOneWidget);
-
     await tester.tap(find.text('Rent').first);
+    await tester.tap(find.byKey(const ValueKey('qa.filters.apply')));
     await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Apply Filters'));
-    await tester.pumpAndSettle();
-
-    expect(pageStateService.lastUpdatedPage, PageType.explore);
-    expect(pageStateService.exploreState.value.filters.purpose, 'rent');
-    expect(pageStateService.discoverState.value.filters.purpose, 'buy');
-
+    expect(filters(PageType.explore).purpose, 'rent');
+    expect(filters(PageType.discover).purpose, 'rent');
+    expect(filters(PageType.explore).priceMin, 5000);
+    expect(filters(PageType.discover).priceMin, isNull);
+    expect(database.preferences['property_filters_v1'], isNotNull);
     await clearToasts(tester);
   });
-
-  testWidgets('renders the filter icon button', (tester) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: const Scaffold(
-          body: Center(child: PropertyFilterWidget(pageType: PageType.explore)),
-        ),
-      ),
-    );
-
-    expect(find.byIcon(Icons.tune), findsOneWidget);
-    expect(find.byType(PropertyFilterWidget), findsOneWidget);
-  });
-
   testWidgets('shows all filter section headers when opened', (tester) async {
     await pumpFilterSheet(tester);
 
@@ -237,10 +247,17 @@ void main() {
     await pumpFilterSheet(tester);
 
     await scrollAndTap(tester, find.text('Gym'));
-    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(chipSelected(tester, 'Gym'), isTrue);
+    expect(
+      find.descendant(
+        of: find.widgetWithText(ChoiceChip, 'Gym'),
+        matching: findKnife(KnifeIcon.check),
+      ),
+      findsOneWidget,
+    );
 
     await scrollAndTap(tester, find.text('Gym'));
-    expect(find.byIcon(Icons.check_circle), findsNothing);
+    expect(chipSelected(tester, 'Gym'), isFalse);
   });
 
   testWidgets('clear filters resets to defaults', (tester) async {
@@ -276,9 +293,8 @@ void main() {
     await tester.tap(find.text('Apply Filters'));
     await tester.pumpAndSettle();
 
-    expect(pageStateService.lastUpdatedPage, PageType.likes);
-    expect(pageStateService.lastUpdatedFilters?.purpose, 'rent');
-    expect(pageStateService.lastUpdatedFilters?.priceMin, isNotNull);
+    expect(filters(PageType.likes).purpose, 'rent');
+    expect(filters(PageType.likes).priceMin, isNotNull);
     await clearToasts(tester);
   });
 
@@ -287,48 +303,28 @@ void main() {
 
     expect(find.text('Filter Properties'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.tap(findKnife(KnifeIcon.close).last);
     await tester.pumpAndSettle();
 
     expect(find.text('Filter Properties'), findsNothing);
   });
 
-  testWidgets('loads existing filter state from PageStateService on open', (tester) async {
-    pageStateService.exploreState.value = pageStateService.exploreState.value.copyWith(
-      filters: const UnifiedFilterModel(purpose: 'rent', amenities: ['Gym']),
-    );
+  testWidgets('loads saved filter state from provider on open', (tester) async {
+    await container
+        .read(propertyFiltersProvider.notifier)
+        .update(PageType.explore, const UnifiedFilterModel(purpose: 'rent', amenities: ['Gym']));
 
     await pumpFilterSheet(tester, pageType: PageType.explore);
 
     expect(find.text('Price per month'), findsOneWidget);
-    await scrollAndTap(tester, find.text('Gym'));
-    // Gym was pre-selected, tapping deselects it → no check icon.
-    expect(find.byIcon(Icons.check_circle), findsNothing);
-  });
-
-  testWidgets('falls back to defaults when PageStateService is not registered', (tester) async {
-    GetxTestBinding.reset();
-    GetxTestBinding.init();
-
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) =>
-                const Center(child: PropertyFilterWidget(pageType: PageType.explore)),
-          ),
-        ),
-      ),
+    await tester.scrollUntilVisible(
+      find.text('Gym'),
+      200,
+      scrollable: find.byType(Scrollable).last,
     );
-
-    await tester.tap(find.byType(PropertyFilterWidget));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Property price'), findsOneWidget);
-    expect(find.text('Filter Properties'), findsOneWidget);
+    expect(chipSelected(tester, 'Gym'), isTrue);
+    await scrollAndTap(tester, find.text('Gym'));
+    expect(chipSelected(tester, 'Gym'), isFalse);
   });
 
   testWidgets('price range slider is rendered with correct bounds', (tester) async {
@@ -370,12 +366,12 @@ void main() {
   testWidgets('apply filters persists selected amenities', (tester) async {
     await pumpFilterSheet(tester, pageType: PageType.explore);
 
-    await scrollAndTap(tester, find.text('Pool'));
+    await scrollAndTap(tester, find.text('Swimming Pool'));
 
     await tester.tap(find.text('Apply Filters'));
     await tester.pumpAndSettle();
 
-    expect(pageStateService.lastUpdatedFilters?.amenities, contains('Pool'));
+    expect(filters(PageType.explore).amenities, contains('Swimming Pool'));
     await clearToasts(tester);
   });
 
@@ -387,7 +383,7 @@ void main() {
     await tester.tap(find.text('Apply Filters'));
     await tester.pumpAndSettle();
 
-    expect(pageStateService.lastUpdatedFilters?.propertyType, contains('apartment'));
+    expect(filters(PageType.explore).propertyType, contains('apartment'));
     await clearToasts(tester);
   });
 
@@ -403,5 +399,187 @@ void main() {
     expect(find.text('Room Type'), findsOneWidget);
     // Two dropdown form fields for gender + sharing type.
     expect(find.byType(DropdownButtonFormField<String>), findsNWidgets(2));
+  });
+
+  testWidgets('failed save retains selected draft and retries before callback or dismiss', (
+    tester,
+  ) async {
+    var applied = 0;
+    database.writeError = StorageFailure('disk full');
+    await pumpFilterSheet(tester, onFiltersApplied: () => applied++);
+    await tester.tap(find.text('Rent').first);
+    await scrollAndTap(tester, find.text('Swimming Pool'));
+    await tester.tap(find.byKey(const ValueKey('qa.filters.apply')));
+    await tester.pumpAndSettle();
+    expect(applied, 0);
+    expect(find.text('Filter Properties'), findsOneWidget);
+    expect(filters(PageType.explore).amenities, ['Swimming Pool']);
+    expect(find.byKey(const ValueKey('qa.filters.sheet.retry')), findsOneWidget);
+    database.writeError = null;
+    await tester.tap(find.byKey(const ValueKey('qa.filters.sheet.retry')));
+    await tester.pumpAndSettle();
+    expect(applied, 1);
+    expect(find.text('Filter Properties'), findsNothing);
+    final stored = database.preferences['property_filters_v1'] as Map;
+    expect(stored['explore']['amenities'], ['Swimming Pool']);
+    await clearToasts(tester);
+  });
+  testWidgets('cancel does not persist edited draft', (tester) async {
+    await pumpFilterSheet(tester);
+    await tester.tap(find.text('Rent').first);
+    await tester.tap(findKnife(KnifeIcon.close).last);
+    await tester.pumpAndSettle();
+    expect(filters(PageType.explore).purpose, 'buy');
+    expect(database.preferences['property_filters_v1'], isNull);
+  });
+  testWidgets('saved high and reversed bedroom/price ranges open safely', (tester) async {
+    await container
+        .read(propertyFiltersProvider.notifier)
+        .update(
+          PageType.explore,
+          const UnifiedFilterModel(
+            purpose: 'buy',
+            priceMin: 900000,
+            priceMax: 600000,
+            bedroomsMin: 8,
+            bedroomsMax: 2,
+          ),
+        );
+    await pumpFilterSheet(tester);
+    final slider = tester.widget<RangeSlider>(find.byType(RangeSlider));
+    expect(slider.values.start, 900000);
+    expect(slider.values.end, 900000);
+    expect(find.text('8+'), findsOneWidget);
+    expect(find.text('8'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Hindi 2x at 320px localizes prices and keeps actions reachable after save failure', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    database.writeError = StorageFailure('disk full');
+    await pumpFilterSheet(tester, locale: const Locale('hi', 'IN'), scale: 2);
+    expect(find.text('₹5 लाख'), findsOneWidget);
+    expect(find.text('₹15 करोड़'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qa.filters.apply')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('qa.filters.sheet.retry')), findsOneWidget);
+    expect(
+      tester.getRect(find.byKey(const ValueKey('qa.filters.apply'))).bottom,
+      lessThanOrEqualTo(800),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  Future<void> showAmenities(WidgetTester tester) async {
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('qa.filters.amenities')),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+  }
+
+  group('amenities from GET /amenities', () {
+    testWidgets('lists backend titles, so Balcony and Terrace are gone, and caches them', (
+      tester,
+    ) async {
+      await pumpFilterSheet(tester);
+      await showAmenities(tester);
+      expect(find.text('Swimming Pool'), findsOneWidget);
+      expect(find.text('Balcony'), findsNothing);
+      expect(find.text('Terrace'), findsNothing);
+      expect(fetches, 1);
+      expect(database.cacheWrites, 1);
+    });
+
+    testWidgets('a fresh cache shows at once and skips the request', (tester) async {
+      database.seedCache(['Gym', 'Lift'], fresh: true);
+      await pumpFilterSheet(tester);
+      await showAmenities(tester);
+      expect(find.text('Lift'), findsOneWidget);
+      expect(fetches, 0);
+    });
+
+    testWidgets('a stale cache shows at once, then the refreshed list replaces it', (tester) async {
+      database.seedCache(['Gym', 'Lift'], fresh: false);
+      final pending = Completer<List<PropertyAmenity>>();
+      response = () => pending.future;
+      await pumpFilterSheet(tester);
+      await showAmenities(tester);
+      expect(find.text('Lift'), findsOneWidget);
+      expect(fetches, 1);
+      pending.complete(_amenities(_backendTitles));
+      await tester.pumpAndSettle();
+      expect(find.text('Lift'), findsNothing);
+      expect(find.text('Swimming Pool'), findsOneWidget);
+    });
+
+    testWidgets('a failed refresh keeps the cached list without an error', (tester) async {
+      database.seedCache(['Gym', 'Lift'], fresh: false);
+      response = () async => throw NetworkException('offline');
+      await pumpFilterSheet(tester);
+      await showAmenities(tester);
+      expect(find.text('Lift'), findsOneWidget);
+      expect(find.text('Amenities could not load.'), findsNothing);
+    });
+
+    testWidgets('a failed first load shows retry in the amenities section only', (tester) async {
+      response = () async => throw NetworkException('offline');
+      await pumpFilterSheet(tester);
+      await showAmenities(tester);
+      final section = find.byKey(const ValueKey('qa.filters.amenities'));
+      expect(
+        find.descendant(of: section, matching: find.text('Amenities could not load.')),
+        findsOneWidget,
+      );
+      // The rest of the sheet still works.
+      expect(find.byKey(const ValueKey('qa.filters.apply')), findsOneWidget);
+      response = () async => _amenities(_backendTitles);
+      await tester.tap(find.byKey(const ValueKey('qa.filters.amenities.retry')));
+      await tester.pumpAndSettle();
+      expect(find.text('Amenities could not load.'), findsNothing);
+      expect(find.text('Gym'), findsOneWidget);
+      expect(fetches, 2);
+    });
+
+    testWidgets('a saved title the backend does not list is dropped on apply', (tester) async {
+      await container
+          .read(propertyFiltersProvider.notifier)
+          .update(PageType.explore, const UnifiedFilterModel(amenities: ['Balcony', 'gym']));
+      await pumpFilterSheet(tester);
+      await showAmenities(tester);
+      expect(chipSelected(tester, 'Gym'), isTrue);
+      await tester.tap(find.byKey(const ValueKey('qa.filters.apply')));
+      await tester.pumpAndSettle();
+      expect(filters(PageType.explore).amenities, ['Gym']);
+      await clearToasts(tester);
+    });
+  });
+  testWidgets('320px Hindi 2x dark paper sheet with an amenities failure has no overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    response = () async => throw NetworkException('offline');
+    await pumpFilterSheet(
+      tester,
+      locale: const Locale('hi', 'IN'),
+      scale: 2,
+      theme: AppDesignTheme.dark(),
+    );
+    await showAmenities(tester);
+    expect(find.byKey(const ValueKey('qa.filters.amenities.retry')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('बिल्डर फ्लोर'),
+      -200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(tester.takeException(), isNull);
   });
 }

@@ -1,1379 +1,593 @@
-// test/features/visits/presentation/views/visits_view_test.dart
-
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/data/models/agent_model.dart';
-import 'package:ghar360/core/data/models/property_image_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/app_design_theme.dart';
+import 'package:ghar360/core/design/app_design_tokens.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
+import 'package:ghar360/core/providers/pending_actions_provider.dart';
+import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/core/widgets/common/segmented_control.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/paper/folder_tabs.dart';
+import 'package:ghar360/features/properties/application/swipe_history.dart';
+import 'package:ghar360/features/property_details/presentation/controllers/property_details_controller.dart';
+import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 import 'package:ghar360/features/visits/presentation/views/visits_view.dart';
 import 'package:ghar360/features/visits/presentation/widgets/agent_card.dart';
 import 'package:ghar360/features/visits/presentation/widgets/visit_card.dart';
-import 'package:ghar360/features/visits/presentation/widgets/visits_skeleton_loaders.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/pump_app.dart';
-
-// ---------------------------------------------------------------------------
-// Test controller — skips AuthController, DashboardController, and
-// VisitsRemoteDatasource lookups.
-// ---------------------------------------------------------------------------
-
-class _PaginationVisitsController extends _TestVisitsController {
-  int loadMoreCallCount = 0;
-
-  @override
-  Future<void> loadMoreVisits() async {
-    loadMoreCallCount++;
-  }
-}
-
-class _TestVisitsController extends VisitsController {
-  bool rescheduleResult = true;
-  bool cancelResult = true;
-  int rescheduleCallCount = 0;
-  int cancelCallCount = 0;
-  int loadVisitsRefreshCount = 0;
-
-  @override
-  // ignore: must_call_super
-  void onInit() {
-    // Skip auth-status worker, dashboard tab worker, and all data loading.
-  }
-
-  @override
-  Future<bool> rescheduleVisit(dynamic visitId, DateTime newDateTime, {String? reason}) async {
-    rescheduleCallCount++;
-    return rescheduleResult;
-  }
-
-  @override
-  Future<bool> cancelVisit(dynamic visitId, {required String reason}) async {
-    cancelCallCount++;
-    return cancelResult;
-  }
-
-  @override
-  Future<void> loadVisits({bool isRefresh = false, bool silent = false}) async {
-    if (isRefresh) loadVisitsRefreshCount++;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-VisitModel _futureVisit({int id = 1, PropertyModel? property, Duration? inDays}) {
-  return VisitModel(
-    id: id,
-    propertyId: 100,
-    userId: 1,
-    scheduledDate: DateTime.now().add(inDays ?? const Duration(days: 7)),
-    status: VisitStatus.scheduled,
-    createdAt: DateTime.now().subtract(const Duration(days: 1)),
-    property: property,
-  );
-}
-
-VisitModel _pastVisit({int id = 2, PropertyModel? property}) {
-  return VisitModel(
-    id: id,
-    propertyId: 200,
-    userId: 1,
-    scheduledDate: DateTime.now().subtract(const Duration(days: 7)),
-    status: VisitStatus.completed,
-    createdAt: DateTime.now().subtract(const Duration(days: 14)),
-    property: property,
-  );
-}
-
-AgentModel _testAgent({String? contactNumber}) {
-  return AgentModel(
-    id: 1,
-    name: 'Test Agent',
-    contactNumber: contactNumber,
-    agentType: AgentType.general,
-    experienceLevel: ExperienceLevel.intermediate,
-    createdAt: DateTime(2024, 1, 1),
-  );
-}
-
-PropertyModel _testProperty({int id = 100}) {
-  return PropertyModel(
-    id: id,
-    title: 'Test Property $id',
-    basePrice: 5000000,
-    images: const <PropertyImageModel>[],
-    isAvailable: true,
-    viewCount: 0,
-    likeCount: 0,
-    interestCount: 0,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+import 'package:ghar360/features/visits/presentation/widgets/visit_edit_dialog.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
+import '../../../../helpers/visits_test_support.dart';
 
 void main() {
+  late SeededVisitsController controller;
+  late SeededPendingActions pending;
+  VisitsState content({List<VisitModel>? visits}) => VisitsState(
+    phase: VisitLoadPhase.content,
+    visits: visits ?? [visitFixture(property: propertyFixture())],
+    agent: const VisitAgentState(phase: VisitLoadPhase.content),
+  );
   setUp(() {
-    GetxTestBinding.init();
+    controller = SeededVisitsController(content());
+    pending = SeededPendingActions();
   });
-
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
-
-  /// Drains any pending FlutterError exceptions (e.g. RenderFlex overflow
-  /// warnings that occur in the constrained test canvas) so they don't
-  /// fail the test. Safe to call when no exceptions are pending.
-  void drainOverflowExceptions(WidgetTester tester) {
-    try {
-      while (true) {
-        final exception = tester.takeException();
-        if (exception == null) break;
-        // Re-throw if it's not a layout/framework noise error.
-        final str = exception.toString();
-        if (!str.contains('overflow') &&
-            !str.contains('RenderFlex') &&
-            !str.contains('A RenderFlex') &&
-            !str.contains('FAILED ASSERTION') &&
-            !str.contains('Looking up a deactivated widget')) {
-          throw exception;
-        }
-      }
-    } on TestFailure {
-      // No more exceptions to drain — expected.
-    }
+  Future<void> pump(
+    WidgetTester tester, {
+    VisitsState? state,
+    double textScale = 1,
+    ThemeData? theme,
+  }) async {
+    if (state != null) controller = SeededVisitsController(state);
+    await tester.pumpProviderApp(
+      const VisitsView(),
+      textScale: textScale,
+      theme: theme,
+      overrides: [
+        visitsProvider.overrideWith(() => controller),
+        pendingActionsProvider.overrideWith(() => pending),
+        unownedActionsProvider.overrideWith((ref) async => []),
+      ],
+    );
+    await tester.pump();
   }
 
-  /// Drain all pending framework exceptions (used by flaky layout edge cases).
-  void drainAllExceptions(WidgetTester tester) {
-    try {
-      while (tester.takeException() != null) {}
-    } on TestFailure {
-      // drained
-    }
-  }
-
-  group('VisitsView', () {
-    testWidgets('shows loading skeleton when loading', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = true;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump();
-
-      // Loading state renders RelationshipManagerSkeleton and VisitCardSkeletons.
-      expect(find.byType(RelationshipManagerSkeleton), findsWidgets);
-    });
-
-    testWidgets('shows error state with retry button', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.error.value = NetworkException('Connection failed');
-      // visits must be empty for the error branch (error && visits.isEmpty).
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump();
-
-      // The shared ErrorStates.genericError renders the error message.
-      expect(find.text('Connection failed'), findsOneWidget);
-
-      // The retry button should be present (network errors are retryable).
-      expect(find.byType(ElevatedButton), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
-    });
-
-    testWidgets('shows empty state for scheduled tab when no visits', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      // Both lists empty → empty state within the content view.
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // The screen should be present.
-      expect(find.bySemanticsIdentifier('qa.visits.screen'), findsOneWidget);
-
-      // Empty state text "no_visits" (translated) should appear.
-      // The _buildEmptyState widget renders italic text.
-      expect(find.byType(SegmentedControl), findsOneWidget);
-    });
-
-    testWidgets('renders visit cards when visits are loaded', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1), _futureVisit(id: 2)]);
-      controller.pastVisitsList.assignAll([_pastVisit(id: 3)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // The screen should be present.
-      expect(find.bySemanticsIdentifier('qa.visits.screen'), findsOneWidget);
-
-      // VisitCard widgets should be rendered for the upcoming visits.
-      expect(find.byType(VisitCard), findsNWidgets(2));
-    });
-
-    testWidgets('renders segmented control for scheduled and past tabs', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit()]);
-      controller.pastVisitsList.assignAll([_pastVisit()]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // The SegmentedControl should be rendered.
-      expect(find.byType(SegmentedControl), findsOneWidget);
-
-      // Both tab labels should be present (using text finders for reliability).
-      expect(find.text('scheduled_visits'.tr), findsOneWidget);
-      expect(find.text('past_visits'.tr), findsOneWidget);
-    });
+  testWidgets('initial load has content-shaped skeletons and one loading announcement', (
+    tester,
+  ) async {
+    await pump(tester, state: VisitsState(phase: VisitLoadPhase.loading));
+    expect(find.byType(Skeleton), findsOneWidget);
+    expect(find.bySemanticsLabel('Loading...'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(VisitCard), findsNothing);
   });
-
-  // -------------------------------------------------------------------------
-  // Loading state details
-  // -------------------------------------------------------------------------
-
-  group('VisitsView loading state', () {
-    testWidgets('renders VisitCardSkeleton widgets in loading state', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = true;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump();
-
-      // The loading state generates 3 skeleton cards for the visible tab.
-      expect(find.byType(VisitCardSkeleton), findsNWidgets(3));
-    });
-
-    testWidgets('renders RelationshipManagerSkeleton in loading state', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = true;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump();
-
-      expect(find.byType(RelationshipManagerSkeleton), findsWidgets);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Error state details
-  // -------------------------------------------------------------------------
-
-  group('VisitsView error state', () {
-    testWidgets('shows error state when error is set and visits list is empty', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.error.value = ServerException('Server error', statusCode: 500);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump();
-
-      expect(find.text('Server error'), findsOneWidget);
-    });
-
-    testWidgets('shows content (not error) when error is set but visits exist', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.error.value = NetworkException('Connection failed');
-      controller.upcomingVisitsList.assignAll([_futureVisit()]);
-      // The view checks controller.visits (the main list), not upcomingVisitsList.
-      controller.visits.assignAll([_futureVisit()]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // Since visits list is not empty, the content view should render,
-      // not the error state.
-      expect(find.byType(SegmentedControl), findsOneWidget);
-      expect(find.byType(VisitCard), findsOneWidget);
-    });
-
-    testWidgets('retry button calls loadVisits with isRefresh=true', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.error.value = NetworkException('Connection failed');
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump();
-
-      // The retry button is present.
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
-
-      // Tap the retry button.
-      await tester.tap(find.byIcon(Icons.refresh));
-      await tester.pump();
-
-      // The controller's loadVisits should have been called with isRefresh=true.
-      expect(controller.loadVisitsRefreshCount, greaterThan(0));
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: empty states
-  // -------------------------------------------------------------------------
-
-  group('VisitsView empty states', () {
-    testWidgets('shows empty state text for upcoming tab', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // "no_visits" translated text should be visible.
-      expect(find.text('no_visits'.tr), findsOneWidget);
-    });
-
-    testWidgets('shows empty state subtitle for upcoming tab', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(find.text('no_upcoming_visits_subtitle'.tr), findsOneWidget);
-    });
-
-    testWidgets('shows empty state for past tab when switched', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit()]);
-      // past visits is empty
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // Tap the "past_visits" segment to switch tabs.
-      await tester.tap(find.text('past_visits'.tr));
-      await tester.pumpAndSettle();
-
-      // The past tab empty state should now be visible.
-      expect(find.text('no_visits'.tr), findsOneWidget);
-      expect(find.text('no_past_visits_subtitle'.tr), findsOneWidget);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: visit cards
-  // -------------------------------------------------------------------------
-
-  group('VisitsView visit cards', () {
-    testWidgets('renders past visit cards when past tab is active', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      controller.pastVisitsList.assignAll([_pastVisit(id: 2), _pastVisit(id: 3)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // Initially on upcoming tab — 1 visit card.
-      expect(find.byType(VisitCard), findsOneWidget);
-
-      // Switch to past tab.
-      await tester.tap(find.text('past_visits'.tr));
-      await tester.pumpAndSettle();
-
-      // Now 2 past visit cards should be visible.
-      expect(find.byType(VisitCard), findsNWidgets(2));
-    });
-
-    testWidgets('renders visit card with property data', (tester) async {
-      final property = _testProperty(id: 100);
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1, property: property)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // The VisitCard should be rendered with the property attached.
-      final visitCard = find.byType(VisitCard);
-      expect(visitCard, findsOneWidget);
-
-      // Drain any layout overflow errors from the constrained test canvas.
-      drainOverflowExceptions(tester);
-    });
-
-    testWidgets('renders visit card without property data', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // The VisitCard should still render without a property.
-      expect(find.byType(VisitCard), findsOneWidget);
-      drainOverflowExceptions(tester);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: relationship manager (agent) card
-  // -------------------------------------------------------------------------
-
-  group('VisitsView relationship manager card', () {
-    testWidgets('shows skeleton when agent is loading', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.isLoadingAgent.value = true;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(find.byType(RelationshipManagerSkeleton), findsOneWidget);
-    });
-
-    testWidgets('shows nothing when agent is null and not loading', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.isLoadingAgent.value = false;
-      controller.relationshipManager.value = null;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // No AgentCard should be rendered.
-      expect(find.byType(AgentCard), findsNothing);
-    });
-
-    testWidgets('shows AgentCard when relationship manager is loaded', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.isLoadingAgent.value = false;
-      controller.relationshipManager.value = _testAgent(contactNumber: '+919876543210');
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // AgentCard should be rendered with the agent's name.
-      expect(find.byType(AgentCard), findsOneWidget);
-      expect(find.text('Test Agent'), findsOneWidget);
-    });
-
-    testWidgets('AgentCard call button triggers launch dialer', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.isLoadingAgent.value = false;
-      controller.relationshipManager.value = _testAgent(contactNumber: '+919876543210');
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // Find the call button (phone icon) in the AgentCard.
-      final callIcon = find.byIcon(Icons.phone);
-      expect(callIcon, findsOneWidget);
-
-      // Tapping it should trigger _launchDialer (which will show a toast
-      // since url_launcher can't actually launch in tests).
-      await tester.tap(callIcon);
-      await tester.pump();
-
-      // The tap should not crash. The launch function will try to open
-      // the dialer and fail gracefully with a toast.
-    });
-
-    testWidgets('AgentCard WhatsApp button triggers launch WhatsApp', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.isLoadingAgent.value = false;
-      controller.relationshipManager.value = _testAgent(contactNumber: '+919876543210');
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // Find the WhatsApp button (message icon) in the AgentCard.
-      final whatsappIcon = find.byIcon(Icons.message);
-      expect(whatsappIcon, findsOneWidget);
-
-      // Tapping it should trigger _launchWhatsApp.
-      await tester.tap(whatsappIcon);
-      await tester.pump();
-
-      // The tap should not crash.
-    });
-
-    testWidgets('AgentCard with null contact number shows unavailable toast on call', (
+  testWidgets('initial error has typed localized retry without raw exception', (tester) async {
+    await pump(
       tester,
-    ) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.isLoadingAgent.value = false;
-      controller.relationshipManager.value = _testAgent(contactNumber: null);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // Tap the call button.
-      await tester.tap(find.byIcon(Icons.phone));
-      // Pump to let the toast's async work complete; use pump (not settle)
-      // to avoid hanging on the toast's 3s timer.
+      state: VisitsState(phase: VisitLoadPhase.failed, failure: ServerException('secret SQL')),
+    );
+    expect(find.textContaining('secret SQL'), findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
+    // On a short window the state sits under the scene header; it scrolls up.
+    await tester.ensureVisible(find.text('Retry'));
+    await tester.pump();
+    await tester.tap(find.text('Retry'));
+    expect(controller.loads, 1);
+  });
+  testWidgets('a listing with no price for its purpose shows no price and no dangling dot', (
+    tester,
+  ) async {
+    // The visit property has no purpose, so the app has no price to show for it.
+    final property = const PropertyModel(
+      id: 100,
+      title: 'Test Property 100',
+      basePrice: 5000000,
+      isAvailable: true,
+      viewCount: 0,
+      likeCount: 0,
+      interestCount: 0,
+    );
+    await pump(
+      tester,
+      state: content(visits: [visitFixture(property: property)]),
+    );
+    expect(find.textContaining('₹'), findsNothing);
+    expect(find.textContaining(RegExp(r'^\s*·')), findsNothing);
+  });
+  testWidgets('empty screen retains tabs and separate past empty state', (tester) async {
+    await pump(tester, state: content(visits: []));
+    expect(find.text('No visits scheduled'), findsOneWidget);
+    expect(find.text('Discover'), findsOneWidget);
+    await tester.tap(find.text('Past Visits'));
+    await tester.pumpAndSettle();
+    expect(find.text('No past visits yet'), findsOneWidget);
+  });
+  testWidgets('content and card information survive a refresh error', (tester) async {
+    await pump(
+      tester,
+      state: content().copyWith(failure: NetworkException('offline'), stale: true),
+    );
+    expect(find.byType(VisitCard), findsOneWidget);
+    expect(find.text('Test Property 100'), findsOneWidget);
+    expect(find.text('Saved appointments. Refresh to check for changes.'), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    expect(controller.loads, 1);
+  });
+  testWidgets('refresh shows inline progress without replacing appointments', (tester) async {
+    await pump(tester, state: content().copyWith(phase: VisitLoadPhase.refreshing));
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(VisitCard), findsOneWidget);
+    expect(find.byType(Skeleton), findsNothing);
+    expect(find.byType(RefreshIndicator), findsOneWidget);
+  });
+  testWidgets('tabs show their own sorted appointments', (tester) async {
+    await pump(
+      tester,
+      state: content(
+        visits: [
+          visitFixture(property: propertyFixture()),
+          visitFixture(id: 2, status: VisitStatus.completed, property: propertyFixture(id: 200)),
+        ],
+      ),
+    );
+    expect(find.text('Test Property 100'), findsOneWidget);
+    await tester.tap(find.text('Past Visits'));
+    await tester.pumpAndSettle();
+    expect(find.text('Test Property 200'), findsOneWidget);
+    expect(find.text('Test Property 100'), findsNothing);
+  });
+  testWidgets('missing property data still renders title and visit actions', (tester) async {
+    await pump(tester, state: content(visits: [visitFixture()]));
+    expect(find.text('Property #100'), findsOneWidget);
+    expect(find.text('Reschedule'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+  });
+  testWidgets('agent error is inline and does not turn no visits into a failed screen', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      state: content(visits: []).copyWith(
+        agent: VisitAgentState(
+          phase: VisitLoadPhase.failed,
+          error: ServerException('agent secret'),
+        ),
+      ),
+    );
+    expect(find.text('No visits scheduled'), findsOneWidget);
+    expect(find.textContaining('agent secret'), findsNothing);
+    await tester.tap(find.text('Retry'));
+    expect(controller.agents, 1);
+    expect(controller.loads, 0);
+  });
+  testWidgets('agent skeleton transitions to loaded contact card', (tester) async {
+    await pump(tester, state: content().copyWith(agent: const VisitAgentState()));
+    expect(find.byKey(const ValueKey('qa.visits.agent_loading')), findsOneWidget);
+    controller.replace(
+      content().copyWith(
+        agent: VisitAgentState(value: agentFixture(), phase: VisitLoadPhase.content),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(AgentCard), findsOneWidget);
+    expect(find.text('Test Agent'), findsOneWidget);
+    expect(find.byKey(const ValueKey('qa.visits.agent_loading')), findsNothing);
+  });
+  for (final icon in [KnifeIcon.phone, KnifeIcon.chat]) {
+    testWidgets('missing agent contact recovers without throwing for $icon', (tester) async {
+      await pump(
+        tester,
+        state: content().copyWith(
+          agent: VisitAgentState(value: agentFixture(), phase: VisitLoadPhase.content),
+        ),
+      );
+      await tester.tap(findKnife(icon));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
       await tester.pump(const Duration(seconds: 4));
-
-      // Should not crash; the _launchDialer function handles empty numbers.
     });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: background refresh indicator
-  // -------------------------------------------------------------------------
-
-  group('VisitsView background refresh', () {
-    testWidgets('shows LinearProgressIndicator when background refreshing', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.isBackgroundRefreshing.value = true;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
-    });
-
-    testWidgets('hides LinearProgressIndicator when not background refreshing', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.isBackgroundRefreshing.value = false;
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(find.byType(LinearProgressIndicator), findsNothing);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: segmented control tab switching
-  // -------------------------------------------------------------------------
-
-  group('VisitsView tab switching', () {
-    testWidgets('switching to past tab shows past visits badge count', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      controller.pastVisitsList.assignAll([
-        _pastVisit(id: 2),
-        _pastVisit(id: 3),
-        _pastVisit(id: 4),
-      ]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // The badge for past visits should show "3".
-      expect(find.text('3'), findsOneWidget);
-    });
-
-    testWidgets('switching tabs updates visible visit cards', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1), _futureVisit(id: 2)]);
-      controller.pastVisitsList.assignAll([_pastVisit(id: 3)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      // Initially on upcoming tab — 2 visit cards.
-      expect(find.byType(VisitCard), findsNWidgets(2));
-
-      // Switch to past tab.
-      await tester.tap(find.text('past_visits'.tr));
-      await tester.pumpAndSettle();
-
-      // Now 1 past visit card should be visible.
-      expect(find.byType(VisitCard), findsOneWidget);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: reschedule dialog
-  // -------------------------------------------------------------------------
-
-  group('VisitsView reschedule dialog', () {
-    testWidgets('opens reschedule dialog when reschedule is tapped', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      // The reschedule button is a text button with 'reschedule'.tr text.
-      final rescheduleButton = find.text('reschedule'.tr);
-      expect(rescheduleButton, findsOneWidget);
-
-      await tester.tap(rescheduleButton);
-      await tester.pumpAndSettle();
-
-      // The reschedule dialog should be open with its title.
-      expect(find.text('reschedule_visit'.tr), findsOneWidget);
-    });
-
-    testWidgets('reschedule dialog has date and time pickers', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(find.text('reschedule'.tr));
-      await tester.pumpAndSettle();
-
-      // The dialog should have calendar and time icons.
-      expect(find.byIcon(Icons.calendar_today), findsOneWidget);
-      expect(find.byIcon(Icons.access_time), findsOneWidget);
-    });
-
-    testWidgets('reschedule dialog cancel button closes dialog', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(find.text('reschedule'.tr));
-      await tester.pumpAndSettle();
-
-      // Find the cancel button inside the dialog. Scope to AlertDialog: the
-      // VisitCard behind the dialog also exposes a "cancel" TextButton.
-      final dialogCancelButton = find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.ancestor(of: find.text('cancel'.tr), matching: find.byType(TextButton)),
-      );
-      expect(dialogCancelButton, findsOneWidget);
-
-      await tester.tap(dialogCancelButton);
-      await tester.pumpAndSettle();
-
-      // The dialog should be closed.
-      expect(find.text('reschedule_visit'.tr), findsNothing);
-      // Drain RenderFlex overflow logged by the dialog on the test canvas.
-      drainOverflowExceptions(tester);
-    });
-
-    testWidgets('reschedule dialog confirm calls rescheduleVisit', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(find.text('reschedule'.tr));
-      await tester.pumpAndSettle();
-
-      // Tap the reschedule confirm button (the ElevatedButton with 'reschedule'.tr).
-      // The dialog button is inside an ElevatedButton.
-      final dialogRescheduleButton = find.ancestor(
-        of: find.text('reschedule'.tr),
-        matching: find.byType(ElevatedButton),
-      );
-      expect(dialogRescheduleButton, findsOneWidget);
-
-      await tester.tap(dialogRescheduleButton);
-      await tester.pumpAndSettle();
-
-      // The controller's rescheduleVisit should have been called.
-      expect(controller.rescheduleCallCount, 1);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: cancel dialog
-  // -------------------------------------------------------------------------
-
-  group('VisitsView cancel dialog', () {
-    testWidgets('opens cancel dialog when cancel is tapped', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      // The cancel button is a text button with 'cancel'.tr text in the VisitCard.
-      // Use the GestureDetector-wrapped text (not a TextButton).
-      final cancelButton = find.ancestor(
-        of: find.text('cancel'.tr),
-        matching: find.byType(GestureDetector),
-      );
-      expect(cancelButton, findsOneWidget);
-
-      await tester.tap(cancelButton);
-      await tester.pumpAndSettle();
-
-      // The cancel dialog should be open with its title.
-      expect(find.text('cancel_visit'.tr), findsOneWidget);
-    });
-
-    testWidgets('cancel dialog has reason text field', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(
-        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
-      );
-      await tester.pumpAndSettle();
-
-      // The dialog should have a text field for the reason.
-      expect(find.byType(TextField), findsOneWidget);
-      expect(find.text('reason_required_label'.tr), findsOneWidget);
-    });
-
-    testWidgets('cancel dialog yes button is disabled without reason', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(
-        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
-      );
-      await tester.pumpAndSettle();
-
-      // The "yes_cancel" button should be present but disabled (null onPressed).
-      final yesButton = find.text('yes_cancel'.tr);
-      expect(yesButton, findsOneWidget);
-
-      // The ElevatedButton containing it should have null onPressed.
-      final button = tester.widget<ElevatedButton>(
-        find.ancestor(of: yesButton, matching: find.byType(ElevatedButton)),
-      );
-      expect(button.onPressed, isNull);
-    });
-
-    testWidgets('cancel dialog yes button enables with reason text', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(
-        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
-      );
-      await tester.pumpAndSettle();
-
-      // Enter a reason in the text field.
-      await tester.enterText(find.byType(TextField), 'Not available');
-      await tester.pump();
-
-      // The "yes_cancel" button should now be enabled.
-      final yesButton = find.text('yes_cancel'.tr);
-      final button = tester.widget<ElevatedButton>(
-        find.ancestor(of: yesButton, matching: find.byType(ElevatedButton)),
-      );
-      expect(button.onPressed, isNotNull);
-    });
-
-    testWidgets('cancel dialog confirm calls cancelVisit', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(
-        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
-      );
-      await tester.pump(const Duration(milliseconds: 500));
-
-      // Enter a reason.
-      await tester.enterText(find.byType(TextField), 'Not available');
-      await tester.pump();
-
-      // Tap the yes cancel button.
-      final yesButton = find.ancestor(
-        of: find.text('yes_cancel'.tr),
-        matching: find.byType(ElevatedButton),
-      );
-      await tester.tap(yesButton);
-      await tester.pump(const Duration(milliseconds: 500));
-
-      // The controller's cancelVisit should have been called.
-      expect(controller.cancelCallCount, 1);
-    });
-
-    testWidgets('cancel dialog no button closes dialog', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(
-        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
-      );
-      await tester.pump(const Duration(milliseconds: 500));
-
-      // Tap the "no" button (TextButton inside the dialog).
-      final noButton = find.ancestor(of: find.text('no'.tr), matching: find.byType(TextButton));
-      expect(noButton, findsOneWidget);
-
-      await tester.tap(noButton);
-      await tester.pump(const Duration(milliseconds: 500));
-
-      // The dialog should be closed.
-      expect(find.text('cancel_visit'.tr), findsNothing);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: refresh indicator
-  // -------------------------------------------------------------------------
-
-  group('VisitsView refresh indicator', () {
-    testWidgets('has RefreshIndicator in upcoming tab', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(find.byType(RefreshIndicator), findsWidgets);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Content: error with non-AppException type
-  // -------------------------------------------------------------------------
-
-  group('VisitsView error with string error', () {
-    testWidgets('shows generic error for string error type', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      // Set error to a string — ErrorStates handles String type.
-      controller.error.value = ServerException('Something broke');
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump();
-
-      expect(find.text('Something broke'), findsOneWidget);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // High-miss paths: multi-column grid, property tap, pickers, failures
-  // -------------------------------------------------------------------------
-
-  group('VisitsView multi-column layout', () {
-    testWidgets('renders wrap grid on medium width', (tester) async {
-      final view = tester.view;
-      view.physicalSize = const Size(900, 1400);
-      view.devicePixelRatio = 1.0;
-      addTearDown(view.resetPhysicalSize);
-      addTearDown(view.resetDevicePixelRatio);
-
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([
-        _futureVisit(id: 1, property: _testProperty(id: 1)),
-        _futureVisit(id: 2, property: _testProperty(id: 2)),
-        _futureVisit(id: 3, property: _testProperty(id: 3)),
-      ]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainAllExceptions(tester);
-
-      expect(find.byType(VisitCard), findsNWidgets(3));
-      // Medium layout uses a Wrap grid; cards also contain inner Wraps.
-      expect(find.byType(Wrap), findsAtLeastNWidgets(1));
-    });
-  });
-
-  group('VisitsView property open and past-date reschedule', () {
-    testWidgets('tapping visit card with property does not crash', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([
-        _futureVisit(id: 1, property: _testProperty(id: 100)),
-      ]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainAllExceptions(tester);
-
-      await tester.tap(find.byType(VisitCard));
-      await tester.pump();
-      drainAllExceptions(tester);
-      // Get.testMode navigation is a no-op path; ensure no crash.
-      expect(find.byType(VisitCard), findsOneWidget);
-    });
-
-    testWidgets('reschedule dialog handles past scheduled date defaults', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      // Past date but still listed as upcoming (status scheduled) — dialog should clamp to now.
-      final pastScheduled = VisitModel(
-        id: 9,
-        propertyId: 100,
-        userId: 1,
-        scheduledDate: DateTime.now().subtract(const Duration(days: 1)),
-        status: VisitStatus.scheduled,
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-        property: _testProperty(),
-      );
-      controller.upcomingVisitsList.assignAll([pastScheduled]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(find.text('reschedule'.tr));
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(find.text('reschedule_visit'.tr), findsOneWidget);
-    });
-
-    testWidgets('reschedule dialog date and time pickers open', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(find.text('reschedule'.tr));
-      await tester.pump(const Duration(milliseconds: 400));
-
-      // Open date picker
-      await tester.tap(find.byIcon(Icons.calendar_today));
-      await tester.pump(const Duration(milliseconds: 400));
-      // Material date picker has OK button
-      final okFinder = find.text('OK');
-      if (okFinder.evaluate().isNotEmpty) {
-        await tester.tap(okFinder);
-        await tester.pump(const Duration(milliseconds: 300));
-      } else {
-        // Dismiss if different locale labels
-        await tester.tapAt(const Offset(5, 5));
-        await tester.pump(const Duration(milliseconds: 300));
-      }
-
-      // Open time picker
-      await tester.tap(find.byIcon(Icons.access_time));
-      await tester.pump(const Duration(milliseconds: 400));
-      if (find.text('OK').evaluate().isNotEmpty) {
-        await tester.tap(find.text('OK'));
-        await tester.pump(const Duration(milliseconds: 300));
-      }
-    });
-
-    testWidgets('reschedule failure keeps dialog open', (tester) async {
-      final controller = _TestVisitsController()..rescheduleResult = false;
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(find.text('reschedule'.tr));
-      await tester.pump(const Duration(milliseconds: 400));
-
-      final dialogRescheduleButton = find.ancestor(
-        of: find.text('reschedule'.tr),
-        matching: find.byType(ElevatedButton),
-      );
-      await tester.tap(dialogRescheduleButton);
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(controller.rescheduleCallCount, 1);
-      expect(find.text('reschedule_visit'.tr), findsOneWidget);
-
-      // Dialog state must be left usable: spinner gone, button re-enabled.
-      expect(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.byType(CircularProgressIndicator),
-        ),
-        findsNothing,
-      );
-      expect(
-        tester
-            .widget<ElevatedButton>(
-              find.ancestor(of: find.text('reschedule'.tr), matching: find.byType(ElevatedButton)),
-            )
-            .onPressed,
-        isNotNull,
-      );
-
-      // Close dialog to avoid leftover overlay/tickers. Scope to AlertDialog:
-      // the VisitCard behind the dialog also exposes a "cancel" TextButton.
-      final cancelBtn = find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.ancestor(of: find.text('cancel'.tr), matching: find.byType(TextButton)),
-      );
-      if (cancelBtn.evaluate().isNotEmpty) {
-        await tester.tap(cancelBtn);
-        await tester.pump(const Duration(milliseconds: 300));
-      }
-      // Drain RenderFlex overflow logged by the reschedule dialog on the test canvas.
-      drainOverflowExceptions(tester);
-    });
-
-    testWidgets('cancel failure keeps dialog open', (tester) async {
-      final controller = _TestVisitsController()..cancelResult = false;
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainOverflowExceptions(tester);
-
-      await tester.tap(
-        find.ancestor(of: find.text('cancel'.tr), matching: find.byType(GestureDetector)),
-      );
-      await tester.pump(const Duration(milliseconds: 400));
-
-      await tester.enterText(find.byType(TextField), 'Busy');
-      await tester.pump();
-
-      final yesButton = find.ancestor(
-        of: find.text('yes_cancel'.tr),
-        matching: find.byType(ElevatedButton),
-      );
-      await tester.tap(yesButton);
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(controller.cancelCallCount, 1);
-      expect(find.text('cancel_visit'.tr), findsOneWidget);
-
-      // Dialog state must be left usable: spinner gone, submit re-enabled
-      // (the reason text is still there, so canSubmit is true again).
-      expect(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.byType(CircularProgressIndicator),
-        ),
-        findsNothing,
-      );
-      expect(
-        tester
-            .widget<ElevatedButton>(
-              find.ancestor(of: find.text('yes_cancel'.tr), matching: find.byType(ElevatedButton)),
-            )
-            .onPressed,
-        isNotNull,
-      );
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // FIX 3: the reschedule date picker must accept a visit scheduled beyond the
-  // default 30-day window. showDatePicker asserts
-  // firstDate <= initialDate <= lastDate, so an unclamped initialDate throws.
-  //
-  // NOTE: these tests deliberately do NOT use drainOverflowExceptions — its
-  // filter swallows 'FAILED ASSERTION', which is exactly the failure under
-  // test. Layout noise is drained with the local overflow-only helper below.
-  // -------------------------------------------------------------------------
-
-  group('VisitsView reschedule date-picker bounds', () {
-    /// Drains ONLY RenderFlex overflow noise from the constrained test canvas.
-    /// Unlike the shared helper, a framework assertion is re-thrown.
-    void drainLayoutOverflowOnly(WidgetTester tester) {
-      while (true) {
-        final Object? exception = tester.takeException();
-        if (exception == null) break;
-        final str = exception.toString();
-        if (!str.contains('overflow') && !str.contains('RenderFlex')) {
-          throw exception;
-        }
-      }
-    }
-
-    /// Dismisses the Material date picker. Scoped to [DatePickerDialog] — the
-    /// reschedule dialog behind it also carries a "Cancel" label.
-    Future<void> closePicker(WidgetTester tester) async {
-      await tester.tap(
-        find.descendant(of: find.byType(DatePickerDialog), matching: find.text('Cancel')),
-      );
-      await tester.pump(const Duration(milliseconds: 400));
-      drainLayoutOverflowOnly(tester);
-    }
-
-    Future<void> openRescheduleDialogFor(WidgetTester tester, VisitModel visit) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.upcomingVisitsList.assignAll([visit]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainLayoutOverflowOnly(tester);
-
-      await tester.tap(find.text('reschedule'.tr));
-      await tester.pump(const Duration(milliseconds: 400));
-      drainLayoutOverflowOnly(tester);
-    }
-
-    testWidgets('opens the date picker for a visit 60 days out without throwing', (tester) async {
-      await openRescheduleDialogFor(tester, _futureVisit(id: 1, inDays: const Duration(days: 60)));
-
-      await tester.tap(find.byIcon(Icons.calendar_today));
-      await tester.pump(const Duration(milliseconds: 400));
-
-      // No assertion may have escaped: initialDate must sit inside the range.
-      expect(tester.takeException(), isNull);
-      expect(find.byType(DatePickerDialog), findsOneWidget);
-
-      await closePicker(tester);
-    });
-
-    testWidgets('opens the date picker for a visit 400 days out without throwing', (tester) async {
-      await openRescheduleDialogFor(tester, _futureVisit(id: 1, inDays: const Duration(days: 400)));
-
-      await tester.tap(find.byIcon(Icons.calendar_today));
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(tester.takeException(), isNull);
-      expect(find.byType(DatePickerDialog), findsOneWidget);
-
-      await closePicker(tester);
-    });
-
-    testWidgets('opens the date picker for a visit already in the past', (tester) async {
-      // scheduledDate before "now" → initialDate must be clamped up to firstDate.
-      await openRescheduleDialogFor(tester, _futureVisit(id: 1, inDays: const Duration(days: -3)));
-
-      await tester.tap(find.byIcon(Icons.calendar_today));
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(tester.takeException(), isNull);
-      expect(find.byType(DatePickerDialog), findsOneWidget);
-
-      await closePicker(tester);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // FIX 1 (view half): a failed agent lookup lands in `agentError`, never in
-  // `error`, so a user with zero visits still sees the friendly empty state.
-  // Regression guard — the fail-before lives in the controller test.
-  // -------------------------------------------------------------------------
-
-  group('VisitsView agent-failure degradation', () {
-    testWidgets('zero visits + failed agent fetch shows the empty state, not the error', (
+  }
+  testWidgets('pagination failure retains cards and retries with footer control', (tester) async {
+    await pump(
       tester,
-    ) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.agentError.value = ServerException('Failed to load agent');
-      controller.relationshipManager.value = null;
-      // error stays null: only the secondary call failed.
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(find.text('no_visits'.tr), findsOneWidget);
-      expect(find.text('no_upcoming_visits_subtitle'.tr), findsOneWidget);
-      // The agent card degrades to nothing rather than blocking the screen.
-      expect(find.byType(AgentCard), findsNothing);
-      expect(find.text('Failed to load agent'), findsNothing);
-    });
-
-    testWidgets('visit list still renders when the agent fetch failed', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.agentError.value = ServerException('Failed to load agent');
-      controller.upcomingVisitsList.assignAll([_futureVisit(id: 1)]);
-      controller.visits.assignAll([_futureVisit(id: 1)]);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      expect(find.byType(VisitCard), findsOneWidget);
-      expect(find.byType(AgentCard), findsNothing);
-    });
+      state: content().copyWith(
+        nextCursor: 'next',
+        pagePhase: VisitPagePhase.failed,
+        pageFailure: NetworkException('offline'),
+      ),
+    );
+    expect(find.byType(VisitCard), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qa.visits.pagination.retry')));
+    expect(controller.pages, 1);
+    expect(controller.loads, 0);
   });
-
-  group('VisitsView scroll pagination', () {
-    testWidgets('scrolling near bottom triggers loadMoreVisits', (tester) async {
-      final controller = _PaginationVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.hasMore.value = true;
-      controller.upcomingVisitsList.assignAll(
-        List.generate(
+  testWidgets('short first page has explicit load-more control', (tester) async {
+    await pump(
+      tester,
+      state: content(visits: []).copyWith(nextCursor: 'next'),
+    );
+    await tester.tap(find.text('Load more visits'));
+    expect(controller.pages, 1);
+  });
+  testWidgets('scroll pagination starts near the bottom', (tester) async {
+    await pump(
+      tester,
+      state: content(
+        visits: List.generate(
           15,
-          (i) => _futureVisit(
-            id: i + 1,
-            property: _testProperty(id: 100 + i),
+          (i) => visitFixture(
+            id: i,
+            property: propertyFixture(id: i),
           ),
         ),
+      ).copyWith(nextCursor: 'next'),
+    );
+    await tester.drag(find.byKey(const ValueKey('qa.visits.list')), const Offset(0, -5000));
+    await tester.pumpAndSettle();
+    expect(controller.pages, greaterThan(0));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('reschedule opens date and time picker, then preserves form after failure', (
+    tester,
+  ) async {
+    controller.mutationResult = false;
+    await pump(tester);
+    await tester.tap(find.text('Reschedule'));
+    await tester.pumpAndSettle();
+    expect(find.byType(VisitEditDialog), findsOneWidget);
+    expect(find.text('Date'), findsOneWidget);
+    expect(find.text('Time'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Reschedule'));
+    await tester.pumpAndSettle();
+    expect(controller.reschedules, 1);
+    expect(find.byType(VisitEditDialog), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Reschedule')).onPressed,
+      isNotNull,
+    );
+  });
+  testWidgets('reschedule success closes dialog', (tester) async {
+    await pump(tester);
+    await tester.tap(find.text('Reschedule'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Reschedule'));
+    await tester.pumpAndSettle();
+    expect(controller.reschedules, 1);
+    expect(find.byType(VisitEditDialog), findsNothing);
+  });
+  testWidgets('cancel validates reason inline and retains it after failure', (tester) async {
+    controller.mutationResult = false;
+    await pump(tester);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Yes, Cancel'));
+    await tester.pump();
+    expect(controller.cancellations, 0);
+    expect(find.text('Enter a reason to cancel this visit.'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Not available');
+    await tester.tap(find.text('Yes, Cancel'));
+    await tester.pumpAndSettle();
+    expect(controller.cancellations, 1);
+    expect(controller.lastReason, 'Not available');
+    expect(find.text('Not available'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsOneWidget);
+  });
+  testWidgets('cancel success and dismiss keep controller lifecycle safe', (tester) async {
+    await pump(tester);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Busy');
+    await tester.tap(find.text('Yes, Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  for (final days in [60, 400, -3]) {
+    testWidgets('date picker accepts existing visit $days days away', (tester) async {
+      final visit = visitFixture(date: DateTime.now().add(Duration(days: days)));
+      await tester.pumpProviderApp(
+        Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showVisitEditDialog(context, visit, cancel: false),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+        overrides: [visitsProvider.overrideWith(() => controller)],
       );
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-      drainAllExceptions(tester);
-
-      // Drag the list upward to approach bottom.
-      await tester.drag(find.byType(SingleChildScrollView).first, const Offset(0, -4000));
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Date'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('pending booking is not a confirmed card and supports reconciliation', (
+    tester,
+  ) async {
+    pending = SeededPendingActions([
+      PendingAction(
+        operationId: 'op',
+        scopeKey: 'a',
+        kind: 'visit',
+        payload: {'scheduled_date': '2030-01-01T00:00:00Z'},
+        createdAt: DateTime.now(),
+        status: PendingActionStatus.needsReconciliation,
+      ),
+    ]);
+    await pump(tester, state: content(visits: []));
+    expect(find.text('Booking is not confirmed'), findsOneWidget);
+    expect(find.byType(VisitCard), findsNothing);
+    await tester.tap(find.text('Check bookings'));
+    await tester.pump();
+    expect(controller.reconciliations, 1);
+    expect(find.textContaining('No matching booking found'), findsOneWidget);
+  });
+  testWidgets('discard requires confirmation and does not claim to cancel server booking', (
+    tester,
+  ) async {
+    pending = SeededPendingActions([
+      PendingAction(
+        operationId: 'op',
+        scopeKey: 'a',
+        kind: 'visit',
+        payload: {},
+        createdAt: DateTime.now(),
+        status: PendingActionStatus.failed,
+      ),
+    ]);
+    await pump(tester, state: content(visits: []));
+    await tester.tap(find.text('Discard request'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('does not cancel a booking'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Discard request').last);
+    await tester.pumpAndSettle();
+    expect(pending.discarded, 'op');
+    expect(find.text('Request failed'), findsNothing);
+  });
+  for (final dark in [false, true]) {
+    testWidgets('narrow large-text ${dark ? 'dark' : 'light'} layout has readable selected tabs', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final theme = dark ? AppDesignTheme.dark() : AppDesignTheme.light();
+      await pump(
+        tester,
+        textScale: 1.8,
+        theme: theme,
+        state: content().copyWith(
+          agent: VisitAgentState(value: agentFixture(), phase: VisitLoadPhase.content),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byType(VisitCard), findsOneWidget);
+      final labelColor = dark ? AppDesignTokens.nightText : AppDesignTokens.ink900;
+      expect(find.byType(FolderTabs), findsOneWidget);
+      expect(labelColor, isNot(theme.colorScheme.primary));
+      // The chosen tab is the sheet itself, so its label reads on the sheet.
+      final foreground = labelColor.computeLuminance();
+      final background = AppPalette(isDark: dark).surface.computeLuminance();
+      final contrast = foreground > background
+          ? (foreground + 0.05) / (background + 0.05)
+          : (background + 0.05) / (foreground + 0.05);
+      expect(contrast, greaterThanOrEqualTo(4.5));
+      expect(tester.widget<Text>(find.text('Scheduled Visits')).style?.color, labelColor);
+      await tester.tap(find.byKey(const ValueKey('qa.visits.past')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(find.text('Past Visits')).style?.color, labelColor);
+      expect(tester.widget<Text>(find.text('Scheduled Visits')).style?.color, isNot(labelColor));
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('no assigned agent (404) is a quiet line, not an error', (tester) async {
+    await pump(tester);
+    expect(find.byKey(const ValueKey('qa.visits.no_agent')), findsOneWidget);
+    expect(find.text('No relationship manager is assigned to you yet.'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    expect(find.byType(AgentCard), findsNothing);
+  });
+  testWidgets('empty tabs each offer one way on: Discover', (tester) async {
+    await pump(tester, state: content(visits: []));
+    expect(find.byKey(const ValueKey('qa.state.empty.action')), findsOneWidget);
+    await tester.tap(find.text('Past Visits'));
+    await tester.pumpAndSettle();
+    expect(find.text('Visits you have been on appear here.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('qa.state.empty.action')), findsOneWidget);
+  });
+  testWidgets('status is coloured text and a missing photo is not an icon tile', (tester) async {
+    await pump(
+      tester,
+      state: content(visits: [visitFixture(status: VisitStatus.confirmed)]),
+    );
+    expect(find.byType(Chip), findsNothing);
+    expect(findKnife(KnifeIcon.home), findsNothing);
+    expect(find.textContaining('Confirmed', findRichText: true), findsOneWidget);
+  });
+  group('two panes at 1280 x 800', () {
+    late AppDatabase database;
+    setUp(() async => database = await visitTestDatabase());
+    tearDown(() => database.close());
+    Future<void> pumpWide(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      controller = SeededVisitsController(
+        content(visits: [visitFixture(property: propertyFixture())]),
+      );
+      await tester.pumpProviderApp(
+        const VisitsView(),
+        overrides: [
+          appDatabaseProvider.overrideWithValue(database),
+          storageScopeProvider.overrideWith(() => TestVisitScope(database)),
+          visitsProvider.overrideWith(() => controller),
+          pendingActionsProvider.overrideWith(() => pending),
+          unownedActionsProvider.overrideWith((ref) async => []),
+          swipeHistoryProvider.overrideWith(_IdleSwipes.new),
+          propertyDetailsProvider(100).overrideWith(
+            () => _SeededDetail(
+              100,
+              PropertyDetailsState(property: propertyFixture(), phase: PropertyDetailPhase.content),
+            ),
+          ),
+        ],
+      );
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(milliseconds: 300));
-      drainAllExceptions(tester);
+    }
 
-      expect(controller.loadMoreCallCount, greaterThan(0));
+    testWidgets('nothing selected shows the pane empty state', (tester) async {
+      await pumpWide(tester);
+      expect(find.text('Select a visit'), findsOneWidget);
+      expect(find.byType(PropertyDetailsView), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+    testWidgets('selecting a row shows its facts and actions over the home', (tester) async {
+      await pumpWide(tester);
+      await tester.tap(find.text('Test Property 100').first);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('qa.visits.pane.facts')), findsOneWidget);
+      expect(find.byKey(const ValueKey('qa.visits.pane.reschedule')), findsOneWidget);
+      expect(find.byType(PropertyDetailsView), findsOneWidget);
+      // The pane shows the visit actions itself; the details booking bar would repeat them.
+      expect(
+        tester.widget<PropertyDetailsView>(find.byType(PropertyDetailsView)).showBookingBar,
+        isFalse,
+      );
+      expect(find.text('Select a visit'), findsNothing);
+      expect(
+        tester.getTopLeft(find.byType(PropertyDetailsView)).dx,
+        greaterThan(tester.getTopRight(find.byKey(const ValueKey('visit-1'))).dx),
+      );
+      await tester.tap(find.byKey(const ValueKey('qa.visits.pane.cancel')));
+      await tester.pumpAndSettle();
+      expect(find.byType(VisitEditDialog), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
-
-  group('VisitsView agent contact edge cases', () {
-    testWidgets('WhatsApp with null contact shows unavailable path', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.relationshipManager.value = _testAgent(contactNumber: null);
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      await tester.tap(find.byIcon(Icons.message));
+  for (final dark in [false, true]) {
+    testWidgets('Hindi 2x text at 320 px ${dark ? 'dark' : 'light'} does not overflow', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      pending = SeededPendingActions([
+        PendingAction(
+          operationId: 'op',
+          scopeKey: 'a',
+          kind: 'visit',
+          payload: {'scheduled_date': '2030-01-01T00:00:00Z'},
+          createdAt: DateTime.now(),
+          status: PendingActionStatus.needsReconciliation,
+        ),
+      ]);
+      controller = SeededVisitsController(
+        content(
+          visits: [
+            visitFixture(property: propertyFixture()),
+            visitFixture(id: 2, status: VisitStatus.completed, property: propertyFixture(id: 7)),
+          ],
+        ).copyWith(
+          agent: VisitAgentState(value: agentFixture(), phase: VisitLoadPhase.content),
+          nextCursor: 'next',
+        ),
+      );
+      await tester.pumpProviderApp(
+        const VisitsView(),
+        locale: const Locale('hi', 'IN'),
+        textScale: 2,
+        theme: dark ? AppDesignTheme.dark() : AppDesignTheme.light(),
+        overrides: [
+          visitsProvider.overrideWith(() => controller),
+          pendingActionsProvider.overrideWith(() => pending),
+          unownedActionsProvider.overrideWith((ref) async => []),
+        ],
+      );
       await tester.pump();
-      await tester.pump(const Duration(seconds: 4));
-      // Toast may appear; ensure no crash.
-      expect(find.byType(AgentCard), findsOneWidget);
-    });
-
-    testWidgets('Agent with bare 10-digit number is formatted for dialer', (tester) async {
-      final controller = _TestVisitsController();
-      controller.isLoading.value = false;
-      controller.hasLoadedVisits.value = true;
-      controller.relationshipManager.value = _testAgent(contactNumber: '9876543210');
-      Get.put<VisitsController>(controller);
-
-      await tester.pumpApp(const VisitsView());
-      await tester.pump(const Duration(seconds: 1));
-
-      await tester.tap(find.byIcon(Icons.phone));
+      expect(tester.takeException(), isNull);
+      await tester.drag(find.byKey(const ValueKey('qa.visits.list')), const Offset(0, -3000));
       await tester.pump();
-      await tester.pump(const Duration(seconds: 4));
-      expect(find.byType(AgentCard), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.drag(find.byKey(const ValueKey('qa.visits.list')), const Offset(0, 3000));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byType(OutlinedButton),
+        200,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('qa.visits.list')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.ensureVisible(find.byType(OutlinedButton).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(OutlinedButton).first);
+      await tester.pumpAndSettle();
+      expect(find.byType(VisitEditDialog), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(
+        find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextButton)).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('पिछले दौरे').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(VisitCard), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
-  });
+  }
+  for (final dark in [false, true]) {
+    testWidgets('Hindi 2x empty and error states fit 320 px ${dark ? 'dark' : 'light'}', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      for (final state in [
+        content(visits: []),
+        VisitsState(phase: VisitLoadPhase.failed, failure: NetworkException('offline')),
+      ]) {
+        controller = SeededVisitsController(state);
+        await tester.pumpProviderApp(
+          const VisitsView(),
+          locale: const Locale('hi', 'IN'),
+          textScale: 2,
+          theme: dark ? AppDesignTheme.dark() : AppDesignTheme.light(),
+          overrides: [
+            visitsProvider.overrideWith(() => controller),
+            pendingActionsProvider.overrideWith(() => pending),
+            unownedActionsProvider.overrideWith((ref) async => []),
+          ],
+        );
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
+}
+
+class _SeededDetail extends PropertyDetailsController {
+  _SeededDetail(super.propertyId, this.value);
+  final PropertyDetailsState value;
+  @override
+  PropertyDetailsState build() => value;
+  @override
+  Future<void> refresh() async {}
+}
+
+class _IdleSwipes extends SwipeHistory {
+  @override
+  SwipeHistoryState build() => SwipeHistoryState();
 }

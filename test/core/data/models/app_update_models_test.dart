@@ -1,68 +1,55 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/core/data/models/app_update_models.dart';
+import 'package:ghar360/core/data/models/wire_enums.dart';
 
 void main() {
   group('AppVersionCheckRequest', () {
-    test('fromJson parses snake_case fields', () {
-      final json = <String, dynamic>{
-        'app': 'ghar360',
-        'platform': 'ios',
-        'current_version': '1.2.3',
-        'build_number': 42,
-      };
-
-      final request = AppVersionCheckRequest.fromJson(json);
-
-      expect(request.app, 'ghar360');
-      expect(request.platform, 'ios');
-      expect(request.currentVersion, '1.2.3');
-      expect(request.buildNumber, 42);
-    });
-
-    test('fromJson handles null buildNumber', () {
-      final json = <String, dynamic>{
-        'app': 'ghar360',
-        'platform': 'android',
-        'current_version': '2.0.0',
-      };
-
-      final request = AppVersionCheckRequest.fromJson(json);
-
-      expect(request.buildNumber, isNull);
-    });
-
-    test('toJson renames fields to snake_case', () {
+    test('toJson sends app and platform as enum values and the build number as an integer', () {
       const request = AppVersionCheckRequest(
-        app: 'ghar360',
-        platform: 'ios',
+        app: AppKey.ghar,
+        platform: DevicePlatform.ios,
         currentVersion: '1.2.3',
         buildNumber: 10,
       );
 
-      final json = request.toJson();
-
-      expect(json['app'], 'ghar360');
-      expect(json['platform'], 'ios');
-      expect(json['current_version'], '1.2.3');
-      expect(json['build_number'], 10);
+      expect(request.toJson(), {
+        'app': 'ghar',
+        'platform': 'ios',
+        'current_version': '1.2.3',
+        'build_number': 10,
+      });
     });
 
-    test('toJson roundtrip preserves all fields', () {
-      const original = AppVersionCheckRequest(
-        app: 'ghar360',
-        platform: 'android',
-        currentVersion: '3.1.0',
-        buildNumber: 99,
+    test('toJson leaves out an unknown build number', () {
+      const request = AppVersionCheckRequest(
+        app: AppKey.ghar,
+        platform: DevicePlatform.android,
+        currentVersion: '2.0.0',
       );
 
-      final json = original.toJson();
-      final restored = AppVersionCheckRequest.fromJson(json);
+      expect(request.toJson().containsKey('build_number'), isFalse);
+    });
 
-      expect(restored.app, original.app);
-      expect(restored.platform, original.platform);
-      expect(restored.currentVersion, original.currentVersion);
-      expect(restored.buildNumber, original.buildNumber);
+    test('the retired app value ghar360 is not an AppKey', () {
+      expect(AppKey.fromJson('ghar360'), isNull);
+      expect(AppKey.fromJson('ghar'), AppKey.ghar);
+    });
+
+    test('current_version is 1 to 20 characters', () {
+      const empty = AppVersionCheckRequest(
+        app: AppKey.ghar,
+        platform: DevicePlatform.ios,
+        currentVersion: '  ',
+      );
+      final long = AppVersionCheckRequest(
+        app: AppKey.ghar,
+        platform: DevicePlatform.ios,
+        currentVersion: '1' * 21,
+      );
+
+      expect(empty.toJson, throwsFormatException);
+      expect(long.toJson, throwsFormatException);
     });
   });
 

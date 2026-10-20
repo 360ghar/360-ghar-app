@@ -1,186 +1,137 @@
-// test/features/auth/presentation/views/phone_entry_view_test.dart
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
+import 'package:mocktail/mocktail.dart';
 
 import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/presentation/controllers/phone_entry_controller.dart';
 import 'package:ghar360/features/auth/presentation/views/phone_entry_view.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
-import '../../../../helpers/pump_app.dart';
-
-// ---------------------------------------------------------------------------
-// Stub controller
-// ---------------------------------------------------------------------------
-
-class _StubPhoneEntryController extends GetxServiceMock implements PhoneEntryController {
-  @override
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
-
-  @override
-  final TextEditingController identifierController = TextEditingController();
-
-  @override
-  final FocusNode identifierFocusNode = FocusNode();
-
-  @override
-  final Rx<IdentifierEntryState> state = IdentifierEntryState.idle.obs;
-
-  @override
-  final RxBool isLoading = false.obs;
-
-  @override
-  final RxBool isGoogleLoading = false.obs;
-
-  @override
-  final RxBool isAppleLoading = false.obs;
-
-  @override
-  final RxString errorMessage = ''.obs;
-
-  @override
-  final RxBool isIdentifierFocused = false.obs;
-
-  @override
-  final RxInt validationShakeTrigger = 0.obs;
-
-  @override
-  final RxBool looksLikeEmail = false.obs;
-
-  @override
-  final Rxn<AuthMethod> lastMethod = Rxn<AuthMethod>();
-
-  @override
-  final RxString lastIdentifierHint = ''.obs;
-
-  @override
-  bool get isGoogleAvailable => true;
-
-  @override
-  bool get isAppleAvailable => false;
-
-  bool checkAndNavigateCalled = false;
-  bool signInWithGoogleCalled = false;
-  bool signInWithAppleCalled = false;
-
-  @override
-  String? validateIdentifier(String? value) {
-    final raw = (value ?? '').trim();
-    if (raw.isEmpty) return 'identifier_required'.tr;
-    return null;
-  }
-
-  @override
-  Future<void> requestPhoneNumberHint() async {}
-
-  @override
-  Future<void> signInWithGoogle() async {
-    signInWithGoogleCalled = true;
-  }
-
-  @override
-  Future<void> signInWithApple() async {
-    signInWithAppleCalled = true;
-  }
-
-  @override
-  Future<void> checkAndNavigate() async {
-    checkAndNavigateCalled = true;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
+import '../../../../helpers/auth_form_harness.dart';
 
 void main() {
+  late AuthFormHarness h;
   setUp(() {
-    GetxTestBinding.init();
+    h = AuthFormHarness();
+  });
+  tearDown(() {
+    h.close();
   });
 
-  tearDown(() => GetxTestBinding.reset());
-
-  Future<void> pumpPhoneEntryView(WidgetTester tester, _StubPhoneEntryController controller) async {
-    Get.put<PhoneEntryController>(controller);
-    await tester.pumpApp(const PhoneEntryView());
-    await tester.pump();
-  }
-
-  group('PhoneEntryView', () {
-    testWidgets('renders screen with identifier input and continue button', (tester) async {
-      final controller = _StubPhoneEntryController();
-      await pumpPhoneEntryView(tester, controller);
-
-      expect(find.byKey(const ValueKey('qa.auth.phone_entry.screen')), findsOneWidget);
+  testWidgets('entry renders identifier, Google, and continue controls', (tester) async {
+    try {
+      await h.pump(tester, const PhoneEntryView());
       expect(find.byKey(const ValueKey('qa.auth.phone_entry.identifier_input')), findsOneWidget);
       expect(find.byKey(const ValueKey('qa.auth.phone_entry.continue')), findsOneWidget);
-    });
-
-    testWidgets('tapping continue calls checkAndNavigate', (tester) async {
-      final controller = _StubPhoneEntryController();
-      await pumpPhoneEntryView(tester, controller);
-
-      await tester.tap(find.byKey(const ValueKey('qa.auth.phone_entry.continue')));
-      await tester.pump();
-
-      expect(controller.checkAndNavigateCalled, isTrue);
-    });
-
-    testWidgets('shows loading spinner on continue button when isLoading', (tester) async {
-      final controller = _StubPhoneEntryController();
-      controller.isLoading.value = true;
-      await pumpPhoneEntryView(tester, controller);
-
-      // When loading, the button shows a CircularProgressIndicator + 'checking_account' text.
-      expect(find.text('checking_account'.tr), findsOneWidget);
-    });
-
-    testWidgets('shows inline error message when errorMessage is set', (tester) async {
-      final controller = _StubPhoneEntryController();
-      controller.errorMessage.value = 'Network error';
-      await pumpPhoneEntryView(tester, controller);
-
-      expect(find.text('Network error'), findsOneWidget);
-    });
-
-    testWidgets('shows last method hint when lastMethod is set', (tester) async {
-      final controller = _StubPhoneEntryController();
-      controller.lastMethod.value = AuthMethod.phonePassword;
-      controller.lastIdentifierHint.value = '+91 ******3210';
-      await pumpPhoneEntryView(tester, controller);
-
-      expect(find.byIcon(Icons.history), findsOneWidget);
-    });
-
-    testWidgets('hides last method hint when lastMethod is null', (tester) async {
-      final controller = _StubPhoneEntryController();
-      await pumpPhoneEntryView(tester, controller);
-
-      expect(find.byIcon(Icons.history), findsNothing);
-    });
-
-    testWidgets('entering text into identifier field updates controller', (tester) async {
-      final controller = _StubPhoneEntryController();
-      await pumpPhoneEntryView(tester, controller);
-
-      await tester.enterText(
-        find.byKey(const ValueKey('qa.auth.phone_entry.identifier_input')),
-        'test@example.com',
-      );
-      await tester.pump();
-
-      expect(controller.identifierController.text, 'test@example.com');
-    });
-
-    testWidgets('renders Google sign-in button on non-iOS platforms', (tester) async {
-      final controller = _StubPhoneEntryController();
-      await pumpPhoneEntryView(tester, controller);
-
-      // The Google sign-in button is rendered with a ValueKey.
       expect(find.byKey(const ValueKey('qa.auth.google_signin')), findsOneWidget);
-    });
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      h.close();
+    }
   });
+  for (final value in ['', 'invalid', '  ']) {
+    testWidgets('invalid identifier "$value" blocks repository request', (tester) async {
+      try {
+        await h.pump(tester, const PhoneEntryView());
+        await tester.enterText(find.byType(TextFormField), value);
+        await tester.ensureVisible(find.byKey(const ValueKey('qa.auth.phone_entry.continue')));
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('qa.auth.phone_entry.continue')));
+        await tester.pump();
+        verifyNever(() => h.repository.checkIdentifierStatus(any()));
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        h.close();
+      }
+    });
+  }
+  testWidgets('valid identifier calls status check and changes route', (tester) async {
+    try {
+      await h.pump(tester, const PhoneEntryView());
+      await tester.enterText(find.byType(TextFormField), 'test@example.com');
+      await tester.ensureVisible(find.byKey(const ValueKey('qa.auth.phone_entry.continue')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('qa.auth.phone_entry.continue')));
+      await tester.pumpAndSettle();
+      verify(() => h.repository.checkIdentifierStatus('test@example.com')).called(1);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      h.close();
+    }
+  });
+  testWidgets('pending entry request keeps button dimensions and disables duplicate tap', (
+    tester,
+  ) async {
+    try {
+      final pending = Completer<void>();
+      when(() => h.repository.signInWithGoogle()).thenAnswer((_) => pending.future);
+      await h.pump(tester, const PhoneEntryView());
+      final button = find.byKey(const ValueKey('qa.auth.phone_entry.continue'));
+      final size = tester.getSize(button);
+      final request = h.container.read(phoneEntryProvider.notifier).signInWithGoogle();
+      await tester.pump();
+      expect(tester.getSize(button), size);
+      expect(tester.widget<FilledButton>(button).onPressed, isNull);
+      pending.complete();
+      await request;
+      await tester.pump();
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      h.close();
+    }
+  });
+  testWidgets('typed error is inline and can be cleared without losing text', (tester) async {
+    try {
+      await h.pump(tester, const PhoneEntryView());
+      await tester.enterText(find.byType(TextFormField), 'test@example.com');
+      h.container.read(phoneEntryProvider.notifier).invalid('identifier_invalid');
+      await tester.pump();
+      expect(find.byType(AuthFormError), findsOneWidget);
+      await tester.enterText(find.byType(TextFormField), 'new@example.com');
+      expect(h.container.read(phoneEntryProvider).error, isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      h.close();
+    }
+  });
+  testWidgets('last method appears with masked hint', (tester) async {
+    try {
+      await h.repository.lastAuthMethodStore.save(
+        AuthMethod.emailPassword,
+        identifier: 'john@example.com',
+      );
+      await h.pump(tester, const PhoneEntryView());
+      expect(find.textContaining('j***@example.com'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      h.close();
+    }
+  });
+  testWidgets('no last method leaves hint hidden', (tester) async {
+    try {
+      await h.pump(tester, const PhoneEntryView());
+      expect(find.textContaining('Last used'), findsNothing);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      h.close();
+    }
+  });
+  for (final brightness in Brightness.values) {
+    testWidgets('entry fits narrow ${brightness.name} screen with large text', (tester) async {
+      try {
+        tester.view.physicalSize = const Size(320, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await h.pump(tester, const PhoneEntryView(), scale: 2, brightness: brightness);
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        h.close();
+      }
+    });
+  }
 }

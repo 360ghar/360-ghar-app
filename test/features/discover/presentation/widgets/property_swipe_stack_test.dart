@@ -2,19 +2,25 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:ghar360/core/utils/image_cache_service.dart';
+import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_stack.dart';
-import '../../../../helpers/getx_test_binding.dart';
+import '../../../../helpers/image_test_cache.dart';
 
 /// Builds a richer [PropertyModel] for swipe-stack rendering tests.
 PropertyModel _property({int id = 100, String title = 'Sunshine Villa'}) {
   return PropertyModel(
     id: id,
+    ownerId: 7,
+    createdAt: DateTime.utc(2026, 9, 30),
+    updatedAt: DateTime.utc(2026, 9, 30),
     title: title,
     basePrice: 5000000,
     propertyType: PropertyType.house,
@@ -33,35 +39,23 @@ PropertyModel _property({int id = 100, String title = 'Sunshine Villa'}) {
   );
 }
 
+final _images = ImageTestCache();
+
+/// The blank sheets behind the top card.
+final _deckSheets = find.byWidgetPredicate((w) => w.runtimeType.toString() == '_DeckSheet');
+
 void main() {
-  setUp(() {
-    GetxTestBinding.init();
-    Get.locale = const Locale('en', 'US');
-    Get.addTranslations(AppTranslations().keys);
-    // Suppress RenderFlex overflow errors that arise from the constrained
-    // test surface so they don't fail the test runner.
-    FlutterError.onError = (FlutterErrorDetails details) {
-      final summary = details.exception.toString();
-      if (summary.contains('overflow') || summary.contains('RenderFlex')) {
-        return;
-      }
-      FlutterError.presentError(details);
-    };
-  });
-
-  tearDown(() {
-    FlutterError.onError = FlutterError.presentError;
-    GetxTestBinding.reset();
-  });
-
-  /// Pumps [child] inside a GetMaterialApp with a fixed-size surface so the
+  /// Pumps [child] inside a MaterialApp with a fixed-size surface so the
   /// LayoutBuilder in [PropertySwipeStack] receives finite constraints.
   Future<void> pumpStack(WidgetTester tester, Widget child) async {
     await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
+      MaterialApp(
+        localizationsDelegates: const [AppLocalizations.delegate],
+        builder: (context, child) => ProviderScope(
+          overrides: [imageCacheServiceProvider.overrideWithValue(_images.service)],
+          child: child!,
+        ),
         locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
         home: Scaffold(
           body: Center(child: SizedBox(width: 400, height: 700, child: child)),
         ),
@@ -82,8 +76,8 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.byIcon(Icons.home_outlined), findsOneWidget);
-      expect(find.text('No More Properties'), findsOneWidget);
+      expect(find.byType(PaperVignette), findsOneWidget);
+      expect(find.text('You have seen every home here'), findsOneWidget);
     });
 
     testWidgets('passes onRefresh and onChangeFilters to empty state', (tester) async {
@@ -91,10 +85,13 @@ void main() {
       var filtersCalled = false;
       // Use a wide surface so the two-button Row does not overflow.
       await tester.pumpWidget(
-        GetMaterialApp(
-          translations: AppTranslations(),
+        MaterialApp(
+          localizationsDelegates: const [AppLocalizations.delegate],
+          builder: (context, child) => ProviderScope(
+            overrides: [imageCacheServiceProvider.overrideWithValue(_images.service)],
+            child: child!,
+          ),
           locale: const Locale('en', 'US'),
-          fallbackLocale: const Locale('en', 'US'),
           home: Scaffold(
             body: Center(
               child: SizedBox(
@@ -115,14 +112,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The empty state renders an ElevatedButton (change filters) and an
-      // OutlinedButton (refresh) when callbacks are provided.
-      final elevated = find.byType(ElevatedButton);
-      final outlined = find.byType(OutlinedButton);
+      // One action (change filters) and a quiet refresh link.
+      final elevated = find.byKey(const ValueKey('qa.state.deck_empty.action'));
+      final outlined = find.byKey(const ValueKey('qa.state.deck_empty.secondary'));
       expect(elevated, findsOneWidget);
       expect(outlined, findsOneWidget);
-      expect(find.byIcon(Icons.tune), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
 
       await tester.tap(elevated);
       await tester.pumpAndSettle();
@@ -156,8 +150,8 @@ void main() {
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.text('Loading more properties...'), findsOneWidget);
-      expect(find.text('No More Properties'), findsNothing);
-      expect(find.byIcon(Icons.tune), findsNothing);
+      expect(find.text('You have seen every home here'), findsNothing);
+      expect(find.byKey(const ValueKey('qa.state.deck_empty.action')), findsNothing);
     });
 
     testWidgets('still shows the empty state when not loading more', (tester) async {
@@ -173,7 +167,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('No More Properties'), findsOneWidget);
+      expect(find.text('You have seen every home here'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
   });
@@ -213,12 +207,12 @@ void main() {
       );
       await tester.pump();
 
-      // The top card is a PropertySwipeCard; background preview cards render
-      // the property title text directly (not inside PropertySwipeCard).
+      // The top card is a PropertySwipeCard; the next two are blank sheets of
+      // card stock whose edges show behind it.
       expect(find.byType(PropertySwipeCard), findsOneWidget);
-      // Background preview cards show titles of properties[1] and properties[2].
-      expect(find.text('Beta House'), findsOneWidget);
-      expect(find.text('Gamma Villa'), findsOneWidget);
+      expect(_deckSheets, findsNWidgets(2));
+      expect(find.text('Beta House'), findsNothing);
+      expect(find.text('Gamma Villa'), findsNothing);
     });
 
     testWidgets('renders only one background card when two properties', (tester) async {
@@ -238,9 +232,7 @@ void main() {
       await tester.pump();
 
       expect(find.byType(PropertySwipeCard), findsOneWidget);
-      expect(find.text('Beta House'), findsOneWidget);
-      // No third property, so no Gamma.
-      expect(find.text('Gamma Villa'), findsNothing);
+      expect(_deckSheets, findsOneWidget);
     });
 
     testWidgets('does not show like/pass/info action buttons', (tester) async {
@@ -390,7 +382,7 @@ void main() {
         findsNothing,
       );
 
-      Get.closeAllSnackbars();
+      AppToast.dismiss();
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
@@ -411,10 +403,13 @@ void main() {
       final refreshed = [_property(id: 3, title: 'Gamma Villa')];
       PropertyModel? swipedRight;
 
-      Widget buildStack(List<PropertyModel> props) => GetMaterialApp(
-        translations: AppTranslations(),
+      Widget buildStack(List<PropertyModel> props) => MaterialApp(
+        localizationsDelegates: const [AppLocalizations.delegate],
+        builder: (context, child) => ProviderScope(
+          overrides: [imageCacheServiceProvider.overrideWithValue(_images.service)],
+          child: child!,
+        ),
         locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
         home: Scaffold(
           body: Center(
             child: SizedBox(
@@ -456,7 +451,7 @@ void main() {
       expect(find.text('Alpha Home'), findsNothing);
       expect(find.text('Gamma Villa'), findsWidgets);
 
-      Get.closeAllSnackbars();
+      AppToast.dismiss();
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
@@ -508,14 +503,19 @@ void main() {
       // Initially the top card is "Alpha Home".
       expect(find.byType(PropertySwipeCard), findsOneWidget);
 
-      await tester.drag(find.byType(PropertySwipeStack), const Offset(180, 0));
-      // Pump through the 400ms swipe animation so the status listener fires
-      // and removes the top card.
+      expect(find.text('Alpha Home'), findsOneWidget);
+      // Past the commit threshold (a quarter of the card width).
+      await tester.drag(find.byType(PropertySwipeStack), const Offset(320, 0));
+      // The first frame starts the 400 ms exit; the next runs it to the end,
+      // the status listener removes the top card, and a last frame shows it.
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump();
 
       // After the swipe completes, the next card ("Beta House") becomes the
       // top PropertySwipeCard.
-      expect(find.text('Beta House'), findsWidgets);
+      expect(find.text('Beta House'), findsOneWidget);
+      expect(find.text('Alpha Home'), findsNothing);
     });
   });
 
@@ -539,10 +539,13 @@ void main() {
 
       // Rebuild with a new property list.
       await tester.pumpWidget(
-        GetMaterialApp(
-          translations: AppTranslations(),
+        MaterialApp(
+          localizationsDelegates: const [AppLocalizations.delegate],
+          builder: (context, child) => ProviderScope(
+            overrides: [imageCacheServiceProvider.overrideWithValue(_images.service)],
+            child: child!,
+          ),
           locale: const Locale('en', 'US'),
-          fallbackLocale: const Locale('en', 'US'),
           home: Scaffold(
             body: Center(
               child: SizedBox(
@@ -585,10 +588,13 @@ void main() {
 
       // Rebuild with the same property list (new instance, same ids).
       await tester.pumpWidget(
-        GetMaterialApp(
-          translations: AppTranslations(),
+        MaterialApp(
+          localizationsDelegates: const [AppLocalizations.delegate],
+          builder: (context, child) => ProviderScope(
+            overrides: [imageCacheServiceProvider.overrideWithValue(_images.service)],
+            child: child!,
+          ),
           locale: const Locale('en', 'US'),
-          fallbackLocale: const Locale('en', 'US'),
           home: Scaffold(
             body: Center(
               child: SizedBox(
@@ -671,5 +677,29 @@ void main() {
       await gesture.up();
       await tester.pump();
     });
+  });
+
+  testWidgets('prefetches the photos of the next two cards, which show as blank sheets', (
+    tester,
+  ) async {
+    PropertyModel withPhoto(int id) => PropertyModel.fromJson({
+      ..._property(id: id, title: 'Home $id').toJson(),
+      'main_image_url': 'https://example.com/next-$id.jpg',
+    });
+    _images.displayed.clear();
+    await pumpStack(
+      tester,
+      PropertySwipeStack(
+        properties: [withPhoto(1), withPhoto(2), withPhoto(3), withPhoto(4)],
+        onSwipeLeft: (_) {},
+        onSwipeRight: (_) {},
+        onSwipeUp: (_) {},
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(_images.displayed, contains('https://example.com/next-2.jpg'));
+    expect(_images.displayed, contains('https://example.com/next-3.jpg'));
+    expect(_images.displayed, isNot(contains('https://example.com/next-4.jpg')));
   });
 }

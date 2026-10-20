@@ -1,0 +1,168 @@
+{
+  "AgentType": [
+    "general",
+    "specialist",
+    "senior"
+  ],
+  "AppKey": [
+    "ghar",
+    "estate",
+    "flatmates",
+    "stays"
+  ],
+  "AssistantErrorCode": [
+    "AGENT_ERROR",
+    "STREAM_ERROR"
+  ],
+  "AuthMethod": [
+    "google",
+    "apple",
+    "email_password",
+    "phone_password",
+    "phone_otp",
+    "email_otp"
+  ],
+  "BugSeverity": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "BugStatus": [
+    "open",
+    "in_progress",
+    "resolved",
+    "closed"
+  ],
+  "BugType": [
+    "ui_bug",
+    "functionality_bug",
+    "performance_issue",
+    "crash",
+    "feature_request",
+    "other"
+  ],
+  "DevicePlatform": [
+    "android",
+    "ios",
+    "web"
+  ],
+  "ExperienceLevel": [
+    "beginner",
+    "intermediate",
+    "expert"
+  ],
+  "FurnishingLevel": [
+    "furnished",
+    "semi_furnished",
+    "unfurnished"
+  ],
+  "IdentifierChannel": [
+    "email",
+    "phone"
+  ],
+  "IdentifierNextStep": [
+    "password",
+    "otp"
+  ],
+  "ImageCategory": [
+    "room",
+    "hall",
+    "kitchen",
+    "bathroom",
+    "balcony",
+    "terrace",
+    "garden",
+    "parking",
+    "entrance",
+    "exterior",
+    "interior",
+    "others",
+    "floor_plan"
+  ],
+  "KitchenType": [
+    "vegetarian",
+    "non_vegetarian",
+    "eggetarian",
+    "any"
+  ],
+  "ListingGenderPreference": [
+    "any",
+    "male",
+    "female"
+  ],
+  "ListingSharingType": [
+    "private_room",
+    "shared_room",
+    "master_bedroom",
+    "entire_flat"
+  ],
+  "PageFormat": [
+    "html",
+    "markdown",
+    "json"
+  ],
+  "ProfileVisibility": [
+    "public",
+    "agents_only",
+    "private"
+  ],
+  "PropertyPurpose": [
+    "buy",
+    "rent",
+    "short_stay"
+  ],
+  "PropertyStatus": [
+    "available",
+    "sold",
+    "rented",
+    "under_offer",
+    "maintenance"
+  ],
+  "PropertyType": [
+    "house",
+    "apartment",
+    "builder_floor",
+    "room",
+    "villa",
+    "plot",
+    "condo",
+    "penthouse",
+    "studio",
+    "loft",
+    "pg",
+    "flatmate",
+    "office",
+    "shop",
+    "warehouse"
+  ],
+  "SortBy": [
+    "distance",
+    "price_low",
+    "price_high",
+    "newest",
+    "popular",
+    "relevance"
+  ],
+  "UserRole": [
+    "user",
+    "agent",
+    "admin"
+  ],
+  "VentilationType": [
+    "good",
+    "average",
+    "poor"
+  ],
+  "VisitContext": [
+    "property_tour",
+    "flatmate_meet"
+  ],
+  "VisitStatus": [
+    "requested",
+    "confirmed",
+    "completed",
+    "cancelled",
+    "reschedule_suggested"
+  ]
+}

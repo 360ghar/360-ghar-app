@@ -1,416 +1,194 @@
-import 'dart:async';
+import 'dart:io';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ghar360/core/controllers/offline_action.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
-import 'package:ghar360/core/data/models/visit_model.dart';
-import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/swipes/data/datasources/swipes_remote_datasource.dart';
-import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
-import 'package:mocktail/mocktail.dart';
-
-class _MockSwipesRemote extends Mock implements SwipesRemoteDatasource {}
-
-class _MockVisitsRemote extends Mock implements VisitsRemoteDatasource {}
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
+import 'package:ghar360/core/providers/pending_actions_provider.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import '../../helpers/visits_test_support.dart';
 
 void main() {
-  late InMemoryOfflineQueueStorage storage;
-  late _MockSwipesRemote swipes;
-  late _MockVisitsRemote visits;
-  late StreamController<List<ConnectivityResult>> connectivity;
+  late AppDatabase db;
+  late StorageScope scope;
   late OfflineQueueService queue;
-
-  setUp(() {
-    storage = InMemoryOfflineQueueStorage();
-    swipes = _MockSwipesRemote();
-    visits = _MockVisitsRemote();
-    connectivity = StreamController<List<ConnectivityResult>>.broadcast();
-
-    when(
-      () => swipes.swipeProperty(
-        propertyId: any(named: 'propertyId'),
-        isLiked: any(named: 'isLiked'),
-      ),
-    ).thenAnswer((_) async {});
-    when(
-      () => visits.scheduleVisit(
-        propertyId: any(named: 'propertyId'),
-        scheduledDate: any(named: 'scheduledDate'),
-        specialRequirements: any(named: 'specialRequirements'),
-      ),
-    ).thenAnswer((_) async => throw UnimplementedError('not used'));
-
-    queue = OfflineQueueService(
-      storage: storage,
-      swipesRemoteDatasource: swipes,
-      visitsRemoteDatasource: visits,
-      connectivityStream: connectivity.stream,
+  setUp(() async {
+    db = await visitTestDatabase();
+    scope = db.activateScope(environment: 'test', accountId: 'a');
+    queue = OfflineQueueService(database: db, scope: () => scope);
+  });
+  tearDown(() async {
+    queue.close();
+    await db.close();
+  });
+  test('durable action has unique operation ID, account, and immutable payload copy', () async {
+    final action = await queue.enqueueSwipe(propertyId: 1, isLiked: true, scope: scope);
+    expect(action.operationId, isNotEmpty);
+    expect(action.scopeKey, scope.key);
+    expect(action.kind, 'swipe');
+    expect(action.status, PendingActionStatus.pending);
+    expect(action.attempts, 0);
+    expect(() => action.payload['property_id'] = 99, throwsUnsupportedError);
+    expect((await queue.list()).single.payload['property_id'], 1);
+  });
+  test('new same-property intent supersedes the older intent without deleting it', () async {
+    final first = await queue.enqueueSwipe(propertyId: 1, isLiked: true, scope: scope);
+    final second = await queue.enqueueSwipe(propertyId: 1, isLiked: false, scope: scope);
+    final actions = await queue.list();
+    expect(actions.length, 2);
+    expect(actions.first.operationId, first.operationId);
+    expect(actions.first.failureCode, 'SUPERSEDED');
+    expect(actions.last.operationId, second.operationId);
+    expect(actions.last.status, PendingActionStatus.pending);
+  });
+  test('concurrent enqueue keeps only the latest intent eligible for retry', () async {
+    await Future.wait([
+      for (var i = 0; i < 8; i++)
+        queue.enqueueSwipe(propertyId: 1, isLiked: i.isEven, scope: scope),
+    ]);
+    final actions = await queue.list();
+    expect(actions.length, 8);
+    expect(actions.where((a) => a.failureCode != 'SUPERSEDED').length, 1);
+    expect(actions.last.payload['is_liked'], false);
+  });
+  test('old-account enqueue cannot move an action into the new account', () async {
+    final old = scope;
+    scope = db.activateScope(environment: 'test', accountId: 'b');
+    await expectLater(
+      queue.enqueueSwipe(propertyId: 1, isLiked: true, scope: old),
+      throwsA(isA<StorageFailure>()),
+    );
+    expect(await queue.list(), isEmpty);
+  });
+  test('account A to B to A invalidates the original lease', () async {
+    final old = scope;
+    db.activateScope(environment: 'test', accountId: 'b');
+    scope = db.activateScope(environment: 'test', accountId: 'a');
+    await expectLater(
+      queue.create(kind: 'visit', payload: {}, scope: old),
+      throwsA(isA<StorageFailure>()),
     );
   });
-
-  tearDown(() async {
-    await connectivity.close();
+  test('logout hides saved requests without deleting them', () async {
+    await queue.create(
+      kind: 'visit',
+      payload: {'property_id': 1},
+      status: PendingActionStatus.needsReconciliation,
+    );
+    scope = db.activateScope(environment: 'test');
+    expect(await queue.list(), isEmpty);
+    scope = db.activateScope(environment: 'test', accountId: 'a');
+    expect((await queue.list()).length, 1);
   });
-
-  group('OfflineAction parsing', () {
-    test('round-trips swipe and visit maps', () {
-      final swipe = OfflineSwipeAction(
-        propertyId: 42,
-        isLiked: true,
-        timestamp: DateTime.utc(2024, 1, 2, 3, 4, 5),
-        retries: 1,
-      );
-      final visit = OfflineVisitAction(
-        propertyId: 7,
-        scheduledDate: '2024-06-01T10:00:00.000Z',
-        specialRequirements: 'gate code 12',
-        timestamp: DateTime.utc(2024, 1, 2),
-        retries: 0,
-      );
-
-      expect(OfflineAction.tryParse(swipe.toJson()), isA<OfflineSwipeAction>());
-      expect(OfflineAction.tryParse(visit.toJson()), isA<OfflineVisitAction>());
-      expect(OfflineAction.tryParse({'type': 'unknown'}), isNull);
-      expect(OfflineAction.tryParse({'type': 'swipe'}), isNull);
-    });
+  test('guest action fails before claiming it is saved', () async {
+    scope = db.activateScope(environment: 'test');
+    await expectLater(
+      queue.create(kind: 'visit', payload: {}),
+      throwsA(isA<StorageFailure>().having((e) => e.code, 'code', 'ACTION_OWNER_REQUIRED')),
+    );
   });
-
-  group('OfflineQueueService', () {
-    test('enqueueSwipe persists typed action', () async {
-      await queue.enqueueSwipe(propertyId: 10, isLiked: true);
-      expect(queue.queueLength, 1);
-
-      final raw = storage.readList(OfflineQueueService.storageKey)!;
-      final action = OfflineAction.tryParse(Map<String, dynamic>.from(raw.first as Map));
-      expect(action, isA<OfflineSwipeAction>());
-      expect((action as OfflineSwipeAction).propertyId, 10);
-      expect(action.isLiked, isTrue);
-    });
-
-    test('processQueue replays swipe and clears storage', () async {
-      await queue.enqueueSwipe(propertyId: 3, isLiked: false);
-      await queue.processQueue();
-
-      verify(() => swipes.swipeProperty(propertyId: 3, isLiked: false)).called(1);
-      expect(queue.queueLength, 0);
-    });
-
-    test('network failure increments retries and keeps action', () async {
-      when(
-        () => swipes.swipeProperty(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      ).thenThrow(NetworkException('offline', code: 'CONNECTION_ERROR'));
-
-      await queue.enqueueSwipe(propertyId: 9, isLiked: true);
-      await queue.processQueue();
-
-      expect(queue.queueLength, 1);
-      final raw = storage.readList(OfflineQueueService.storageKey)!;
-      final action = OfflineAction.tryParse(Map<String, dynamic>.from(raw.first as Map))!;
-      expect(action.retries, 1);
-    });
-
-    test('stale actions are purged before processing', () async {
-      final stale = OfflineSwipeAction(
-        propertyId: 1,
-        isLiked: true,
-        timestamp: DateTime.now().subtract(const Duration(hours: 48)),
-      );
-      storage.writeList(OfflineQueueService.storageKey, [stale.toJson()]);
-
-      await queue.processQueue();
-
-      verifyNever(
-        () => swipes.swipeProperty(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      );
-      expect(queue.queueLength, 0);
-    });
-
-    test('actions exceeding max retries are dropped', () async {
-      final exhausted = OfflineSwipeAction(
-        propertyId: 2,
-        isLiked: false,
-        timestamp: DateTime.now(),
-        retries: maxOfflineRetries,
-      );
-      storage.writeList(OfflineQueueService.storageKey, [exhausted.toJson()]);
-
-      await queue.processQueue();
-
-      verifyNever(
-        () => swipes.swipeProperty(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      );
-      expect(queue.queueLength, 0);
-    });
-
-    test('clearQueue removes all actions', () async {
-      await queue.enqueueSwipe(propertyId: 1, isLiked: true);
-      await queue.enqueueVisit(propertyId: 2, scheduledDate: '2024-01-01T00:00:00.000Z');
-      expect(queue.queueLength, 2);
-
-      queue.clearQueue();
-      expect(queue.queueLength, 0);
-    });
-
-    test('queue size cap drops oldest', () async {
-      for (var i = 0; i < maxOfflineQueueSize + 3; i++) {
-        await queue.enqueueSwipe(propertyId: i, isLiked: i.isEven);
-      }
-      expect(queue.queueLength, maxOfflineQueueSize);
-
-      final raw = storage.readList(OfflineQueueService.storageKey)!;
-      final first =
-          OfflineAction.tryParse(Map<String, dynamic>.from(raw.first as Map)) as OfflineSwipeAction;
-      expect(first.propertyId, 3);
-    });
+  test('failed requests and retry metadata remain until explicit discard', () async {
+    final action = await queue.create(
+      kind: 'visit',
+      payload: {'scheduled_date': '2000-01-01'},
+      status: PendingActionStatus.needsReconciliation,
+    );
+    await db.updateAction(
+      scope: scope,
+      operationId: action.operationId,
+      status: PendingActionStatus.failed,
+      attempts: 99,
+      failureCode: 'REVIEW',
+    );
+    final persisted = (await queue.list()).single;
+    expect(persisted.attempts, 99);
+    expect(persisted.status, PendingActionStatus.failed);
+    await queue.discard(action.operationId);
+    expect(await queue.list(), isEmpty);
   });
-
-  group('OfflineQueueService — visit actions', () {
-    test('enqueueVisit persists typed action', () async {
-      await queue.enqueueVisit(
-        propertyId: 5,
-        scheduledDate: '2025-06-01T10:00:00.000Z',
-        specialRequirements: 'Need elevator',
-      );
-      expect(queue.queueLength, 1);
-
-      final raw = storage.readList(OfflineQueueService.storageKey)!;
-      final action = OfflineAction.tryParse(Map<String, dynamic>.from(raw.first as Map));
-      expect(action, isA<OfflineVisitAction>());
-      expect((action as OfflineVisitAction).propertyId, 5);
-      expect(action.scheduledDate, '2025-06-01T10:00:00.000Z');
-      expect(action.specialRequirements, 'Need elevator');
-    });
-
-    test('processQueue replays visit and clears storage', () async {
-      when(
-        () => visits.scheduleVisit(
-          propertyId: any(named: 'propertyId'),
-          scheduledDate: any(named: 'scheduledDate'),
-          specialRequirements: any(named: 'specialRequirements'),
-        ),
-      ).thenAnswer(
-        (_) async => VisitModel(
-          id: 1,
-          propertyId: 8,
-          userId: 1,
-          status: VisitStatus.scheduled,
-          scheduledDate: DateTime.parse('2025-07-01T09:00:00.000Z'),
-          createdAt: DateTime.parse('2025-07-01T09:00:00.000Z'),
-        ),
-      );
-
-      await queue.enqueueVisit(propertyId: 8, scheduledDate: '2025-07-01T09:00:00.000Z');
-      await queue.processQueue();
-
-      verify(
-        () => visits.scheduleVisit(
-          propertyId: 8,
-          scheduledDate: '2025-07-01T09:00:00.000Z',
-          specialRequirements: null,
-        ),
-      ).called(1);
-      expect(queue.queueLength, 0);
-    });
+  test('queue cap fails explicitly and preserves all existing requests', () async {
+    for (var i = 0; i < AppDatabase.maxPendingActions; i++) {
+      await queue.create(kind: 'visit', payload: {'property_id': i});
+    }
+    await expectLater(
+      queue.create(kind: 'visit', payload: {}),
+      throwsA(isA<StorageFailure>().having((e) => e.code, 'code', 'ACTION_QUEUE_FULL')),
+    );
+    expect((await queue.list()).length, AppDatabase.maxPendingActions);
   });
-
-  group('OfflineQueueService — error handling', () {
-    test('non-network AppException drops action without retry', () async {
-      when(
-        () => swipes.swipeProperty(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      ).thenThrow(ServerException('server error'));
-
-      await queue.enqueueSwipe(propertyId: 15, isLiked: true);
-      await queue.processQueue();
-
-      expect(queue.queueLength, 0);
-    });
-
-    test('unexpected error increments retries, keeps action, and stops flush', () async {
-      when(
-        () => swipes.swipeProperty(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      ).thenThrow(StateError('unexpected'));
-
-      await queue.enqueueSwipe(propertyId: 20, isLiked: false);
-      await queue.enqueueSwipe(propertyId: 21, isLiked: true);
-      await queue.processQueue();
-
-      // Fail-fast: both the failed item and the unprocessed tail remain.
-      expect(queue.queueLength, 2);
-      final raw = storage.readList(OfflineQueueService.storageKey)!;
-      final first = OfflineAction.tryParse(Map<String, dynamic>.from(raw.first as Map))!;
-      expect(first.retries, 1);
-      expect((first as OfflineSwipeAction).propertyId, 20);
-      // Second item never attempted (still retries 0).
-      final second = OfflineAction.tryParse(Map<String, dynamic>.from(raw[1] as Map))!;
-      expect(second.retries, 0);
-      verify(
-        () => swipes.swipeProperty(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      ).called(1);
-    });
-
-    test('missing timestamp is dropped as unparseable', () {
-      expect(OfflineAction.tryParse({'type': 'swipe', 'propertyId': 1, 'isLiked': true}), isNull);
-      expect(
-        OfflineAction.tryParse({
-          'type': 'swipe',
-          'propertyId': 1,
-          'isLiked': true,
-          'ts': 'not-a-date',
-        }),
-        isNull,
-      );
-    });
-
-    test('clearQueue during processQueue does not restore actions', () async {
-      final completer = Completer<void>();
-      when(
-        () => swipes.swipeProperty(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      ).thenAnswer((_) async {
-        await completer.future;
-      });
-
-      await queue.enqueueSwipe(propertyId: 30, isLiked: true);
-      final processing = queue.processQueue();
-      // Let processQueue acquire the mutex and start the network call.
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      queue.clearQueue();
-      completer.complete();
-      await processing;
-      // Allow clearQueue's deferred exclusive re-clear to finish.
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-
-      expect(queue.queueLength, 0);
-    });
-
-    test('clearQueue during enqueue does not restore cleared queue', () async {
-      // Fill queue work so enqueue holds the mutex long enough to interleave.
-      for (var i = 0; i < 5; i++) {
-        await queue.enqueueSwipe(propertyId: i, isLiked: true);
-      }
-
-      // Start an enqueue that will wait if process is busy; clear mid-flight
-      // via generation should prevent a stale write.
-      final enqueuing = queue.enqueueSwipe(propertyId: 99, isLiked: false);
-      queue.clearQueue();
-      await enqueuing;
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-
-      expect(queue.queueLength, 0);
-    });
+  test('closed database reports storage failure instead of saved outcome', () async {
+    await db.close();
+    await expectLater(
+      queue.enqueueSwipe(propertyId: 1, isLiked: true, scope: scope),
+      throwsA(isA<StorageFailure>()),
+    );
   });
-
-  group('OfflineQueueService — init and connectivity', () {
-    test('init processes existing queue', () async {
-      await queue.enqueueSwipe(propertyId: 99, isLiked: true);
-      expect(queue.queueLength, 1);
-
-      await queue.init();
-
-      verify(() => swipes.swipeProperty(propertyId: 99, isLiked: true)).called(1);
-      expect(queue.queueLength, 0);
-    });
-
-    test('connectivity restored triggers processQueue', () async {
-      await queue.init();
-      await queue.enqueueSwipe(propertyId: 50, isLiked: true);
-
-      connectivity.add([ConnectivityResult.wifi]);
-      // Allow async stream listener to run
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      verify(() => swipes.swipeProperty(propertyId: 50, isLiked: true)).called(1);
-    });
-
-    test('connectivity none does not trigger processQueue', () async {
-      await queue.init();
-      await queue.enqueueSwipe(propertyId: 60, isLiked: false);
-
-      connectivity.add([ConnectivityResult.none]);
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      verifyNever(
-        () => swipes.swipeProperty(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      );
-    });
-
-    test('onClose cancels connectivity subscription', () async {
-      await queue.init();
-      queue.onClose();
-
-      // After onClose, adding to stream should not trigger processing
-      await queue.enqueueSwipe(propertyId: 70, isLiked: true);
-      connectivity.add([ConnectivityResult.wifi]);
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      verifyNever(() => swipes.swipeProperty(propertyId: 70, isLiked: true));
-    });
+  test('confirmed actions stay recorded and stop consuming pending capacity', () async {
+    final action = await queue.create(kind: 'visit', payload: {});
+    await queue.update(
+      action,
+      scope: scope,
+      status: PendingActionStatus.confirmed,
+      attempted: true,
+    );
+    expect((await queue.list()).single.status, PendingActionStatus.confirmed);
+    expect((await queue.list()).single.attempts, 1);
   });
-
-  group('OfflineQueueService — re-entrancy guard', () {
-    test('concurrent processQueue calls do not double-process', () async {
-      await queue.enqueueSwipe(propertyId: 1, isLiked: true);
-      await queue.enqueueSwipe(propertyId: 2, isLiked: false);
-
-      await Future.wait([queue.processQueue(), queue.processQueue()]);
-
-      // Each swipe should be called exactly once
-      verify(() => swipes.swipeProperty(propertyId: 1, isLiked: true)).called(1);
-      verify(() => swipes.swipeProperty(propertyId: 2, isLiked: false)).called(1);
-    });
+  test('failed serialized write does not block later valid writes', () async {
+    final old = scope;
+    scope = db.activateScope(environment: 'test', accountId: 'b');
+    await expectLater(
+      queue.enqueueSwipe(propertyId: 1, isLiked: true, scope: old),
+      throwsA(isA<StorageFailure>()),
+    );
+    final saved = await queue.enqueueSwipe(propertyId: 1, isLiked: false, scope: scope);
+    expect(saved.scopeKey, scope.key);
   });
-
-  group('InMemoryOfflineQueueStorage', () {
-    test('remove deletes stored data', () {
-      final s = InMemoryOfflineQueueStorage();
-      s.writeList('key', [1, 2, 3]);
-      expect(s.readList('key'), [1, 2, 3]);
-
-      s.remove('key');
-      expect(s.readList('key'), isNull);
-    });
-
-    test('readList returns copy not reference', () {
-      final s = InMemoryOfflineQueueStorage();
-      s.writeList('key', [1, 2]);
-      final first = s.readList('key')!;
-      first.add(3);
-
-      // Modifying the returned list should not affect stored data
-      expect(s.readList('key'), [1, 2]);
-    });
-
-    test('writeList stores a copy not reference', () {
-      final s = InMemoryOfflineQueueStorage();
-      final original = [1, 2];
-      s.writeList('key', original);
-      original.add(3);
-
-      expect(s.readList('key'), [1, 2]);
-    });
+  test('queue provider owns lifecycle and account-filtered list changes', () async {
+    final owner = TestVisitScope(db);
+    final container = ProviderContainer(
+      retry: (_, _) => null,
+      overrides: [
+        appDatabaseProvider.overrideWithValue(db),
+        storageScopeProvider.overrideWith(() => owner),
+      ],
+    );
+    addTearDown(container.dispose);
+    final queue = container.read(offlineQueueServiceProvider);
+    await container.read(pendingActionsProvider.notifier).reload();
+    final action = await queue.create(kind: 'visit', payload: {});
+    await container.read(pendingActionsProvider.notifier).reload();
+    expect(container.read(pendingActionsProvider).actions.single.operationId, action.operationId);
+    owner.change('other');
+    expect(container.read(pendingActionsProvider).actions, isEmpty);
+    await container.read(pendingActionsProvider.notifier).reload();
+    expect(container.read(pendingActionsProvider).actions, isEmpty);
+  });
+  test('actions survive reopening and are never automatically replayed', () async {
+    final dir = await Directory.systemTemp.createTemp('visits-queue-');
+    final path = '${dir.path}/test.db';
+    var durable = await AppDatabase.open(
+      factory: databaseFactoryFfi,
+      databasePath: path,
+      legacyReader: () async => {},
+    );
+    var owner = durable.activateScope(environment: 'test', accountId: 'a');
+    final operation = await durable.createAction(
+      scope: owner,
+      kind: 'visit',
+      payload: {'property_id': 1},
+      status: PendingActionStatus.needsReconciliation,
+    );
+    await durable.close();
+    durable = await AppDatabase.open(factory: databaseFactoryFfi, databasePath: path);
+    owner = durable.activateScope(environment: 'test', accountId: 'a');
+    final saved = (await durable.listActions(scope: owner)).single;
+    expect(saved.operationId, operation);
+    expect(saved.status, PendingActionStatus.needsReconciliation);
+    await durable.close();
+    await dir.delete(recursive: true);
   });
 }

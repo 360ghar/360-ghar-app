@@ -1,0 +1,21 @@
+{
+  "assigned": {
+    "agent_type": "general",
+    "avatar_url": null,
+    "contact_number": "+919811111111",
+    "created_at": "2026-09-30T10:15:02Z",
+    "description": null,
+    "experience_level": "intermediate",
+    "id": 4,
+    "is_active": true,
+    "is_available": true,
+    "languages": [
+      "english"
+    ],
+    "name": "Ravi Kumar",
+    "total_users_assigned": 12,
+    "updated_at": null,
+    "user_satisfaction_rating": 4.6,
+    "working_hours": null
+  }
+}

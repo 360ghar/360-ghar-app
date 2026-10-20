@@ -1,0 +1,139 @@
+{
+  "location": {
+    "current_latitude": 28.42,
+    "current_longitude": 77.08
+  },
+  "notification_settings": {
+    "email_notifications": true,
+    "promotional_emails": true,
+    "push_notifications": false,
+    "sms_notifications": false
+  },
+  "preferences": {
+    "area_max": null,
+    "area_min": null,
+    "bedrooms_max": null,
+    "bedrooms_min": null,
+    "budget_max": null,
+    "budget_min": 2500000.5,
+    "location_preference": [
+      "Gurugram"
+    ],
+    "max_distance_km": 5,
+    "property_type": null,
+    "purpose": "buy"
+  },
+  "privacy_settings": {
+    "allow_location_tracking": true,
+    "contact_sharing": true,
+    "data_sharing_consent": false,
+    "hide_last_name": false,
+    "location_sharing": true,
+    "profile_visibility": "private",
+    "search_history_tracking": true,
+    "show_email": false,
+    "show_phone": false
+  },
+  "profile": {
+    "agent_id": 4,
+    "created_at": "2026-09-30T10:15:02Z",
+    "current_latitude": 28.42,
+    "current_longitude": 77.08,
+    "date_of_birth": "1994-02-11",
+    "email": "asha@example.com",
+    "email_verified": false,
+    "full_name": "Asha Verma",
+    "id": 50,
+    "is_active": true,
+    "is_verified": true,
+    "last_auth_method": "phone_otp",
+    "last_auth_method_at": "2026-09-30T10:15:02Z",
+    "notification_settings": {
+      "email_notifications": true,
+      "promotional_emails": false,
+      "push_notifications": true,
+      "sms_notifications": false
+    },
+    "phone": "+919800000000",
+    "phone_verified": true,
+    "preferences": {
+      "area_max": null,
+      "area_min": null,
+      "bedrooms_max": null,
+      "bedrooms_min": null,
+      "budget_max": null,
+      "budget_min": null,
+      "location_preference": null,
+      "max_distance_km": 5,
+      "property_type": [
+        "apartment"
+      ],
+      "purpose": "rent"
+    },
+    "privacy_settings": {
+      "allow_location_tracking": true,
+      "contact_sharing": true,
+      "data_sharing_consent": false,
+      "hide_last_name": false,
+      "location_sharing": true,
+      "profile_visibility": "agents_only",
+      "search_history_tracking": true,
+      "show_email": false,
+      "show_phone": false
+    },
+    "profile_image_url": "https://cdn.example.com/u/50.jpg",
+    "role": "user",
+    "supabase_user_id": "0f5e8d9a-1c2b-4d3e-8f7a-6b5c4d3e2f1a",
+    "updated_at": "2026-09-30T10:15:02Z"
+  },
+  "profile_minimal": {
+    "agent_id": null,
+    "created_at": "2026-09-30T10:15:02Z",
+    "current_latitude": 28.42,
+    "current_longitude": 77.08,
+    "date_of_birth": null,
+    "email": null,
+    "email_verified": false,
+    "full_name": null,
+    "id": 50,
+    "is_active": true,
+    "is_verified": true,
+    "last_auth_method": null,
+    "last_auth_method_at": "2026-09-30T10:15:02Z",
+    "notification_settings": {
+      "email_notifications": true,
+      "promotional_emails": false,
+      "push_notifications": true,
+      "sms_notifications": false
+    },
+    "phone": null,
+    "phone_verified": true,
+    "preferences": {
+      "area_max": null,
+      "area_min": null,
+      "bedrooms_max": null,
+      "bedrooms_min": null,
+      "budget_max": null,
+      "budget_min": null,
+      "location_preference": null,
+      "max_distance_km": 5,
+      "property_type": null,
+      "purpose": null
+    },
+    "privacy_settings": {
+      "allow_location_tracking": true,
+      "contact_sharing": true,
+      "data_sharing_consent": false,
+      "hide_last_name": false,
+      "location_sharing": true,
+      "profile_visibility": "public",
+      "search_history_tracking": true,
+      "show_email": false,
+      "show_phone": false
+    },
+    "profile_image_url": null,
+    "role": "user",
+    "supabase_user_id": "0f5e8d9a-1c2b-4d3e-8f7a-6b5c4d3e2f1a",
+    "updated_at": "2026-09-30T10:15:02Z"
+  }
+}

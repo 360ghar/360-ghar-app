@@ -1,322 +1,276 @@
-// test/core/controllers/page_filter_manager_test.dart
-//
-// Unit tests for [PageFilterManager]. The manager delegates state mutation to
-// [PageStateService] and data loading to [PageDataLoader]; both are mocked with
-// mocktail. A real [GetStorage] is used so persistence paths are exercised.
+// Filter behavior previously delegated through PageFilterManager now belongs to
+// one immutable provider. Widget tests own text controllers and debounce timing.
 
-import 'dart:io';
+import 'dart:async';
 
-import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get_storage/get_storage.dart';
-import 'package:ghar360/core/controllers/page_data_loader.dart';
-import 'package:ghar360/core/controllers/page_filter_manager.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
+
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
-import 'package:mocktail/mocktail.dart';
-
-class MockPageStateService extends Mock implements PageStateService {}
-
-class MockPageDataLoader extends Mock implements PageDataLoader {}
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import '../../helpers/property_query_test_support.dart';
+import '../../helpers/settings_test_database.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('plugins.flutter.io/path_provider');
-  late Directory storageDir;
+  late SettingsTestDatabase database;
+  late ProviderContainer container;
+  PropertyFilters getController() => container.read(propertyFiltersProvider.notifier);
+  UnifiedFilterModel filters(PageType page) =>
+      container.read(propertyFiltersProvider).forPage(page);
 
-  setUpAll(() async {
-    storageDir = await Directory.systemTemp.createTemp('page_filter_manager_test_');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      channel,
-      (MethodCall methodCall) async {
-        if (methodCall.method == 'getApplicationDocumentsDirectory') {
-          return storageDir.path;
-        }
-        return null;
-      },
+  setUp(() {
+    database = SettingsTestDatabase();
+    container = ProviderContainer(overrides: [appDatabaseProvider.overrideWithValue(database)]);
+  });
+  tearDown(() => container.dispose());
+
+  test('fresh feeds have independent default filters', () {
+    for (final page in PageType.values) {
+      expect(filters(page).purpose, 'buy');
+      expect(filters(page).propertyType, isEmpty);
+      expect(filters(page).radiusKm, 10);
+    }
+  });
+
+  test('page-only price, amenity, and search changes leave other pages unchanged', () async {
+    await getController().update(
+      PageType.explore,
+      filters(
+        PageType.explore,
+      ).copyWith(priceMin: 100, priceMax: 500, amenities: ['parking'], searchQuery: 'Delhi'),
     );
-    await GetStorage.init();
-    registerFallbackValue(PageType.explore);
-    registerFallbackValue(PageStateModel.initial(PageType.explore));
+    expect(filters(PageType.explore).priceMax, 500);
+    for (final page in [PageType.discover, PageType.likes]) {
+      expect(filters(page).priceMax, isNull);
+      expect(filters(page).searchQuery, isNull);
+      expect(filters(page).amenities, isEmpty);
+    }
   });
 
-  tearDownAll(() async {
-    try {
-      await storageDir.delete(recursive: true);
-    } catch (_) {}
+  test('purpose and property type propagate together and persist canonical values', () async {
+    await getController().update(
+      PageType.explore,
+      filters(
+        PageType.explore,
+      ).copyWith(purpose: ' rent ', propertyType: ['flat', 'house', 'flat']),
+    );
+    for (final page in PageType.values) {
+      expect(filters(page).purpose, 'rent');
+      expect(filters(page).propertyType, ['apartment', 'house']);
+    }
+    expect(database.values['global_purpose'], 'rent');
+    expect(database.values['global_property_types'], ['apartment', 'house']);
+    expect(database.writeCount, 1);
+    expect(
+      (database.values['property_filters_v1'] as Map).keys,
+      containsAll(['discover', 'explore', 'likes']),
+    );
   });
 
-  late MockPageStateService pageState;
-  late MockPageDataLoader dataLoader;
-  late GetStorage storage;
-  late PageFilterManager manager;
-
-  setUp(() async {
-    pageState = MockPageStateService();
-    dataLoader = MockPageDataLoader();
-    storage = GetStorage();
-    await storage.erase();
-
-    // Default: getStateForPage returns the initial state for the requested page.
-    when(
-      () => pageState.getStateForPage(any()),
-    ).thenAnswer((inv) => PageStateModel.initial(inv.positionalArguments[0] as PageType));
-    // updatePageState is a void method.
-    when(() => pageState.updatePageState(any(), any())).thenReturn(null);
-    // Data loader stubs.
-    when(() => dataLoader.debounceRefresh(any())).thenReturn(null);
-    when(() => dataLoader.refreshAllPagesData()).thenReturn(null);
-    when(
-      () => dataLoader.loadPageData(any(), forceRefresh: any(named: 'forceRefresh')),
-    ).thenAnswer((_) async {});
-
-    manager = PageFilterManager(pageState, dataLoader, storage);
+  test('shared changes retain other pages local filters', () async {
+    await getController().update(
+      PageType.likes,
+      filters(PageType.likes).copyWith(priceMin: 700, searchQuery: 'Saved'),
+    );
+    await getController().update(
+      PageType.explore,
+      filters(PageType.explore).copyWith(purpose: 'rent'),
+    );
+    expect(filters(PageType.likes).purpose, 'rent');
+    expect(filters(PageType.likes).priceMin, 700);
+    expect(filters(PageType.likes).searchQuery, 'Saved');
   });
 
-  tearDown(() {
-    manager.dispose();
+  test('empty purpose normalizes to buy rather than persisting an invalid token', () async {
+    await getController().update(
+      PageType.explore,
+      filters(PageType.explore).copyWith(purpose: 'rent'),
+    );
+    await getController().update(
+      PageType.explore,
+      filters(PageType.explore).copyWith(purpose: '  '),
+    );
+    expect(database.values['global_purpose'], 'buy');
+    expect(filters(PageType.likes).purpose, 'buy');
   });
 
-  group('updatePageFilters', () {
-    test('debounces refresh when purpose and type are unchanged', () {
-      final filters = UnifiedFilterModel.initial();
-      manager.updatePageFilters(PageType.explore, filters);
+  test('clearing property types propagates to every feed', () async {
+    await getController().update(
+      PageType.explore,
+      filters(PageType.explore).copyWith(propertyType: ['house']),
+    );
+    await getController().update(
+      PageType.explore,
+      filters(PageType.explore).copyWith(propertyType: []),
+    );
+    for (final page in PageType.values) {
+      expect(filters(page).propertyType, isEmpty);
+    }
+  });
 
-      verify(() => dataLoader.debounceRefresh(PageType.explore)).called(1);
-      verifyNever(() => dataLoader.refreshAllPagesData());
+  test('search updates and clears only the requested searchable feed', () async {
+    await getController().search(PageType.explore, 'Delhi');
+    await getController().search(PageType.likes, 'Mumbai');
+    await getController().search(PageType.explore, '');
+    expect(filters(PageType.explore).searchQuery, '');
+    expect(filters(PageType.likes).searchQuery, 'Mumbai');
+  });
+
+  test('Discover search does not mutate preferences or write storage', () async {
+    final before = container.read(propertyFiltersProvider);
+    expect(await getController().search(PageType.discover, 'ignored'), isTrue);
+    expect(container.read(propertyFiltersProvider), same(before));
+    expect(database.writeCount, 0);
+  });
+
+  test(
+    'reset page restores defaults and shared values without clearing another page search',
+    () async {
+      await getController().update(
+        PageType.explore,
+        filters(PageType.explore).copyWith(purpose: 'rent', priceMin: 500),
+      );
+      await getController().search(PageType.likes, 'retained');
+      await getController().reset(PageType.explore);
+      expect(filters(PageType.explore).toJson(), UnifiedFilterModel.initial().toJson());
+      expect(filters(PageType.likes).purpose, 'buy');
+      expect(filters(PageType.likes).searchQuery, 'retained');
+    },
+  );
+
+  test('reset all persists complete defaults for every feed', () async {
+    await getController().search(PageType.likes, 'Saved');
+    await getController().update(
+      PageType.explore,
+      filters(PageType.explore).copyWith(purpose: 'rent', propertyType: ['house']),
+    );
+    expect(await getController().resetAll(), isTrue);
+    for (final page in PageType.values) {
+      expect(filters(page).toJson(), UnifiedFilterModel.initial().toJson());
+    }
+  });
+
+  test('restores global values over page values and filters invalid stored types', () {
+    database.values.addAll({
+      'global_purpose': 'rent',
+      'global_property_types': ['flat', 42, 'house', true],
+      'explore_state': {
+        'filters': {'purpose': 'buy', 'price_min': 700.0},
+        'searchQuery': 'Legacy',
+      },
     });
+    expect(filters(PageType.explore).priceMin, 700);
+    expect(filters(PageType.explore).searchQuery, 'Legacy');
+    for (final page in PageType.values) {
+      expect(filters(page).purpose, 'rent');
+      expect(filters(page).propertyType, ['apartment', 'house']);
+    }
+  });
 
-    test('propagates and persists when purpose changes', () {
-      final filters = UnifiedFilterModel.initial().copyWith(purpose: 'rent');
-      manager.updatePageFilters(PageType.explore, filters);
-
-      // The manager writes to storage and calls refreshAllPagesData.
-      verify(() => dataLoader.refreshAllPagesData()).called(1);
-      // setPurposeForAllPages iterates all pages → updatePageState called for each.
-      verify(() => pageState.updatePageState(any(), any())).called(greaterThan(0));
-      // Verify the purpose was persisted to storage.
-      expect(storage.read('global_purpose'), 'rent');
+  test('new snapshot wins over legacy page snapshot', () {
+    database.values.addAll({
+      'property_filters_v1': {
+        'explore': {'price_min': 900.0, 'search_query': 'New'},
+      },
+      'explore_state': {
+        'filters': {'price_min': 700.0},
+        'searchQuery': 'Legacy',
+      },
+      'discover_state': {'searchQuery': 'Never apply to deck'},
     });
+    expect(filters(PageType.explore).priceMin, 900);
+    expect(filters(PageType.explore).searchQuery, 'New');
+    expect(filters(PageType.discover).searchQuery, isNull);
+  });
 
-    test('does not propagate purpose to other pages when new purpose is empty', () {
-      final filters = UnifiedFilterModel.initial().copyWith(purpose: '');
-      manager.updatePageFilters(PageType.explore, filters);
+  test('malformed page cannot prevent valid page hydration', () {
+    database.values['property_filters_v1'] = {
+      'explore': {'price_min': 'not a number'},
+      'likes': {'search_query': 'Valid'},
+    };
+    expect(filters(PageType.explore).priceMin, isNull);
+    expect(filters(PageType.likes).searchQuery, 'Valid');
+  });
 
-      // purpose changed from 'buy' to '' → purposeChanged is true, so
-      // refreshAllPagesData IS called, but the propagation to other pages
-      // (setPurposeForAllPages) is skipped because the trimmed purpose is empty.
-      // Only the single page's updatePageState call happens (not 3+ for propagation).
-      verify(() => dataLoader.refreshAllPagesData()).called(1);
-      // Verify purpose was NOT written to storage.
-      expect(storage.read('global_purpose'), isNull);
-    });
+  test('input collections cannot mutate published or persisted filters', () async {
+    final amenities = ['parking'];
+    final ids = [1];
+    final done = getController().update(
+      PageType.explore,
+      filters(PageType.explore).copyWith(amenities: amenities, propertyIds: ids),
+    );
+    amenities.add('pool');
+    ids.add(2);
+    await done;
+    expect(filters(PageType.explore).amenities, ['parking']);
+    expect(filters(PageType.explore).propertyIds, [1]);
+    expect(() => filters(PageType.explore).amenities!.add('pool'), throwsUnsupportedError);
+    expect(() => container.read(propertyFiltersProvider).pages.clear(), throwsUnsupportedError);
+  });
 
-    test('propagates and persists when property type changes', () {
-      final filters = UnifiedFilterModel.initial().copyWith(propertyType: ['apartment']);
-      manager.updatePageFilters(PageType.explore, filters);
+  test('storage failure retains draft and exposes explicit retry', () async {
+    database.writeFailure = StorageFailure('disk full', code: 'SQLITE_FULL');
+    expect(await getController().search(PageType.explore, 'Unsaved'), isFalse);
+    expect(filters(PageType.explore).searchQuery, 'Unsaved');
+    expect(container.read(propertyFiltersProvider).save.error, isA<StorageFailure>());
+    expect(database.values, isEmpty);
+    database.writeFailure = null;
+    expect(await getController().retrySave(), isTrue);
+    expect(container.read(propertyFiltersProvider).save.hasError, isFalse);
+    expect((database.values['property_filters_v1'] as Map)['explore']['search_query'], 'Unsaved');
+  });
 
-      verify(() => dataLoader.refreshAllPagesData()).called(1);
-    });
+  test('serialized writes cannot replace newest filters with old completion', () async {
+    final release = Completer<void>();
+    database.beforeWrite = () => release.future;
+    final first = getController().search(PageType.explore, 'First');
+    final second = getController().search(PageType.explore, 'Second');
+    expect(filters(PageType.explore).searchQuery, 'Second');
+    expect(container.read(propertyFiltersProvider).save.isLoading, isTrue);
+    release.complete();
+    await Future.wait([first, second]);
+    expect(filters(PageType.explore).searchQuery, 'Second');
+    expect((database.values['property_filters_v1'] as Map)['explore']['search_query'], 'Second');
+  });
 
-    test('does not debounce or refresh when both purpose and type change', () {
-      final filters = UnifiedFilterModel.initial().copyWith(
+  test('pending durable write does not publish into a disposed provider', () async {
+    final release = Completer<void>();
+    database.beforeWrite = () => release.future;
+    final save = getController().search(PageType.explore, 'Persist me');
+    container.dispose();
+    release.complete();
+    expect(await save, isTrue);
+    expect(
+      (database.values['property_filters_v1'] as Map)['explore']['search_query'],
+      'Persist me',
+    );
+  });
+
+  test('real SQLite restores filter snapshot after provider disposal', () async {
+    final harness = await PropertyQueryHarness.create();
+    addTearDown(harness.close);
+    final owner = harness.container.read(propertyFiltersProvider.notifier);
+    await owner.update(
+      PageType.explore,
+      UnifiedFilterModel.initial().copyWith(
         purpose: 'rent',
-        propertyType: ['house'],
-      );
-      manager.updatePageFilters(PageType.discover, filters);
-
-      // When purpose or type changed, debounceRefresh is NOT called (only
-      // refreshAllPagesData is).
-      verifyNever(() => dataLoader.debounceRefresh(any()));
-      verify(() => dataLoader.refreshAllPagesData()).called(1);
-    });
-  });
-
-  group('updatePageSearch', () {
-    test('updates state and debounces refresh for explore', () {
-      manager.updatePageSearch(PageType.explore, 'test query');
-
-      verify(() => pageState.updatePageState(PageType.explore, any())).called(1);
-      verify(() => dataLoader.debounceRefresh(PageType.explore)).called(1);
-    });
-
-    test('is a no-op for discover page', () {
-      manager.updatePageSearch(PageType.discover, 'test query');
-
-      verifyNever(() => pageState.updatePageState(any(), any()));
-      verifyNever(() => dataLoader.debounceRefresh(any()));
-    });
-
-    test('clearPageSearch delegates to updatePageSearch with empty string', () {
-      manager.clearPageSearch(PageType.likes);
-
-      verify(() => pageState.updatePageState(PageType.likes, any())).called(1);
-      verify(() => dataLoader.debounceRefresh(PageType.likes)).called(1);
-    });
-  });
-
-  group('getOrCreateSearchController', () {
-    test('returns the same controller for the same page type', () {
-      final c1 = manager.getOrCreateSearchController(PageType.explore);
-      final c2 = manager.getOrCreateSearchController(PageType.explore);
-
-      expect(identical(c1, c2), isTrue);
-    });
-
-    test('returns different controllers for different page types', () {
-      final c1 = manager.getOrCreateSearchController(PageType.explore);
-      final c2 = manager.getOrCreateSearchController(PageType.likes);
-
-      expect(identical(c1, c2), isFalse);
-    });
-
-    test('uses seed text on first creation', () {
-      final c = manager.getOrCreateSearchController(PageType.explore, seedText: 'hello');
-      expect(c.text, 'hello');
-    });
-
-    test('ignores seed text on subsequent calls', () {
-      manager.getOrCreateSearchController(PageType.explore, seedText: 'hello');
-      final c2 = manager.getOrCreateSearchController(PageType.explore, seedText: 'world');
-      expect(c2.text, 'hello');
-    });
-
-    test('listener calls updatePageSearch when text changes', () {
-      final c = manager.getOrCreateSearchController(PageType.explore);
-      c.text = 'new search';
-
-      verify(() => dataLoader.debounceRefresh(PageType.explore)).called(1);
-    });
-  });
-
-  group('resetPageFilters', () {
-    test('resets state and force-refreshes data', () {
-      manager.resetPageFilters(PageType.explore);
-
-      verify(() => pageState.updatePageState(PageType.explore, any())).called(1);
-      verify(() => dataLoader.loadPageData(PageType.explore, forceRefresh: true)).called(1);
-    });
-  });
-
-  group('resetAllFilters', () {
-    test('resets all pages and refreshes all data', () {
-      manager.resetAllFilters();
-
-      // One updatePageState per page type (3 pages).
-      verify(() => pageState.updatePageState(any(), any())).called(3);
-      verify(() => dataLoader.refreshAllPagesData()).called(1);
-    });
-  });
-
-  group('setPurposeForAllPages', () {
-    test('updates all pages with the given purpose', () {
-      manager.setPurposeForAllPages('rent');
-
-      verify(() => pageState.updatePageState(any(), any())).called(3);
-    });
-
-    test('skips pages that already have a purpose when onlyIfUnset is true', () {
-      // The initial state has purpose 'buy' set, so onlyIfUnset skips all.
-      manager.setPurposeForAllPages('rent', onlyIfUnset: true);
-
-      // No pages should be updated because all have purpose set.
-      verifyNever(() => pageState.updatePageState(any(), any()));
-    });
-
-    test('updates pages when onlyIfUnset is true and purpose is null', () {
-      when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => PageStateModel.initial(
-          inv.positionalArguments[0] as PageType,
-        ).copyWith(filters: const UnifiedFilterModel()),
-      );
-
-      manager.setPurposeForAllPages('buy', onlyIfUnset: true);
-
-      verify(() => pageState.updatePageState(any(), any())).called(3);
-    });
-  });
-
-  group('setPropertyTypeForAllPages', () {
-    test('updates all pages with the given property types', () {
-      manager.setPropertyTypeForAllPages(['apartment', 'house']);
-
-      verify(() => pageState.updatePageState(any(), any())).called(3);
-    });
-
-    test('skips pages with non-empty types when onlyIfUnset is true', () {
-      // Initial state has propertyType: [] (empty), so onlyIfUnset should NOT skip.
-      manager.setPropertyTypeForAllPages(['apartment'], onlyIfUnset: true);
-
-      verify(() => pageState.updatePageState(any(), any())).called(3);
-    });
-
-    test('skips pages with non-empty types when onlyIfUnset is true and types set', () {
-      when(() => pageState.getStateForPage(any())).thenAnswer(
-        (inv) => PageStateModel.initial(
-          inv.positionalArguments[0] as PageType,
-        ).copyWith(filters: UnifiedFilterModel.initial().copyWith(propertyType: ['house'])),
-      );
-
-      manager.setPropertyTypeForAllPages(['apartment'], onlyIfUnset: true);
-
-      verifyNever(() => pageState.updatePageState(any(), any()));
-    });
-
-    test('handles null property types', () {
-      manager.setPropertyTypeForAllPages(null);
-
-      verify(() => pageState.updatePageState(any(), any())).called(3);
-    });
-  });
-
-  group('applySavedGlobalFilters', () {
-    test('applies saved purpose when present', () {
-      storage.write('global_purpose', 'rent');
-
-      manager.applySavedGlobalFilters();
-
-      verify(() => pageState.updatePageState(any(), any())).called(greaterThan(0));
-    });
-
-    test('applies saved property types when present', () {
-      storage.write('global_property_types', ['apartment', 'house']);
-
-      manager.applySavedGlobalFilters();
-
-      verify(() => pageState.updatePageState(any(), any())).called(greaterThan(0));
-    });
-
-    test('does nothing when no saved filters exist', () {
-      manager.applySavedGlobalFilters();
-
-      verifyNever(() => pageState.updatePageState(any(), any()));
-    });
-
-    test('skips empty/whitespace purpose', () {
-      storage.write('global_purpose', '   ');
-
-      manager.applySavedGlobalFilters();
-
-      verifyNever(() => pageState.updatePageState(any(), any()));
-    });
-
-    test('filters non-string entries from stored property types', () {
-      storage.write('global_property_types', ['apartment', 42, 'house', true]);
-
-      manager.applySavedGlobalFilters();
-
-      // Should still apply (filtering out non-strings internally).
-      verify(() => pageState.updatePageState(any(), any())).called(greaterThan(0));
-    });
-  });
-
-  group('dispose', () {
-    test('disposes search controllers without throwing', () {
-      manager.getOrCreateSearchController(PageType.explore);
-      manager.getOrCreateSearchController(PageType.likes);
-
-      expect(manager.dispose, returnsNormally);
-    });
+        priceMax: 2000,
+        searchQuery: 'Restored',
+      ),
+    );
+    harness.disposeProviders();
+    final restored = ProviderContainer(
+      overrides: [appDatabaseProvider.overrideWithValue(harness.database)],
+    );
+    addTearDown(restored.dispose);
+    expect(
+      restored.read(propertyFiltersProvider).forPage(PageType.explore).searchQuery,
+      'Restored',
+    );
+    expect(restored.read(propertyFiltersProvider).forPage(PageType.explore).priceMax, 2000);
+    expect(restored.read(propertyFiltersProvider).forPage(PageType.discover).purpose, 'rent');
   });
 }

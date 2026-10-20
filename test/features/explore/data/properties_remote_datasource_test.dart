@@ -2,21 +2,22 @@
 //
 // Unit tests for [PropertiesRemoteDatasource].
 // Mocks [ApiClient] to verify property fetching, single-property detail,
-// and response parsing (including envelope normalization).
+// and strict response parsing: a `CursorPage[Property]` body, no data envelope, no bare list.
 
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart' as getx;
+import 'package:mocktail/mocktail.dart';
+
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/network/auth_header_provider.dart';
+import 'package:ghar360/core/network/cache_policy.dart';
 import 'package:ghar360/core/network/etag_cache.dart';
+import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/properties/data/datasources/properties_remote_datasource.dart';
-import 'package:mocktail/mocktail.dart';
-
 import '../../../helpers/mocks.dart';
 import '../../../helpers/test_data.dart';
 
@@ -42,8 +43,7 @@ void main() {
 
   group('fetchProperties', () {
     test('returns parsed properties on success', () async {
-      final propertyJsonList = testPropertyJsonList(count: 3);
-      stubPropertiesGet({'items': propertyJsonList, 'has_more': false, 'limit': 20});
+      stubPropertiesGet(testPropertyPage(count: 3));
 
       final response = await datasource.fetchProperties(
         latitude: 28.6139,
@@ -57,12 +57,10 @@ void main() {
       expect(response.hasMore, isFalse);
     });
 
-    test('handles nested data envelope', () async {
-      final propertyJsonList = testPropertyJsonList(count: 2);
-      // Response wrapped in { data: { items: [...], has_more: true, ... } }
-      stubPropertiesGet({
-        'data': {'items': propertyJsonList, 'has_more': true, 'next_cursor': 'abc123', 'limit': 20},
-      });
+    test('keeps the paging keys of the page', () async {
+      stubPropertiesGet(
+        testPropertyPage(count: 2, hasMore: true, nextCursor: 'abc123', limit: 2, total: 9),
+      );
 
       final response = await datasource.fetchProperties(
         latitude: 28.6139,
@@ -74,20 +72,8 @@ void main() {
       expect(response.items.length, 2);
       expect(response.hasMore, isTrue);
       expect(response.nextCursor, 'abc123');
-    });
-
-    test('handles bare list response gracefully', () async {
-      final propertyJsonList = testPropertyJsonList(count: 1);
-      stubPropertiesGet(propertyJsonList);
-
-      final response = await datasource.fetchProperties(
-        latitude: 28.6139,
-        longitude: 77.2090,
-        radiusKm: 10,
-        filters: const UnifiedFilterModel(),
-      );
-
-      expect(response.items.length, 1);
+      expect(response.limit, 2);
+      expect(response.total, 9);
     });
 
     test('propagates API exception', () async {
@@ -108,6 +94,83 @@ void main() {
         ),
         throwsA(isA<ServerException>()),
       );
+    });
+  });
+
+  group('strict property list response contract', () {
+    final malformed = <String, Object?>{
+      'null': null,
+      'scalar': 'private-response',
+      'number': 12,
+      'bare list': testPropertyJsonList(count: 1),
+      'empty map': <String, Object?>{},
+      'unrecognized map': {'error': 'private-response'},
+      'null items': {...testPropertyPage(), 'items': null},
+      'scalar items': {...testPropertyPage(), 'items': 'private-response'},
+      'data envelope': {'data': testPropertyPage(count: 1)},
+      'scalar nested data': {'data': 'private-response'},
+      'malformed row': {
+        ...testPropertyPage(),
+        'items': [testPropertyJson(), 'private-row'],
+      },
+      'missing identity': testPropertyPage(items: [<String, dynamic>{}]),
+      'negative identity': testPropertyPage(items: [testPropertyJson(id: -1)]),
+      'invalid property field': testPropertyPage(
+        items: [
+          {...testPropertyJson(), 'title': []},
+        ],
+      ),
+      'row without a required key': testPropertyPage(
+        items: [testPropertyJson()..remove('owner_id')],
+      ),
+      'invalid pagination': {...testPropertyPage(), 'has_more': 'yes'},
+      'missing next_cursor': testPropertyPage()..remove('next_cursor'),
+    };
+    for (final entry in malformed.entries) {
+      for (final request in ['fetch', 'search']) {
+        test('$request rejects ${entry.key} instead of successful empty content', () async {
+          stubPropertiesGet(entry.value);
+          final Future<Object> result = switch (request) {
+            'search' => datasource.searchProperties(query: 'home'),
+            _ => datasource.fetchProperties(
+              latitude: 28,
+              longitude: 77,
+              radiusKm: 10,
+              filters: const UnifiedFilterModel(),
+            ),
+          };
+          await expectLater(
+            result,
+            throwsA(
+              isA<ServerException>()
+                  .having((error) => error.code, 'code', 'MALFORMED_RESPONSE')
+                  .having((error) => error.details, 'details', isNull),
+            ),
+          );
+        });
+      }
+    }
+    test('an explicit empty page is a valid empty result', () async {
+      stubPropertiesGet(testPropertyPage(count: 0));
+      final result = await datasource.searchProperties(query: 'home');
+      expect(result.items, isEmpty);
+      expect(result.hasMore, false);
+    });
+    test('the page keeps its own paging keys', () async {
+      stubPropertiesGet(
+        testPropertyPage(
+          items: [testPropertyJson(id: 1)],
+          hasMore: true,
+          nextCursor: 'opaque',
+          limit: 7,
+          total: 99,
+        ),
+      );
+      final result = await datasource.searchProperties(query: 'home');
+      expect(result.items.single.id, 1);
+      expect(result.nextCursor, 'opaque');
+      expect(result.limit, 7);
+      expect(result.total, 99);
     });
   });
 
@@ -135,7 +198,47 @@ void main() {
       ).called(1);
     });
 
-    test('unwraps data envelope for single property', () async {
+    test('a signed-in response marked no-store carries the mark, a public one does not', () async {
+      Future<void> answer(Map<String, String> headers, int id) async {
+        when(
+          () => apiClient.get(ApiPaths.propertyById('$id'), useCache: false, requireAuth: false),
+        ).thenAnswer(
+          (_) async => ApiResponse(
+            statusCode: 200,
+            body: testPropertyJson(id: id),
+            headers: headers,
+          ),
+        );
+      }
+
+      await answer({'cache-control': 'private, no-store'}, 7);
+      await answer({'cache-control': 'public, max-age=60'}, 8);
+
+      expect(isNoStoreResponse(await datasource.fetchPropertyById('7')), isTrue);
+      expect(isNoStoreResponse(await datasource.fetchPropertyById('8')), isFalse);
+    });
+
+    test('a page marked no-store carries the mark', () async {
+      when(
+        () => apiClient.get(
+          ApiPaths.properties,
+          queryParams: any(named: 'queryParams'),
+          useCache: any(named: 'useCache'),
+        ),
+      ).thenAnswer(
+        (_) async => ApiResponse(
+          statusCode: 200,
+          body: testPropertyPage(count: 1),
+          headers: {'cache-control': 'private, no-store'},
+        ),
+      );
+
+      final page = await datasource.searchProperties(query: 'home');
+
+      expect(isNoStoreResponse(page), isTrue);
+    });
+
+    test('does not unwrap a data envelope: the contract has none', () async {
       when(
         () => apiClient.get(ApiPaths.propertyById('99'), useCache: false, requireAuth: false),
       ).thenAnswer(
@@ -146,18 +249,23 @@ void main() {
         ),
       );
 
-      final property = await datasource.fetchPropertyById('99');
-      expect(property.title, 'Penthouse');
+      expect(
+        () => datasource.fetchPropertyById('99'),
+        throwsA(isA<ServerException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+      );
     });
 
-    test('throws FormatException when response body is empty', () async {
+    test('throws typed malformed failure when detail response is empty', () async {
       when(
         () => apiClient.get(ApiPaths.propertyById('1'), useCache: false, requireAuth: false),
       ).thenAnswer(
-        (_) async => ApiResponse(statusCode: 200, body: <String, dynamic>{}, headers: {}),
+        (_) async => const ApiResponse(statusCode: 200, body: <String, dynamic>{}, headers: {}),
       );
 
-      expect(() => datasource.fetchPropertyById('1'), throwsA(isA<FormatException>()));
+      expect(
+        () => datasource.fetchPropertyById('1'),
+        throwsA(isA<ServerException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+      );
     });
   });
 
@@ -188,13 +296,12 @@ void main() {
           ifNoneMatchSeen.add(headers['If-None-Match']);
           authorizationSeen.add(headers['Authorization']);
           if (headers['If-None-Match'] != null) {
-            return const getx.Response<dynamic>(statusCode: 304, headers: <String, String>{});
+            return const ApiResponse(statusCode: 304, headers: <String, String>{});
           }
           final payload = payloadFor(headers);
-          return getx.Response<dynamic>(
+          return ApiResponse(
             statusCode: 200,
             body: payload,
-            bodyString: jsonEncode(payload),
             headers: const <String, String>{'etag': 'v1', 'content-type': 'application/json'},
           );
         },
@@ -218,30 +325,6 @@ void main() {
 
       expect(ifNoneMatchSeen, [null, null], reason: 'the detail endpoint must not be cached');
       expect(authorizationSeen, ['Bearer user-token', null]);
-    });
-
-    test('fetchPropertiesByIds: account switch is not served the previous liked-status', () async {
-      // This endpoint requires auth, so the leak is user A → user B on the
-      // same `?ids=` URL rather than signed-in → guest.
-      final realDatasource = buildDatasource(
-        (headers) => {
-          'items': [
-            testPropertyJson(id: 42, title: 'Sea View Villa')
-              ..['liked'] = headers['Authorization'] == 'Bearer user-a-token',
-          ],
-          'has_more': false,
-          'limit': 20,
-        },
-      );
-
-      auth.cached = {'Authorization': 'Bearer user-a-token'};
-      expect((await realDatasource.fetchPropertiesByIds([42])).single.liked, isTrue);
-
-      auth.cached = {'Authorization': 'Bearer user-b-token'};
-      expect((await realDatasource.fetchPropertiesByIds([42])).single.liked, isFalse);
-
-      expect(ifNoneMatchSeen, [null, null], reason: 'the batch endpoint must not be cached');
-      expect(authorizationSeen, ['Bearer user-a-token', 'Bearer user-b-token']);
     });
   });
 }
@@ -271,18 +354,36 @@ class _InMemoryETagCache extends Mock implements ETagCache {
   final Map<String, ({String etag, String body})> entries = {};
 
   @override
-  String? getETag(String key) => entries[key]?.etag;
+  StorageScope get scope => _MockStorageScope();
 
   @override
-  String? getCachedBody(String key) => entries[key]?.body;
-
-  @override
-  void cacheResponse(String key, getx.Response response) {
-    final etag = response.headers?['etag'];
-    if (etag == null) return;
-    entries[key] = (etag: etag, body: response.bodyString ?? jsonEncode(response.body));
+  Future<CachedEntry?> read(String key, {required StorageScope scope}) async {
+    final value = entries[key];
+    if (value == null) return null;
+    final now = DateTime.now();
+    return CachedEntry(
+      value: jsonDecode(value.body),
+      etag: value.etag,
+      createdAt: now,
+      freshUntil: now.add(const Duration(minutes: 5)),
+      expiresAt: now.add(const Duration(hours: 24)),
+      schemaVersion: 1,
+    );
   }
 
   @override
-  void clear() => entries.clear();
+  Future<void> cacheResponse(
+    String key,
+    ApiResponse response, {
+    required StorageScope scope,
+  }) async {
+    final etag = response.headers['etag'];
+    if (etag == null) return;
+    entries[key] = (etag: etag, body: jsonEncode(response.body));
+  }
+
+  @override
+  Future<void> clear() async => entries.clear();
 }
+
+class _MockStorageScope extends Mock implements StorageScope {}

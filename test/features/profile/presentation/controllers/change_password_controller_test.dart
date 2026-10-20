@@ -1,35 +1,40 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ghar360/features/profile/presentation/controllers/change_password_controller.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../helpers/mocks.dart';
+import 'package:ghar360/core/controllers/auth_controller.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/features/profile/presentation/controllers/change_password_controller.dart';
+import '../../../../helpers/auth_test_harness.dart' show MockAuthRepository;
+import '../../../../helpers/profile_test_harness.dart';
 
 class _FakeUser extends Fake implements User {
   _FakeUser({this.email, this.phone});
-
   @override
   final String? email;
-
   @override
   final String? phone;
-
   @override
   String get id => 'user-1';
 }
 
 void main() {
+  late ProfileHarness h;
   late MockAuthRepository auth;
   late ChangePasswordController controller;
   late _FakeUser user;
 
   setUp(() {
-    auth = MockAuthRepository();
-    controller = ChangePasswordController(authRepository: auth);
+    h = ProfileHarness();
+    auth = h.repository;
+    h.listen(changePasswordProvider);
+    controller = h.container.read(changePasswordProvider.notifier);
     user = _FakeUser(email: 'a@b.com');
   });
+
+  tearDown(() => h.close());
 
   group('ChangePasswordController', () {
     test('success path verifies email then updates password', () async {
@@ -146,12 +151,12 @@ void main() {
       );
 
       // While the signIn is pending, isLoading should be true
-      expect(controller.isLoading.value, isTrue);
+      expect(h.container.read(changePasswordProvider).loading, isTrue);
 
       completer.complete(AuthResponse(user: user));
       await future;
 
-      expect(controller.isLoading.value, isFalse);
+      expect(h.container.read(changePasswordProvider).loading, isFalse);
     });
 
     // ── isLoading reset on error ──────────────────────────────────────────
@@ -164,7 +169,7 @@ void main() {
 
       await controller.changePassword(currentPassword: 'wrong', newPassword: 'new-pass');
 
-      expect(controller.isLoading.value, isFalse);
+      expect(h.container.read(changePasswordProvider).loading, isFalse);
     });
 
     // ── errorMessage is set on incorrect password ─────────────────────────
@@ -177,7 +182,7 @@ void main() {
 
       await controller.changePassword(currentPassword: 'wrong', newPassword: 'new-pass');
 
-      expect(controller.errorMessage.value, isNotEmpty);
+      expect(h.container.read(changePasswordProvider).error?.message ?? '', isNotEmpty);
     });
 
     // ── errorMessage is set on verification unavailable ───────────────────
@@ -187,7 +192,7 @@ void main() {
 
       await controller.changePassword(currentPassword: 'x', newPassword: 'new-pass');
 
-      expect(controller.errorMessage.value, isNotEmpty);
+      expect(h.container.read(changePasswordProvider).error?.message ?? '', isNotEmpty);
     });
 
     // ── errorMessage is set on update failed ──────────────────────────────
@@ -201,7 +206,7 @@ void main() {
 
       await controller.changePassword(currentPassword: 'old-pass', newPassword: 'new-pass');
 
-      expect(controller.errorMessage.value, isNotEmpty);
+      expect(h.container.read(changePasswordProvider).error?.message ?? '', isNotEmpty);
     });
 
     // ── errorMessage is cleared on new attempt ────────────────────────────
@@ -214,7 +219,7 @@ void main() {
 
       // First attempt fails
       await controller.changePassword(currentPassword: 'wrong', newPassword: 'new-pass');
-      expect(controller.errorMessage.value, isNotEmpty);
+      expect(h.container.read(changePasswordProvider).error?.message ?? '', isNotEmpty);
 
       // Second attempt succeeds
       when(
@@ -228,7 +233,7 @@ void main() {
       );
 
       expect(result, ChangePasswordResult.success);
-      expect(controller.errorMessage.value, isEmpty);
+      expect(h.container.read(changePasswordProvider).error?.message ?? '', isEmpty);
     });
 
     // ── Email with whitespace is trimmed ──────────────────────────────────
@@ -318,5 +323,36 @@ void main() {
 
       expect(result, ChangePasswordResult.verificationUnavailable);
     });
+  });
+  test('offline verification is unavailable, not an incorrect password', () async {
+    when(() => auth.signInWithEmailPassword(any(), any())).thenThrow(NetworkException('offline'));
+    expect(
+      await controller.changePassword(currentPassword: 'old', newPassword: 'new'),
+      ChangePasswordResult.verificationUnavailable,
+    );
+    verifyNever(() => auth.updateUserPassword(any()));
+  });
+  test('a second request is blocked while verification is pending', () async {
+    final pending = Completer<AuthResponse>();
+    when(() => auth.signInWithEmailPassword(any(), any())).thenAnswer((_) => pending.future);
+    final first = controller.changePassword(currentPassword: 'old', newPassword: 'new');
+    expect(
+      await controller.changePassword(currentPassword: 'old', newPassword: 'new'),
+      ChangePasswordResult.busy,
+    );
+    pending.complete(AuthResponse(user: user));
+    await first;
+    verify(() => auth.signInWithEmailPassword(any(), any())).called(1);
+  });
+  test('account change during verification prevents password update', () async {
+    final pending = Completer<AuthResponse>();
+    when(() => auth.signInWithEmailPassword(any(), any())).thenAnswer((_) => pending.future);
+    final first = controller.changePassword(currentPassword: 'old', newPassword: 'new');
+    when(() => auth.currentUser).thenReturn(sdkUser('account-b'));
+    h.session.set(h.container.read(authProvider).copyWith(user: profile('account-b')));
+    await h.container.pump();
+    pending.complete(AuthResponse(user: user));
+    expect(await first, ChangePasswordResult.verificationUnavailable);
+    verifyNever(() => auth.updateUserPassword(any()));
   });
 }

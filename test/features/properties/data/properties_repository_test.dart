@@ -4,21 +4,14 @@
 // - getProperties success
 // - getProperties error propagation
 // - getPropertyDetail success
-// - getPropertiesByIds handles individual failures gracefully (batch with try/catch)
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ghar360/core/data/models/property_media_payload.dart';
-import 'package:ghar360/core/data/models/unified_filter_model.dart';
-import 'package:ghar360/core/network/api_client.dart';
-import 'package:ghar360/core/network/api_paths.dart';
-import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/properties/data/datasources/properties_remote_datasource.dart';
-import 'package:ghar360/features/properties/data/properties_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
-import '../../../helpers/getx_test_binding.dart';
+import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/features/properties/data/properties_repository.dart';
 import '../../../helpers/mocks.dart';
-import '../../../helpers/test_data.dart';
 
 void main() {
   late MockPropertiesRemoteDatasource mockRemoteDatasource;
@@ -31,19 +24,13 @@ void main() {
   });
 
   setUp(() {
-    GetxTestBinding.init();
     mockRemoteDatasource = MockPropertiesRemoteDatasource();
     mockApiClient = MockApiClient();
 
-    GetxTestBinding.bind()
-      ..register<PropertiesRemoteDatasource>(mockRemoteDatasource)
-      ..register<ApiClient>(mockApiClient);
-
-    repository = PropertiesRepository();
-  });
-
-  tearDown(() {
-    GetxTestBinding.reset();
+    repository = PropertiesRepository(
+      remoteDatasource: mockRemoteDatasource,
+      apiClient: mockApiClient,
+    );
   });
 
   group('PropertiesRepository', () {
@@ -156,75 +143,6 @@ void main() {
       expect(() => repository.getPropertyDetail(99), throwsA(isA<NetworkException>()));
     });
 
-    // ── getPropertiesByIds ─────────────────────────────────────────────
-
-    test('getPropertiesByIds returns empty list for empty input', () async {
-      final result = await repository.getPropertiesByIds([]);
-
-      expect(result, isEmpty);
-    });
-
-    test('getPropertiesByIds returns results from batch endpoint', () async {
-      final properties = [testPropertyModel(id: 1), testPropertyModel(id: 2)];
-
-      when(
-        () => mockRemoteDatasource.fetchPropertiesByIds(any()),
-      ).thenAnswer((_) async => properties);
-
-      final result = await repository.getPropertiesByIds([1, 2]);
-
-      expect(result.length, 2);
-      expect(result.first.id, 1);
-    });
-
-    test('getPropertiesByIds falls back to individual fetch on batch failure', () async {
-      when(
-        () => mockRemoteDatasource.fetchPropertiesByIds(any()),
-      ).thenThrow(Exception('Batch endpoint not supported'));
-
-      // Individual fetch succeeds
-      when(() => mockRemoteDatasource.fetchPropertyById(any())).thenAnswer((invocation) async {
-        final id = invocation.positionalArguments[0] as String;
-        return testPropertyModel(id: int.parse(id));
-      });
-
-      final result = await repository.getPropertiesByIds([10, 20, 30]);
-
-      expect(result.length, 3);
-      expect(result.map((p) => p.id), containsAll([10, 20, 30]));
-    });
-
-    test('getPropertiesByIds handles individual failures gracefully', () async {
-      when(
-        () => mockRemoteDatasource.fetchPropertiesByIds(any()),
-      ).thenThrow(Exception('Batch failed'));
-
-      // Individual fetches: id=10 succeeds, id=20 fails, id=30 succeeds
-      when(() => mockRemoteDatasource.fetchPropertyById(any())).thenAnswer((invocation) async {
-        final id = invocation.positionalArguments[0] as String;
-        if (id == '20') throw Exception('Not found');
-        return testPropertyModel(id: int.parse(id));
-      });
-
-      final result = await repository.getPropertiesByIds([10, 20, 30]);
-
-      // Should have 2 results (id=20 was skipped)
-      expect(result.length, 2);
-      expect(result.map((p) => p.id), containsAll([10, 30]));
-    });
-
-    test('getPropertiesByIds returns empty when all individual fetches fail', () async {
-      when(
-        () => mockRemoteDatasource.fetchPropertiesByIds(any()),
-      ).thenThrow(Exception('Batch failed'));
-
-      when(() => mockRemoteDatasource.fetchPropertyById(any())).thenThrow(Exception('All failed'));
-
-      final result = await repository.getPropertiesByIds([1, 2]);
-
-      expect(result, isEmpty);
-    });
-
     // ── searchProperties ───────────────────────────────────────────────
 
     test('searchProperties delegates to getProperties with useCache=false', () async {
@@ -267,155 +185,12 @@ void main() {
       ).called(1);
     });
 
-    // ── createProperty ─────────────────────────────────────────────────
-
-    ApiResponse propertyResponse(int id) => ApiResponse(
-      statusCode: 201,
-      body: {'data': testPropertyJson(id: id)},
-      headers: {},
-    );
-
-    test('createProperty POSTs payload and returns parsed PropertyModel', () async {
-      final data = {'title': 'New Home', 'base_price': 1000000.0};
-      when(
-        () => mockApiClient.post(ApiPaths.properties, body: any(named: 'body')),
-      ).thenAnswer((_) async => propertyResponse(42));
-
-      final property = await repository.createProperty(propertyData: data);
-
-      expect(property.id, 42);
-      expect(property.title, 'Test Property');
-      verify(() => mockApiClient.post(ApiPaths.properties, body: data)).called(1);
-    });
-
-    test('createProperty merges media payload into the request body', () async {
-      final data = {'title': 'With Media'};
-      final media = const PropertyMediaPayload(mainImageUrl: 'https://img.com/a.jpg');
-      when(
-        () => mockApiClient.post(ApiPaths.properties, body: any(named: 'body')),
-      ).thenAnswer((_) async => propertyResponse(7));
-
-      await repository.createProperty(propertyData: data, mediaPayload: media);
-
-      final captured = verify(
-        () => mockApiClient.post(ApiPaths.properties, body: captureAny(named: 'body')),
-      ).captured;
-      final body = captured.single as Map<String, dynamic>;
-      expect(body['title'], 'With Media');
-      expect(body['main_image_url'], 'https://img.com/a.jpg');
-    });
-
-    test('createProperty throws FormatException on empty payload', () async {
-      when(() => mockApiClient.post(ApiPaths.properties, body: any(named: 'body'))).thenAnswer(
-        (_) async => ApiResponse(statusCode: 201, body: {'data': <String, dynamic>{}}, headers: {}),
-      );
-
-      expect(
-        () => repository.createProperty(propertyData: {'title': 'x'}),
-        throwsA(isA<FormatException>()),
-      );
-    });
-
-    test('createProperty propagates AppException', () async {
-      when(
-        () => mockApiClient.post(ApiPaths.properties, body: any(named: 'body')),
-      ).thenThrow(ServerException('Down', statusCode: 500));
-
-      expect(
-        () => repository.createProperty(propertyData: {'title': 'x'}),
-        throwsA(isA<ServerException>()),
-      );
-    });
-
-    // ── updateProperty ─────────────────────────────────────────────────
-
-    test('updateProperty PUTs fields to propertyById endpoint', () async {
-      when(
-        () => mockApiClient.put(ApiPaths.propertyById('9'), body: any(named: 'body')),
-      ).thenAnswer((_) async => propertyResponse(9));
-
-      final property = await repository.updateProperty(propertyId: 9, fields: {'title': 'Updated'});
-
-      expect(property.id, 9);
-      verify(
-        () => mockApiClient.put(ApiPaths.propertyById('9'), body: {'title': 'Updated'}),
-      ).called(1);
-    });
-
-    test('updateProperty merges media update payload (excluding images)', () async {
-      final media = const PropertyMediaPayload(
-        mainImageUrl: 'https://img.com/main.jpg',
-        virtualTourUrl: 'https://tour.com',
-      );
-      when(
-        () => mockApiClient.put(ApiPaths.propertyById('3'), body: any(named: 'body')),
-      ).thenAnswer((_) async => propertyResponse(3));
-
-      await repository.updateProperty(propertyId: 3, fields: {'title': 'X'}, mediaPayload: media);
-
-      final captured = verify(
-        () => mockApiClient.put(ApiPaths.propertyById('3'), body: captureAny(named: 'body')),
-      ).captured;
-      final body = captured.single as Map<String, dynamic>;
-      expect(body['title'], 'X');
-      expect(body['main_image_url'], 'https://img.com/main.jpg');
-      expect(body['virtual_tour_url'], 'https://tour.com');
-      // toPropertyUpdateJson strips the `images` relation field.
-      expect(body.containsKey('images'), isFalse);
-    });
-
-    test('updateProperty propagates AppException', () async {
-      when(
-        () => mockApiClient.put(ApiPaths.propertyById('1'), body: any(named: 'body')),
-      ).thenThrow(NetworkException('Offline'));
-
-      expect(
-        () => repository.updateProperty(propertyId: 1, fields: {'title': 'X'}),
-        throwsA(isA<NetworkException>()),
-      );
-    });
-
-    // ── updatePropertyMedia ────────────────────────────────────────────
-
-    test('updatePropertyMedia PUTs scalar media fields to propertyById', () async {
-      when(
-        () => mockApiClient.put(ApiPaths.propertyById('12'), body: any(named: 'body')),
-      ).thenAnswer((_) async => propertyResponse(12));
-
-      final property = await repository.updatePropertyMedia(
-        propertyId: 12,
-        mainImageUrl: 'https://img.com/main.jpg',
-        videoTourUrl: 'https://video.com/tour',
-        floorPlanUrl: 'https://floor.com/plan',
-      );
-
-      expect(property.id, 12);
-      final captured = verify(
-        () => mockApiClient.put(ApiPaths.propertyById('12'), body: captureAny(named: 'body')),
-      ).captured;
-      final body = captured.single as Map<String, dynamic>;
-      expect(body['main_image_url'], 'https://img.com/main.jpg');
-      expect(body['video_tour_url'], 'https://video.com/tour');
-      expect(body['floor_plan_url'], 'https://floor.com/plan');
-      // images relation is stripped from update payload.
-      expect(body.containsKey('images'), isFalse);
-    });
-
-    test('updatePropertyMedia propagates AppException', () async {
-      when(
-        () => mockApiClient.put(ApiPaths.propertyById('12'), body: any(named: 'body')),
-      ).thenThrow(ServerException('Down', statusCode: 500));
-
-      expect(
-        () => repository.updatePropertyMedia(propertyId: 12, mainImageUrl: 'x'),
-        throwsA(isA<ServerException>()),
-      );
-    });
-
     // ── clearCache ─────────────────────────────────────────────────────
 
-    test('clearCache completes without throwing', () {
-      expect(repository.clearCache, returnsNormally);
+    test('clearCache invalidates transport cache', () async {
+      when(() => mockApiClient.clearCache()).thenAnswer((_) async {});
+      await repository.clearCache();
+      verify(() => mockApiClient.clearCache()).called(1);
     });
 
     // ── getProperties radius/excludeSwiped forwarding ───────────────────

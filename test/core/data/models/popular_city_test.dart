@@ -30,19 +30,19 @@ void main() {
 
     test('mergeWithRemote puts popular cities first and de-dupes', () {
       final remote = [
-        PlaceSuggestion(
+        const PlaceSuggestion(
           placeId: 'google-1',
           description: 'Noida, Uttar Pradesh, India',
           mainText: 'Noida',
           secondaryText: 'Uttar Pradesh, India',
         ),
-        PlaceSuggestion(
+        const PlaceSuggestion(
           placeId: 'google-2',
           description: 'Sector 18, Noida',
           mainText: 'Sector 18',
           secondaryText: 'Noida, Uttar Pradesh',
         ),
-        PlaceSuggestion(
+        const PlaceSuggestion(
           placeId: 'google-3',
           description: 'Greater Noida, Uttar Pradesh, India',
           mainText: 'Greater Noida',
@@ -61,13 +61,13 @@ void main() {
 
     test('mergeWithRemote keeps distinct remotes that share mainText', () {
       final remote = [
-        PlaceSuggestion(
+        const PlaceSuggestion(
           placeId: 'google-a',
           description: 'Green Park, Delhi',
           mainText: 'Green Park',
           secondaryText: 'Delhi',
         ),
-        PlaceSuggestion(
+        const PlaceSuggestion(
           placeId: 'google-b',
           description: 'Green Park, Gurgaon',
           mainText: 'Green Park',

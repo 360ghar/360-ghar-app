@@ -1,18 +1,19 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart' as getx;
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/auth_header_provider.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('ApiClient 401 retry after forced refresh', () {
+    UnauthorizedHandler? onUnauthorized;
     tearDown(() {
-      ApiClient.onUnauthorized = null;
+      onUnauthorized = null;
     });
 
     test(
@@ -39,7 +40,7 @@ void main() {
         var requestCount = 0;
 
         var unauthorizedCallbacks = 0;
-        ApiClient.onUnauthorized = (_) async {
+        onUnauthorized = (_) async {
           unauthorizedCallbacks++;
         };
 
@@ -58,24 +59,22 @@ void main() {
                 final isRetriedWithFreshToken = authHeader == 'Bearer $newToken';
 
                 if (isRetriedWithFreshToken) {
-                  return getx.Response<dynamic>(
+                  return const ApiResponse(
                     statusCode: 200,
                     body: <String, dynamic>{'ok': true},
-                    bodyString: jsonEncode(<String, dynamic>{'ok': true}),
-                    headers: const <String, String>{'content-type': 'application/json'},
+                    headers: <String, String>{'content-type': 'application/json'},
                   );
                 }
 
-                return getx.Response<dynamic>(
+                return const ApiResponse(
                   statusCode: 401,
                   body: <String, dynamic>{'detail': 'unauthorized'},
-                  bodyString: jsonEncode(<String, dynamic>{'detail': 'unauthorized'}),
-                  headers: const <String, String>{'content-type': 'application/json'},
+                  headers: <String, String>{'content-type': 'application/json'},
                 );
               },
           enablePerformanceMetrics: false,
           maxGetRetries: 0,
-        );
+        )..onUnauthorized = onUnauthorized;
 
         final response = await client.get('/users/profile', useCache: false, requireAuth: true);
 
@@ -105,7 +104,7 @@ void main() {
 
         var requestCount = 0;
         var unauthorizedCallbacks = 0;
-        ApiClient.onUnauthorized = (_) async {
+        onUnauthorized = (_) async {
           unauthorizedCallbacks++;
         };
 
@@ -120,11 +119,10 @@ void main() {
                 required Map<String, String> headers,
               }) async {
                 requestCount++;
-                return getx.Response<dynamic>(
+                return const ApiResponse(
                   statusCode: 401,
                   body: <String, dynamic>{'detail': 'unauthorized'},
-                  bodyString: jsonEncode(<String, dynamic>{'detail': 'unauthorized'}),
-                  headers: const <String, String>{'content-type': 'application/json'},
+                  headers: <String, String>{'content-type': 'application/json'},
                 );
               },
           enablePerformanceMetrics: false,
@@ -132,7 +130,7 @@ void main() {
           // with the stale token once the forced refresh could not reach the
           // auth server.
           maxGetRetries: 3,
-        );
+        )..onUnauthorized = onUnauthorized;
 
         await expectLater(
           client.get('/users/profile', useCache: false, requireAuth: true),

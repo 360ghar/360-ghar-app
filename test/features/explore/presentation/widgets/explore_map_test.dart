@@ -1,860 +1,222 @@
-import 'dart:math' as math;
-
-import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
-import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
-import 'package:ghar360/features/explore/presentation/widgets/explore_map.dart';
-import 'package:ghar360/features/explore/presentation/widgets/property_marker_chip.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
-
-// ---------------------------------------------------------------------------
-// Fake MapLibrePlatform — lets MapLibreMap build in widget tests without
-// real platform channels.  buildView returns a plain Container and triggers
-// onPlatformViewCreated asynchronously so the controller is created.
-// ---------------------------------------------------------------------------
-
-class _FakeMapLibrePlatform extends MapLibrePlatform {
-  bool _viewCreated = false;
-
-  /// Simulated camera state: every projected point lands at
-  /// (screenOffset, screenOffset). Changing it stands in for a camera move.
-  double screenOffset = 0;
-
-  /// When true, [toScreenLocation] resolves after a delay that DECREASES as
-  /// [screenOffset] grows, so an older camera state resolves *after* a newer
-  /// one. This mirrors real platform-channel jitter and is what lets a stale
-  /// overlay pass win whenever two passes are allowed to run concurrently.
-  bool simulateProjectionLatency = false;
-
-  /// Highest number of [toScreenLocation] futures in flight at once. An
-  /// overlay pass projects its markers sequentially, so anything above 1 means
-  /// two passes overlapped.
-  int maxConcurrentToScreen = 0;
-  int _inFlightToScreen = 0;
-
-  /// While true, [toScreenLocation] throws, standing in for a projection that
-  /// fails because the surface is being recreated or the style swapped.
-  bool failProjection = false;
-
-  @override
-  Widget buildView(
-    Map<String, dynamic> creationParams,
-    OnPlatformViewCreatedCallback onPlatformViewCreated,
-    Set<Factory<OneSequenceGestureRecognizer>>? gestureRecognizers,
-  ) {
-    // Only trigger the callback once per platform instance — buildView can
-    // be called multiple times on rebuilds.
-    if (!_viewCreated) {
-      _viewCreated = true;
-      // Schedule the platform-view-created callback so the MapLibreMapController
-      // is constructed (which in turn fires onMapCreated).
-      Future<void>.microtask(() {
-        onPlatformViewCreated(0);
-      });
-    }
-    return const SizedBox.shrink();
-  }
-
-  @override
-  Future<void> initPlatform(int id) async {
-    // Fire the style-loaded callback so ExploreMap's _onStyleLoaded runs.
-    Future<void>.microtask(() {
-      onMapStyleLoadedPlatform(null);
-    });
-  }
-
-  @override
-  Future<CameraPosition?> updateMapOptions(Map<String, dynamic> optionsUpdate) async => null;
-
-  @override
-  Future<bool?> animateCamera(CameraUpdate cameraUpdate, {Duration? duration}) async => true;
-
-  @override
-  Future<bool?> moveCamera(CameraUpdate cameraUpdate) async => true;
-
-  @override
-  Future<bool> easeCamera(
-    CameraUpdate cameraUpdate, {
-    Duration? duration,
-    CameraAnimationInterpolation? interpolation,
-  }) async => true;
-
-  @override
-  Future<CameraPosition?> queryCameraPosition() async => null;
-
-  @override
-  Future<void> updateMyLocationTrackingMode(MyLocationTrackingMode mode) async {}
-
-  @override
-  Future<void> matchMapLanguageWithDeviceDefault() async {}
-
-  @override
-  void resizeWebMap() {}
-
-  @override
-  void forceResizeWebMap() {}
-
-  @override
-  Future<void> updateContentInsets(EdgeInsets insets, bool animated) async {}
-
-  @override
-  Future<void> setMapLanguage(String language) async {}
-
-  @override
-  Future<void> setTelemetryEnabled(bool enabled) async {}
-
-  @override
-  Future<bool> getTelemetryEnabled() async => false;
-
-  @override
-  Future<void> setMaximumFps(int fps) async {}
-
-  @override
-  Future<void> forceOnlineMode() async {}
-
-  @override
-  Future<bool> editGeoJsonSource(String id, String data) async => true;
-
-  @override
-  Future<bool> editGeoJsonUrl(String id, String url) async => true;
-
-  @override
-  Future<bool> setLayerFilter(String layerId, String filter) async => true;
-
-  @override
-  Future<String?> getStyle() async => '{}';
-
-  @override
-  Future<void> setCustomHeaders(Map<String, String> headers, List<String> filter) async {}
-
-  @override
-  Future<Map<String, String>> getCustomHeaders() async => {};
-
-  @override
-  Future<List> queryRenderedFeatures(
-    math.Point<double> point,
-    List<String> layerIds,
-    List<Object>? filter,
-  ) async => [];
-
-  @override
-  Future<List> queryRenderedFeaturesInRect(
-    Rect rect,
-    List<String> layerIds,
-    String? filter,
-  ) async => [];
-
-  @override
-  Future<List> querySourceFeatures(
-    String sourceId,
-    String? sourceLayerId,
-    List<Object>? filter,
-  ) async => [];
-
-  @override
-  Future invalidateAmbientCache() async {}
-
-  @override
-  Future clearAmbientCache() async {}
-
-  @override
-  Future<LatLng?> requestMyLocationLatLng() async => null;
-
-  @override
-  Future<LatLngBounds> getVisibleRegion() async =>
-      LatLngBounds(southwest: const LatLng(0, 0), northeast: const LatLng(0, 0));
-
-  @override
-  Future<void> addImage(String name, Uint8List bytes, [bool sdf = false]) async {}
-
-  @override
-  Future<void> addImageSource(
-    String imageSourceId,
-    Uint8List bytes,
-    LatLngQuad coordinates,
-  ) async {}
-
-  @override
-  Future<void> updateImageSource(
-    String imageSourceId,
-    Uint8List? bytes,
-    LatLngQuad? coordinates,
-  ) async {}
-
-  @override
-  Future<void> addLayer(
-    String imageLayerId,
-    String imageSourceId,
-    double? minzoom,
-    double? maxzoom,
-  ) async {}
-
-  @override
-  Future<void> addLayerBelow(
-    String imageLayerId,
-    String imageSourceId,
-    String belowLayerId,
-    double? minzoom,
-    double? maxzoom,
-  ) async {}
-
-  @override
-  Future<void> removeLayer(String imageLayerId) async {}
-
-  @override
-  Future<List> getLayerIds() async => [];
-
-  @override
-  Future<List> getSourceIds() async => [];
-
-  @override
-  Future<void> setFilter(String layerId, dynamic filter) async {}
-
-  @override
-  Future<dynamic> getFilter(String layerId) async => null;
-
-  @override
-  Future<math.Point> toScreenLocation(LatLng latLng) async {
-    // Thrown before the in-flight counter moves so it stays balanced.
-    if (failProjection) {
-      throw PlatformException(code: 'surfaceDestroyed', message: 'no surface');
-    }
-    // Capture the camera state at call time so a pass that started earlier
-    // keeps projecting against the camera it saw.
-    final captured = screenOffset;
-    _inFlightToScreen++;
-    if (_inFlightToScreen > maxConcurrentToScreen) {
-      maxConcurrentToScreen = _inFlightToScreen;
-    }
-    if (simulateProjectionLatency) {
-      await Future<void>.delayed(Duration(milliseconds: math.max(1, 200 - captured.round())));
-    }
-    _inFlightToScreen--;
-    return math.Point(captured, captured);
-  }
-
-  @override
-  Future<List<math.Point>> toScreenLocationBatch(Iterable<LatLng> latLngs) async => [];
-
-  @override
-  Future<LatLng> toLatLng(math.Point screenLocation) async => const LatLng(0, 0);
-
-  @override
-  Future<double> getMetersPerPixelAtLatitude(double latitude) async => 1.0;
-
-  @override
-  Future<void> addGeoJsonSource(
-    String sourceId,
-    Map<String, dynamic> geojson, {
-    String? promoteId,
-  }) async {}
-
-  @override
-  Future<void> setGeoJsonSource(String sourceId, Map<String, dynamic> geojson) async {}
-
-  @override
-  Future<void> setCameraBounds({
-    required double west,
-    required double north,
-    required double south,
-    required double east,
-    required int padding,
-  }) async {}
-
-  @override
-  Future<void> setFeatureForGeoJsonSource(
-    String sourceId,
-    Map<String, dynamic> geojsonFeature,
-  ) async {}
-
-  @override
-  Future<void> setFeatureState(
-    String sourceId,
-    String featureId,
-    Map<String, dynamic> state, {
-    String? sourceLayer,
-  }) async {}
-
-  @override
-  Future<void> removeFeatureState(
-    String sourceId, {
-    String? featureId,
-    String? stateKey,
-    String? sourceLayer,
-  }) async {}
-
-  @override
-  Future<Map<String, dynamic>?> getFeatureState(
-    String sourceId,
-    String featureId, {
-    String? sourceLayer,
-  }) async => null;
-
-  @override
-  Future<void> removeSource(String sourceId) async {}
-
-  @override
-  Future<void> addSymbolLayer(
-    String sourceId,
-    String layerId,
-    Map<String, dynamic> properties, {
-    String? belowLayerId,
-    String? sourceLayer,
-    double? minzoom,
-    double? maxzoom,
-    dynamic filter,
-    required bool enableInteraction,
-  }) async {}
-
-  @override
-  Future<void> addLineLayer(
-    String sourceId,
-    String layerId,
-    Map<String, dynamic> properties, {
-    String? belowLayerId,
-    String? sourceLayer,
-    double? minzoom,
-    double? maxzoom,
-    dynamic filter,
-    required bool enableInteraction,
-  }) async {}
-
-  @override
-  Future<void> setLayerProperties(String layerId, Map<String, dynamic> properties) async {}
-
-  @override
-  Future<void> addCircleLayer(
-    String sourceId,
-    String layerId,
-    Map<String, dynamic> properties, {
-    String? belowLayerId,
-    String? sourceLayer,
-    double? minzoom,
-    double? maxzoom,
-    dynamic filter,
-    required bool enableInteraction,
-  }) async {}
-
-  @override
-  Future<void> addFillLayer(
-    String sourceId,
-    String layerId,
-    Map<String, dynamic> properties, {
-    String? belowLayerId,
-    String? sourceLayer,
-    double? minzoom,
-    double? maxzoom,
-    dynamic filter,
-    required bool enableInteraction,
-  }) async {}
-
-  @override
-  Future<void> addFillExtrusionLayer(
-    String sourceId,
-    String layerId,
-    Map<String, dynamic> properties, {
-    String? belowLayerId,
-    String? sourceLayer,
-    double? minzoom,
-    double? maxzoom,
-    dynamic filter,
-    required bool enableInteraction,
-  }) async {}
-
-  @override
-  Future<void> addRasterLayer(
-    String sourceId,
-    String layerId,
-    Map<String, dynamic> properties, {
-    String? belowLayerId,
-    String? sourceLayer,
-    double? minzoom,
-    double? maxzoom,
-  }) async {}
-
-  @override
-  Future<void> addHillshadeLayer(
-    String sourceId,
-    String layerId,
-    Map<String, dynamic> properties, {
-    String? belowLayerId,
-    String? sourceLayer,
-    double? minzoom,
-    double? maxzoom,
-  }) async {}
-
-  @override
-  Future<void> addHeatmapLayer(
-    String sourceId,
-    String layerId,
-    Map<String, dynamic> properties, {
-    String? belowLayerId,
-    String? sourceLayer,
-    double? minzoom,
-    double? maxzoom,
-  }) async {}
-
-  @override
-  Future<void> addSource(String sourceId, SourceProperties properties) async {}
-
-  @override
-  Future<void> setLayerVisibility(String layerId, bool visible) async {}
-
-  @override
-  Future<bool?> getLayerVisibility(String layerId) async => null;
-
-  @override
-  Future<Size> setWebMapToCustomSize(Size size) async => Size.zero;
-
-  @override
-  Future<void> waitUntilMapIsIdleAfterMovement() async {}
-
-  @override
-  Future<void> waitUntilMapTilesAreLoaded() async {}
-
-  @override
-  Future<Uint8List> takeSnapshot({int? width, int? height}) async => Uint8List(0);
-
-  @override
-  Future<void> setStyle(String styleString) async {}
-}
-
-// ---------------------------------------------------------------------------
-// Fake ExploreController for ExploreMap tests.
-// ---------------------------------------------------------------------------
-
-class _FakeExploreController extends GetxServiceMock implements ExploreController {
-  _FakeExploreController({List<PropertyMarker> markers = const []}) {
-    _markers.addAll(markers);
-  }
-
-  final List<PropertyMarker> _markers = [];
-  @override
-  final RxInt markersRevision = 0.obs;
-
-  @override
-  final Rx<LatLng> currentCenter = const LatLng(28.6139, 77.2090).obs;
-  @override
-  final RxDouble currentZoom = 12.0.obs;
-  @override
-  final RxDouble currentRadius = 5.0.obs;
-  @override
-  final RxBool isMapReady = false.obs;
-  @override
-  final Rx<ExploreState> state = ExploreState.loaded.obs;
-  @override
-  final RxList<PropertyModel> properties = <PropertyModel>[].obs;
-  @override
-  final Rxn<AppException> error = Rxn<AppException>();
-  @override
-  final Rx<PropertyModel?> selectedProperty = Rx<PropertyModel?>(null);
-  @override
-  final RxBool isListCollapsed = false.obs;
-  @override
-  final RxString searchQuery = ''.obs;
-  @override
-  final RxMap<int, bool> likedOverrides = <int, bool>{}.obs;
-
-  MapLibreMapController? attachedController;
-  int mapReadyCalls = 0;
-  int cameraIdleCalls = 0;
-  int selectCalls = 0;
-
-  @override
-  List<PropertyMarker> get propertyMarkers => _markers;
-
-  @override
-  void attachMap(MapLibreMapController controller) {
-    attachedController = controller;
-  }
-
-  @override
-  void onMapReady() {
-    mapReadyCalls++;
-    isMapReady.value = true;
-  }
-
-  @override
-  void onCameraIdle(LatLng center, double zoom) {
-    cameraIdleCalls++;
-  }
-
-  @override
-  void selectProperty(PropertyModel property) {
-    selectCalls++;
-    selectedProperty.value = property;
-  }
-
-  @override
-  bool hasMore = false;
-  @override
-  bool isLoadingMore = false;
-
-  @override
-  String get currentAreaText => '5.0 km';
-
-  @override
-  String get locationDisplayText => 'Test';
-
-  @override
-  String get propertiesCountText => '0';
-
-  @override
-  List<PropertyModel> get propertiesWithLocation => [];
-
-  @override
-  void zoomIn() {}
-
-  @override
-  void zoomOut() {}
-
-  @override
-  void recenterToCurrentLocation() {}
-
-  @override
-  void fitBoundsToProperties() {}
-
-  @override
-  void updateSearchQuery(String query) {}
-
-  @override
-  void retryLoading() {}
-
-  @override
-  void toggleListCollapsed() {}
-
-  @override
-  void expandList() {}
-
-  @override
-  void collapseList() {}
-
-  @override
-  void highlightPropertyFromCard(PropertyModel property) {}
-
-  @override
-  bool isPropertyLiked(PropertyModel property) => false;
-
-  @override
-  Future<void> toggleLike(PropertyModel property) async {}
-
-  @override
-  Future<void> loadMoreProperties() async {}
-}
-
-PropertyModel _property({int id = 100, String title = 'Test Property'}) {
-  return PropertyModel(
-    id: id,
-    title: title,
-    basePrice: 5000000,
-    latitude: 28.61,
-    longitude: 77.21,
-    isAvailable: true,
-    viewCount: 0,
-    likeCount: 0,
-    interestCount: 0,
-  );
-}
-
-PropertyMarker _marker({int id = 100, bool selected = false, String label = '₹50L'}) {
-  return PropertyMarker(
-    property: _property(id: id),
-    position: const LatLng(28.61, 77.21),
-    isSelected: selected,
-    label: label,
-  );
-}
+import 'package:ghar360/core/controllers/localization_controller.dart';
+import 'package:ghar360/core/data/models/page_state_model.dart';
+import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/features/explore/presentation/widgets/explore_map.dart';
+import 'package:ghar360/features/explore/presentation/widgets/property_marker_chip.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import '../../../../helpers/explore_test_harness.dart';
+import '../../../../helpers/fake_explore_map_platform.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 void main() {
-  late _FakeExploreController controller;
-  MapLibrePlatform Function()? originalCreateInstance;
-  // The fake created for the map under test, so tests can drive camera events.
-  _FakeMapLibrePlatform? platform;
-
+  late ExploreTestHarness harness;
+  late MapLibrePlatform Function() original;
+  FakeExploreMapPlatform? platform;
   setUp(() {
-    GetxTestBinding.init();
-    platform = null;
-    // Override the platform factory so MapLibreMap uses our fake.
-    originalCreateInstance = MapLibrePlatform.createInstance;
-    MapLibrePlatform.createInstance = () => platform = _FakeMapLibrePlatform();
-
-    controller = _FakeExploreController();
+    harness = ExploreTestHarness();
+    original = MapLibrePlatform.createInstance;
+    MapLibrePlatform.createInstance = () => platform = FakeExploreMapPlatform();
   });
-
-  tearDown(() {
-    // Restore the original platform factory.
-    if (originalCreateInstance != null) {
-      MapLibrePlatform.createInstance = originalCreateInstance!;
-    }
-    GetxTestBinding.reset();
+  tearDown(() async {
+    MapLibrePlatform.createInstance = original;
+    await harness.dispose();
   });
-
-  Future<void> pumpExploreMap(WidgetTester tester, {Size size = const Size(400, 600)}) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(
-          body: SizedBox(
-            width: size.width,
-            height: size.height,
-            child: ExploreMap(controller: controller),
+  void seed(List<int> ids) => harness.query.seed(
+    PropertyPageState(phase: PropertyLoadPhase.content, items: ids.map(exploreProperty).toList()),
+  );
+  Future<void> pump(WidgetTester tester, {bool active = true}) async {
+    await tester.pumpProviderApp(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: Scaffold(
+          body: TickerMode(
+            enabled: active,
+            child: const SizedBox(width: 400, height: 600, child: ExploreMap()),
           ),
         ),
       ),
     );
-    // Pump a few frames to let the microtask (onPlatformViewCreated) run.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    // Drain any pending async exceptions.
-    tester.takeException();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
   }
 
-  group('ExploreMap — widget construction', () {
-    testWidgets('builds without throwing', (tester) async {
-      await pumpExploreMap(tester);
+  Future<void> dispose(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  }
 
-      expect(find.byType(ExploreMap), findsOneWidget);
-    });
-
-    testWidgets('contains a MapLibreMap widget', (tester) async {
-      await pumpExploreMap(tester);
-
-      expect(find.byType(MapLibreMap), findsOneWidget);
-    });
-
-    testWidgets('calls attachMap via onMapCreated', (tester) async {
-      await pumpExploreMap(tester);
-
-      // The fake platform triggers onPlatformViewCreated which creates the
-      // MapLibreMapController and calls onMapCreated → attachMap.
-      expect(controller.attachedController, isNotNull);
-    });
-
-    testWidgets('calls onMapReady after style loads', (tester) async {
-      await pumpExploreMap(tester);
-
-      // After style loaded callback fires, onMapReady should be called.
-      // We need to pump enough frames for the async style loaded callback.
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(controller.mapReadyCalls, greaterThan(0));
-    });
+  Positioned chipPosition(WidgetTester tester) => tester.widget<Positioned>(
+    find
+        .ancestor(of: find.byType(PropertyMarkerChip).first, matching: find.byType(Positioned))
+        .first,
+  );
+  testWidgets('constructs MapLibre and attaches style sources before moving camera', (
+    tester,
+  ) async {
+    await pump(tester);
+    expect(find.byType(ExploreMap), findsOneWidget);
+    expect(find.byType(MapLibreMap), findsOneWidget);
+    expect(platform!.viewCreated, isTrue);
+    expect(platform!.sourceIds, contains('explore-radius-source'));
+    expect(platform!.sourceIds, contains('explore-properties-source'));
+    expect(platform!.cameraMoves, isNotEmpty);
+    await dispose(tester);
   });
-
-  group('ExploreMap — marker overlays', () {
-    testWidgets('renders PropertyMarkerChip for each marker with screen position', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1), _marker(id: 2)]);
-      await pumpExploreMap(tester);
-
-      // After the map renders and overlays update, marker chips should appear.
-      // Pump enough frames for _updateOverlays to complete.
-      await tester.pump(const Duration(milliseconds: 200));
-
-      expect(find.byType(PropertyMarkerChip), findsNWidgets(2));
-    });
-
-    testWidgets('renders marker chip label text', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1, label: '₹99L')]);
-      await pumpExploreMap(tester);
-
-      await tester.pump(const Duration(milliseconds: 200));
-
-      expect(find.text('₹99L'), findsOneWidget);
-    });
-
-    testWidgets('tapping a marker chip calls selectProperty', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1, label: '₹50L')]);
-      await pumpExploreMap(tester);
-
-      await tester.pump(const Duration(milliseconds: 200));
-
-      await tester.tap(find.text('₹50L'));
-      await tester.pump();
-
-      expect(controller.selectCalls, 1);
-    });
-
-    testWidgets('does not render marker chips when no markers', (tester) async {
-      controller = _FakeExploreController(markers: []);
-      await pumpExploreMap(tester);
-
-      await tester.pump(const Duration(milliseconds: 200));
-
-      expect(find.byType(PropertyMarkerChip), findsNothing);
-    });
-
-    testWidgets('rebuilds when markersRevision changes', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1)]);
-      await pumpExploreMap(tester);
-
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(find.byType(PropertyMarkerChip), findsOneWidget);
-
-      // Add a second marker and bump revision to trigger rebuild.
-      controller._markers.add(_marker(id: 2));
-      controller.markersRevision.value++;
-      await tester.pump(const Duration(milliseconds: 200));
-
-      expect(find.byType(PropertyMarkerChip), findsNWidgets(2));
-    });
+  testWidgets('renders one projected price marker per property and selects on tap', (tester) async {
+    seed([1, 2]);
+    await pump(tester);
+    expect(find.byType(PropertyMarkerChip), findsNWidgets(2));
+    expect(find.text('₹50 L'), findsNWidgets(2));
+    platform!.screenOffset = 120;
+    platform!.onCameraMovePlatform(const CameraPosition(target: LatLng(28.6, 77.2), zoom: 12));
+    await tester.pump();
+    await tester.tap(find.text('₹50 L').last);
+    await tester.pump();
+    expect(harness.state.selectedId, 2);
+    await dispose(tester);
   });
-
-  group('ExploreMap — camera and state changes', () {
-    testWidgets('updates overlays when currentCenter changes', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1)]);
-      await pumpExploreMap(tester);
-
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // Change the center — the ever() worker should trigger _updateOverlays.
-      controller.currentCenter.value = const LatLng(19.076, 72.877);
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // The widget should still be present.
-      expect(find.byType(ExploreMap), findsOneWidget);
-    });
-
-    testWidgets('updates overlays when currentRadius changes', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1)]);
-      await pumpExploreMap(tester);
-
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // Change the radius — the ever() worker should trigger _syncRadiusCircle.
-      controller.currentRadius.value = 10.0;
-      await tester.pump(const Duration(milliseconds: 200));
-
-      expect(find.byType(ExploreMap), findsOneWidget);
-    });
-
-    testWidgets('updates overlays when markersRevision changes', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1)]);
-      await pumpExploreMap(tester);
-
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // Bump the markers revision — the ever() worker should trigger
-      // _syncPropertiesSource.
-      controller.markersRevision.value++;
-      await tester.pump(const Duration(milliseconds: 200));
-
-      expect(find.byType(ExploreMap), findsOneWidget);
-    });
+  testWidgets('no located properties renders no marker chips', (tester) async {
+    await pump(tester);
+    expect(find.byType(PropertyMarkerChip), findsNothing);
+    await dispose(tester);
   });
-
-  group('ExploreMap — camera event burst', () {
-    // Fires [count] camera moves, each at a new simulated camera state, then a
-    // final move at [finalOffset]. Returns after everything has drained.
-    Future<void> driveCameraBurst(
-      WidgetTester tester, {
-      int count = 8,
-      double finalOffset = 190,
-    }) async {
-      final fake = platform!;
-      fake.simulateProjectionLatency = true;
-      fake.maxConcurrentToScreen = 0;
-      const move = CameraPosition(target: LatLng(28.61, 77.21), zoom: 12);
-      for (var i = 1; i <= count; i++) {
-        fake.screenOffset = i * 10.0;
-        fake.onCameraMovePlatform(move);
-      }
-      fake.screenOffset = finalOffset;
-      fake.onCameraMovePlatform(move);
-      // Well past the largest simulated projection latency (200ms per marker).
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump(const Duration(seconds: 1));
+  testWidgets('immutable items update adds markers without an explicit revision bridge', (
+    tester,
+  ) async {
+    seed([1]);
+    await pump(tester);
+    expect(find.byType(PropertyMarkerChip), findsOneWidget);
+    seed([1, 2]);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(PropertyMarkerChip), findsNWidgets(2));
+    await dispose(tester);
+  });
+  testWidgets('manual location, filter radius, and language changes refresh map data', (
+    tester,
+  ) async {
+    seed([1]);
+    await pump(tester);
+    await harness.location.select(mumbai);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(harness.state.center, const LatLng(19.07, 72.87));
+    await harness.container
+        .read(propertyFiltersProvider.notifier)
+        .update(PageType.explore, const UnifiedFilterModel(radiusKm: 25));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(harness.controller.currentRadius, 25);
+    await harness.container.read(localizationProvider.notifier).changeLanguage('hi', 'IN');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('लाख'), findsOneWidget);
+    expect(find.byType(ExploreMap), findsOneWidget);
+    await dispose(tester);
+  });
+  Future<void> burst(WidgetTester tester, {int count = 8}) async {
+    final fake = platform!..simulateProjectionLatency = true;
+    fake.maxConcurrentToScreen = 0;
+    const position = CameraPosition(target: LatLng(28.6, 77.2), zoom: 12);
+    for (var index = 1; index <= count; index++) {
+      fake.screenOffset = index * 10;
+      fake.onCameraMovePlatform(position);
     }
+    fake.screenOffset = 190;
+    fake.onCameraMovePlatform(position);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+  }
 
-    testWidgets('chips settle on the LAST camera state after a rapid burst', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1)]);
-      await pumpExploreMap(tester);
-      await tester.pump(const Duration(milliseconds: 200));
-
-      await driveCameraBurst(tester);
-
-      final positioned = tester.widget<Positioned>(
-        find.ancestor(of: find.byType(PropertyMarkerChip), matching: find.byType(Positioned)).first,
-      );
-      // Chip is centred on the projected point (chip box is 120x56).
-      expect(positioned.left, 190 - 120 / 2);
-      expect(positioned.top, 190 - 56 / 2);
-    });
-
-    testWidgets('overlay computation is never re-entered concurrently', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1), _marker(id: 2)]);
-      await pumpExploreMap(tester);
-      await tester.pump(const Duration(milliseconds: 200));
-
-      await driveCameraBurst(tester, count: 12);
-
-      expect(platform!.maxConcurrentToScreen, 1);
-    });
-
-    testWidgets('a throwing pass is contained and the next event still syncs', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1)]);
-      await pumpExploreMap(tester);
-      await tester.pump(const Duration(milliseconds: 200));
-
-      final fake = platform!;
-      const move = CameraPosition(target: LatLng(28.61, 77.21), zoom: 12);
-
-      fake.failProjection = true;
-      fake.screenOffset = 100;
-      fake.onCameraMovePlatform(move);
-      await tester.pump(const Duration(milliseconds: 200));
-      // Fire-and-forget callers cannot catch it, so the pass must not let it
-      // escape as an unhandled async error.
-      expect(tester.takeException(), isNull);
-
-      // Latch released despite the throw: the next event syncs normally.
-      fake.failProjection = false;
-      fake.screenOffset = 150;
-      fake.onCameraMovePlatform(move);
-      await tester.pump(const Duration(milliseconds: 200));
-
-      final positioned = tester.widget<Positioned>(
-        find.ancestor(of: find.byType(PropertyMarkerChip), matching: find.byType(Positioned)).first,
-      );
-      expect(positioned.left, 150 - 120 / 2);
-    });
+  testWidgets('camera burst settles chips on the last position', (tester) async {
+    seed([1]);
+    await pump(tester);
+    await burst(tester);
+    expect(chipPosition(tester).left, 190 - 60);
+    expect(chipPosition(tester).top, 190 - 28);
+    await dispose(tester);
   });
-
-  group('ExploreMap — dispose', () {
-    testWidgets('disposes cleanly without errors', (tester) async {
-      await pumpExploreMap(tester);
-
-      // Re-pump with no widget to trigger dispose.
-      await tester.pumpWidget(const GetMaterialApp(home: Scaffold(body: SizedBox.shrink())));
-      await tester.pump();
-
-      // If dispose threw, takeException would surface it.
-      tester.takeException();
-    });
+  testWidgets('overlay projection does not run concurrent passes', (tester) async {
+    seed([1, 2]);
+    await pump(tester);
+    await burst(tester, count: 12);
+    expect(platform!.maxConcurrentToScreen, 1);
+    await dispose(tester);
   });
-
-  group('ExploreMap — selected marker', () {
-    testWidgets('renders selected marker chip with pulse animation', (tester) async {
-      controller = _FakeExploreController(markers: [_marker(id: 1, selected: true)]);
-      await pumpExploreMap(tester);
-
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // The selected chip should be present.
-      expect(find.byType(PropertyMarkerChip), findsOneWidget);
-      // Advance the animation clock to verify the pulse is running.
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byType(CustomPaint), findsWidgets);
-    });
+  testWidgets('projection failure is contained and next event recovers', (tester) async {
+    seed([1]);
+    await pump(tester);
+    platform!
+      ..failProjection = true
+      ..screenOffset = 100;
+    const position = CameraPosition(target: LatLng(28.6, 77.2), zoom: 12);
+    platform!.onCameraMovePlatform(position);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
+    platform!
+      ..failProjection = false
+      ..screenOffset = 150;
+    platform!.onCameraMovePlatform(position);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(chipPosition(tester).left, 150 - 60);
+    await dispose(tester);
+  });
+  testWidgets('selected marker keeps visual selection across rebuilds', (tester) async {
+    seed([1]);
+    harness.controller.selectProperty(exploreProperty(1));
+    await pump(tester);
+    expect(tester.widget<PropertyMarkerChip>(find.byType(PropertyMarkerChip)).isSelected, isTrue);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(CustomPaint), findsWidgets);
+    await dispose(tester);
+  });
+  testWidgets('inactive map ignores camera-driven search and disposes cleanly', (tester) async {
+    seed([1]);
+    await pump(tester, active: false);
+    harness.controller.onCameraIdle(const LatLng(20, 72), 14);
+    await tester.pump(const Duration(seconds: 1));
+    expect(harness.device.addressCalls, 0);
+    await dispose(tester);
+  });
+  testWidgets('same property ID with new coordinates refreshes native source', (tester) async {
+    seed([1]);
+    await pump(tester);
+    harness.query.seed(
+      PropertyPageState(
+        phase: PropertyLoadPhase.content,
+        items: [exploreProperty(1, latitude: 20)],
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    final data = platform!.geojson['explore-properties-source']!;
+    expect((data['features'] as List).single['geometry']['coordinates'], [
+      closeTo(77.2, 0.000001),
+      20.0,
+    ]);
+    await dispose(tester);
+  });
+  testWidgets('reactivating a retained map resumes projection without another map instance', (
+    tester,
+  ) async {
+    seed([1]);
+    await pump(tester);
+    final originalPlatform = platform;
+    await pump(tester, active: false);
+    platform!.screenOffset = 150;
+    platform!.onCameraMovePlatform(const CameraPosition(target: LatLng(28.6, 77.2), zoom: 12));
+    await tester.pump();
+    await pump(tester, active: true);
+    expect(platform, same(originalPlatform));
+    expect(chipPosition(tester).left, 150 - 60);
+    await dispose(tester);
   });
 }

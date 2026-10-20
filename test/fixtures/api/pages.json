@@ -1,0 +1,20 @@
+{
+  "html": {
+    "content": "<h1>Terms</h1>",
+    "custom_config": null,
+    "format": "html",
+    "title": "Terms of service",
+    "unique_name": "terms-of-service",
+    "updated_at": null,
+    "view_count": 12
+  },
+  "privacy": {
+    "content": "# Privacy\n\nWe keep…",
+    "custom_config": null,
+    "format": "markdown",
+    "title": "Privacy policy",
+    "unique_name": "privacy-policy",
+    "updated_at": "2026-09-30T10:15:02Z",
+    "view_count": 40
+  }
+}

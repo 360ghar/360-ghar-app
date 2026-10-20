@@ -42,12 +42,16 @@ void main() {
       expect(model.updatedAt, DateTime.parse('2025-01-15T12:00:00.000Z'));
     });
 
-    test('applies defaults for missing optional fields', () {
+    test('optional keys that are absent read as null', () {
       final json = <String, dynamic>{
         'id': 2,
         'name': 'Priya',
         'agent_type': 'general',
         'experience_level': 'beginner',
+        'is_active': true,
+        'is_available': false,
+        'total_users_assigned': 0,
+        'user_satisfaction_rating': 0,
         'created_at': '2024-01-01T00:00:00.000Z',
       };
 
@@ -57,34 +61,65 @@ void main() {
       expect(model.avatarUrl, isNull);
       expect(model.contactNumber, isNull);
       expect(model.languages, isNull);
-      expect(model.isActive, true, reason: 'is_active defaults to true');
-      expect(model.isAvailable, true, reason: 'is_available defaults to true');
+      expect(model.isAvailable, false);
       expect(model.workingHours, isNull);
-      expect(model.totalUsersAssigned, 0, reason: 'totalUsersAssigned defaults to 0');
-      expect(model.userSatisfactionRating, 0.0, reason: 'userSatisfactionRating defaults to 0.0');
+      expect(model.userSatisfactionRating, 0.0);
       expect(model.updatedAt, isNull);
     });
 
-    test('falls back to unknown for unrecognized enum values', () {
+    test('a key the backend always sends is required', () {
+      const required = [
+        'id',
+        'name',
+        'agent_type',
+        'experience_level',
+        'is_active',
+        'is_available',
+        'total_users_assigned',
+        'user_satisfaction_rating',
+        'created_at',
+      ];
+      final full = <String, dynamic>{
+        'id': 2,
+        'name': 'Priya',
+        'agent_type': 'general',
+        'experience_level': 'beginner',
+        'is_active': true,
+        'is_available': true,
+        'total_users_assigned': 1,
+        'user_satisfaction_rating': 4.5,
+        'created_at': '2024-01-01T00:00:00.000Z',
+      };
+      for (final key in required) {
+        final body = {...full}..remove(key);
+        expect(() => AgentModel.fromJson(body), throwsA(anything), reason: 'missing $key');
+      }
+    });
+
+    test('reads an unrecognized enum value as null', () {
       final json = <String, dynamic>{
         'id': 3,
         'name': 'Test Agent',
         'agent_type': 'future_type',
         'experience_level': 'super_expert',
+        'is_active': true,
+        'is_available': true,
+        'total_users_assigned': 0,
+        'user_satisfaction_rating': 1,
         'created_at': '2024-01-01T00:00:00.000Z',
       };
 
       final model = AgentModel.fromJson(json);
 
-      expect(model.agentType, AgentType.unknown);
-      expect(model.experienceLevel, ExperienceLevel.unknown);
+      expect(model.agentType, isNull);
+      expect(model.experienceLevel, isNull);
     });
   });
 
   group('AgentModel convenience getters', () {
     AgentModel make({
-      AgentType agentType = AgentType.general,
-      ExperienceLevel experienceLevel = ExperienceLevel.beginner,
+      AgentType? agentType = AgentType.general,
+      ExperienceLevel? experienceLevel = ExperienceLevel.beginner,
       List<String>? languages,
       Map<String, dynamic>? workingHours,
     }) {
@@ -103,7 +138,7 @@ void main() {
       expect(make(agentType: AgentType.general).agentTypeString, 'General');
       expect(make(agentType: AgentType.specialist).agentTypeString, 'Specialist');
       expect(make(agentType: AgentType.senior).agentTypeString, 'Senior');
-      expect(make(agentType: AgentType.unknown).agentTypeString, 'Unknown');
+      expect(make(agentType: null).agentTypeString, isNull);
     });
 
     test('experienceLevelString maps all enum values', () {
@@ -113,7 +148,7 @@ void main() {
         'Intermediate',
       );
       expect(make(experienceLevel: ExperienceLevel.expert).experienceLevelString, 'Expert');
-      expect(make(experienceLevel: ExperienceLevel.unknown).experienceLevelString, 'Unknown');
+      expect(make(experienceLevel: null).experienceLevelString, isNull);
     });
 
     test('languagesDisplay joins languages or shows fallback', () {

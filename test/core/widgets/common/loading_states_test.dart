@@ -1,152 +1,133 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
-import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:shimmer/shimmer.dart';
 
-import '../../../helpers/getx_test_binding.dart';
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/app_design_theme.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
+import '../../../helpers/provider_test_app.dart';
+
+Future<void> _pump(WidgetTester tester, Widget child, {bool still = false, bool dark = false}) =>
+    tester.pumpProviderApp(
+      Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: still),
+          child: Scaffold(body: child),
+        ),
+      ),
+      theme: dark ? AppDesignTheme.dark() : AppDesignTheme.light(),
+    );
+
+double _opacity(WidgetTester tester) => tester
+    .widget<Opacity>(find.descendant(of: find.byType(Skeleton), matching: find.byType(Opacity)))
+    .opacity;
 
 void main() {
-  setUp(() {
-    GetxTestBinding.init();
-    Get.locale = const Locale('en', 'US');
-    Get.addTranslations(AppTranslations().keys);
-  });
-  tearDown(() => GetxTestBinding.reset());
+  final skeletons = {
+    'swipe card': LoadingStates.swipeCardSkeleton,
+    'grid': () => LoadingStates.responsiveGridSkeleton(crossAxisCount: 3, itemCount: 3),
+    'details': LoadingStates.propertyDetailsSkeleton,
+    'visits': LoadingStates.visitsSkeleton,
+    'profile': LoadingStates.profileSkeleton,
+    'conversations': LoadingStates.conversationListSkeleton,
+    'saved rows': LoadingStates.propertyRowsSkeleton,
+    'document': LoadingStates.documentSkeleton,
+  };
 
-  Future<void> pumpWidget(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: child),
-      ),
-    );
-    // Allow GetX translations to initialize.
-    await tester.pump();
+  for (final entry in skeletons.entries) {
+    testWidgets('${entry.key} skeleton waits 150 ms, then shows once', (tester) async {
+      await _pump(tester, entry.value());
+      expect(_opacity(tester), 0);
+      await tester.pump(const Duration(milliseconds: 149));
+      expect(_opacity(tester), 0);
+      await tester.pump(const Duration(milliseconds: 2));
+      expect(_opacity(tester), 1);
+      expect(find.bySemanticsLabel('Loading...'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   }
 
-  testWidgets('propertyCardSkeleton renders Card with Shimmer', (tester) async {
-    await pumpWidget(tester, LoadingStates.propertyCardSkeleton());
-
-    expect(find.byType(Card), findsOneWidget);
-    expect(find.byType(Shimmer), findsOneWidget);
-    // Multiple Containers are used as skeleton blocks.
-    expect(find.byType(Container), findsWidgets);
-  });
-
-  testWidgets('propertyListSkeleton renders a ListView with card skeletons', (tester) async {
-    await pumpWidget(tester, LoadingStates.propertyListSkeleton(itemCount: 3));
-
-    expect(find.byType(ListView), findsOneWidget);
-    // ListView is lazy — at least one Card is rendered (visible ones only).
-    expect(find.byType(Card), findsWidgets);
-    expect(find.byType(Shimmer), findsWidgets);
-  });
-
-  testWidgets('propertyGridSkeleton renders a GridView with Shimmer', (tester) async {
-    await pumpWidget(tester, LoadingStates.propertyGridSkeleton(itemCount: 4));
-
-    expect(find.byType(GridView), findsOneWidget);
-    expect(find.byType(Shimmer), findsWidgets);
-    expect(find.byType(Card), findsWidgets);
-  });
-
-  testWidgets('responsiveGridSkeleton renders a GridView with Shimmer', (tester) async {
-    await pumpWidget(tester, LoadingStates.responsiveGridSkeleton(itemCount: 2));
-
-    expect(find.byType(GridView), findsOneWidget);
-    expect(find.byType(Shimmer), findsWidgets);
-  });
-
-  testWidgets('propertyDetailsSkeleton renders a ListView with Shimmer', (tester) async {
-    await pumpWidget(tester, LoadingStates.propertyDetailsSkeleton());
-
-    expect(find.byType(Shimmer), findsOneWidget);
-    expect(find.byType(ListView), findsOneWidget);
-  });
-
-  testWidgets('swipeCardSkeleton renders a Shimmer container', (tester) async {
-    await pumpWidget(tester, LoadingStates.swipeCardSkeleton());
-
-    expect(find.byType(Shimmer), findsOneWidget);
-    expect(find.byType(Container), findsWidgets);
-  });
-
-  testWidgets('mapLoadingOverlay renders a progress indicator and text', (tester) async {
-    await pumpWidget(
-      tester,
-      Builder(builder: (context) => LoadingStates.mapLoadingOverlay(context)),
+  testWidgets('reduced motion stops the sheen', (tester) async {
+    await _pump(tester, LoadingStates.visitsSkeleton(), still: true);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.widget<Shimmer>(find.byType(Shimmer)).enabled, isFalse);
+    expect(
+      tester
+          .widget<TickerMode>(
+            find.descendant(of: find.byType(Skeleton), matching: find.byType(TickerMode)),
+          )
+          .enabled,
+      isFalse,
     );
-
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Loading properties...'), findsOneWidget);
   });
 
-  testWidgets('progressiveLoadingIndicator renders a linear progress and text', (tester) async {
-    await pumpWidget(
-      tester,
-      Builder(
-        builder: (context) => LoadingStates.progressiveLoadingIndicator(current: 2, total: 5),
-      ),
+  for (final dark in [false, true]) {
+    testWidgets(
+      '${dark ? 'night' : 'day'} blocks: sky on a white sheet, or a light step at night',
+      (tester) async {
+        await _pump(tester, LoadingStates.visitsSkeleton(), dark: dark);
+        await tester.pump(const Duration(milliseconds: 200));
+        final p = AppPalette(isDark: dark);
+        final gradient = tester.widget<Shimmer>(find.byType(Shimmer)).gradient as LinearGradient;
+        final base = gradient.colors.first;
+        expect(base, dark ? isNot(p.surface) : p.background);
+        expect(base.computeLuminance(), lessThan(1));
+        if (dark) expect(base.computeLuminance(), greaterThan(p.surface.computeLuminance()));
+        // The sheen is lighter than the block.
+        expect(gradient.colors[2].computeLuminance(), greaterThan(base.computeLuminance()));
+        // The blocks sit on a sheet of their own, so they read on the sky page.
+        final sheet = tester.widget<ColoredBox>(
+          find.descendant(of: find.byType(SkeletonSheet), matching: find.byType(ColoredBox)),
+        );
+        expect(sheet.color, p.surface);
+      },
     );
+  }
 
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
-    // The translation uses {current}/{total} placeholders but GetX trParams
-    // replaces @key, so the raw translation text is shown.
-    expect(find.textContaining('Loading page'), findsOneWidget);
-  });
-
-  testWidgets('pullToRefreshIndicator renders a progress indicator', (tester) async {
-    await pumpWidget(
-      tester,
-      Builder(builder: (context) => LoadingStates.pullToRefreshIndicator(context)),
-    );
-
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-  });
-
-  testWidgets('loadMoreIndicator renders a progress indicator', (tester) async {
-    await pumpWidget(tester, LoadingStates.loadMoreIndicator());
-
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-  });
-
-  testWidgets('inlineLoading renders a sized progress indicator', (tester) async {
-    await pumpWidget(tester, LoadingStates.inlineLoading(size: 20));
-
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-  });
-
-  testWidgets('textSkeleton renders a Shimmer with a Container', (tester) async {
-    await pumpWidget(tester, LoadingStates.textSkeleton(width: 120));
-
-    expect(find.byType(Shimmer), findsOneWidget);
-    expect(find.byType(Container), findsOneWidget);
-  });
-
-  testWidgets('fullScreenLoading renders a progress indicator and optional message', (
+  testWidgets('the deck skeleton shows its sheets and blocks together after the gate', (
     tester,
   ) async {
-    await pumpWidget(tester, LoadingStates.fullScreenLoading(message: 'Please wait'));
-
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Please wait'), findsOneWidget);
+    await _pump(tester, SizedBox(height: 640, child: LoadingStates.swipeCardSkeleton()));
+    expect(_opacity(tester), 0);
+    await tester.pump(const Duration(milliseconds: 160));
+    expect(_opacity(tester), 1);
+    // The top card, two deck edges and two buttons are cut paper sheets.
+    final sheets = tester
+        .widgetList<DecoratedBox>(
+          find.descendant(of: find.byType(Skeleton), matching: find.byType(DecoratedBox)),
+        )
+        .map((box) => box.decoration)
+        .whereType<ShapeDecoration>()
+        .where((decoration) => decoration.color == const AppPalette(isDark: false).surface);
+    expect(sheets, hasLength(5));
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('searchLoading renders a progress indicator and text', (tester) async {
-    await pumpWidget(tester, LoadingStates.searchLoading());
-
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Searching properties...'), findsOneWidget);
+  testWidgets('dark skeletons render', (tester) async {
+    await _pump(tester, LoadingStates.profileSkeleton(), dark: true);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('locationLoading renders a progress indicator and text', (tester) async {
-    await pumpWidget(tester, LoadingStates.locationLoading());
+  testWidgets('map overlay is a thin bar with a live label', (tester) async {
+    await _pump(tester, const Builder(builder: LoadingStates.mapLoadingOverlay));
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.bySemanticsLabel('Loading properties...'), findsOneWidget);
+  });
 
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Getting your location...'), findsOneWidget);
+  testWidgets('button spinner takes the label colour', (tester) async {
+    await _pump(
+      tester,
+      DefaultTextStyle(
+        style: const TextStyle(color: Colors.green),
+        child: LoadingStates.buttonSpinner(),
+      ),
+    );
+    final spinner = tester.widget<CircularProgressIndicator>(
+      find.byType(CircularProgressIndicator),
+    );
+    expect(spinner.color, Colors.green);
+    expect(tester.getSize(find.byType(CircularProgressIndicator)), const Size(18, 18));
   });
 }

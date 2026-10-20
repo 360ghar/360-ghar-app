@@ -2,37 +2,32 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
+import 'package:ghar360/core/design/app_design_theme.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/features/tools/presentation/controllers/capital_gains_controller.dart';
 import 'package:ghar360/features/tools/presentation/views/capital_gains_view.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/pump_app.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 void main() {
-  late CapitalGainsController controller;
-
-  setUp(() {
-    GetxTestBinding.init();
-    controller = CapitalGainsController();
-    Get.put<CapitalGainsController>(controller);
-  });
-
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
+  late ProviderContainer container;
+  CapitalGainsController getController() => container.read(capitalGainsProvider.notifier);
+  CapitalGainsState readState() => container.read(capitalGainsProvider);
 
   Future<void> pumpView(WidgetTester tester) async {
-    await tester.pumpApp(const CapitalGainsView());
+    await tester.pumpProviderApp(const CapitalGainsView());
+    container = ProviderScope.containerOf(tester.element(find.byType(CapitalGainsView)));
     await tester.pump();
   }
 
   /// Sets purchase/sale dates so the holding period is exactly [monthsAgo].
   void setHolding(int monthsAgo) {
     final today = DateUtils.dateOnly(DateTime.now());
-    controller.saleDate.value = today;
-    controller.purchaseDate.value = DateTime(today.year, today.month - monthsAgo, today.day);
+    getController().setSaleDate(today);
+    getController().setPurchaseDate(DateTime(today.year, today.month - monthsAgo, today.day));
   }
 
   Future<void> tapCalculate(WidgetTester tester) async {
@@ -45,23 +40,30 @@ void main() {
 
   group('CapitalGainsView', () {
     testWidgets('renders scaffold with correct key and app bar title', (tester) async {
-      await pumpView(tester);
+      final semantics = tester.ensureSemantics();
+      try {
+        await pumpView(tester);
 
-      expect(find.byKey(const ValueKey('qa.tools.capital_gains.screen')), findsOneWidget);
-      expect(find.text('Capital Gains Tax'), findsOneWidget);
+        expect(find.byKey(const ValueKey('qa.tools.capital_gains.screen')), findsOneWidget);
+        expect(find.bySemanticsIdentifier('qa.tools.capital_gains.screen'), findsOneWidget);
+        expect(find.bySemanticsLabel(RegExp(r'qa\.tools')), findsNothing);
+        expect(find.text('Capital Gains Tax'), findsOneWidget);
+      } finally {
+        semantics.dispose();
+      }
     });
 
     testWidgets('renders back and refresh icons in app bar', (tester) async {
       await pumpView(tester);
 
       expect(find.byTooltip('Back'), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      expect(findKnife(KnifeIcon.retry), findsOneWidget);
     });
 
     testWidgets('renders disclaimer info container', (tester) async {
       await pumpView(tester);
 
-      expect(find.byIcon(Icons.info_outline), findsOneWidget);
+      expect(findKnife(KnifeIcon.info), findsOneWidget);
     });
 
     testWidgets('renders purchase and sale detail cards', (tester) async {
@@ -86,12 +88,12 @@ void main() {
       expect(find.text('Sale Date'), findsOneWidget);
       expect(find.byKey(const ValueKey('qa.tools.capital_gains.purchase_date')), findsOneWidget);
       expect(find.byKey(const ValueKey('qa.tools.capital_gains.sale_date')), findsOneWidget);
-      expect(find.byIcon(Icons.calendar_today_outlined), findsNWidgets(2));
+      expect(findKnife(KnifeIcon.calendar), findsNWidgets(2));
 
       String fmt(DateTime d) =>
           '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-      expect(find.text(fmt(controller.purchaseDate.value)), findsOneWidget);
-      expect(find.text(fmt(controller.saleDate.value)), findsOneWidget);
+      expect(find.text(fmt(readState().purchaseDate)), findsOneWidget);
+      expect(find.text(fmt(readState().saleDate)), findsOneWidget);
     });
 
     testWidgets('renders calculate button', (tester) async {
@@ -112,41 +114,41 @@ void main() {
 
       await tapCalculate(tester);
 
-      expect(controller.validationError.value, isNotEmpty);
-      expect(controller.hasCalculated.value, isFalse);
+      expect((readState().validationKey ?? ''), isNotEmpty);
+      expect(readState().hasCalculated, isFalse);
       // The inline error widget (Container with error styling) should be present
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     testWidgets('shows validation error when sale date is before purchase date', (tester) async {
       await pumpView(tester);
 
       // Set values directly on controller for reliability
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '6000000';
-      controller.purchaseDate.value = DateTime(2024, 6, 10);
-      controller.saleDate.value = DateTime(2024, 6, 9);
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '6000000';
+      getController().setPurchaseDate(DateTime(2024, 6, 10));
+      getController().setSaleDate(DateTime(2024, 6, 9));
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.validationError.value, isNotEmpty);
-      expect(controller.hasCalculated.value, isFalse);
+      expect((readState().validationKey ?? ''), isNotEmpty);
+      expect(readState().hasCalculated, isFalse);
     });
 
     testWidgets('calculates long-term capital gains and shows results', (tester) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '8000000';
-      controller.improvementCostController.text = '500000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '8000000';
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text = '500000';
       setHolding(60);
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.hasCalculated.value, isTrue);
-      expect(controller.isLongTerm.value, isTrue);
+      expect(readState().hasCalculated, isTrue);
+      expect(readState().isLongTerm, isTrue);
       expect(find.text('Tax Calculation'), findsOneWidget);
       expect(find.text('Long Term'), findsOneWidget);
       expect(find.text('With Indexation'), findsOneWidget);
@@ -156,37 +158,39 @@ void main() {
     testWidgets('calculates short-term capital gains and shows results', (tester) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '6000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '6000000';
       setHolding(12);
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.hasCalculated.value, isTrue);
-      expect(controller.isLongTerm.value, isFalse);
+      expect(readState().hasCalculated, isTrue);
+      expect(readState().isLongTerm, isFalse);
       expect(find.text('Short Term'), findsOneWidget);
       expect(find.text('Estimated Tax'), findsOneWidget);
     });
 
-    testWidgets('shows recommended label for lower tax option in long-term', (tester) async {
+    testWidgets('shows lower-estimate label for the smaller illustrative figure in long-term', (
+      tester,
+    ) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '8000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '8000000';
       setHolding(60);
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(find.text('Recommended'), findsOneWidget);
+      expect(find.text('Lower estimate'), findsOneWidget);
     });
 
     testWidgets('shows exemptions info section in results', (tester) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '8000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '8000000';
       setHolding(60);
       await tester.pump();
 
@@ -198,24 +202,24 @@ void main() {
     testWidgets('refresh button clears all fields and results', (tester) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '8000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '8000000';
       setHolding(60);
       await tester.pump();
 
       await tapCalculate(tester);
-      expect(controller.hasCalculated.value, isTrue);
+      expect(readState().hasCalculated, isTrue);
 
-      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.tap(findKnife(KnifeIcon.retry));
       await tester.pumpAndSettle();
 
-      expect(controller.hasCalculated.value, isFalse);
-      expect(controller.purchasePriceController.text, isEmpty);
-      expect(controller.salePriceController.text, isEmpty);
-      expect(controller.improvementCostController.text, isEmpty);
+      expect(readState().hasCalculated, isFalse);
+      expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text, isEmpty);
+      expect(tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text, isEmpty);
+      expect(tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text, isEmpty);
     });
 
-    testWidgets('back button is wired to Get.back', (tester) async {
+    testWidgets('back button is wired to Navigator.maybePop', (tester) async {
       await pumpView(tester);
 
       final backButton = find.byTooltip('Back');
@@ -259,7 +263,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(DatePickerDialog), findsNothing);
-      final picked = controller.saleDate.value;
+      final picked = readState().saleDate;
       expect(picked.day, 15);
       expect(picked.isBefore(DateUtils.dateOnly(DateTime.now())), isTrue);
       // Stored date-only, and rendered back into the field.
@@ -273,8 +277,8 @@ void main() {
     testWidgets('formats currency in Cr for large values', (tester) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '100000000';
-      controller.salePriceController.text = '150000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '100000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '150000000';
       setHolding(60);
       await tester.pump();
 
@@ -287,8 +291,8 @@ void main() {
     testWidgets('formats currency in L for lakh values', (tester) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '8000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '8000000';
       setHolding(60);
       await tester.pump();
 
@@ -300,8 +304,8 @@ void main() {
     testWidgets('shows indexed cost and capital gain rows in long-term results', (tester) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '8000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '8000000';
       setHolding(60);
       await tester.pump();
 
@@ -315,14 +319,14 @@ void main() {
     testWidgets('shows short term tax note for short-term results', (tester) async {
       await pumpView(tester);
 
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '6000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '6000000';
       setHolding(12);
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.isLongTerm.value, isFalse);
+      expect(readState().isLongTerm, isFalse);
       expect(find.text('Estimated Tax'), findsOneWidget);
     });
 
@@ -351,9 +355,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(saleField, '654321');
 
-      expect(controller.purchasePriceController.text, '123456');
-      expect(controller.improvementCostController.text, '789');
-      expect(controller.salePriceController.text, '654321');
+      expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text, '123456');
+      expect(tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text, '789');
+      expect(tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text, '654321');
     });
 
     // ── P1: result colour contrast in both themes ─────────────────────────
@@ -366,43 +370,50 @@ void main() {
     }
 
     Future<List<double>> resultContrasts(WidgetTester tester, ThemeData theme) async {
-      await tester.pumpApp(const CapitalGainsView(), theme: theme);
+      await tester.pumpProviderApp(const CapitalGainsView(), theme: theme);
+      container = ProviderScope.containerOf(tester.element(find.byType(CapitalGainsView)));
       await tester.pump();
-      controller.purchasePriceController.text = '5000000';
-      controller.salePriceController.text = '8000000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '5000000';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '8000000';
       setHolding(60);
       await tester.pump();
       await tapCalculate(tester);
-      final card = tester.widget<Card>(find.byType(Card).last);
-      final bg = card.color!;
-      // 18px tax-option amounts + the 11px "Recommended" label
-      final texts = find
-          .byWidgetPredicate(
-            (w) => w is Text && (w.style?.fontSize == 18 || w.style?.fontSize == 11),
-          )
-          .evaluate()
-          .map((e) => (e.widget as Text).style!.color!)
-          .toList();
+      final page = tester.widget<Scaffold>(
+        find.byKey(const ValueKey('qa.tools.capital_gains.screen')),
+      );
+      final bg = page.backgroundColor!;
+      // Both tax-option amounts and the "Lower estimate" label.
+      const key = 'qa.tools.capital_gains.tax_with_indexation';
+      final texts = [
+        for (final finder in [
+          find.byKey(const ValueKey(key)),
+          find.byKey(const ValueKey('qa.tools.capital_gains.tax_without_indexation')),
+          find.byKey(const ValueKey('$key.lower')),
+          find.byKey(const ValueKey('qa.tools.capital_gains.tax_without_indexation.lower')),
+        ])
+          ...tester.widgetList<Text>(finder).map((text) => text.style!.color!),
+      ];
+      expect(texts, hasLength(3));
       return texts.map((c) => ratio(c, bg)).toList();
     }
 
-    testWidgets('tax-option result text clears 3:1 in LIGHT mode', (tester) async {
-      final ratios = await resultContrasts(tester, ThemeData.light());
+    testWidgets('tax-option result text clears 4.5:1 in LIGHT mode', (tester) async {
+      final ratios = await resultContrasts(tester, AppDesignTheme.light());
       expect(ratios, isNotEmpty);
       final worst = ratios.reduce((a, b) => a < b ? a : b);
       expect(
         worst,
-        greaterThanOrEqualTo(3.0),
+        greaterThanOrEqualTo(4.5),
         reason: 'light worst is ${worst.toStringAsFixed(2)}:1',
       );
     });
 
-    testWidgets('tax-option result text clears 3:1 in DARK mode', (tester) async {
-      final ratios = await resultContrasts(tester, ThemeData.dark());
+    testWidgets('tax-option result text clears 4.5:1 in DARK mode', (tester) async {
+      final ratios = await resultContrasts(tester, AppDesignTheme.dark());
       final worst = ratios.reduce((a, b) => a < b ? a : b);
       expect(
         worst,
-        greaterThanOrEqualTo(3.0),
+        greaterThanOrEqualTo(4.5),
         reason: 'dark worst is ${worst.toStringAsFixed(2)}:1',
       );
     });

@@ -1,312 +1,117 @@
-// test/core/controllers/theme_controller_test.dart
-//
-// Unit tests for [ThemeController]. Covers:
-// - Initial theme mode (system default)
-// - setThemeMode changes value
-// - toggleTheme cycles through modes
-// - setTheme convenience method
-// - Persistence to storage
-// - currentThemeName and isSystemMode getters
-// - syncWithPreferences
+import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 
 import 'package:ghar360/core/controllers/theme_controller.dart';
-import '../../helpers/getx_test_binding.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import '../../helpers/settings_test_database.dart';
 
 void main() {
-  // Mock path_provider platform channel so GetStorage can initialise in tests.
-  TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('plugins.flutter.io/path_provider');
+  late SettingsTestDatabase database;
+  late ProviderContainer container;
+  setUp(() {
+    database = SettingsTestDatabase();
+    container = ProviderContainer(overrides: [appDatabaseProvider.overrideWithValue(database)]);
+  });
+  tearDown(() => container.dispose());
 
-  setUpAll(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      channel,
-      (MethodCall methodCall) async {
-        if (methodCall.method == 'getApplicationDocumentsDirectory') {
-          return '.';
-        }
-        return null;
-      },
-    );
+  test('defaults to system mode and Flutter owns system brightness', () {
+    final settings = container.read(themeProvider);
+    expect(settings.mode, AppThemeMode.system);
+    expect(settings.flutterMode, ThemeMode.system);
+    expect(settings.persistence.hasError, false);
   });
 
-  setUp(() async {
-    GetxTestBinding.init();
-    await GetStorage.init();
-    GetStorage().erase();
+  test('all legacy string and index values retain their meaning', () {
+    for (final mode in AppThemeMode.values) {
+      expect(ThemeController.parseStoredThemeMode(mode.name), mode);
+      expect(ThemeController.parseStoredThemeMode(mode.index), mode);
+    }
+    for (final invalid in [null, 'nope', 99, -1, true]) {
+      expect(ThemeController.parseStoredThemeMode(invalid), AppThemeMode.system);
+    }
   });
 
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
-
-  ThemeController createController() {
-    final c = ThemeController();
-    Get.put<ThemeController>(c);
-    return c;
+  for (final mode in AppThemeMode.values) {
+    test('loads persisted ${mode.name} and reports matching Flutter mode and label', () {
+      database.values['themeMode'] = mode.name;
+      final state = container.read(themeProvider);
+      expect(state.mode, mode);
+      expect(state.flutterMode.name, mode.name);
+      expect(state.nameKey, '${mode.name}_mode');
+    });
+    test('sets and persists ${mode.name} as an enum name', () async {
+      expect(await container.read(themeProvider.notifier).setThemeMode(mode), true);
+      expect(container.read(themeProvider).mode, mode);
+      expect(database.values['themeMode'], mode.name);
+      container.invalidate(themeProvider);
+      expect(container.read(themeProvider).mode, mode);
+    });
   }
 
-  // -------------------------------------------------------------------------
-  // Initial state
-  // -------------------------------------------------------------------------
-  group('initial state', () {
-    test('defaults to system theme mode when no storage value exists', () {
-      final c = createController();
-
-      expect(c.currentThemeMode, AppThemeMode.system);
-    });
-
-    test('isSystemMode is true by default', () {
-      final c = createController();
-
-      expect(c.isSystemMode, isTrue);
-    });
-
-    test('currentThemeName returns "System" by default', () {
-      final c = createController();
-
-      expect(c.currentThemeName, 'System');
-    });
-
-    test('themeMode getter returns ThemeMode.system by default', () {
-      final c = createController();
-
-      expect(c.themeMode, ThemeMode.system);
-    });
-
-    test('isDarkMode is false by default (system defaults to light in test)', () {
-      final c = createController();
-
-      // In test environment, platformBrightness defaults to light
-      expect(c.isDarkMode.value, isFalse);
-    });
+  test('toggle cycles light, dark, system without changing the stored format', () async {
+    final notifier = container.read(themeProvider.notifier);
+    for (final mode in [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.system]) {
+      await notifier.toggleTheme();
+      expect(container.read(themeProvider).mode, mode);
+      expect(database.values['themeMode'], mode.name);
+    }
+    await notifier.setTheme(true);
+    expect(container.read(themeProvider).mode, AppThemeMode.dark);
+    await notifier.setTheme(false);
+    expect(container.read(themeProvider).mode, AppThemeMode.light);
   });
 
-  // -------------------------------------------------------------------------
-  // setThemeMode
-  // -------------------------------------------------------------------------
-  group('setThemeMode', () {
-    test('changes to light mode', () {
-      final c = createController();
-
-      c.setThemeMode(AppThemeMode.light);
-
-      expect(c.currentThemeMode, AppThemeMode.light);
-      expect(c.isDarkMode.value, isFalse);
-      expect(c.isSystemMode, isFalse);
-      expect(c.currentThemeName, 'Light');
-      expect(c.themeMode, ThemeMode.light);
-    });
-
-    test('changes to dark mode', () {
-      final c = createController();
-
-      c.setThemeMode(AppThemeMode.dark);
-
-      expect(c.currentThemeMode, AppThemeMode.dark);
-      expect(c.isDarkMode.value, isTrue);
-      expect(c.isSystemMode, isFalse);
-      expect(c.currentThemeName, 'Dark');
-      expect(c.themeMode, ThemeMode.dark);
-    });
-
-    test('changes back to system mode', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.dark);
-
-      c.setThemeMode(AppThemeMode.system);
-
-      expect(c.currentThemeMode, AppThemeMode.system);
-      expect(c.isSystemMode, isTrue);
-      expect(c.currentThemeName, 'System');
-      expect(c.themeMode, ThemeMode.system);
-    });
-
-    test('persists dark mode to storage', () {
-      final c = createController();
-
-      c.setThemeMode(AppThemeMode.dark);
-
-      final stored = GetStorage().read('themeMode');
-      expect(stored, 'dark');
-    });
-
-    test('persists light mode to storage', () {
-      final c = createController();
-
-      c.setThemeMode(AppThemeMode.light);
-
-      final stored = GetStorage().read('themeMode');
-      expect(stored, 'light');
-    });
-
-    test('persists system mode to storage', () {
-      final c = createController();
-
-      c.setThemeMode(AppThemeMode.system);
-
-      final stored = GetStorage().read('themeMode');
-      expect(stored, 'system');
-    });
+  test('failed persistence retains the effective theme and supports retry', () async {
+    database.writeFailure = StorageFailure('write');
+    final notifier = container.read(themeProvider.notifier);
+    expect(await notifier.setThemeMode(AppThemeMode.dark), false);
+    expect(container.read(themeProvider).mode, AppThemeMode.system);
+    expect(container.read(themeProvider).persistence.error, isA<StorageFailure>());
+    expect(database.values.containsKey('themeMode'), false);
+    database.writeFailure = null;
+    expect(await notifier.retry(), true);
+    expect(container.read(themeProvider).mode, AppThemeMode.dark);
   });
 
-  // -------------------------------------------------------------------------
-  // toggleTheme
-  // -------------------------------------------------------------------------
-  group('toggleTheme', () {
-    test('cycles from light to dark', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.light);
-
-      c.toggleTheme();
-
-      expect(c.currentThemeMode, AppThemeMode.dark);
-    });
-
-    test('cycles from dark to system', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.dark);
-
-      c.toggleTheme();
-
-      expect(c.currentThemeMode, AppThemeMode.system);
-    });
-
-    test('cycles from system to light', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.system);
-
-      c.toggleTheme();
-
-      expect(c.currentThemeMode, AppThemeMode.light);
-    });
-
-    test('full cycle returns to original mode', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.light);
-
-      c.toggleTheme(); // light → dark
-      c.toggleTheme(); // dark → system
-      c.toggleTheme(); // system → light
-
-      expect(c.currentThemeMode, AppThemeMode.light);
-    });
+  test('duplicate change is blocked and no provider update occurs after disposal', () async {
+    final write = Completer<void>();
+    database.beforeWrite = () => write.future;
+    final notifier = container.read(themeProvider.notifier);
+    final first = notifier.setThemeMode(AppThemeMode.dark);
+    expect(container.read(themeProvider).persistence.isLoading, true);
+    expect(await notifier.setThemeMode(AppThemeMode.light), false);
+    expect(database.writeCount, 1);
+    container.dispose();
+    write.complete();
+    expect(await first, false);
   });
 
-  // -------------------------------------------------------------------------
-  // setTheme convenience method
-  // -------------------------------------------------------------------------
-  group('setTheme', () {
-    test('setTheme(true) sets dark mode', () {
-      final c = createController();
-
-      c.setTheme(true);
-
-      expect(c.currentThemeMode, AppThemeMode.dark);
-      expect(c.isDarkMode.value, isTrue);
-    });
-
-    test('setTheme(false) sets light mode', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.dark);
-
-      c.setTheme(false);
-
-      expect(c.currentThemeMode, AppThemeMode.light);
-      expect(c.isDarkMode.value, isFalse);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // syncWithPreferences
-  // -------------------------------------------------------------------------
-  group('syncWithPreferences', () {
-    test('syncs to dark when preference says dark', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.light);
-
-      c.syncWithPreferences(true);
-
-      expect(c.currentThemeMode, AppThemeMode.dark);
-    });
-
-    test('syncs to light when preference says not dark', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.dark);
-
-      c.syncWithPreferences(false);
-
-      expect(c.currentThemeMode, AppThemeMode.light);
-    });
-
-    test('does nothing when preference matches current mode', () {
-      final c = createController();
-      c.setThemeMode(AppThemeMode.dark);
-
-      c.syncWithPreferences(true);
-
-      expect(c.currentThemeMode, AppThemeMode.dark);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Storage persistence across instances
-  // -------------------------------------------------------------------------
-  group('storage persistence across instances', () {
-    test('new controller reads persisted theme from storage', () async {
-      // First controller sets dark
-      final c1 = createController();
-      c1.setThemeMode(AppThemeMode.dark);
-
-      // Dispose and recreate (simulating app restart)
-      GetxTestBinding.reset();
-      GetxTestBinding.init();
-      await GetStorage.init();
-
-      final c2 = ThemeController();
-      Get.put<ThemeController>(c2);
-
-      expect(c2.currentThemeMode, AppThemeMode.dark);
-      expect(c2.isDarkMode.value, isTrue);
-    });
-
-    test('new controller defaults to system when storage has invalid value', () async {
-      // Write an invalid value to storage
-      GetStorage().write('themeMode', 'invalid_mode');
-
-      final c = ThemeController();
-      Get.put<ThemeController>(c);
-
-      // Should fall back to system
-      expect(c.currentThemeMode, AppThemeMode.system);
-    });
-
-    test('migrates legacy int themeMode index to enum name', () async {
-      GetStorage().write('themeMode', AppThemeMode.dark.index);
-
-      final c = ThemeController();
-      Get.put<ThemeController>(c);
-
-      expect(c.currentThemeMode, AppThemeMode.dark);
-      expect(GetStorage().read('themeMode'), 'dark');
-    });
-
-    test('parseStoredThemeMode accepts string names and int indexes', () {
-      expect(ThemeController.parseStoredThemeMode('light'), AppThemeMode.light);
-      expect(ThemeController.parseStoredThemeMode('dark'), AppThemeMode.dark);
-      expect(ThemeController.parseStoredThemeMode('system'), AppThemeMode.system);
-      expect(ThemeController.parseStoredThemeMode(0), AppThemeMode.light);
-      expect(ThemeController.parseStoredThemeMode(1), AppThemeMode.dark);
-      expect(ThemeController.parseStoredThemeMode(2), AppThemeMode.system);
-      expect(ThemeController.parseStoredThemeMode(99), AppThemeMode.system);
-      expect(ThemeController.parseStoredThemeMode('nope'), AppThemeMode.system);
-      expect(ThemeController.parseStoredThemeMode(null), AppThemeMode.system);
-    });
+  testWidgets('system mode follows brightness changes without a controller observer', (
+    tester,
+  ) async {
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: Consumer(
+          builder: (context, ref, child) => MaterialApp(
+            themeMode: ref.watch(themeProvider).flutterMode,
+            theme: ThemeData.light(),
+            darkTheme: ThemeData.dark(),
+            home: Builder(builder: (context) => Text(Theme.of(context).brightness.name)),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('light'), findsOneWidget);
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    await tester.pumpAndSettle();
+    expect(find.text('dark'), findsOneWidget);
   });
 }

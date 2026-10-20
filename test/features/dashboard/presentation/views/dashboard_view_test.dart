@@ -1,241 +1,114 @@
-// test/features/dashboard/presentation/views/dashboard_view_test.dart
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/controllers/location_controller.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
-import 'package:ghar360/core/data/models/likes_segment.dart';
-import 'package:ghar360/core/data/models/page_state_model.dart';
-import 'package:ghar360/core/data/models/user_model.dart';
-import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
-import 'package:ghar360/features/dashboard/presentation/views/dashboard_view.dart';
-import 'package:ghar360/features/discover/presentation/controllers/discover_controller.dart';
-import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
-import 'package:ghar360/features/likes/presentation/controllers/likes_controller.dart';
-import 'package:ghar360/features/profile/presentation/controllers/profile_controller.dart';
-import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
-import '../../../../helpers/pump_app.dart';
-
-// ---------------------------------------------------------------------------
-// Stub controllers — lightweight implementations that avoid calling
-// Get.find / GetStorage / navigation methods. Each provides the minimal
-// reactive fields that the corresponding view reads during build.
-// ---------------------------------------------------------------------------
-
-/// Dashboard stub: avoids GetStorage (which creates a pending timer in tests).
-class _StubDashboardController extends GetxServiceMock implements DashboardController {
-  @override
-  final RxInt currentIndex = 2.obs;
-  @override
-  final Set<int> visitedTabs = <int>{};
-
-  @override
-  void changeTab(int index) {
-    if (currentIndex.value == index) return;
-    visitedTabs.add(index);
-    currentIndex.value = index;
-  }
-}
-
-/// ProfileView stub: provides the reactive fields that ProfileView.build reads.
-class _StubProfileController extends GetxServiceMock implements ProfileController {
-  @override
-  final RxBool isProfileLoading = false.obs;
-  @override
-  Rxn<UserModel> get currentUser => Rxn<UserModel>();
-  @override
-  bool get isLoading => isProfileLoading.value;
-}
-
-/// ExploreView stub.
-class _StubExploreController extends GetxServiceMock implements ExploreController {
-  @override
-  void updateSearchQuery(String query) {}
-}
-
-/// DiscoverView stub.
-class _StubDiscoverController extends GetxServiceMock implements DiscoverController {
-  @override
-  final Rx<DiscoverState> state = DiscoverState.initial.obs;
-}
-
-/// LikesView stub.
-class _StubLikesController extends GetxServiceMock implements LikesController {
-  @override
-  final Rx<LikesSegment> currentSegment = LikesSegment.liked.obs;
-  @override
-  void updateSearchQuery(String query) {}
-}
-
-/// VisitsView stub.
-class _StubVisitsController extends GetxServiceMock implements VisitsController {
-  @override
-  final RxBool isLoading = false.obs;
-  @override
-  final Rxn<AppException> error = Rxn<AppException>();
-}
-
-/// AssistantView stub.
-class _StubAssistantController extends GetxServiceMock implements AssistantController {
-  @override
-  final Rxn<String> activeToolCall = Rxn<String>();
-}
-
-// ---------------------------------------------------------------------------
-// Lightweight mock PageStateService for child views that call
-// Get.find<PageStateService>() in their build methods.
-// ---------------------------------------------------------------------------
-
-class _MockPageStateService extends GetxServiceMock implements PageStateService {
-  @override
-  final Rx<PageStateModel> discoverState = PageStateModel.initial(PageType.discover).obs;
-  @override
-  final Rx<PageStateModel> likesState = PageStateModel.initial(PageType.likes).obs;
-  @override
-  final Rx<PageStateModel> exploreState = PageStateModel.initial(PageType.explore).obs;
-  @override
-  final Rx<PageType> currentPageType = PageType.discover.obs;
-
-  @override
-  bool isSearchVisible(PageType pageType) => false;
-
-  @override
-  PageStateModel getStateForPage(PageType pageType) {
-    switch (pageType) {
-      case PageType.explore:
-        return exploreState.value;
-      case PageType.discover:
-        return discoverState.value;
-      case PageType.likes:
-        return likesState.value;
-    }
-  }
-
-  @override
-  LikesSegment get currentLikesSegment => LikesSegment.tryParse(
-      likesState.value.getAdditionalData<String>('currentSegment'));
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+import 'package:ghar360/core/widgets/navigation/bottom_nav_bar.dart';
+import '../../../../helpers/dashboard_shell_app.dart';
 
 void main() {
-  late _MockPageStateService pageStateService;
-  late MockAuthController authController;
-  late MockLocationController locationController;
-
-  setUp(() {
-    GetxTestBinding.init();
-    pageStateService = _MockPageStateService();
-    authController = MockAuthController();
-    locationController = MockLocationController();
-
-    // Register dependencies needed by child views that get built when tabs
-    // change. Also register stubs for all child view controllers so
-    // Get.find<XController>() doesn't throw.
-    GetxTestBinding.bind()
-      ..register<PageStateService>(pageStateService)
-      ..register<AuthController>(authController)
-      ..register<LocationController>(locationController)
-      ..register<ProfileController>(_StubProfileController())
-      ..register<ExploreController>(_StubExploreController())
-      ..register<DiscoverController>(_StubDiscoverController())
-      ..register<LikesController>(_StubLikesController())
-      ..register<VisitsController>(_StubVisitsController())
-      ..register<AssistantController>(_StubAssistantController());
+  testWidgets('renders five primary destinations with Discover initially selected', (tester) async {
+    usePhoneView(tester);
+    final router = shellRouter();
+    addTearDown(router.dispose);
+    await tester.pumpWidget(shellApp(router));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<CustomBottomNavigationBar>(find.byType(CustomBottomNavigationBar)).currentIndex,
+      0,
+    );
+    for (final id in shellIds) {
+      expect(find.byKey(ValueKey('qa.dashboard.nav.$id')), findsOneWidget);
+    }
+    expect(find.text('Assistant'), findsNothing);
+    expect(find.byType(PaperNavigationRail), findsNothing);
   });
-
-  tearDown(() {
-    GetxTestBinding.reset();
+  testWidgets('from 600 px the destinations move to a rail with the same IDs', (tester) async {
+    tester.view.physicalSize = const Size(834, 1112);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final router = shellRouter();
+    addTearDown(router.dispose);
+    await tester.pumpWidget(shellApp(router));
+    await tester.pumpAndSettle();
+    expect(find.byType(PaperNavigationRail), findsOneWidget);
+    expect(find.byType(CustomBottomNavigationBar), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('qa.dashboard.nav.visits')));
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, '/visits');
+    final selected = tester.getSemantics(find.byKey(const ValueKey('qa.dashboard.nav.visits')));
+    expect(selected.flagsCollection.isSelected, Tristate.isTrue);
   });
-
-  group('DashboardView', () {
-    testWidgets('renders bottom navigation bar with 6 tabs', (tester) async {
-      final controller = _StubDashboardController();
-      Get.put<DashboardController>(controller);
-
-      await tester.pumpApp(const DashboardView());
-      // Flush any pending timers (e.g. from GetStorage in other controllers).
-      await tester.pump(const Duration(seconds: 1));
-
-      // The CustomBottomNavigationBar should be rendered.
-      expect(find.byType(DashboardView), findsOneWidget);
-
-      // Verify all 6 navigation items are present via their ValueKeys.
-      expect(find.byKey(const ValueKey('qa.dashboard.nav.profile')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.dashboard.nav.explore_properties')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.dashboard.nav.discover')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.dashboard.nav.liked')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.dashboard.nav.visits')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.dashboard.nav.assistant')), findsOneWidget);
-    });
-
-    testWidgets('initial tab is Discover (index 2)', (tester) async {
-      final controller = _StubDashboardController();
-      Get.put<DashboardController>(controller);
-
-      await tester.pumpApp(const DashboardView());
-      await tester.pump();
-
-      expect(controller.currentIndex.value, 2);
-
-      // The IndexedStack should be present with semantics.
-      expect(find.bySemanticsLabel('qa.dashboard.indexed_stack'), findsOneWidget);
-    });
-
-    testWidgets('tapping a nav item changes the active tab', (tester) async {
-      final controller = _StubDashboardController();
-      Get.put<DashboardController>(controller);
-
-      await tester.pumpApp(const DashboardView());
-      await tester.pump(const Duration(milliseconds: 500));
-
-      // Tap the Profile tab (index 0) — this is safe since ProfileView
-      // is rendered first and its stub provides all needed observables.
-      await tester.tap(find.byKey(const ValueKey('qa.dashboard.nav.profile')));
-      await tester.pump(const Duration(milliseconds: 500));
-
-      expect(controller.currentIndex.value, 0);
-    });
-
-    testWidgets('tapping the same tab does not change the index', (tester) async {
-      final controller = _StubDashboardController();
-      Get.put<DashboardController>(controller);
-
-      await tester.pumpApp(const DashboardView());
-      await tester.pump();
-
-      // Already on Discover (index 2); tap it again.
-      await tester.tap(find.byKey(const ValueKey('qa.dashboard.nav.discover')));
-      await tester.pump();
-
-      expect(controller.currentIndex.value, 2);
-    });
-
-    testWidgets('switching tabs marks them as visited', (tester) async {
-      final controller = _StubDashboardController();
-      Get.put<DashboardController>(controller);
-
-      await tester.pumpApp(const DashboardView());
-      await tester.pump(const Duration(milliseconds: 500));
-
-      // Initially, visitedTabs is empty.
-      expect(controller.visitedTabs, isEmpty);
-
-      // Tap Profile (index 0) — safe since ProfileView stub is complete.
-      await tester.tap(find.byKey(const ValueKey('qa.dashboard.nav.profile')));
-      await tester.pump(const Duration(milliseconds: 500));
-
-      expect(controller.visitedTabs.contains(0), isTrue);
-    });
+  testWidgets('switching tabs retains local form and scroll state', (tester) async {
+    usePhoneView(tester);
+    final router = shellRouter();
+    addTearDown(router.dispose);
+    await tester.pumpWidget(shellApp(router));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('/discover.input')), 'retained query');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final list = find.byType(ListView);
+    await tester.drag(list, const Offset(0, -650));
+    await tester.pumpAndSettle();
+    final scroll = tester
+        .state<ScrollableState>(find.descendant(of: list, matching: find.byType(Scrollable)).first)
+        .position
+        .pixels;
+    await tester.tap(find.byKey(const ValueKey('qa.dashboard.nav.visits')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('qa.dashboard.nav.discover')));
+    await tester.pumpAndSettle();
+    final restored = tester
+        .state<ScrollableState>(
+          find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first,
+        )
+        .position
+        .pixels;
+    expect(restored, closeTo(scroll, .1));
+    await tester.drag(find.byType(ListView), const Offset(0, 1000));
+    await tester.pumpAndSettle();
+    expect(find.text('retained query'), findsOneWidget);
   });
+  testWidgets('Assistant opens above the shell and Back returns to the same tab', (tester) async {
+    usePhoneView(tester);
+    final router = shellRouter(initial: '/profile');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(shellApp(router));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open Assistant'));
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, '/assistant');
+    expect(find.text('Assistant page'), findsOneWidget);
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, '/profile');
+  });
+  for (final dark in [false, true]) {
+    testWidgets(
+      'five navigation targets fit narrow Hindi large text in ${dark ? 'dark' : 'light'}',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 568);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final router = shellRouter();
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          shellApp(router, dark: dark, scale: 2, locale: const Locale('hi', 'IN')),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        for (final id in shellIds) {
+          final target = find.byKey(ValueKey('qa.dashboard.nav.$id'));
+          expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+          await tester.tap(target);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
+  }
 }

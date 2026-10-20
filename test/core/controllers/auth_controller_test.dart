@@ -1,1286 +1,498 @@
-// test/core/controllers/auth_controller_test.dart
-//
-// Unit tests for [AuthController]. Covers:
-// - Initial reactive state
-// - Auth state transitions driven by the Supabase auth stream
-// - signOut clears state
-// - markRequiresPasswordSetup / clearRequiresPasswordSetup flags
-// - updateUserProfile transitions auth status
-// - _handleUnauthorizedFromApi sets unauthenticated
-
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core_platform_interface/test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
+import 'package:mocktail/mocktail.dart';
+
 import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/controllers/offline_queue_service.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
-import 'package:ghar360/core/data/ports/properties_port.dart';
+import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
+import 'package:ghar360/core/firebase/push_notifications_service.dart';
 import 'package:ghar360/core/network/api_client.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/assistant/data/assistant_repository.dart';
-import 'package:ghar360/features/auth/data/auth_repository.dart';
-import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
-import 'package:ghar360/features/profile/data/profile_repository.dart';
-import 'package:mocktail/mocktail.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../../helpers/getx_test_binding.dart';
-import '../../helpers/mocks.dart';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// A fake [User] for Supabase auth state changes.
-class FakeUser extends Fake implements User {
-  @override
-  String get id => 'fake-uid-123';
-
-  @override
-  String get email => 'fake@example.com';
-}
-
-/// A fake [Session] for the auth repository.
-class FakeSession extends Fake implements Session {
-  @override
-  String get accessToken => 'fake-access-token';
-
-  @override
-  int get expiresAt => DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch ~/ 1000;
-}
+import '../../helpers/auth_test_harness.dart';
 
 void main() {
-  // Fake fallbacks for types used in mocktail verification
-  setUpAll(() {
-    Get.testMode = true;
-    registerFallbackValue(const Duration(seconds: 10));
-    registerFallbackValue(FakeUser());
-    registerFallbackValue(
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late AuthHarness h;
+  setUp(() async {
+    h = AuthHarness();
+    await h.open();
+  });
+  tearDown(() async {
+    await h.close();
+  });
+  UnauthorizedEvent unauthorized({String code = AppException.unauthorizedCode, int status = 401}) =>
       UnauthorizedEvent(
-        error: AuthenticationException('fallback'),
+        // A failure raised on the device (no token yet) has no HTTP status.
+        error: AuthenticationException(
+          'Denied',
+          code: code,
+          statusCode: code == AppException.missingAuthHeaderCode ? null : status,
+        ),
         method: 'GET',
-        endpoint: '/test',
-        statusCode: 401,
-      ),
+        endpoint: '/anything',
+        statusCode: status,
+      );
+
+  test('no SDK session starts unauthenticated with idle mutation', () {
+    expect(h.state.status, AuthStatus.unauthenticated);
+    expect(h.state.resolving, false);
+    expect(h.state.user, isNull);
+    expect(h.state.mutation.isLoading, false);
+  });
+  test('SDK user stream loads profile and becomes authenticated', () async {
+    await h.authenticate();
+    expect(h.state.status, AuthStatus.authenticated);
+    expect(h.state.user?.supabaseUserId, 'account-a');
+    expect(h.state.stale, false);
+  });
+  test('null SDK event removes authenticated state', () async {
+    await h.authenticate();
+    h.emit(null);
+    expect(h.state.status, AuthStatus.unauthenticated);
+    expect(h.state.user, isNull);
+  });
+  test('incomplete profile requires completion', () async {
+    await h.authenticate(complete: false);
+    expect(h.state.status, AuthStatus.requiresProfileCompletion);
+  });
+  test('profile request failure exposes typed recoverable error', () async {
+    h.controller;
+    when(() => h.profiles.getCurrentUserProfile()).thenThrow(NetworkException('offline'));
+    h.emit(sdkUser());
+    await h.settle();
+    expect(h.state.status, AuthStatus.error);
+    expect(h.state.error, isA<NetworkException>());
+    expect(h.state.resolving, false);
+  });
+  test('signOut calls repository and exposes loading until completion', () async {
+    await h.authenticate();
+    final pending = Completer<void>();
+    when(() => h.repository.signOut()).thenAnswer((_) => pending.future);
+    final result = h.controller.signOut();
+    expect(h.state.mutation.isLoading, true);
+    await h.settle();
+    pending.complete();
+    expect(await result, true);
+    expect(h.state.status, AuthStatus.unauthenticated);
+  });
+  test('failed explicit signOut retains profile and exposes retryable mutation', () async {
+    await h.authenticate();
+    when(() => h.repository.signOut()).thenThrow(NetworkException('offline'));
+    expect(await h.controller.signOut(), false);
+    expect(h.state.user, isNotNull);
+    expect(h.state.mutation.error, isA<NetworkException>());
+  });
+  test('duplicate signOut performs one repository request', () async {
+    await h.authenticate();
+    final pending = Completer<void>();
+    when(() => h.repository.signOut()).thenAnswer((_) => pending.future);
+    final first = h.controller.signOut();
+    expect(await h.controller.signOut(), false);
+    await h.settle();
+    pending.complete();
+    await first;
+    verify(() => h.repository.signOut()).called(1);
+  });
+  group('account change during device unregistration', () {
+    const messagingChannel = MethodChannel('plugins.flutter.io/firebase_messaging');
+    late bool previousEnabled;
+    late bool previousReady;
+    setUpAll(setupFirebaseCoreMocks);
+    setUp(() async {
+      previousEnabled = FirebaseRuntimeState.isEnabled;
+      previousReady = FirebaseRuntimeState.isReady;
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await Firebase.initializeApp(
+        options: const FirebaseOptions(
+          apiKey: '123',
+          appId: '123',
+          messagingSenderId: '123',
+          projectId: '123',
+        ),
+      );
+      FirebaseRuntimeState.isEnabled = true;
+      FirebaseRuntimeState.isReady = true;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        messagingChannel,
+        (call) async => switch (call.method) {
+          'Messaging#getToken' => {'token': 'test-device-token'},
+          'Messaging#getAPNSToken' => {'token': 'test-apns-token'},
+          _ => null,
+        },
+      );
+      await PushNotificationsService.getToken();
+      when(
+        () => h.notifications.registerDeviceToken(token: any(named: 'token')),
+      ).thenAnswer((_) async => true);
+    });
+    tearDown(() async {
+      await PushNotificationsService.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        messagingChannel,
+        null,
+      );
+      FirebaseRuntimeState.isEnabled = previousEnabled;
+      FirebaseRuntimeState.isReady = previousReady;
+      debugDefaultTargetPlatformOverride = null;
+    });
+    for (final operation in ['signOut', 'deleteAccount', 'unauthorized']) {
+      test('$operation does not mutate the replacement account', () async {
+        await h.authenticate();
+        final pending = Completer<bool>();
+        when(
+          () => h.notifications.unregisterDeviceToken('test-device-token'),
+        ).thenAnswer((_) => pending.future);
+        final controller = h.controller;
+        final result = switch (operation) {
+          'signOut' => controller.signOut(),
+          'deleteAccount' => controller.deleteAccount(),
+          _ => h.client.onUnauthorized!(unauthorized()),
+        };
+        verify(() => h.notifications.unregisterDeviceToken('test-device-token')).called(1);
+        await h.authenticate(account: 'account-b');
+        pending.complete(true);
+        await result;
+        verifyNever(() => h.repository.signOut());
+        verifyNever(() => h.repository.deleteAccount());
+        expect(h.state.status, AuthStatus.authenticated);
+        expect(h.state.user?.supabaseUserId, 'account-b');
+        expect(h.state.mutation.isLoading, false);
+      });
+    }
+  });
+  test('password gate can be marked and cleared', () {
+    final c = h.controller;
+    c.markRequiresPasswordSetup();
+    expect(c.requiresPasswordSetup, true);
+    c.clearRequiresPasswordSetup();
+    expect(c.requiresPasswordSetup, false);
+  });
+  test('password gate is applied before verification publishes a session', () async {
+    h.controller.markRequiresPasswordSetup();
+    h.emit(sdkUser());
+    await h.settle();
+    expect(h.state.status, AuthStatus.requiresPasswordSetup);
+  });
+  test('profile update makes completed profile authenticated', () async {
+    await h.authenticate(complete: false);
+    expect(await h.controller.updateUserProfile({'full_name': 'Test User'}), true);
+    expect(h.state.status, AuthStatus.authenticated);
+  });
+  test('profile update error is returned without losing profile', () async {
+    await h.authenticate();
+    when(() => h.profiles.updateUserProfile(any())).thenThrow(NetworkException('offline'));
+    expect(await h.controller.updateUserProfile({}), false);
+    expect(h.state.user, isNotNull);
+    expect(h.state.mutation.hasError, true);
+  });
+  test('avatar success updates profile and durable offline snapshot', () async {
+    await h.authenticate();
+    final updated = profile().copyWith(profileImageUrl: 'https://example.com/new.jpg');
+    when(() => h.profiles.updateProfileImage(any())).thenAnswer((_) async => updated);
+    expect(await h.controller.updateProfileImage('/avatar.jpg'), true);
+    expect(h.state.user?.profileImageUrl, updated.profileImageUrl);
+    final cached = await h.database.readCache(
+      scope: h.container.read(storageScopeProvider),
+      key: 'auth-profile',
     );
+    expect((cached!.value as Map)['profile_image_url'], updated.profileImageUrl);
   });
-
-  late MockAuthRepository authRepo;
-  late MockProfileRepository profileRepo;
-  late MockNotificationsRemoteDatasource notificationsDs;
-  late StreamController<User?> authStreamController;
-
-  setUp(() {
-    GetxTestBinding.init();
-    authRepo = MockAuthRepository();
-    profileRepo = MockProfileRepository();
-    notificationsDs = MockNotificationsRemoteDatasource();
-    authStreamController = StreamController<User?>();
-
-    // Common stubs required by AuthController.onInit
-    when(() => authRepo.onAuthStateChange).thenAnswer((_) => authStreamController.stream);
-    when(() => authRepo.currentUser).thenReturn(null);
-    when(() => authRepo.currentSession).thenReturn(null);
-
-    GetxTestBinding.bind()
-      ..register<AuthRepository>(authRepo)
-      ..register<ProfileRepository>(profileRepo)
-      ..register<NotificationsRemoteDatasource>(notificationsDs);
+  test('avatar error keeps existing profile and typed retry state', () async {
+    await h.authenticate();
+    when(() => h.profiles.updateProfileImage(any())).thenThrow(NetworkException('offline'));
+    expect(await h.controller.updateProfileImage('/avatar.jpg'), false);
+    expect(h.state.user?.supabaseUserId, 'account-a');
+    expect(h.state.mutation.error, isA<NetworkException>());
+    expect(h.state.mutationKind, AuthMutation.updateAvatar);
   });
-
-  tearDown(() {
-    authStreamController.close();
-    GetxTestBinding.reset();
+  test('late avatar cannot enter a replacement account', () async {
+    await h.authenticate();
+    final pending = Completer<UserModel>();
+    when(() => h.profiles.updateProfileImage(any())).thenAnswer((_) => pending.future);
+    final result = h.controller.updateProfileImage('/avatar.jpg');
+    await h.authenticate(account: 'account-b');
+    pending.complete(profile().copyWith(profileImageUrl: 'old-account'));
+    expect(await result, false);
+    expect(h.state.user?.supabaseUserId, 'account-b');
+    expect(h.state.user?.profileImageUrl, isNot('old-account'));
   });
-
-  // Helper to construct and register the controller under test.
-  AuthController createController() {
-    final c = AuthController();
-    Get.put<AuthController>(c);
-    return c;
-  }
-
-  /// Drives a fresh controller all the way to [AuthStatus.authenticated], with
-  /// signOut wired to emit a signed-out event the way Supabase does.
-  Future<AuthController> createAuthenticatedController() async {
+  test('confirmed 401 from any endpoint signs out', () async {
+    await h.authenticate();
+    await h.client.onUnauthorized!(unauthorized());
+    expect(h.state.status, AuthStatus.unauthenticated);
+    verify(() => h.repository.signOut()).called(1);
+  });
+  test('a 401 with a domain code such as TOKEN_INVALID signs out', () async {
+    await h.authenticate();
+    await h.client.onUnauthorized!(unauthorized(code: 'TOKEN_INVALID'));
+    expect(h.state.status, AuthStatus.unauthenticated);
+    verify(() => h.repository.signOut()).called(1);
+  });
+  test('a 403 USER_INACTIVE signs out', () async {
+    await h.authenticate();
+    await h.client.onUnauthorized!(unauthorized(code: AppException.userInactiveCode, status: 403));
+    expect(h.state.status, AuthStatus.unauthenticated);
+    verify(() => h.repository.signOut()).called(1);
+  });
+  test('a 403 for another reason keeps the session', () async {
+    await h.authenticate();
+    await h.client.onUnauthorized!(unauthorized(code: 'USER_ACCESS_DENIED', status: 403));
+    expect(h.state.isAuthenticated, true);
+    verifyNever(() => h.repository.signOut());
+  });
+  test('missing auth header during offline refresh preserves session', () async {
+    await h.authenticate();
+    await h.client.onUnauthorized!(unauthorized(code: 'MISSING_AUTH_HEADER'));
+    expect(h.state.isAuthenticated, true);
+    verifyNever(() => h.repository.signOut());
+  });
+  test('non-401 event does not sign out', () async {
+    await h.authenticate();
+    await h.client.onUnauthorized!(unauthorized(status: 503));
+    expect(h.state.isAuthenticated, true);
+  });
+  test('concurrent unauthorized events trigger one signOut', () async {
+    await h.authenticate();
+    final pending = Completer<void>();
+    when(() => h.repository.signOut()).thenAnswer((_) => pending.future);
+    final first = h.client.onUnauthorized!(unauthorized());
+    await h.client.onUnauthorized!(unauthorized());
+    pending.complete();
+    await first;
+    verify(() => h.repository.signOut()).called(1);
+  });
+  test('confirmed unauthorized blocks protected UI even if SDK signOut fails', () async {
+    await h.authenticate();
+    when(() => h.repository.signOut()).thenThrow(NetworkException('offline'));
+    await h.client.onUnauthorized!(unauthorized());
+    expect(h.state.status, AuthStatus.unauthenticated);
+  });
+  test('unauthorized while logged out is ignored', () async {
+    h.controller;
+    await h.client.onUnauthorized!(unauthorized());
+    verifyNever(() => h.repository.signOut());
+  });
+  test('user convenience getters read immutable state', () async {
+    expect(h.controller.userEmail, isNull);
+    expect(h.controller.userId, isNull);
+    expect(h.controller.isAuthenticated, false);
+    await h.authenticate();
+    expect(h.controller.userEmail, 'account-a@example.com');
+    expect(h.controller.userId, 'account-a');
+    expect(h.controller.isAuthenticated, true);
+  });
+  test('delete account succeeds then signs out', () async {
+    await h.authenticate();
+    expect(await h.controller.deleteAccount(), true);
+    expect(h.state.status, AuthStatus.unauthenticated);
+    verify(() => h.repository.deleteAccount()).called(1);
+  });
+  test('delete account failure retains current account', () async {
+    await h.authenticate();
+    when(() => h.repository.deleteAccount()).thenThrow(ServerException('failed'));
+    expect(await h.controller.deleteAccount(), false);
+    expect(h.state.isAuthenticated, true);
+    expect(h.state.mutation.hasError, true);
+  });
+  test('profile retry recovers after failure', () async {
+    h.controller;
+    when(() => h.profiles.getCurrentUserProfile()).thenThrow(NetworkException('offline'));
+    h.emit(sdkUser());
+    await h.settle();
+    when(() => h.profiles.getCurrentUserProfile()).thenAnswer((_) async => profile());
+    await h.controller.retryProfileLoad();
+    expect(h.state.isAuthenticated, true);
+  });
+  test('rapid profile retries respect cooldown', () async {
+    await h.authenticate();
+    when(() => h.profiles.getCurrentUserProfile()).thenThrow(NetworkException('offline'));
+    await h.controller.retryProfileLoad();
+    await h.controller.retryProfileLoad();
+    verify(() => h.profiles.getCurrentUserProfile()).called(2);
+  });
+  test('password setup succeeds and clears mandatory gate', () async {
+    h.controller.markRequiresPasswordSetup();
+    h.emit(sdkUser());
+    await h.settle();
+    expect(await h.controller.completePasswordSetup('Password123'), true);
+    expect(h.controller.requiresPasswordSetup, false);
+    expect(h.state.isAuthenticated, true);
+  });
+  test('password setup failure retains mandatory gate', () async {
+    h.controller.markRequiresPasswordSetup();
+    h.emit(sdkUser());
+    await h.settle();
+    when(() => h.repository.updateUserPassword(any())).thenThrow(NetworkException('offline'));
+    expect(await h.controller.completePasswordSetup('Password123'), false);
+    expect(h.state.status, AuthStatus.requiresPasswordSetup);
+    expect(h.state.mutation.hasError, true);
+  });
+  test('transient profile refresh keeps prior data marked stale', () async {
+    await h.authenticate();
+    when(() => h.profiles.getCurrentUserProfile()).thenThrow(NetworkException('offline'));
+    await h.controller.recheckAuthBootstrap();
+    expect(h.state.isAuthenticated, true);
+    expect(h.state.stale, true);
+    expect(h.state.error, isA<NetworkException>());
+  });
+  test('same account refresh event does not refetch profile', () async {
+    await h.authenticate();
+    h.emit(sdkUser());
+    await h.settle();
+    verify(() => h.profiles.getCurrentUserProfile()).called(1);
+  });
+  test('empty token cannot publish a successful session', () async {
+    h.controller;
     when(
-      () => authRepo.waitForAccessToken(
+      () => h.repository.waitForAccessToken(
         timeout: any(named: 'timeout'),
         minTtlSeconds: any(named: 'minTtlSeconds'),
       ),
-    ).thenAnswer((_) async => 'valid-token');
-    when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-      (_) async => UserModel(
-        id: 1,
-        supabaseUserId: 'fake-uid-123',
-        email: 'test@example.com',
-        fullName: 'Test User',
-        dateOfBirth: '1990-01-01',
-        isActive: true,
-        isVerified: false,
-        createdAt: DateTime(2024, 1, 1),
+    ).thenAnswer((_) async => '');
+    h.emit(sdkUser());
+    await h.settle();
+    expect(h.state.status, AuthStatus.error);
+    verifyNever(() => h.profiles.getCurrentUserProfile());
+  });
+  test('late profile success after logout is ignored', () async {
+    final pending = Completer<UserModel>();
+    h.controller;
+    when(() => h.profiles.getCurrentUserProfile()).thenAnswer((_) => pending.future);
+    h.emit(sdkUser());
+    await h.settle();
+    h.emit(null);
+    pending.complete(profile());
+    await h.settle();
+    expect(h.state.user, isNull);
+    expect(h.state.status, AuthStatus.unauthenticated);
+  });
+  test('late account A profile cannot replace account B', () async {
+    final pending = Completer<UserModel>();
+    h.controller;
+    when(() => h.profiles.getCurrentUserProfile()).thenAnswer((_) => pending.future);
+    h.emit(sdkUser());
+    await h.settle();
+    when(() => h.profiles.getCurrentUserProfile()).thenAnswer((_) async => profile('account-b'));
+    h.emit(sdkUser('account-b'));
+    await h.settle();
+    pending.complete(profile());
+    await h.settle();
+    expect(h.state.user?.supabaseUserId, 'account-b');
+  });
+  test('account A to B to A rejects old generation response', () async {
+    final old = Completer<UserModel>();
+    h.controller;
+    when(() => h.profiles.getCurrentUserProfile()).thenAnswer((_) => old.future);
+    h.emit(sdkUser());
+    await h.settle();
+    when(
+      () => h.profiles.getCurrentUserProfile(),
+    ).thenAnswer((_) async => profile(h.currentUser!.id));
+    h.emit(sdkUser('account-b'));
+    await h.settle();
+    h.emit(sdkUser());
+    await h.settle();
+    old.complete(profile('account-a', false));
+    await h.settle();
+    expect(h.state.isAuthenticated, true);
+  });
+  test('profile from mismatched account is rejected', () async {
+    h.controller;
+    when(
+      () => h.profiles.getCurrentUserProfile(),
+    ).thenAnswer((_) async => profile('other-account'));
+    h.emit(sdkUser());
+    await h.settle();
+    expect(h.state.user, isNull);
+    expect(h.state.error?.code, 'ACCOUNT_MISMATCH');
+  });
+  test('late profile mutation after account change is ignored', () async {
+    await h.authenticate();
+    final pending = Completer<UserModel>();
+    when(() => h.profiles.updateUserProfile(any())).thenAnswer((_) => pending.future);
+    final result = h.controller.updateUserProfile({});
+    when(() => h.profiles.getCurrentUserProfile()).thenAnswer((_) async => profile('account-b'));
+    h.emit(sdkUser('account-b'));
+    await h.settle();
+    pending.complete(profile());
+    expect(await result, false);
+    expect(h.state.user?.supabaseUserId, 'account-b');
+  });
+  test('cached profile permits offline access only for matching active account', () async {
+    h.controller;
+    h.currentUser = sdkUser();
+    h.emit(h.currentUser);
+    await h.settle();
+    h.container.invalidate(authProvider);
+    when(
+      () => h.repository.waitForAccessToken(
+        timeout: any(named: 'timeout'),
+        minTtlSeconds: any(named: 'minTtlSeconds'),
       ),
-    );
-    when(() => authRepo.signOut()).thenAnswer((_) async {
-      when(() => authRepo.currentUser).thenReturn(null);
-      when(() => authRepo.currentSession).thenReturn(null);
-      authStreamController.add(null);
-    });
-
-    final c = createController();
-    await Future.delayed(Duration.zero);
-
-    when(() => authRepo.currentUser).thenReturn(FakeUser());
-    when(() => authRepo.currentSession).thenReturn(FakeSession());
-    authStreamController.add(FakeUser());
-    await Future.delayed(const Duration(milliseconds: 500));
-    await Future.delayed(const Duration(seconds: 1));
-    expect(c.authStatus.value, AuthStatus.authenticated);
-    return c;
-  }
-
-  // -------------------------------------------------------------------------
-  // Initial state
-  // -------------------------------------------------------------------------
-  group('initial state', () {
-    test('authStatus starts as initial before onInit', () {
-      final c = AuthController();
-      // Verify raw default values before any GetX lifecycle runs.
-      expect(c.authStatus.value, AuthStatus.initial);
-      expect(c.currentUser.value, isNull);
-      expect(c.isLoading.value, isFalse);
-      expect(c.isDeleting.value, isFalse);
-      expect(c.isAuthResolving.value, isFalse);
-      expect(c.authErrorMessage.value, isNull);
-      expect(c.requiresPasswordSetup, isFalse);
-    });
-
-    test('onInit sets unauthenticated when no Supabase user exists', () async {
-      // authRepo.currentUser returns null (default stub)
-      final c = createController();
-      // Allow microtasks from onInit to flush
-      await Future.delayed(Duration.zero);
-
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-      expect(c.currentUser.value, isNull);
-    });
+    ).thenThrow(NetworkException('offline'));
+    h.controller;
+    await h.settle();
+    expect(h.state.user?.supabaseUserId, 'account-a');
+    expect(h.state.stale, true);
+    expect(h.state.isAuthenticated, true);
   });
-
-  // -------------------------------------------------------------------------
-  // Auth state transitions
-  // -------------------------------------------------------------------------
-  group('auth state transitions', () {
-    test('unauthenticated → authenticated when stream emits a user', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      // Stub token and profile loading
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'fake@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-
-      // Emit sign-in event via the stream
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-
-      // Wait for the debounce timer (300ms) + profile load
-      await Future.delayed(const Duration(milliseconds: 500));
-      // Allow async profile load to finish
-      await Future.delayed(const Duration(seconds: 1));
-
-      expect(c.authStatus.value, AuthStatus.authenticated);
-      expect(c.currentUser.value, isNotNull);
-      expect(c.currentUser.value!.fullName, 'Test User');
-    });
-
-    test('authenticated → unauthenticated when stream emits null', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      // Setup for initial sign-in
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'fake@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      // Sign in
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-      expect(c.authStatus.value, AuthStatus.authenticated);
-
-      // Sign out via stream
-      when(() => authRepo.currentUser).thenReturn(null);
-      when(() => authRepo.currentSession).thenReturn(null);
-      authStreamController.add(null);
-      await Future.delayed(const Duration(milliseconds: 400));
-
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-      expect(c.currentUser.value, isNull);
-      expect(c.isAuthResolving.value, isFalse);
-    });
-
-    test('emits requiresProfileCompletion for user with incomplete profile', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      // Incomplete profile: no fullName or dateOfBirth
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-
-      expect(c.authStatus.value, AuthStatus.requiresProfileCompletion);
-    });
-
-    test('sets error status when profile load fails', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenThrow(Exception('Network failure'));
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 2));
-
-      expect(c.authStatus.value, AuthStatus.error);
-      expect(c.authErrorMessage.value, isNotNull);
-    });
+  test('signOut preserves durable pending actions for owning account', () async {
+    await h.authenticate();
+    final scope = h.container.read(storageScopeProvider);
+    await h.database.createAction(scope: scope, kind: 'swipe', payload: {'property_id': 4});
+    await h.controller.signOut();
+    await h.authenticate();
+    expect((await h.database.listActions(scope: h.container.read(storageScopeProvider))).length, 1);
   });
-
-  // -------------------------------------------------------------------------
-  // signOut
-  // -------------------------------------------------------------------------
-  group('signOut', () {
-    test('signOut calls repository and sets loading', () async {
-      when(() => authRepo.signOut()).thenAnswer((_) async {});
-      when(() => notificationsDs.unregisterDeviceToken(any())).thenAnswer((_) async => true);
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      await c.signOut();
-
-      verify(() => authRepo.signOut()).called(1);
-      expect(c.isLoading.value, isFalse);
-    });
-
-    test('signOut error is handled gracefully', () async {
-      when(() => authRepo.signOut()).thenThrow(Exception('signout failed'));
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      // Should not throw
-      await c.signOut();
-      expect(c.isLoading.value, isFalse);
-    });
+  test('profile Skip is scoped to this session and cannot bypass password gate', () async {
+    await h.authenticate(complete: false);
+    h.controller.deferProfileCompletion();
+    expect(h.state.profileCompletionDeferred, true);
+    expect(h.state.isAuthenticated, true);
+    h.controller.markRequiresPasswordSetup();
+    expect(h.state.status, AuthStatus.requiresPasswordSetup);
+    h.controller.deferProfileCompletion();
+    expect(h.state.status, AuthStatus.requiresPasswordSetup);
+    h.emit(null);
+    expect(h.state.profileCompletionDeferred, false);
   });
-
-  // -------------------------------------------------------------------------
-  // markRequiresPasswordSetup / clearRequiresPasswordSetup
-  // -------------------------------------------------------------------------
-  group('password setup flags', () {
-    test('markRequiresPasswordSetup sets the flag', () {
-      final c = AuthController();
-      expect(c.requiresPasswordSetup, isFalse);
-
-      c.markRequiresPasswordSetup();
-      expect(c.requiresPasswordSetup, isTrue);
-    });
-
-    test('clearRequiresPasswordSetup clears the flag', () {
-      final c = AuthController();
-      c.markRequiresPasswordSetup();
-      expect(c.requiresPasswordSetup, isTrue);
-
-      c.clearRequiresPasswordSetup();
-      expect(c.requiresPasswordSetup, isFalse);
-    });
-
-    test('requiresPasswordSetup leads to requiresPasswordSetup auth status', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      // Mark password setup requirement before sign-in completes
-      c.markRequiresPasswordSetup();
-
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-
-      expect(c.authStatus.value, AuthStatus.requiresPasswordSetup);
-    });
+  test('account switch clears deferred completion and password gate', () async {
+    await h.authenticate(complete: false);
+    h.controller.deferProfileCompletion();
+    h.controller.markRequiresPasswordSetup();
+    when(
+      () => h.profiles.getCurrentUserProfile(),
+    ).thenAnswer((_) async => profile('account-b', false));
+    h.emit(sdkUser('account-b'));
+    await h.settle();
+    expect(h.state.profileCompletionDeferred, false);
+    expect(h.state.status, AuthStatus.requiresProfileCompletion);
   });
-
-  // -------------------------------------------------------------------------
-  // updateUserProfile
-  // -------------------------------------------------------------------------
-  group('updateUserProfile', () {
-    test('transitions to authenticated when profile becomes complete', () async {
-      when(() => profileRepo.updateUserProfile(any())).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Updated Name',
-          dateOfBirth: '1990-05-15',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-      // Set to requiresProfileCompletion (simulating incomplete profile)
-      c.authStatus.value = AuthStatus.requiresProfileCompletion;
-
-      final result = await c.updateUserProfile({'full_name': 'Updated Name'});
-
-      expect(result, isTrue);
-      expect(c.authStatus.value, AuthStatus.authenticated);
-      expect(c.currentUser.value!.fullName, 'Updated Name');
-      expect(c.isLoading.value, isFalse);
-    });
-
-    test('returns false on update failure', () async {
-      when(() => profileRepo.updateUserProfile(any())).thenThrow(Exception('update failed'));
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-      c.authStatus.value = AuthStatus.requiresProfileCompletion;
-
-      final result = await c.updateUserProfile({'full_name': 'Bad'});
-
-      expect(result, isFalse);
-      expect(c.isLoading.value, isFalse);
-    });
+  test('disposing provider removes only its owned unauthorized handler', () async {
+    h.controller;
+    expect(h.client.onUnauthorized, isNotNull);
+    h.container.invalidate(authProvider);
+    await h.settle();
+    expect(h.client.onUnauthorized, isNull);
   });
-
-  // -------------------------------------------------------------------------
-  // _handleUnauthorizedFromApi
-  // -------------------------------------------------------------------------
-  group('_handleUnauthorizedFromApi', () {
-    test('sets unauthenticated on critical unauthorized event', () async {
-      // First sign in to be in authenticated state
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-      // signOut mock: simulate real Supabase behaviour by emitting null on the
-      // auth stream (Supabase emits a signed-out event when session is cleared).
-      when(() => authRepo.signOut()).thenAnswer((_) async {
-        when(() => authRepo.currentUser).thenReturn(null);
-        when(() => authRepo.currentSession).thenReturn(null);
-        authStreamController.add(null);
-      });
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      // Sign in
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-      expect(c.authStatus.value, AuthStatus.authenticated);
-
-      // Simulate the unauthorized handler being registered and triggered.
-      // AuthController.onInit sets ApiClient.onUnauthorized.
-      final handler = ApiClient.onUnauthorized;
-      expect(handler, isNotNull, reason: 'onInit should have registered the handler');
-
-      // Fire the handler with a critical unauthorized event
-      await handler!(
-        UnauthorizedEvent(
-          error: AuthenticationException('UNAUTHORIZED', code: 'UNAUTHORIZED'),
-          method: 'GET',
-          endpoint: '/api/v1/profile',
-          statusCode: 401,
-        ),
-      );
-
-      // signOut was called → stream emitted null → debounce 300ms → unauthenticated
-      await Future.delayed(const Duration(milliseconds: 500));
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-    });
-
-    test('signs out on a 401 from a non-profile endpoint', () async {
-      // Regression: a genuine 401 on /properties, /swipes or /visits used to be
-      // ignored because only /users/profile was allow-listed as session-fatal,
-      // leaving the app "signed in" with every screen empty forever.
-      final c = await createAuthenticatedController();
-
-      await ApiClient.onUnauthorized!(
-        UnauthorizedEvent(
-          error: AuthenticationException('UNAUTHORIZED', code: 'UNAUTHORIZED'),
-          method: 'GET',
-          endpoint: '/api/v1/properties/',
-          statusCode: 401,
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      verify(() => authRepo.signOut()).called(1);
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-    });
-
-    test('signs out when the refresh token is dead (MISSING_AUTH_HEADER)', () async {
-      // Password changed on another device → the SDK can no longer mint a
-      // token, so ApiClient throws MISSING_AUTH_HEADER instead of seeing a 401.
-      final c = await createAuthenticatedController();
-
-      await ApiClient.onUnauthorized!(
-        UnauthorizedEvent(
-          error: AuthenticationException(
-            'Authentication required but no auth header available',
-            code: 'MISSING_AUTH_HEADER',
-          ),
-          method: 'GET',
-          endpoint: '/api/v1/properties/',
-          statusCode: 401,
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      verify(() => authRepo.signOut()).called(1);
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-    });
-
-    test('concurrent unauthorized events trigger exactly one sign-out', () async {
-      final c = await createAuthenticatedController();
-
-      final event = UnauthorizedEvent(
-        error: AuthenticationException('UNAUTHORIZED', code: 'UNAUTHORIZED'),
-        method: 'GET',
-        endpoint: '/api/v1/properties/',
-        statusCode: 401,
-      );
-      await Future.wait(List.generate(8, (_) => ApiClient.onUnauthorized!(event)));
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      verify(() => authRepo.signOut()).called(1);
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-    });
-
-    test('ignores non-UNAUTHORIZED error code', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      final handler = ApiClient.onUnauthorized;
-      await handler!(
-        UnauthorizedEvent(
-          error: AuthenticationException('FORBIDDEN', code: 'FORBIDDEN'),
-          method: 'GET',
-          endpoint: '/api/v1/admin',
-          statusCode: 403,
-        ),
-      );
-
-      // Should remain unauthenticated (initial state after no user)
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-    });
+  test('disposed pending profile cannot republish state', () async {
+    final pending = Completer<UserModel>();
+    h.controller;
+    when(() => h.profiles.getCurrentUserProfile()).thenAnswer((_) => pending.future);
+    h.emit(sdkUser());
+    await h.settle();
+    h.container.invalidate(authProvider);
+    pending.complete(profile());
+    await h.settle();
+    expect(h.client.onUnauthorized, isNull);
   });
-
-  // -------------------------------------------------------------------------
-  // Convenience getters
-  // -------------------------------------------------------------------------
-  group('convenience getters', () {
-    test('isAuthenticated returns true only when status is authenticated', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      expect(c.isAuthenticated, isFalse);
-
-      c.authStatus.value = AuthStatus.authenticated;
-      expect(c.isAuthenticated, isTrue);
-
-      c.authStatus.value = AuthStatus.requiresProfileCompletion;
-      expect(c.isAuthenticated, isFalse);
-    });
-
-    test('userEmail returns null when no user', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      expect(c.userEmail, isNull);
-    });
-
-    test('userEmail returns email when user is set', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      c.currentUser.value = UserModel(
-        id: 1,
-        supabaseUserId: 'fake-uid-123',
-        email: 'test@example.com',
-        fullName: 'Test User',
-        isActive: true,
-        isVerified: false,
-        createdAt: DateTime(2024, 1, 1),
-      );
-
-      expect(c.userEmail, 'test@example.com');
-    });
-
-    test('userId returns Supabase user id when available', () async {
-      final user = FakeUser();
-      when(() => authRepo.currentUser).thenReturn(user);
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      expect(c.userId, 'fake-uid-123');
-    });
-
-    test('userId returns null when no Supabase user', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      expect(c.userId, isNull);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // deleteAccount
-  // -------------------------------------------------------------------------
-  group('deleteAccount', () {
-    test('returns true on success and shows toast', () async {
-      when(() => authRepo.deleteAccount()).thenAnswer((_) async {});
-      when(() => authRepo.signOut()).thenAnswer((_) async {});
-      when(() => notificationsDs.unregisterDeviceToken(any())).thenAnswer((_) async => true);
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      final result = await c.deleteAccount();
-
-      expect(result, isTrue);
-      expect(c.isDeleting.value, isFalse);
-      verify(() => authRepo.deleteAccount()).called(1);
-    });
-
-    test('returns false on failure', () async {
-      when(() => authRepo.deleteAccount()).thenThrow(Exception('delete failed'));
-      when(() => notificationsDs.unregisterDeviceToken(any())).thenAnswer((_) async => true);
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      final result = await c.deleteAccount();
-
-      expect(result, isFalse);
-      expect(c.isDeleting.value, isFalse);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // retryProfileLoad
-  // -------------------------------------------------------------------------
-  group('retryProfileLoad', () {
-    test('does nothing when not in error state', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      // Status is unauthenticated, not error
-      await c.retryProfileLoad();
-
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-    });
-
-    test('retries when in error state', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      // Set to error state
-      c.authStatus.value = AuthStatus.error;
-      c.authErrorMessage.value = 'Profile load failed';
-
-      // Stub auth repo to return user for fingerprint
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-
-      await c.retryProfileLoad();
-
-      // Wait for debounce + profile load
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-
-      expect(c.authStatus.value, AuthStatus.authenticated);
-    });
-
-    test('respects cooldown on rapid retry', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      c.authStatus.value = AuthStatus.error;
-
-      // First retry
-      await c.retryProfileLoad();
-
-      // Immediate second retry should be blocked by cooldown
-      await c.retryProfileLoad();
-
-      // Should not crash; the second call is a no-op due to cooldown
-      expect(c.authStatus.value, AuthStatus.error);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // updateUserLocation
-  // -------------------------------------------------------------------------
-  // updateUserPreferences
-  // -------------------------------------------------------------------------
-  // completePasswordSetup
-  // -------------------------------------------------------------------------
-  group('completePasswordSetup', () {
-    test('returns true on success and clears password setup flag', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(() => authRepo.updateUserPassword(any())).thenAnswer((_) async => user);
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      c.markRequiresPasswordSetup();
-      expect(c.requiresPasswordSetup, isTrue);
-
-      final result = await c.completePasswordSetup('newPassword123');
-
-      expect(result, isTrue);
-      expect(c.requiresPasswordSetup, isFalse);
-      expect(c.isLoading.value, isFalse);
-    });
-
-    test('returns false on failure', () async {
-      when(() => authRepo.updateUserPassword(any())).thenThrow(Exception('weak password'));
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      c.markRequiresPasswordSetup();
-
-      final result = await c.completePasswordSetup('weak');
-
-      expect(result, isFalse);
-      expect(c.requiresPasswordSetup, isTrue);
-      expect(c.isLoading.value, isFalse);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // _handleProfileLoadFailure (transient failure when already authenticated)
-  // -------------------------------------------------------------------------
-  group('transient profile refresh failure', () {
-    test('preserves authenticated state on transient failure', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      // Sign in
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-      expect(c.authStatus.value, AuthStatus.authenticated);
-
-      // Now simulate a transient failure: profile load throws
-      when(() => profileRepo.getCurrentUserProfile()).thenThrow(Exception('network error'));
-
-      // Emit the same user again (token refresh) — fingerprint may differ
-      // due to session change, so we need a new session
-      final session2 = FakeSession2();
-      when(() => authRepo.currentSession).thenReturn(session2);
-      authStreamController.add(user);
-
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Should remain authenticated (transient failure preserves state)
-      expect(c.authStatus.value, AuthStatus.authenticated);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Duplicate auth state change (fingerprint)
-  // -------------------------------------------------------------------------
-  group('duplicate auth state handling', () {
-    test('skips duplicate auth state change with same fingerprint', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      // First sign-in
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-      expect(c.authStatus.value, AuthStatus.authenticated);
-
-      final profileCallCount = verify(() => profileRepo.getCurrentUserProfile()).callCount;
-
-      // Emit the same user with the same session (same fingerprint)
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // Profile should NOT be loaded again (same fingerprint) — call count
-      // should remain the same as before the second event.
-      verify(() => profileRepo.getCurrentUserProfile()).called(profileCallCount);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // onClose
-  // -------------------------------------------------------------------------
-  group('onClose', () {
-    test('cleans up subscriptions and timers', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      expect(() => c.onClose(), returnsNormally);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Missing dependency registration
-  // -------------------------------------------------------------------------
-  group('dependency resolution', () {
-    test('throws StateError when AuthRepository is not registered', () {
-      GetxTestBinding.reset();
-      Get.testMode = true;
-      // Intentionally do not register any dependencies.
-      expect(() => AuthController()..onInit(), throwsA(isA<StateError>()));
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Unauthorized handler edge cases
-  // -------------------------------------------------------------------------
-  group('unauthorized handler edge cases', () {
-    test('ignores critical unauthorized when already unauthenticated', () async {
-      final c = createController();
-      await Future.delayed(Duration.zero);
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-
-      final handler = ApiClient.onUnauthorized;
-      await handler!(
-        UnauthorizedEvent(
-          error: AuthenticationException('UNAUTHORIZED', code: 'UNAUTHORIZED'),
-          method: 'GET',
-          endpoint: '/api/v1/profile',
-          statusCode: 401,
-        ),
-      );
-
-      // Remains unauthenticated; no crash.
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-      verifyNever(() => authRepo.signOut());
-    });
-
-    test('forces unauthenticated when signOut throws during critical unauthorized', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-      when(() => authRepo.signOut()).thenThrow(Exception('signout boom'));
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-      expect(c.authStatus.value, AuthStatus.authenticated);
-
-      final handler = ApiClient.onUnauthorized;
-      await handler!(
-        UnauthorizedEvent(
-          error: AuthenticationException('UNAUTHORIZED', code: 'UNAUTHORIZED'),
-          method: 'GET',
-          endpoint: '/api/v1/profile',
-          statusCode: 401,
-        ),
-      );
-
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-      expect(c.currentUser.value, isNull);
-    });
-
-    test('cooldown suppresses a second critical unauthorized', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-      when(() => authRepo.signOut()).thenAnswer((_) async {
-        when(() => authRepo.currentUser).thenReturn(null);
-        when(() => authRepo.currentSession).thenReturn(null);
-        authStreamController.add(null);
-      });
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-      expect(c.authStatus.value, AuthStatus.authenticated);
-
-      final handler = ApiClient.onUnauthorized!;
-      final event = UnauthorizedEvent(
-        error: AuthenticationException('UNAUTHORIZED', code: 'UNAUTHORIZED'),
-        method: 'GET',
-        endpoint: '/api/v1/profile',
-        statusCode: 401,
-      );
-
-      await handler(event);
-      // First call signs out (1). Immediately re-authenticate mentally and fire again —
-      // still within cooldown, so signOut must not be called again.
-      // Force authenticated again without waiting for stream.
-      c.authStatus.value = AuthStatus.authenticated;
-      await handler(event);
-
-      verify(() => authRepo.signOut()).called(1);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Session cleanup with registered collaborators
-  // -------------------------------------------------------------------------
-  group('sign-out clears registered user-scoped services', () {
-    test('invokes clearCache / clearSessionData / clearQueue when registered', () async {
-      final apiClient = MockApiClient();
-      final pageState = MockPageStateService();
-      final offlineQueue = MockOfflineQueueService();
-      final properties = MockPropertiesRepository();
-      final assistant = MockAssistantRepository();
-
-      when(() => apiClient.clearCache()).thenReturn(null);
-      when(() => pageState.clearSessionData()).thenReturn(null);
-      when(() => offlineQueue.clearQueue()).thenReturn(null);
-      when(() => properties.clearCache()).thenReturn(null);
-      when(() => assistant.clearWidgetCache()).thenReturn(null);
-
-      GetxTestBinding.bind()
-        ..register<ApiClient>(apiClient)
-        ..register<PageStateService>(pageState)
-        ..register<OfflineQueueService>(offlineQueue)
-        ..register<PropertiesPort>(properties)
-        ..register<AssistantRepository>(assistant);
-
-      final user = FakeUser();
-      final session = FakeSession();
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-      expect(c.authStatus.value, AuthStatus.authenticated);
-
-      // Sign out via stream → _clearUserScopedState
-      when(() => authRepo.currentUser).thenReturn(null);
-      when(() => authRepo.currentSession).thenReturn(null);
-      authStreamController.add(null);
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      expect(c.authStatus.value, AuthStatus.unauthenticated);
-      // clearUserScopedState may run more than once under debounce/parallel timing.
-      verify(() => apiClient.clearCache()).called(greaterThanOrEqualTo(1));
-      verify(() => pageState.clearSessionData()).called(greaterThanOrEqualTo(1));
-      verify(() => offlineQueue.clearQueue()).called(greaterThanOrEqualTo(1));
-      verify(() => properties.clearCache()).called(greaterThanOrEqualTo(1));
-      verify(() => assistant.clearWidgetCache()).called(greaterThanOrEqualTo(1));
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Empty access token
-  // -------------------------------------------------------------------------
-  group('empty access token', () {
-    test('sets error when waitForAccessToken returns empty string', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => '');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(Duration.zero);
-
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      authStreamController.add(user);
-      await Future.delayed(const Duration(milliseconds: 500));
-      // Retry policy may retry empty-token failures; allow time for exhaustion.
-      await Future.delayed(const Duration(seconds: 3));
-
-      expect(c.authStatus.value, AuthStatus.error);
-      expect(c.authErrorMessage.value, isNotNull);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // TimeoutException during token wait
-  // -------------------------------------------------------------------------
-  group('token wait timeout', () {
-    test(
-      'maps TimeoutException to profile_load_timeout message',
-      () async {
-        final user = FakeUser();
-        final session = FakeSession();
-
-        when(
-          () => authRepo.waitForAccessToken(
-            timeout: any(named: 'timeout'),
-            minTtlSeconds: any(named: 'minTtlSeconds'),
-          ),
-        ).thenThrow(TimeoutException('token wait'));
-
-        when(() => authRepo.currentUser).thenReturn(user);
-        when(() => authRepo.currentSession).thenReturn(session);
-
-        final c = createController();
-        await Future.delayed(const Duration(seconds: 4));
-
-        // Debounced auth processing + RetryPolicy make exact terminal status
-        // timing-sensitive; accept error with message OR still resolving.
-        expect(
-          c.authStatus.value == AuthStatus.error ||
-              c.authErrorMessage.value != null ||
-              c.authStatus.value == AuthStatus.initial,
-          isTrue,
-        );
-      },
-      // Timing of retry exhaustion vs debounce is environment-sensitive.
-      skip: 'Flaky under debounce/retry; covered by _handleProfileLoadFailure unit path',
-    );
-  });
-
-  // -------------------------------------------------------------------------
-  // Initial user already present
-  // -------------------------------------------------------------------------
-  group('initial session bootstrap', () {
-    test('processes currentUser present at onInit', () async {
-      final user = FakeUser();
-      final session = FakeSession();
-      when(() => authRepo.currentUser).thenReturn(user);
-      when(() => authRepo.currentSession).thenReturn(session);
-      when(
-        () => authRepo.waitForAccessToken(
-          timeout: any(named: 'timeout'),
-          minTtlSeconds: any(named: 'minTtlSeconds'),
-        ),
-      ).thenAnswer((_) async => 'valid-token');
-      when(() => profileRepo.getCurrentUserProfile()).thenAnswer(
-        (_) async => UserModel(
-          id: 1,
-          supabaseUserId: 'fake-uid-123',
-          email: 'test@example.com',
-          fullName: 'Test User',
-          dateOfBirth: '1990-01-01',
-          isActive: true,
-          isVerified: false,
-          createdAt: DateTime(2024, 1, 1),
-        ),
-      );
-
-      final c = createController();
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Future.delayed(const Duration(seconds: 1));
-
-      expect(c.authStatus.value, AuthStatus.authenticated);
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Additional fake for transient failure test (different session fingerprint)
-// ---------------------------------------------------------------------------
-
-class FakeSession2 extends Fake implements Session {
-  @override
-  String get accessToken => 'fake-access-token-2';
-
-  @override
-  int get expiresAt => DateTime.now().add(const Duration(hours: 2)).millisecondsSinceEpoch ~/ 1000;
 }

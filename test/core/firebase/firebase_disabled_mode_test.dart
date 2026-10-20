@@ -30,8 +30,7 @@ void main() {
 
       expect(fetched, isFalse);
       expect(RemoteConfigService.analyticsEnabled, isFalse);
-      expect(RemoteConfigService.androidLatestVersion, '1.0.0');
-      expect(RemoteConfigService.iosForceUpdate, isFalse);
+      expect(RemoteConfigService.pushEnabled, isTrue);
     });
 
     test('Analytics logVital is a no-op when Firebase not ready', () async {
@@ -57,25 +56,6 @@ void main() {
     test('RemoteConfig sampling getters return 0.0 when not ready', () {
       expect(RemoteConfigService.perfHttpSampling, 0.0);
       expect(RemoteConfigService.perfTraceSampling, 0.0);
-    });
-
-    test('RemoteConfig android version getters return defaults when not ready', () {
-      expect(RemoteConfigService.androidLatestVersion, '1.0.0');
-      expect(RemoteConfigService.androidMinVersion, '1.0.0');
-      expect(RemoteConfigService.androidForceUpdate, isFalse);
-      expect(RemoteConfigService.androidReleaseNotes, '');
-      expect(
-        RemoteConfigService.androidUpdateUrl,
-        'https://play.google.com/store/apps/details?id=com.the360ghar.ghar360',
-      );
-    });
-
-    test('RemoteConfig ios version getters return defaults when not ready', () {
-      expect(RemoteConfigService.iosLatestVersion, '1.0.0');
-      expect(RemoteConfigService.iosMinVersion, '1.0.0');
-      expect(RemoteConfigService.iosForceUpdate, isFalse);
-      expect(RemoteConfigService.iosReleaseNotes, '');
-      expect(RemoteConfigService.iosUpdateUrl, 'https://apps.apple.com/app/id6794866216');
     });
 
     test('Analytics all event methods are no-ops when Firebase not ready', () async {

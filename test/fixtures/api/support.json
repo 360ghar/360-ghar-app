@@ -1,0 +1,28 @@
+{
+  "bug": {
+    "actual_behavior": null,
+    "app_version": "3.2.0",
+    "assigned_to": null,
+    "bug_type": "ui_bug",
+    "created_at": "2026-09-30T10:15:02Z",
+    "description": "On 320 px width.",
+    "device_info": {
+      "platform": "ios"
+    },
+    "expected_behavior": null,
+    "id": 3,
+    "media_urls": null,
+    "resolution": null,
+    "resolved_at": null,
+    "severity": "low",
+    "source": "mobile",
+    "status": "open",
+    "steps_to_reproduce": null,
+    "tags": [
+      "map"
+    ],
+    "title": "Map pin overlaps",
+    "updated_at": null,
+    "user_id": 50
+  }
+}

@@ -1,108 +1,133 @@
-import 'dart:ui';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/property_image_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+
+Map<String, dynamic> _image(int id, String category) => {
+  'id': id,
+  'property_id': 42,
+  'image_url': 'https://cdn.example.com/p42/$category-$id.jpg',
+  'caption': null,
+  'image_category': category,
+  'display_order': id,
+  'is_main_image': false,
+};
+
+/// A `Property` or `PropertyDetail` body as the backend sends it. [overrides] replace keys.
+Map<String, dynamic> _body([Map<String, dynamic> overrides = const {}]) => {
+  'id': 42,
+  'owner_id': 7,
+  'title': 'Test Property',
+  'description': null,
+  'property_type': 'apartment',
+  'purpose': 'buy',
+  'status': 'available',
+  'base_price': 5000000.0,
+  'price_per_sqft': null,
+  'monthly_rent': null,
+  'daily_rate': null,
+  'nightly_rate': null,
+  'country': 'India',
+  'is_available': true,
+  'available_from': null,
+  'view_count': 10,
+  'like_count': 5,
+  'interest_count': 3,
+  'created_at': '2026-09-30T10:15:02Z',
+  'updated_at': '2026-09-30T10:15:02Z',
+  ...overrides,
+};
+
+PropertyModel _parse(Map<String, dynamic> overrides) => PropertyModel.fromJson(_body(overrides));
 
 void main() {
-  setUpAll(() {
-    // Provide translations so `.tr` getters resolve to localized strings
-    // during tests.
-    Get.testMode = true;
-    Get.addTranslations(AppTranslations().keys);
-    Get.locale = const Locale('en', 'US');
-  });
-
   group('PropertyModel.fromJson', () {
-    test('parses minimal valid JSON with defaults', () {
-      final json = <String, dynamic>{
-        'id': 42,
-        'title': 'Test Property',
-        'base_price': 5000000.0,
-        'is_active': true,
-        'view_count': 10,
-        'like_count': 5,
-        'interest_count': 3,
-      };
-
-      final model = PropertyModel.fromJson(json);
+    test('reads a PropertyDetail body', () {
+      final model = PropertyModel.fromJson(_body());
 
       expect(model.id, 42);
+      expect(model.ownerId, 7);
       expect(model.title, 'Test Property');
       expect(model.basePrice, 5000000.0);
+      expect(model.propertyType, PropertyType.apartment);
+      expect(model.purpose, PropertyPurpose.buy);
+      expect(model.status, PropertyStatus.available);
       expect(model.isAvailable, true);
       expect(model.viewCount, 10);
       expect(model.likeCount, 5);
       expect(model.country, 'India');
+      expect(model.createdAt, DateTime.utc(2026, 9, 30, 10, 15, 2));
     });
 
-    test('applies default values when fields are missing', () {
-      final json = <String, dynamic>{};
-
-      final model = PropertyModel.fromJson(json);
-
-      expect(model.id, -1, reason: 'id should default to -1');
-      expect(model.title, 'Unknown Property', reason: 'title should default to Unknown Property');
-      expect(model.basePrice, 0.0, reason: 'base_price should default to 0.0');
-      expect(model.isAvailable, true, reason: 'is_active should default to true');
-      expect(model.viewCount, 0, reason: 'view_count should default to 0');
-      expect(model.likeCount, 0, reason: 'like_count should default to 0');
-      expect(model.liked, false, reason: 'liked should default to false');
+    test('a key the backend always sends is required', () {
+      for (final key in [
+        'id',
+        'owner_id',
+        'title',
+        'property_type',
+        'purpose',
+        'status',
+        'base_price',
+        'country',
+        'is_available',
+        'view_count',
+        'like_count',
+        'interest_count',
+        'created_at',
+        'updated_at',
+      ]) {
+        final body = _body()..remove(key);
+        expect(() => PropertyModel.fromJson(body), throwsA(anything), reason: 'missing $key');
+      }
     });
 
-    test('parses property_type enum correctly', () {
-      expect(PropertyModel.fromJson({'property_type': 'house'}).propertyType, PropertyType.house);
-      expect(
-        PropertyModel.fromJson({'property_type': 'apartment'}).propertyType,
-        PropertyType.apartment,
-      );
-      expect(
-        PropertyModel.fromJson({'property_type': 'builder_floor'}).propertyType,
-        PropertyType.builderFloor,
-      );
-      expect(PropertyModel.fromJson({'property_type': 'villa'}).propertyType, PropertyType.villa);
-      expect(PropertyModel.fromJson({'property_type': 'plot'}).propertyType, PropertyType.plot);
-      expect(PropertyModel.fromJson({'property_type': 'condo'}).propertyType, PropertyType.condo);
-      expect(
-        PropertyModel.fromJson({'property_type': 'penthouse'}).propertyType,
-        PropertyType.penthouse,
-      );
-      expect(PropertyModel.fromJson({'property_type': 'studio'}).propertyType, PropertyType.studio);
-      expect(PropertyModel.fromJson({'property_type': 'loft'}).propertyType, PropertyType.loft);
-      expect(PropertyModel.fromJson({'property_type': 'pg'}).propertyType, PropertyType.pg);
-      expect(
-        PropertyModel.fromJson({'property_type': 'flatmate'}).propertyType,
-        PropertyType.flatmate,
-      );
-      expect(PropertyModel.fromJson({'property_type': 'office'}).propertyType, PropertyType.office);
-      expect(PropertyModel.fromJson({'property_type': 'shop'}).propertyType, PropertyType.shop);
-      expect(
-        PropertyModel.fromJson({'property_type': 'warehouse'}).propertyType,
-        PropertyType.warehouse,
-      );
+    test('an empty body is a contract break, not a property with defaults', () {
+      expect(() => PropertyModel.fromJson(<String, dynamic>{}), throwsA(anything));
     });
 
-    test('falls back to house for unknown property_type', () {
-      final model = PropertyModel.fromJson({'property_type': 'spaceship'});
-      expect(model.propertyType, PropertyType.house);
+    test('parses every property_type', () {
+      const wire = {
+        'house': PropertyType.house,
+        'apartment': PropertyType.apartment,
+        'builder_floor': PropertyType.builderFloor,
+        'room': PropertyType.room,
+        'villa': PropertyType.villa,
+        'plot': PropertyType.plot,
+        'condo': PropertyType.condo,
+        'penthouse': PropertyType.penthouse,
+        'studio': PropertyType.studio,
+        'loft': PropertyType.loft,
+        'pg': PropertyType.pg,
+        'flatmate': PropertyType.flatmate,
+        'office': PropertyType.office,
+        'shop': PropertyType.shop,
+        'warehouse': PropertyType.warehouse,
+      };
+      for (final entry in wire.entries) {
+        expect(_parse({'property_type': entry.key}).propertyType, entry.value, reason: entry.key);
+      }
     });
 
-    test('parses purpose enum correctly', () {
-      expect(PropertyModel.fromJson({'purpose': 'buy'}).purpose, PropertyPurpose.buy);
-      expect(PropertyModel.fromJson({'purpose': 'rent'}).purpose, PropertyPurpose.rent);
-      expect(PropertyModel.fromJson({'purpose': 'short_stay'}).purpose, PropertyPurpose.shortStay);
+    test('an unknown property_type reads as null, not as house', () {
+      expect(_parse({'property_type': 'spaceship'}).propertyType, isNull);
     });
 
-    test('falls back to buy for unknown purpose', () {
-      final model = PropertyModel.fromJson({'purpose': 'barter'});
-      expect(model.purpose, PropertyPurpose.buy);
+    test('parses purpose', () {
+      expect(_parse({'purpose': 'buy'}).purpose, PropertyPurpose.buy);
+      expect(_parse({'purpose': 'rent'}).purpose, PropertyPurpose.rent);
+      expect(_parse({'purpose': 'short_stay'}).purpose, PropertyPurpose.shortStay);
+    });
+
+    test('an unknown purpose reads as null, not as buy', () {
+      expect(_parse({'purpose': 'barter'}).purpose, isNull);
+    });
+
+    test('an unknown status reads as null', () {
+      expect(_parse({'status': 'demolished'}).status, isNull);
     });
 
     test('parses location fields', () {
-      final model = PropertyModel.fromJson({
+      final model = _parse({
         'latitude': 28.6139,
         'longitude': 77.2090,
         'city': 'New Delhi',
@@ -120,27 +145,46 @@ void main() {
       expect(model.hasLocation, true);
     });
 
-    test('normalizes is_available to is_active', () {
-      final model = PropertyModel.fromJson({'is_available': false});
-      expect(model.isAvailable, false);
+    test('is_available is the availability flag', () {
+      expect(_parse({'is_available': false}).isAvailable, false);
     });
 
-    test('parses amenities list', () {
-      final model = PropertyModel.fromJson({
+    test('amenities carry the amenity id', () {
+      final model = _parse({
         'amenities': [
-          {'id': 1, 'title': 'Swimming Pool'},
-          {'id': 2, 'title': 'Gym', 'icon': 'http://example.com/gym.png'},
+          {'id': 11, 'title': 'Swimming Pool', 'icon': null, 'category': 'recreation'},
+          {'id': 12, 'title': 'Gym', 'icon': 'gym', 'category': null},
         ],
       });
 
       expect(model.amenities, isNotNull);
       expect(model.amenities!.length, 2);
+      expect(model.amenities![0].id, 11);
       expect(model.amenities![0].title, 'Swimming Pool');
-      expect(model.amenities![1].icon, 'http://example.com/gym.png');
+      expect(model.amenities![1].icon, 'gym');
     });
 
-    test('parses listing preferences', () {
-      final model = PropertyModel.fromJson({
+    test('an amenity needs an id and a title', () {
+      expect(
+        () => _parse({
+          'amenities': [
+            {'title': 'Gym'},
+          ],
+        }),
+        throwsA(anything),
+      );
+      expect(
+        () => _parse({
+          'amenities': [
+            {'id': 1},
+          ],
+        }),
+        throwsA(anything),
+      );
+    });
+
+    test('reads the sharing and gender preference of a flatmate listing', () {
+      final model = _parse({
         'listing_preferences': {'gender_preference': 'female', 'sharing_type': 'shared_room'},
       });
 
@@ -149,14 +193,105 @@ void main() {
       expect(model.genderPreferenceTranslationKey, 'female_only');
       expect(model.sharingTypeTranslationKey, 'shared_room');
     });
+
+    test('master_bedroom and entire_flat are sharing types, not private_room', () {
+      expect(
+        _parse({
+          'listing_preferences': {'sharing_type': 'master_bedroom'},
+        }).listingPreferences?.sharingType,
+        ListingSharingType.masterBedroom,
+      );
+      expect(
+        _parse({
+          'listing_preferences': {'sharing_type': 'entire_flat'},
+        }).listingPreferences?.sharingType,
+        ListingSharingType.entireFlat,
+      );
+    });
+
+    test('an unknown sharing type reads as null and shows no label', () {
+      final model = _parse({
+        'listing_preferences': {'sharing_type': 'dormitory'},
+      });
+
+      expect(model.listingPreferences?.sharingType, isNull);
+      expect(model.sharingTypeTranslationKey, isNull);
+    });
+
+    test('available_from is a calendar date', () {
+      final model = _parse({'available_from': '2026-11-01'});
+
+      expect(model.availableFrom, DateTime(2026, 11));
+    });
+
+    test('available_from must be YYYY-MM-DD, not a timestamp', () {
+      expect(() => _parse({'available_from': '2026-11-01T00:00:00Z'}), throwsA(anything));
+      expect(() => _parse({'available_from': 'soon'}), throwsA(anything));
+    });
+
+    test('reads the PG fields: furnishing, kitchen, ventilation and charges', () {
+      final model = _parse({
+        'furnishing_level': 'semi_furnished',
+        'kitchen_type': 'vegetarian',
+        'ventilation_type': 'good',
+        'windows_count': 3,
+        'ventilation_shafts': 1,
+        'setup_cost': 5000.0,
+        'other_charges': 1200.0,
+        'other_charges_description': 'Electricity and Wi-Fi',
+      });
+
+      expect(model.furnishingLevel, FurnishingLevel.semiFurnished);
+      expect(model.kitchenType, KitchenType.vegetarian);
+      expect(model.ventilationType, VentilationType.good);
+      expect(model.windowsCount, 3);
+      expect(model.setupCost, 5000.0);
+      expect(model.otherCharges, 1200.0);
+      expect(model.otherChargesDescription, 'Electricity and Wi-Fi');
+    });
+
+    test('an unknown furnishing level reads as null', () {
+      expect(_parse({'furnishing_level': 'fully_loaded'}).furnishingLevel, isNull);
+    });
+
+    test('price_per_sqft is the backend value, never derived', () {
+      final model = _parse({
+        'base_price': 5000000.0,
+        'area_sqft': 1000.0,
+        'price_per_sqft': 6000.0,
+      });
+
+      expect(model.pricePerSqft, 6000.0);
+      expect(_parse({'price_per_sqft': null}).pricePerSqft, isNull);
+    });
+
+    test('floor plans come from floor_plans, never from images', () {
+      final model = _parse({
+        'images': [_image(1, 'hall')],
+        'floor_plans': [_image(2, 'floor_plan')],
+      });
+
+      expect(model.galleryImages.map((image) => image.id), [1]);
+      expect(model.floorPlanImages.map((image) => image.id), [2]);
+    });
+
+    test('agent comes with the detail route only', () {
+      expect(_parse({}).agent, isNull);
+      final model = _parse({
+        'agent': {'id': 4, 'name': 'Ravi Kumar', 'contact_number': '+919811111111'},
+      });
+
+      expect(model.agent?.name, 'Ravi Kumar');
+      expect(model.agent?.contactNumber, '+919811111111');
+    });
   });
 
   group('PropertyModel helper getters', () {
     PropertyModel make({
       double basePrice = 0,
-      PropertyPurpose? purpose,
+      PropertyPurpose? purpose = PropertyPurpose.buy,
       double? monthlyRent,
-      double? dailyRate,
+      double? nightlyRate,
       double? areaSqft,
       int? bedrooms,
       int? bathrooms,
@@ -176,7 +311,7 @@ void main() {
         basePrice: basePrice,
         purpose: purpose,
         monthlyRent: monthlyRent,
-        dailyRate: dailyRate,
+        nightlyRate: nightlyRate,
         areaSqft: areaSqft,
         bedrooms: bedrooms,
         bathrooms: bathrooms,
@@ -201,50 +336,41 @@ void main() {
     });
 
     test('formattedPrice formats lakh values', () {
-      expect(make(basePrice: 5000000).formattedPrice, '₹50.0 L');
+      expect(make(basePrice: 5000000).formattedPrice, '₹50 L');
     });
 
     test('formattedPrice formats small values', () {
       expect(make(basePrice: 50000).formattedPrice, '₹50,000');
     });
 
-    test('getEffectivePrice returns monthlyRent for rent', () {
+    test('the price follows the purpose: monthly_rent for rent', () {
       final model = make(basePrice: 100000, purpose: PropertyPurpose.rent, monthlyRent: 25000);
-      expect(model.getEffectivePrice(), 25000);
+      expect(model.effectivePrice, 25000);
+      expect(model.formattedPrice, '₹25,000');
     });
 
-    test('getEffectivePrice falls back to basePrice for rent without monthlyRent', () {
+    test('a rent listing with no monthly_rent has no price: no fallback to base_price', () {
       final model = make(basePrice: 100000, purpose: PropertyPurpose.rent);
-      expect(model.getEffectivePrice(), 100000);
+      expect(model.effectivePrice, isNull);
+      expect(model.formattedPrice, isEmpty);
     });
 
-    test('getEffectivePrice returns dailyRate for shortStay', () {
-      final model = make(basePrice: 100000, purpose: PropertyPurpose.shortStay, dailyRate: 3000);
-      expect(model.getEffectivePrice(), 3000);
+    test('the price follows the purpose: nightly_rate for a short stay', () {
+      final model = make(basePrice: 100000, purpose: PropertyPurpose.shortStay, nightlyRate: 3000);
+      expect(model.effectivePrice, 3000);
     });
 
-    test('areaText formats area correctly', () {
-      expect(make(areaSqft: 1200).areaText, '1200 sq ft');
-      expect(make().areaText, '');
+    test('a short stay with no nightly_rate has no nightly price', () {
+      final model = make(basePrice: 100000, purpose: PropertyPurpose.shortStay);
+      expect(model.effectivePrice, isNull);
     });
 
-    test('floorText shows floor/total', () {
-      expect(make(floorNumber: 3, totalFloors: 10).floorText, 'Floor 3/10');
-      expect(make(floorNumber: 5).floorText, 'Floor 5');
-      expect(make().floorText, '');
+    test('the price follows the purpose: base_price for a sale', () {
+      expect(make(basePrice: 8500000).effectivePrice, 8500000);
     });
 
-    test('ageText handles new construction and years', () {
-      expect(make(ageOfProperty: 0).ageText, 'New Construction');
-      expect(make(ageOfProperty: 1).ageText, '1 year old');
-      expect(make(ageOfProperty: 5).ageText, '5 years old');
-      expect(make().ageText, '');
-    });
-
-    test('distanceText formats km and meters', () {
-      expect(make(distanceKm: 2.5).distanceText, '2.5km away');
-      expect(make(distanceKm: 0.3).distanceText, '300m away');
-      expect(make().distanceText, '');
+    test('an unknown purpose has no price', () {
+      expect(make(purpose: null, basePrice: 8500000).effectivePrice, isNull);
     });
 
     test('shortAddressDisplay builds from locality parts', () {
@@ -254,7 +380,7 @@ void main() {
         'Sector 62, Block A, Noida',
       );
       expect(make(city: 'Noida').shortAddressDisplay, 'Noida');
-      expect(make().shortAddressDisplay, 'Unknown Location');
+      expect(make().shortAddressDisplay, isEmpty);
     });
 
     test('hasLocation requires both coordinates', () {
@@ -263,58 +389,21 @@ void main() {
       expect(make().hasLocation, false);
     });
 
-    test('propertyTypeString maps all enum values', () {
-      expect(
-        PropertyModel.fromJson({'property_type': 'apartment'}).propertyTypeString,
-        'property_type_apartment'.tr,
-      );
-      expect(
-        PropertyModel.fromJson({'property_type': 'villa'}).propertyTypeString,
-        'property_type_villa'.tr,
-      );
-      expect(
-        PropertyModel.fromJson({'property_type': 'condo'}).propertyTypeString,
-        'property_type_condo'.tr,
-      );
-      expect(
-        PropertyModel.fromJson({'property_type': 'studio'}).propertyTypeString,
-        'property_type_studio'.tr,
-      );
-      expect(
-        PropertyModel.fromJson({'property_type': 'pg'}).propertyTypeString,
-        'property_type_pg'.tr,
-      );
-      expect(
-        PropertyModel.fromJson({'property_type': 'office'}).propertyTypeString,
-        'property_type_office'.tr,
-      );
-      expect(PropertyModel.fromJson({}).propertyTypeString, 'property_type_default'.tr);
-    });
-
     test('listingTranslationKey prioritizes pg and flatmate labels', () {
+      expect(_parse({'property_type': 'pg', 'purpose': 'rent'}).listingTranslationKey, 'pg');
       expect(
-        PropertyModel.fromJson({'property_type': 'pg', 'purpose': 'rent'}).listingTranslationKey,
-        'pg',
-      );
-      expect(
-        PropertyModel.fromJson({
-          'property_type': 'flatmate',
-          'purpose': 'rent',
-        }).listingTranslationKey,
+        _parse({'property_type': 'flatmate', 'purpose': 'rent'}).listingTranslationKey,
         'flatmate',
       );
       expect(
-        PropertyModel.fromJson({
-          'property_type': 'apartment',
-          'purpose': 'short_stay',
-        }).listingTranslationKey,
+        _parse({'property_type': 'apartment', 'purpose': 'short_stay'}).listingTranslationKey,
         'short_stay',
       );
     });
 
     test('formattedPrice handles very large values (100 Cr+)', () {
-      expect(make(basePrice: 1000000000).formattedPrice, '₹100.0 Cr');
-      expect(make(basePrice: 150000000).formattedPrice, '₹15.0 Cr');
+      expect(make(basePrice: 1000000000).formattedPrice, '₹100 Cr');
+      expect(make(basePrice: 150000000).formattedPrice, '₹15 Cr');
     });
 
     test('formattedPrice handles zero price', () {
@@ -324,7 +413,7 @@ void main() {
     test('formattedPrice handles negative price', () {
       // Negative values keep the Indian sign-before-symbol convention.
       expect(make(basePrice: -1000).formattedPrice, '-₹1,000');
-      expect(make(basePrice: -5000000).formattedPrice, '-₹50.0 L');
+      expect(make(basePrice: -5000000).formattedPrice, '-₹50 L');
     });
 
     test('virtualTourUrl and hasVirtualTour getters', () {
@@ -358,11 +447,11 @@ void main() {
     });
 
     test('wire value helpers use canonical backend tokens', () {
-      expect(PropertyType.builderFloor.wireValue, 'builder_floor');
-      expect(PropertyType.penthouse.wireValue, 'penthouse');
-      expect(PropertyType.pg.wireValue, 'pg');
-      expect(PropertyType.warehouse.wireValue, 'warehouse');
-      expect(PropertyPurpose.shortStay.wireValue, 'short_stay');
+      expect(PropertyType.builderFloor.wire, 'builder_floor');
+      expect(PropertyType.penthouse.wire, 'penthouse');
+      expect(PropertyType.pg.wire, 'pg');
+      expect(PropertyType.warehouse.wire, 'warehouse');
+      expect(PropertyPurpose.shortStay.wire, 'short_stay');
     });
 
     test('shortAddressDisplay handles empty locality with subLocality', () {
@@ -384,19 +473,17 @@ void main() {
 
   group('PropertyModel.toJson roundtrip', () {
     test('roundtrip preserves key fields', () {
-      final original = PropertyModel.fromJson({
-        'id': 10,
-        'title': 'My Flat',
-        'base_price': 4500000.0,
-        'property_type': 'apartment',
-        'purpose': 'rent',
-        'bedrooms': 2,
-        'bathrooms': 1,
-        'is_active': true,
-        'view_count': 7,
-        'like_count': 3,
-        'interest_count': 1,
-      });
+      final original = PropertyModel.fromJson(
+        _body({
+          'id': 10,
+          'title': 'My Flat',
+          'base_price': 4500000.0,
+          'property_type': 'apartment',
+          'purpose': 'rent',
+          'bedrooms': 2,
+          'bathrooms': 1,
+        }),
+      );
 
       final json = original.toJson();
       final restored = PropertyModel.fromJson(json);
@@ -408,12 +495,28 @@ void main() {
       expect(restored.purpose, original.purpose);
       expect(restored.bedrooms, original.bedrooms);
     });
+
+    test('a stored copy has no phone number', () {
+      final model = PropertyModel.fromJson(
+        _body({
+          'owner_contact': '+911800000360',
+          'agent': {'id': 4, 'name': 'Ravi', 'contact_number': '+919811111111'},
+        }),
+      );
+
+      final stored = model.toStorableJson();
+
+      expect(stored.containsKey('owner_contact'), isFalse);
+      expect((stored['agent'] as Map).containsKey('contact_number'), isFalse);
+      expect(model.contactNumber, '+919811111111', reason: 'the live model keeps the number');
+    });
   });
 
   group('PropertyModel image and media getters', () {
     PropertyModel make({
       String? mainImageUrl,
       List<PropertyImageModel>? images,
+      List<PropertyImageModel>? floorPlans,
       String? videoTourUrl,
       List<String>? videoUrls,
       String? virtualTourUrl,
@@ -428,6 +531,7 @@ void main() {
         basePrice: 0,
         mainImageUrl: mainImageUrl,
         images: images,
+        floorPlans: floorPlans,
         videoTourUrl: videoTourUrl,
         videoUrls: videoUrls,
         virtualTourUrl: virtualTourUrl,
@@ -444,16 +548,14 @@ void main() {
 
     PropertyImageModel img(
       String url, {
-      bool isMain = false,
       bool isMainImage = false,
       int order = 0,
-      String category = 'gallery',
+      ImageCategory category = ImageCategory.others,
     }) {
       return PropertyImageModel(
         id: order,
         propertyId: 1,
         imageUrl: url,
-        isMain: isMain,
         isMainImage: isMainImage,
         displayOrder: order,
         category: category,
@@ -469,7 +571,7 @@ void main() {
       final model = make(
         images: [
           img('https://example.com/secondary.jpg', order: 0),
-          img('https://example.com/primary.jpg', isMain: true, order: 1),
+          img('https://example.com/primary.jpg', isMainImage: true, order: 1),
         ],
       );
       expect(model.mainImage, 'https://example.com/primary.jpg');
@@ -508,9 +610,9 @@ void main() {
     test('galleryImages filters by category and image extension', () {
       final model = make(
         images: [
-          img('https://example.com/photo1.jpg', order: 0, category: 'gallery'),
-          img('https://example.com/floor.jpg', order: 1, category: 'floor_plan'),
-          img('https://kuula.co/share/abc', order: 2, category: 'gallery'),
+          img('https://example.com/photo1.jpg', order: 0, category: ImageCategory.others),
+          img('https://example.com/floor.jpg', order: 1, category: ImageCategory.floorPlan),
+          img('https://kuula.co/share/abc', order: 2, category: ImageCategory.others),
         ],
       );
       final gallery = model.galleryImages;
@@ -523,11 +625,11 @@ void main() {
       expect(model.galleryImageUrls, ['https://example.com/main.jpg']);
     });
 
-    test('floorPlanImages filters by floor_plan category', () {
+    test('floorPlanImages come from floor_plans, and images hold photos only', () {
       final model = make(
-        images: [
-          img('https://example.com/photo.jpg', order: 0, category: 'gallery'),
-          img('https://example.com/plan.jpg', order: 1, category: 'floor_plan'),
+        images: [img('https://example.com/photo.jpg', order: 0, category: ImageCategory.others)],
+        floorPlans: [
+          img('https://example.com/plan.jpg', order: 1, category: ImageCategory.floorPlan),
         ],
       );
       final plans = model.floorPlanImages;
@@ -538,7 +640,9 @@ void main() {
     test('floorPlanImageUrls includes floorPlanUrl and floor plan images', () {
       final model = make(
         floorPlanUrl: 'https://example.com/external_plan.jpg',
-        images: [img('https://example.com/plan.jpg', order: 0, category: 'floor_plan')],
+        floorPlans: [
+          img('https://example.com/plan.jpg', order: 0, category: ImageCategory.floorPlan),
+        ],
       );
       final urls = model.floorPlanImageUrls;
       expect(urls, hasLength(2));
@@ -601,7 +705,7 @@ void main() {
 
     test('_looksLikeImageUrl filters kuula.co share links', () {
       final model = make(
-        images: [img('https://kuula.co/share/abc', order: 0, category: 'gallery')],
+        images: [img('https://kuula.co/share/abc', order: 0, category: ImageCategory.others)],
       );
       expect(model.galleryImages, isEmpty);
     });
@@ -713,7 +817,7 @@ void main() {
 
   group('PropertyModel amenities and owner getters', () {
     test('hasAmenities is true when amenities list is not empty', () {
-      final model = PropertyModel.fromJson({
+      final model = _parse({
         'amenities': [
           {'id': 1, 'title': 'Pool'},
         ],
@@ -738,125 +842,59 @@ void main() {
       expect(model.amenitiesData, isEmpty);
     });
 
-    test('hasOwner is true when ownerName is set', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        ownerName: 'John Doe',
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.hasOwner, true);
-      expect(model.ownerDisplayName, 'John Doe');
+    test('contactNumber is the agent number when the detail route sent an agent', () {
+      final model = _parse({
+        'owner_contact': '+911800000360',
+        'agent': {'id': 4, 'name': 'Ravi', 'contact_number': '+919811111111'},
+      });
+
+      expect(model.contactNumber, '+919811111111');
+      expect(model.hasContact, true);
     });
 
-    test('hasOwner is false when ownerName is null or empty', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.hasOwner, false);
-      expect(model.ownerDisplayName, 'Property Owner');
-    });
+    test(
+      'contactNumber is owner_contact otherwise: the agent or company number the server chose',
+      () {
+        final model = _parse({'owner_contact': ' +911800000360 '});
 
-    test('hasOwnerContact is true when ownerContact is set', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        ownerContact: '+1234567890',
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.hasOwnerContact, true);
-    });
+        expect(model.contactNumber, '+911800000360');
+      },
+    );
 
-    test('hasOwnerContact is false when ownerContact is null or empty', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.hasOwnerContact, false);
+    test('contactNumber is null when the server sent no number', () {
+      expect(_parse({'owner_contact': null}).contactNumber, isNull);
+      expect(_parse({'owner_contact': '  '}).hasContact, false);
     });
   });
 
   group('PropertyModel additional getters', () {
     test('statusString maps all status values', () {
-      expect(PropertyModel.fromJson({'status': 'available'}).statusString, 'Available');
-      expect(PropertyModel.fromJson({'status': 'sold'}).statusString, 'Sold');
-      expect(PropertyModel.fromJson({'status': 'rented'}).statusString, 'Rented');
-      expect(PropertyModel.fromJson({'status': 'under_offer'}).statusString, 'Under Offer');
-      expect(PropertyModel.fromJson({'status': 'maintenance'}).statusString, 'Maintenance');
+      expect(_parse({'status': 'available'}).statusString, 'Available');
+      expect(_parse({'status': 'sold'}).statusString, 'Sold');
+      expect(_parse({'status': 'rented'}).statusString, 'Rented');
+      expect(_parse({'status': 'under_offer'}).statusString, 'Under Offer');
+      expect(_parse({'status': 'maintenance'}).statusString, 'Maintenance');
     });
 
-    test('statusString defaults to Available', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.statusString, 'Available');
-    });
-
-    test('purposeString maps all purpose values', () {
-      expect(PropertyModel.fromJson({'purpose': 'buy'}).purposeString, 'Buy');
-      expect(PropertyModel.fromJson({'purpose': 'rent'}).purposeString, 'Rent');
-      expect(PropertyModel.fromJson({'purpose': 'short_stay'}).purposeString, 'Short Stay');
-    });
-
-    test('purposeString defaults to For Sale', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.purposeString, 'For Sale');
+    test('statusString is empty for a status the app does not know', () {
+      expect(_parse({'status': 'demolished'}).statusString, isEmpty);
     });
 
     test('purposeTranslationKey maps all purpose values', () {
-      expect(PropertyModel.fromJson({'purpose': 'buy'}).purposeTranslationKey, 'buy');
-      expect(PropertyModel.fromJson({'purpose': 'rent'}).purposeTranslationKey, 'rent');
-      expect(PropertyModel.fromJson({'purpose': 'short_stay'}).purposeTranslationKey, 'short_stay');
+      expect(_parse({'purpose': 'buy'}).purposeTranslationKey, 'buy');
+      expect(_parse({'purpose': 'rent'}).purposeTranslationKey, 'rent');
+      expect(_parse({'purpose': 'short_stay'}).purposeTranslationKey, 'short_stay');
     });
 
-    test('propertyTypeTranslationKey maps all type values', () {
+    test('propertyTypeLabelKey maps type values to catalogue keys', () {
+      expect(_parse({'property_type': 'house'}).propertyTypeLabelKey, 'property_type_house');
       expect(
-        PropertyModel.fromJson({'property_type': 'house'}).propertyTypeTranslationKey,
-        'house',
+        _parse({'property_type': 'builder_floor'}).propertyTypeLabelKey,
+        'property_type_builder_floor',
       );
-      expect(
-        PropertyModel.fromJson({'property_type': 'apartment'}).propertyTypeTranslationKey,
-        'apartment',
-      );
-      expect(
-        PropertyModel.fromJson({'property_type': 'builder_floor'}).propertyTypeTranslationKey,
-        'builder_floor',
-      );
-      expect(PropertyModel.fromJson({'property_type': 'pg'}).propertyTypeTranslationKey, 'pg');
-      expect(PropertyModel.fromJson({}).propertyTypeTranslationKey, 'property');
+      expect(_parse({'property_type': 'pg'}).propertyTypeLabelKey, 'property_type_pg');
+      // An unknown type reads "Property", never the raw lowercase key.
+      expect(_parse({'property_type': 'spaceship'}).propertyTypeLabelKey, 'property_type_default');
     });
 
     test('addressDisplay uses fullAddress when available', () {
@@ -890,7 +928,7 @@ void main() {
       expect(model.addressDisplay, 'Area, City');
     });
 
-    test('addressDisplay falls back to city or Unknown Location', () {
+    test('addressDisplay falls back to city, else empty', () {
       const model = PropertyModel(
         id: 1,
         title: 'Test',
@@ -912,56 +950,7 @@ void main() {
         likeCount: 0,
         interestCount: 0,
       );
-      expect(model2.addressDisplay, 'Unknown Location');
-    });
-
-    test('imageDescription combines propertyTypeString and city', () {
-      final model = PropertyModel.fromJson({'property_type': 'apartment', 'city': 'Mumbai'});
-      expect(model.imageDescription, contains('Mumbai'));
-    });
-
-    test('imageDescription uses Unknown Location when city is null', () {
-      final model = PropertyModel.fromJson({});
-      expect(model.imageDescription, contains('Unknown Location'));
-    });
-
-    test('titleInitials extracts initials from multi-word title', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Beautiful Apartment',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.titleInitials, 'BA');
-    });
-
-    test('titleInitials extracts first letter from single-word title', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Villa',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.titleInitials, 'V');
-    });
-
-    test('titleInitials returns P for empty title', () {
-      const model = PropertyModel(
-        id: 1,
-        title: '',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.titleInitials, 'P');
+      expect(model2.addressDisplay, isEmpty);
     });
 
     test('hasUserScheduled is true when userHasScheduledVisit is true', () {
@@ -1005,97 +994,42 @@ void main() {
       expect(model.hasUserScheduled, false);
     });
 
-    test('availableFromDate parses valid date string', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-        availableFrom: '2025-01-15',
-      );
-      expect(model.availableFromDate, DateTime(2025, 1, 15));
-    });
-
-    test('availableFromDate returns null for empty string', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-        availableFrom: '',
-      );
-      expect(model.availableFromDate, isNull);
-    });
-
-    test('availableFromDate returns null when availableFrom is null', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-      );
-      expect(model.availableFromDate, isNull);
-    });
-
-    test('availableFromDate returns null for invalid date string', () {
-      const model = PropertyModel(
-        id: 1,
-        title: 'Test',
-        basePrice: 0,
-        isAvailable: true,
-        viewCount: 0,
-        likeCount: 0,
-        interestCount: 0,
-        availableFrom: 'not-a-date',
-      );
-      expect(model.availableFromDate, isNull);
-    });
-
     test('genderPreferenceTranslationKey maps all values', () {
       expect(
-        PropertyModel.fromJson({
+        _parse({
           'listing_preferences': {'gender_preference': 'any'},
         }).genderPreferenceTranslationKey,
         'open_to_all',
       );
       expect(
-        PropertyModel.fromJson({
+        _parse({
           'listing_preferences': {'gender_preference': 'male'},
         }).genderPreferenceTranslationKey,
         'male_only',
       );
       expect(
-        PropertyModel.fromJson({
+        _parse({
           'listing_preferences': {'gender_preference': 'female'},
         }).genderPreferenceTranslationKey,
         'female_only',
       );
-      expect(PropertyModel.fromJson({}).genderPreferenceTranslationKey, isNull);
+      expect(_parse({}).genderPreferenceTranslationKey, isNull);
     });
 
     test('sharingTypeTranslationKey maps all values', () {
       expect(
-        PropertyModel.fromJson({
+        _parse({
           'listing_preferences': {'sharing_type': 'private_room'},
         }).sharingTypeTranslationKey,
         'private_room',
       );
       expect(
-        PropertyModel.fromJson({
+        _parse({
           'listing_preferences': {'sharing_type': 'shared_room'},
         }).sharingTypeTranslationKey,
         'shared_room',
       );
-      expect(PropertyModel.fromJson({}).sharingTypeTranslationKey, isNull);
+      expect(_parse({}).sharingTypeTranslationKey, isNull);
     });
   });
 }

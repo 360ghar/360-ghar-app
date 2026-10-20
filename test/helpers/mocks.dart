@@ -12,11 +12,10 @@
 // interfaces), so callers must reference these mocks via the concrete type
 // name (e.g. `MockProfileRepository`) rather than a shared abstraction.
 
-import 'package:get/get.dart';
+import 'package:mocktail/mocktail.dart';
+
 import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/controllers/location_controller.dart';
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/agent_model.dart';
 import 'package:ghar360/core/data/models/property_image_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
@@ -33,34 +32,9 @@ import 'package:ghar360/features/notifications/data/datasources/notifications_re
 import 'package:ghar360/features/profile/data/profile_repository.dart';
 import 'package:ghar360/features/properties/data/datasources/properties_remote_datasource.dart';
 import 'package:ghar360/features/properties/data/properties_repository.dart';
-import 'package:ghar360/features/swipes/data/datasources/swipes_remote_datasource.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
 import 'package:ghar360/features/visits/data/visits_repository.dart';
-import 'package:mocktail/mocktail.dart';
-
-// ---------------------------------------------------------------------------
-// GetX lifecycle shim
-// ---------------------------------------------------------------------------
-// The repositories below extend [GetxService], which inherits the GetX lifecycle
-// fields `onStart` and `onDelete` (final [InternalFinalCallback] instances set
-// by the real constructor). mocktail's [Mock] does NOT invoke the real
-// constructor, so those fields resolve to `null`, and `Get.put` then throws
-// `type 'Null' is not a subtype of type 'InternalFinalCallback<void>'` when it
-// calls `onStart()` during controller initialization.
-//
-// [GetxServiceMock] restores valid no-op callbacks for the lifecycle members by
-// re-declaring them as instance fields initialized at construction, so the
-// mocks register into the GetX container cleanly. Mocks for classes that do NOT
-// extend GetxService (ApiClient, the remote datasources) extend [Mock] directly.
-abstract class GetxServiceMock extends Mock {
-  /// No-op lifecycle callback backing GetX's `onStart`. Wired with an identity
-  /// callback so `onStart()` (invoked by `Get.put`) does not throw.
-  final InternalFinalCallback<void> onStart = InternalFinalCallback<void>(callback: () {});
-
-  /// No-op lifecycle callback backing GetX's `onDelete`.
-  final InternalFinalCallback<void> onDelete = InternalFinalCallback<void>(callback: () {});
-}
 
 // ---------------------------------------------------------------------------
 // ApiClient
@@ -82,7 +56,7 @@ class MockApiClient extends Mock implements ApiClient {}
 /// currentUser, currentSession, onAuthStateChange, isGoogleSignInConfigured,
 /// isAppleSignInSupported, isOAuthRedirectUri, completeOAuthFromUri,
 /// lastAuthMethodStore.
-class MockAuthRepository extends GetxServiceMock implements AuthRepository {}
+class MockAuthRepository extends Mock implements AuthRepository {}
 
 // ---------------------------------------------------------------------------
 // ProfileRepository
@@ -91,16 +65,15 @@ class MockAuthRepository extends GetxServiceMock implements AuthRepository {}
 /// Mock for [ProfileRepository]. Covers: updateUserProfile, updateUserLocation,
 /// updateUserPreferences, getCurrentUserProfile, isProfileComplete,
 /// updateProfileField, updateProfileImage.
-class MockProfileRepository extends GetxServiceMock implements ProfileRepository {}
+class MockProfileRepository extends Mock implements ProfileRepository {}
 
 // ---------------------------------------------------------------------------
 // PropertiesRepository
 // ---------------------------------------------------------------------------
 
 /// Mock for [PropertiesRepository]. Covers: getProperties, getPropertyDetail,
-/// getPropertiesByIds, searchProperties, createProperty, updateProperty,
-/// updatePropertyMedia, clearCache.
-class MockPropertiesRepository extends GetxServiceMock implements PropertiesRepository {}
+/// searchProperties, clearCache.
+class MockPropertiesRepository extends Mock implements PropertiesRepository {}
 
 // ---------------------------------------------------------------------------
 // SwipesRepository
@@ -109,29 +82,17 @@ class MockPropertiesRepository extends GetxServiceMock implements PropertiesRepo
 /// Mock for [SwipesRepository]. Covers: recordSwipe, getSwipeHistoryProperties,
 /// getLikedProperties, getPassedProperties, getLikedPropertiesWithSwipeIds,
 /// getAllSwipedProperties.
-class MockSwipesRepository extends GetxServiceMock implements SwipesRepository {}
+class MockSwipesRepository extends Mock implements SwipesRepository {}
 
-// ---------------------------------------------------------------------------
-// Core controllers (GetxController-based)
-// ---------------------------------------------------------------------------
-// LocationController and AuthController extend GetxController, which carries the
-// same `onStart`/`onDelete` InternalFinalCallback lifecycle fields as
-// GetxService, so they reuse [GetxServiceMock]'s no-op callback shim.
-
-/// Mock for [LocationController]. Used where collaborators only hold a typed
-/// reference and never drive its behavior (stub methods as needed per test).
-class MockLocationController extends GetxServiceMock implements LocationController {}
-
-/// Mock for [AuthController]. Used where collaborators only hold a typed
-/// reference and never drive its behavior (stub methods as needed per test).
-class MockAuthController extends GetxServiceMock implements AuthController {}
+/// Typed mock for callers that do not require Riverpod state ownership.
+class MockAuthController extends Mock implements AuthController {}
 
 // ---------------------------------------------------------------------------
 // Remote datasources
 // ---------------------------------------------------------------------------
 
 /// Mock for [PropertiesRemoteDatasource]. Covers: fetchProperties,
-/// fetchPropertyById, fetchPropertiesByIds, searchProperties.
+/// fetchPropertyById, searchProperties.
 class MockPropertiesRemoteDatasource extends Mock implements PropertiesRemoteDatasource {}
 
 /// Mock for [VisitsRemoteDatasource]. Covers: fetchVisitsSummary, scheduleVisit,
@@ -140,14 +101,9 @@ class MockVisitsRemoteDatasource extends Mock implements VisitsRemoteDatasource 
 
 /// Mock for [VisitsRepository]. Controllers depend on the repository, not the
 /// remote datasource.
-class MockVisitsRepository extends GetxServiceMock implements VisitsRepository {}
+class MockVisitsRepository extends Mock implements VisitsRepository {}
 
-/// Mock for [SwipesRemoteDatasource]. Covers: logSwipe, swipeProperty.
-class MockSwipesRemoteDatasource extends Mock implements SwipesRemoteDatasource {}
-
-/// Mock for [NotificationsRemoteDatasource]. Plain class (not a GetxService)
-/// constructed with an [ApiClient]. Required because [AuthController]'s field
-/// initializers `Get.find` it at construction time.
+/// Mock for the injected notification API.
 class MockNotificationsRemoteDatasource extends Mock implements NotificationsRemoteDatasource {}
 
 // ---------------------------------------------------------------------------
@@ -155,7 +111,7 @@ class MockNotificationsRemoteDatasource extends Mock implements NotificationsRem
 // ---------------------------------------------------------------------------
 
 /// Mock for [AssistantRepository]. Covers: streamChat, getConversations,
-/// getConversationMessages, getWidgetHtml, deleteConversation.
+/// getMessagesPage, getConversationMessages, getWidgetHtml, deleteConversation.
 class MockAssistantRepository extends Mock implements AssistantRepository {}
 
 /// Mock for [SseClient]. Covers: postStream.
@@ -175,7 +131,7 @@ UserModel testUserModel({
   String? phone,
   bool isVerified = false,
   bool isActive = true,
-  Map<String, dynamic>? preferences,
+  UserPreferences preferences = const UserPreferences(),
 }) {
   return UserModel(
     id: id,
@@ -205,7 +161,6 @@ UnifiedPropertyResponse testPropertyResponse({
     limit: limit,
     nextCursor: nextCursor,
     hasMore: hasMore,
-    filtersApplied: const <String, dynamic>{},
   );
 }
 
@@ -246,11 +201,8 @@ AgentModel testAgentModel({int id = 1}) {
   );
 }
 
-/// Mock for [PageStateService]. Covers: updateLocation, updateLocationForPage.
-class MockPageStateService extends GetxServiceMock implements PageStateService {}
-
 /// Mock for [GooglePlacesService]. Covers: getPlaceSuggestions, getPlaceDetails.
-class MockGooglePlacesService extends GetxServiceMock implements GooglePlacesService {}
+class MockGooglePlacesService extends Mock implements GooglePlacesService {}
 
-/// Mock for [OfflineQueueService] (GetxService lifecycle).
-class MockOfflineQueueService extends GetxServiceMock implements OfflineQueueService {}
+/// Mock for the injected offline queue.
+class MockOfflineQueueService extends Mock implements OfflineQueueService {}

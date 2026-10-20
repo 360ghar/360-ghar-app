@@ -1,64 +1,96 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
-import 'package:ghar360/core/data/models/unified_filter_model.dart';
-import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/core/data/models/unified_property_response.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import '../../helpers/property_query_test_support.dart';
 
 void main() {
-  group('PageStateService.normalizeLegacyStateForRuntime', () {
-    test('resets transient loading/pagination fields', () {
-      final legacy = PageStateModel(
-        pageType: PageType.discover,
-        selectedLocation: const LocationData(
-          name: 'Sector 10A, Gurugram',
-          latitude: 28.44574,
-          longitude: 77.008294,
-        ),
-        locationSource: LocationSource.gps,
-        filters: UnifiedFilterModel.initial(),
-        searchQuery: '2bhk',
-        properties: const [],
-        hasMore: false,
-        isLoading: true,
-        isLoadingMore: true,
-        isRefreshing: true,
-        error: NetworkException('stale loading'),
-        additionalData: const {'searchVisible': true},
-      );
-
-      final normalized = PageStateService.normalizeLegacyStateForRuntime(legacy);
-
-      expect(normalized.nextCursor, isNull);
-      expect(normalized.hasMore, isTrue);
-      expect(normalized.isLoading, isFalse);
-      expect(normalized.isLoadingMore, isFalse);
-      expect(normalized.isRefreshing, isFalse);
-      expect(normalized.error, isNull);
-      expect(normalized.properties, isEmpty);
-    });
-
-    test('preserves semantic state fields', () {
-      final legacy = PageStateModel(
-        pageType: PageType.likes,
-        selectedLocation: const LocationData(name: 'Delhi', latitude: 28.6139, longitude: 77.2090),
-        locationSource: LocationSource.manual,
-        filters: UnifiedFilterModel.initial().copyWith(purpose: 'rent'),
-        searchQuery: 'studio',
-        properties: const [],
-        additionalData: const {'currentSegment': 'passed'},
-        lastFetched: DateTime(2026, 2, 10),
-      );
-
-      final normalized = PageStateService.normalizeLegacyStateForRuntime(legacy);
-
-      expect(normalized.pageType, PageType.likes);
-      expect(normalized.selectedLocation?.name, 'Delhi');
-      expect(normalized.locationSource, LocationSource.manual);
-      expect(normalized.filters.purpose, 'rent');
-      expect(normalized.searchQuery, 'studio');
-      expect(normalized.additionalData?['currentSegment'], 'passed');
-      expect(normalized.lastFetched, DateTime(2026, 2, 10));
-    });
+  test('legacy import preserves semantic preferences but not in-flight runtime fields', () async {
+    final h = await PropertyQueryHarness.create(
+      legacy: {
+        'explore_state': {
+          'selectedLocation': {'name': 'Delhi', 'latitude': 28.6, 'longitude': 77.2},
+          'locationSource': 'gps',
+          'filters': {
+            'purpose': 'rent',
+            'price_min': 10,
+            'property_type': ['flat'],
+          },
+          'searchQuery': 'studio',
+          'isLoading': true,
+          'isLoadingMore': true,
+          'isRefreshing': true,
+          'error': 'private backend message',
+          'nextCursor': 'old cursor',
+          'hasMore': false,
+          'properties': [
+            {'id': 99},
+          ],
+          'lastFetched': '2026-01-01',
+          'additionalData': {'searchVisible': true},
+        },
+        'likes_state': {
+          'filters': {'purpose': 'rent'},
+          'additionalData': {'currentSegment': 'passed'},
+        },
+        'discover_state': {
+          'searchQuery': 'ignored',
+          'filters': {'purpose': 'buy'},
+        },
+      },
+    );
+    addTearDown(h.close);
+    final snapshot = h.database.readPreference<Map>('explore_state')!;
+    expect(snapshot['selectedLocation']['name'], 'Delhi');
+    expect(snapshot['locationSource'], 'manual');
+    for (final transient in [
+      'isLoading',
+      'isLoadingMore',
+      'isRefreshing',
+      'error',
+      'nextCursor',
+      'hasMore',
+      'properties',
+      'lastFetched',
+      'additionalData',
+    ]) {
+      expect(snapshot.containsKey(transient), false);
+    }
+    final filters = h.container.read(propertyFiltersProvider);
+    expect(filters.forPage(PageType.explore).purpose, 'rent');
+    expect(filters.forPage(PageType.explore).priceMin, 10);
+    expect(filters.forPage(PageType.explore).propertyType, ['apartment']);
+    expect(filters.forPage(PageType.explore).searchQuery, 'studio');
+    expect(filters.forPage(PageType.discover).searchQuery, isNull);
+    await h.container.read(propertyFiltersProvider.notifier).reset(PageType.explore);
+    h.container.invalidate(propertyFiltersProvider);
+    expect(h.container.read(propertyFiltersProvider).forPage(PageType.explore).searchQuery, isNull);
+    expect(
+      h.database.readPreference<Map>('likes_state')!['additionalData']['currentSegment'],
+      'passed',
+    );
+    h.properties.response = (_) async => const UnifiedPropertyResponse(items: [], hasMore: false);
+    await h.loaded();
+    expect(h.state().busy, false);
+    expect(h.state().items, isEmpty);
+    expect(h.state().error, isNull);
+  });
+  test('one corrupt legacy page does not prevent another page filter migration', () async {
+    final h = await PropertyQueryHarness.create(
+      legacy: {
+        'explore_state': {
+          'filters': {'price_min': 'bad'},
+        },
+        'likes_state': {
+          'filters': {'purpose': 'rent', 'price_min': 200},
+        },
+      },
+    );
+    addTearDown(h.close);
+    final filters = h.container.read(propertyFiltersProvider);
+    expect(filters.forPage(PageType.explore).purpose, 'buy');
+    expect(filters.forPage(PageType.likes).purpose, 'rent');
+    expect(filters.forPage(PageType.likes).priceMin, 200);
   });
 }

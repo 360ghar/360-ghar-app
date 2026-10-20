@@ -1,224 +1,196 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/controllers/location_controller.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
 import 'package:ghar360/core/widgets/common/unified_top_bar.dart';
-import '../../../helpers/getx_test_binding.dart';
-import '../../../helpers/mocks.dart';
-
-/// A minimal fake [PageStateService] that exposes reactive page states and
-/// the search/refresh helpers used by [UnifiedTopBar], without booting the
-/// full persistence + data-loader stack.
-class _FakePageStateService extends GetxServiceMock implements PageStateService {
-  _FakePageStateService({PageType? initialPage}) {
-    currentPageType.value = initialPage ?? PageType.discover;
-  }
-
-  @override
-  final Rx<PageStateModel> exploreState = PageStateModel.initial(
-    PageType.explore,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  final Rx<PageStateModel> discoverState = PageStateModel.initial(
-    PageType.discover,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  final Rx<PageStateModel> likesState = PageStateModel.initial(
-    PageType.likes,
-  ).copyWith(filters: const UnifiedFilterModel(purpose: 'buy')).obs;
-
-  @override
-  final Rx<PageType> currentPageType = PageType.discover.obs;
-
-  final RxBool _exploreRefreshing = false.obs;
-  final RxBool _discoverRefreshing = false.obs;
-  final RxBool _likesRefreshing = false.obs;
-
-  @override
-  PageStateModel getStateForPage(PageType pageType) {
-    switch (pageType) {
-      case PageType.explore:
-        return exploreState.value;
-      case PageType.discover:
-        return discoverState.value;
-      case PageType.likes:
-        return likesState.value;
-    }
-  }
-
-  @override
-  void updatePageState(PageType pageType, PageStateModel newState) {
-    switch (pageType) {
-      case PageType.explore:
-        exploreState.value = newState;
-        break;
-      case PageType.discover:
-        discoverState.value = newState;
-        break;
-      case PageType.likes:
-        likesState.value = newState;
-        break;
-    }
-  }
-
-  @override
-  bool isSearchVisible(PageType pageType) {
-    final state = getStateForPage(pageType);
-    return state.getAdditionalData<bool>('searchVisible') ?? false;
-  }
-
-  @override
-  void setSearchVisible(PageType pageType, bool visible) {
-    final state = getStateForPage(pageType);
-    updatePageState(pageType, state.updateAdditionalData('searchVisible', visible));
-  }
-
-  @override
-  void toggleSearch(PageType pageType) {
-    setSearchVisible(pageType, !isSearchVisible(pageType));
-  }
-
-  @override
-  bool isPageRefreshing(PageType pageType) {
-    switch (pageType) {
-      case PageType.explore:
-        return _exploreRefreshing.value;
-      case PageType.discover:
-        return _discoverRefreshing.value;
-      case PageType.likes:
-        return _likesRefreshing.value;
-    }
-  }
-
-  @override
-  void notifyPageRefreshing(PageType pageType, bool isRefreshing) {
-    switch (pageType) {
-      case PageType.explore:
-        _exploreRefreshing.value = isRefreshing;
-        break;
-      case PageType.discover:
-        _discoverRefreshing.value = isRefreshing;
-        break;
-      case PageType.likes:
-        _likesRefreshing.value = isRefreshing;
-        break;
-    }
-  }
-
-  @override
-  TextEditingController getOrCreateSearchController(PageType pageType, {String? seedText}) {
-    return TextEditingController(text: seedText);
-  }
-}
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import '../../../helpers/explore_test_harness.dart';
+import '../../../helpers/knife_finders.dart';
+import '../../../helpers/provider_test_app.dart';
 
 void main() {
-  late _FakePageStateService pageStateService;
-  late MockLocationController locationController;
-
-  setUp(() {
-    GetxTestBinding.init();
-    pageStateService = _FakePageStateService();
-    locationController = MockLocationController();
-    GetxTestBinding.bind()
-      ..register<PageStateService>(pageStateService)
-      ..register<LocationController>(locationController);
-  });
-  tearDown(() => GetxTestBinding.reset());
-
-  Future<void> pumpWidget(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(appBar: child as PreferredSizeWidget, body: const SizedBox()),
+  late ExploreTestHarness harness;
+  setUp(() => harness = ExploreTestHarness());
+  tearDown(() => harness.dispose());
+  Future<void> pump(
+    WidgetTester tester,
+    UnifiedTopBar bar, {
+    Locale locale = const Locale('en', 'US'),
+    double scale = 1,
+  }) async {
+    await tester.pumpProviderApp(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: Scaffold(appBar: bar, body: const SizedBox()),
       ),
+      locale: locale,
+      textScale: scale,
     );
+    await tester.pump();
   }
 
-  testWidgets('renders an AppBar with location selector and filter button', (tester) async {
-    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.discover, title: 'Test'));
-
-    expect(find.byType(UnifiedTopBar), findsOneWidget);
-    expect(find.byType(AppBar), findsOneWidget);
-    // Location selector is always present in the title row.
-    expect(find.byIcon(Icons.location_on), findsOneWidget);
-    // Filter button (tune icon) is always present.
-    expect(find.byIcon(Icons.tune), findsOneWidget);
-  });
-
-  testWidgets('shows search toggle for explore page', (tester) async {
-    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.explore, title: 'Explore'));
-
-    // Explore supports search → search toggle icon is rendered.
-    expect(find.byIcon(Icons.search), findsOneWidget);
-  });
-
-  testWidgets('does not show search toggle for discover page', (tester) async {
-    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.discover, title: 'Discover'));
-
-    // Discover does not support search → no search toggle icon.
-    expect(find.byIcon(Icons.search), findsNothing);
-    expect(find.byIcon(Icons.search_off), findsNothing);
-  });
-
-  testWidgets('tapping search toggle makes the search bar visible', (tester) async {
-    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.explore, title: 'Explore'));
-
-    // Initially no search input field.
-    expect(find.byType(TextField), findsNothing);
-
-    // Tap the search toggle.
-    await tester.tap(find.byIcon(Icons.search));
-    await tester.pumpAndSettle();
-
-    // Now the search TextField is visible.
-    expect(find.byType(TextField), findsOneWidget);
-    expect(pageStateService.isSearchVisible(PageType.explore), isTrue);
-  });
-
-  testWidgets('shows refresh indicator when page is refreshing', (tester) async {
-    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.discover, title: 'Discover'));
-
-    // No progress indicator initially.
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-
-    // Mark the page as refreshing.
-    pageStateService.notifyPageRefreshing(PageType.discover, true);
-    await tester.pump();
-
-    // Now a small CircularProgressIndicator is shown.
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-  });
-
-  testWidgets('shows filter badge count when active filters > 0', (tester) async {
-    // Seed explore state with an active filter (purpose counts as active).
-    pageStateService.exploreState.value = pageStateService.exploreState.value.copyWith(
-      filters: const UnifiedFilterModel(purpose: 'buy', propertyType: ['house']),
+  testWidgets('renders labelled location selector and filter button', (tester) async {
+    var taps = 0;
+    await pump(
+      tester,
+      UnifiedTopBar(pageType: PageType.discover, title: 'Discover', onFilterTap: () => taps++),
     );
-
-    await pumpWidget(tester, const UnifiedTopBar(pageType: PageType.explore, title: 'Explore'));
-
-    // The filter badge text shows the count.
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(findKnife(KnifeIcon.pin), findsOneWidget);
+    expect(findKnife(KnifeIcon.filter), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qa.topbar.filter.discover')));
+    expect(taps, 1);
+  });
+  testWidgets('Explore and Likes expose search directly; Discover omits it', (tester) async {
+    for (final page in PageType.values) {
+      await pump(tester, UnifiedTopBar(pageType: page, title: page.name));
+      expect(find.byType(TextField), page == PageType.discover ? findsNothing : findsOneWidget);
+    }
+  });
+  testWidgets('showSearch false removes input and uses custom bottom size', (tester) async {
+    const bar = UnifiedTopBar(
+      pageType: PageType.explore,
+      title: 'Explore',
+      showSearch: false,
+      bottom: PreferredSize(preferredSize: Size.fromHeight(32), child: Text('Status')),
+    );
+    await pump(tester, bar);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Status'), findsOneWidget);
+    expect(bar.preferredSize.height, kToolbarHeight + 32);
+    // Explore's search is a slip over the map, not part of its bar.
+    expect(const ExploreTopBar().preferredSize.height, kToolbarHeight);
+    expect(const DiscoverTopBar().preferredSize.height, kToolbarHeight);
+    await pump(tester, const ExploreTopBar());
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('qa.topbar.filter.explore')), findsOneWidget);
+  });
+  testWidgets('retained refresh indicator observes only the current feed', (tester) async {
+    await pump(tester, const ExploreTopBar());
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    harness.query.seed(
+      PropertyPageState(phase: PropertyLoadPhase.refreshing, items: [exploreProperty(1)]),
+    );
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    harness.query.seed(
+      PropertyPageState(phase: PropertyLoadPhase.content, items: [exploreProperty(1)]),
+    );
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+  testWidgets('active filter badge reflects provider state', (tester) async {
+    await harness.container
+        .read(propertyFiltersProvider.notifier)
+        .update(
+          PageType.explore,
+          const UnifiedFilterModel(purpose: 'buy', propertyType: ['house']),
+        );
+    await pump(tester, const ExploreTopBar());
     expect(find.text('1'), findsOneWidget);
+    expect(find.byTooltip('Filters (1)'), findsOneWidget);
   });
-
-  testWidgets('preferredSize is kToolbarHeight when search not visible', (tester) async {
-    final topBar = const UnifiedTopBar(pageType: PageType.discover, title: 'Discover');
-    expect(topBar.preferredSize.height, kToolbarHeight);
+  testWidgets('search edits, submit and clear keep callbacks and page persistence', (tester) async {
+    final changes = <String>[];
+    var clears = 0;
+    await pump(
+      tester,
+      UnifiedTopBar(
+        pageType: PageType.likes,
+        title: 'Likes',
+        onSearchChanged: changes.add,
+        onSearchClear: () => clears++,
+      ),
+    );
+    await tester.enterText(find.byType(TextField), 'Gurugram');
+    await tester.pump();
+    expect(
+      harness.container.read(propertyFiltersProvider).forPage(PageType.likes).searchQuery,
+      'Gurugram',
+    );
+    expect(
+      harness.container.read(propertyFiltersProvider).forPage(PageType.explore).searchQuery,
+      isNull,
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isFalse);
+    await tester.tap(find.byTooltip('Clear'));
+    await tester.pump();
+    expect(changes, ['Gurugram', '']);
+    expect(clears, 1);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
   });
-
-  testWidgets('preferredSize includes search bar height when search visible', (tester) async {
-    pageStateService.setSearchVisible(PageType.explore, true);
-    final topBar = const UnifiedTopBar(pageType: PageType.explore, title: 'Explore');
-    expect(topBar.preferredSize.height, kToolbarHeight + 52);
+  testWidgets('mounted input reflects restored state and page switch without text leak', (
+    tester,
+  ) async {
+    final filters = harness.container.read(propertyFiltersProvider.notifier);
+    await filters.search(PageType.explore, 'Delhi');
+    await filters.search(PageType.likes, 'Mumbai');
+    await pump(tester, const UnifiedTopBar(pageType: PageType.explore, title: 'Explore'));
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'Delhi');
+    await filters.search(PageType.explore, 'Pune');
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'Pune');
+    await pump(tester, const UnifiedTopBar(pageType: PageType.likes, title: 'Likes'));
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'Mumbai');
+  });
+  testWidgets('failed search persistence retains input with visible retry', (tester) async {
+    harness.database.writeError = StorageFailure('disk full');
+    await pump(tester, const UnifiedTopBar(pageType: PageType.explore, title: 'Explore'));
+    await tester.enterText(find.byType(TextField), 'Delhi');
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'Delhi');
+    final retry = find.byKey(const ValueKey('qa.topbar.filters.retry'));
+    expect(retry, findsOneWidget);
+    harness.database.writeError = null;
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(retry, findsNothing);
+    final stored = harness.database.preferences['property_filters_v1'] as Map;
+    expect(stored['explore']['search_query'], 'Delhi');
+  });
+  testWidgets('Hindi 2x 320px keyboard and save error retain usable filter and search', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    harness.database.writeError = StorageFailure('disk full');
+    await tester.pumpProviderApp(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: Builder(
+          builder: (context) => Scaffold(
+            appBar: UnifiedTopBar(
+              pageType: PageType.explore,
+              title: 'Explore',
+              onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: PageType.explore),
+            ),
+            body: const SizedBox(),
+          ),
+        ),
+      ),
+      locale: const Locale('hi', 'IN'),
+      textScale: 2,
+    );
+    await tester.enterText(find.byType(TextField), 'दिल्ली');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('qa.topbar.filters.retry')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qa.topbar.filter.explore')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isFalse);
+    expect(find.byKey(const ValueKey('qa.filters.apply')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

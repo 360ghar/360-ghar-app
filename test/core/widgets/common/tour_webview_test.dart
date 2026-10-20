@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
-import 'package:ghar360/core/widgets/common/tour_webview.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/widgets/common/tour_webview.dart';
 import '../../../helpers/fake_webview_platform.dart';
-import '../../../helpers/getx_test_binding.dart';
+import '../../../helpers/knife_finders.dart';
+import '../../../helpers/provider_test_app.dart';
 
 /// Mirrors the JS channel name [TourWebView] registers for the iframe
 /// load/error handshake.
@@ -20,37 +21,21 @@ const Duration _handshakeDeadline = Duration(seconds: 5);
 
 void main() {
   setUp(() {
-    GetxTestBinding.init();
     installFakeWebViewPlatform();
   });
   tearDown(() {
     uninstallFakeWebViewPlatform();
-    GetxTestBinding.reset();
   });
 
-  // Suppress RenderFlex overflow errors from the loading/error column layouts.
-  FlutterError.onError = (FlutterErrorDetails details) {
-    if (!details.summary.toString().contains('overflowed')) {
-      FlutterError.presentError(details);
-    }
-  };
-
   Future<void> pumpWidget(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: SizedBox(width: 400, height: 600, child: child)),
-      ),
-    );
+    await tester.pumpProviderApp(Scaffold(body: SizedBox(width: 400, height: 600, child: child)));
   }
 
   group('invalid URL fallback', () {
     testWidgets('shows error fallback for an invalid (non-http) URL', (tester) async {
       await pumpWidget(tester, const TourWebView(tourUrl: 'not-a-url'));
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.text('360° Tour Unavailable'), findsOneWidget);
       expect(find.text('Virtual tour could not be loaded'), findsOneWidget);
     });
@@ -58,14 +43,14 @@ void main() {
     testWidgets('shows error fallback for an empty URL', (tester) async {
       await pumpWidget(tester, const TourWebView(tourUrl: ''));
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.text('360° Tour Unavailable'), findsOneWidget);
     });
 
     testWidgets('shows error fallback for a javascript: URL', (tester) async {
       await pumpWidget(tester, const TourWebView(tourUrl: 'javascript:alert(1)'));
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.text('360° Tour Unavailable'), findsOneWidget);
     });
 
@@ -74,7 +59,7 @@ void main() {
     ) async {
       await pumpWidget(tester, const TourWebView(tourUrl: '', showDefaultError: false));
 
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(find.text('360° Tour Unavailable'), findsNothing);
     });
 
@@ -182,7 +167,7 @@ void main() {
       await tester.pump();
 
       // Error state rendered instead of the WebView.
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.text('360° Tour Unavailable'), findsOneWidget);
       expect(find.byType(WebViewWidget), findsNothing);
       expect(errorState, isTrue);
@@ -312,7 +297,7 @@ void main() {
       await tester.pump();
 
       expect(find.byType(WebViewWidget), findsOneWidget);
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(errorState, isNull);
     });
 
@@ -322,7 +307,7 @@ void main() {
       lastNavigationDelegate?.webResourceErrorCallback?.call(_FrameScopedError(true));
       await tester.pump();
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.byType(WebViewWidget), findsNothing);
     });
 
@@ -332,7 +317,7 @@ void main() {
       lastNavigationDelegate?.webResourceErrorCallback?.call(_FrameScopedError(null));
       await tester.pump();
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
   });
 
@@ -349,11 +334,11 @@ void main() {
 
       lastNavigationDelegate?.pageStartedCallback?.call('https://example.com/tour');
       await tester.pump();
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
 
       await tester.pump(_loadTimeout + const Duration(seconds: 1));
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(errorState, isTrue);
     });
@@ -366,7 +351,7 @@ void main() {
 
       await tester.pump(_loadTimeout + const Duration(seconds: 1));
 
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(find.byType(WebViewWidget), findsOneWidget);
     });
 
@@ -400,11 +385,11 @@ void main() {
       // embedded tour is dead. That must NOT cancel the watchdog.
       lastNavigationDelegate?.pageFinishedCallback?.call('about:blank');
       await tester.pump();
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
 
       await tester.pump(_loadTimeout + const Duration(seconds: 1));
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     testWidgets('an iframe onload signal renders the tour and cancels the watchdog', (
@@ -427,7 +412,7 @@ void main() {
 
       // Watchdog cancelled: no error even long past the timeout.
       await tester.pump(_loadTimeout + const Duration(seconds: 1));
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(errorState, isNull);
     });
 
@@ -437,7 +422,7 @@ void main() {
       lastWebViewController?.simulateJavaScriptMessage(_signalChannel, 'failed');
       await tester.pump();
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
     });
 
@@ -449,7 +434,7 @@ void main() {
       await tester.pump();
 
       expect(find.byType(WebViewWidget), findsOneWidget);
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
     });
 
     testWidgets('embed wrapper HTML posts a ready probe as the document parses', (tester) async {
@@ -468,7 +453,7 @@ void main() {
       await tester.pump(_loadTimeout + const Duration(seconds: 1));
 
       // Channel demonstrably works, so a missing 'loaded' means a dead iframe.
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     testWidgets('a late loaded signal after the watchdog error restores the tour', (tester) async {
@@ -485,7 +470,7 @@ void main() {
       // fires — the tour then sits on the error screen.
       lastWebViewController?.simulateJavaScriptMessage(_signalChannel, 'ready');
       await tester.pump(_loadTimeout + const Duration(seconds: 1));
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(errorState, isTrue);
 
       // The tour finally loads; the late 'loaded' signal must clear the error
@@ -493,7 +478,7 @@ void main() {
       lastWebViewController?.simulateJavaScriptMessage(_signalChannel, 'loaded');
       await tester.pump();
 
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(find.byType(WebViewWidget), findsOneWidget);
       expect(errorState, isFalse);
     });
@@ -517,12 +502,12 @@ void main() {
       // Crossing it clears the spinner — long before the 20s watchdog.
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(find.byType(WebViewWidget), findsOneWidget);
 
       // And the watchdog was stood down, so no late false error either.
       await tester.pump(_loadTimeout + const Duration(seconds: 1));
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(errorState, isNull);
     });
 
@@ -535,7 +520,7 @@ void main() {
       lastWebViewController?.simulateJavaScriptMessage(_signalChannel, 'ready');
       await tester.pump(_loadTimeout + const Duration(seconds: 1));
 
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(find.byType(WebViewWidget), findsOneWidget);
     });
 
@@ -547,7 +532,7 @@ void main() {
       await tester.pump();
 
       // Absence of a signal proves nothing, but an explicit failure is trusted.
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     // Never pumps past the timeout: a leaked timer must surface as pending.
@@ -576,10 +561,10 @@ void main() {
       // watchdog applies.
       await tester.pump(_handshakeDeadline + const Duration(seconds: 1));
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
 
       await tester.pump(_loadTimeout);
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
   });
 
@@ -595,16 +580,67 @@ void main() {
       await tester.pump();
 
       expect(find.byType(WebViewWidget), findsOneWidget);
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
       expect(lastWebViewController?.loadHtmlStringCalls, 1);
     });
 
     testWidgets('no retry is offered when the URL itself is invalid', (tester) async {
       await pumpWidget(tester, const TourWebView(tourUrl: 'not-a-url'));
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.text('Retry'), findsNothing);
     });
+  });
+  testWidgets('old native callbacks cannot finish a replacement URL', (tester) async {
+    await pumpWidget(tester, const TourWebView(tourUrl: 'https://example.com/old'));
+    final oldDelegate = lastNavigationDelegate!;
+    final oldController = lastWebViewController!;
+    await pumpWidget(tester, const TourWebView(tourUrl: 'https://example.com/new'));
+    expect(oldController.runJavaScriptScripts, contains('window.stop();'));
+    oldDelegate.pageFinishedCallback?.call('https://example.com/old');
+    oldDelegate.webResourceErrorCallback?.call(_FrameScopedError(true));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('360° Tour Unavailable'), findsNothing);
+    lastNavigationDelegate!.pageFinishedCallback?.call('https://example.com/new');
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+  testWidgets('background pauses media and removal stops loading without late effects', (
+    tester,
+  ) async {
+    await pumpWidget(tester, const TourWebView(tourUrl: 'https://example.com/tour'));
+    final controller = lastWebViewController!;
+    final delegate = lastNavigationDelegate!;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(controller.runJavaScriptScripts.any((script) => script.contains('media.pause()')), true);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(controller.runJavaScriptScripts, contains('window.stop();'));
+    delegate.pageFinishedCallback?.call('https://example.com/tour');
+    await tester.pump(const Duration(seconds: 30));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('asynchronous native configuration failure shows inline retry', (tester) async {
+    WebViewPlatform.instance = FakeWebViewPlatform(
+      configurationError: StateError('private configuration detail'),
+    );
+    await pumpWidget(tester, const TourWebView(tourUrl: 'https://example.com/tour'));
+    await tester.pump();
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.textContaining('private configuration'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+  testWidgets('small embedded error respects large text without overflow', (tester) async {
+    await tester.pumpProviderApp(
+      const Scaffold(
+        body: SizedBox(width: 280, height: 120, child: TourWebView(tourUrl: 'invalid')),
+      ),
+      textScale: 2,
+    );
+    expect(find.text('360° Tour Unavailable'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
 

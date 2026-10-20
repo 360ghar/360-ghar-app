@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:ghar360/core/network/auth_header_provider.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   group('AuthHeaderProvider', () {
@@ -35,6 +36,62 @@ void main() {
       expect(refreshCalls, 1);
       expect(header, isNotNull);
       expect(header!['Authorization'], equals('Bearer ${refreshedSession.accessToken}'));
+    });
+
+    test('account change detaches old refresh and rejects its eventual header', () async {
+      final userA = _testUser();
+      const userB = User(
+        id: 'user-b',
+        appMetadata: {},
+        userMetadata: {},
+        aud: 'authenticated',
+        createdAt: '2026-01-01T00:00:00Z',
+      );
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      var session = _sessionWithExpiry(
+        token: _jwtWithExp(now - 10, subject: userA.id),
+        user: userA,
+      );
+      final oldRefresh = Completer<AuthResponse>();
+      final started = Completer<void>();
+      var refreshCalls = 0;
+      final provider = AuthHeaderProvider(
+        currentSessionProvider: () => session,
+        refreshSession: () {
+          if (++refreshCalls == 1) {
+            started.complete();
+            return oldRefresh.future;
+          }
+          session = _sessionWithExpiry(
+            token: _jwtWithExp(now + 3600, subject: userB.id),
+            user: userB,
+          );
+          return Future.value(AuthResponse(session: session));
+        },
+      );
+      final pending = provider.getAuthHeader();
+      final assertion = expectLater(
+        pending,
+        throwsA(isA<NetworkException>().having((error) => error.code, 'code', 'CANCELLED')),
+      );
+      await started.future;
+      provider.invalidateSession();
+      session = _sessionWithExpiry(
+        token: _jwtWithExp(now - 10, subject: userB.id),
+        user: userB,
+      );
+      final headerB = await provider.getAuthHeader();
+      expect(headerB?['Authorization'], 'Bearer ${session.accessToken}');
+      expect(refreshCalls, 2);
+      oldRefresh.complete(
+        AuthResponse(
+          session: _sessionWithExpiry(
+            token: _jwtWithExp(now + 3600, subject: userA.id),
+            user: userA,
+          ),
+        ),
+      );
+      await assertion;
     });
 
     // -----------------------------------------------------------------------

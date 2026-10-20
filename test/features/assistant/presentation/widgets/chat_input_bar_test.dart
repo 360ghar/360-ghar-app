@@ -1,29 +1,15 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/features/assistant/presentation/widgets/chat_input_bar.dart';
-import '../../../../helpers/getx_test_binding.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 void main() {
-  setUp(() => GetxTestBinding.init());
-  tearDown(() => GetxTestBinding.reset());
-
   Future<void> pumpBar(WidgetTester tester, Widget child, {bool withTranslations = true}) async {
-    await tester.pumpWidget(
-      withTranslations
-          ? GetMaterialApp(
-              translations: AppTranslations(),
-              locale: const Locale('en', 'US'),
-              fallbackLocale: const Locale('en', 'US'),
-              home: Scaffold(body: Center(child: child)),
-            )
-          : MaterialApp(
-              home: Scaffold(body: Center(child: child)),
-            ),
-    );
+    await tester.pumpProviderApp(Scaffold(body: Center(child: child)));
   }
 
   testWidgets('renders text field with hint text', (tester) async {
@@ -36,15 +22,15 @@ void main() {
   testWidgets('renders send button with arrow icon when not streaming', (tester) async {
     await pumpBar(tester, ChatInputBar(onSend: (_) {}));
 
-    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.stop_rounded), findsNothing);
+    expect(findKnife(KnifeIcon.arrowUpRight), findsOneWidget);
+    expect(findKnife(KnifeIcon.stop), findsNothing);
   });
 
   testWidgets('renders stop button when streaming', (tester) async {
     await pumpBar(tester, ChatInputBar(onSend: (_) {}, isStreaming: true, onCancel: () {}));
 
-    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_upward_rounded), findsNothing);
+    expect(findKnife(KnifeIcon.stop), findsOneWidget);
+    expect(findKnife(KnifeIcon.arrowUpRight), findsNothing);
   });
 
   testWidgets('calls onSend with trimmed text when send button tapped', (tester) async {
@@ -54,7 +40,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '  Hello world  ');
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.tap(findKnife(KnifeIcon.arrowUpRight));
     await tester.pump();
 
     expect(sentText, 'Hello world');
@@ -66,7 +52,7 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Test message');
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.tap(findKnife(KnifeIcon.arrowUpRight));
     await tester.pump();
 
     expect(find.text('Test message'), findsNothing);
@@ -76,7 +62,7 @@ void main() {
     var sendCount = 0;
     await pumpBar(tester, ChatInputBar(onSend: (_) => sendCount++));
 
-    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.tap(findKnife(KnifeIcon.arrowUpRight));
     await tester.pump();
 
     expect(sendCount, 0);
@@ -89,7 +75,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '   ');
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.tap(findKnife(KnifeIcon.arrowUpRight));
     await tester.pump();
 
     expect(sendCount, 0);
@@ -101,7 +87,7 @@ void main() {
 
     // When streaming, the send button is replaced by stop button.
     // There is no send button to tap.
-    expect(find.byIcon(Icons.arrow_upward_rounded), findsNothing);
+    expect(findKnife(KnifeIcon.arrowUpRight), findsNothing);
     expect(sendCount, 0);
   });
 
@@ -112,7 +98,7 @@ void main() {
       ChatInputBar(onSend: (_) {}, isStreaming: true, onCancel: () => cancelCount++),
     );
 
-    await tester.tap(find.byIcon(Icons.stop_rounded));
+    await tester.tap(findKnife(KnifeIcon.stop));
     await tester.pump();
 
     expect(cancelCount, 1);
@@ -124,10 +110,7 @@ void main() {
     // The GestureDetector wrapping the send button should have null onTap
     // when there is no text.
     final gestureDetector = tester.widget<GestureDetector>(
-      find.ancestor(
-        of: find.byIcon(Icons.arrow_upward_rounded),
-        matching: find.byType(GestureDetector),
-      ),
+      find.ancestor(of: findKnife(KnifeIcon.arrowUpRight), matching: find.byType(GestureDetector)),
     );
     expect(gestureDetector.onTap, isNull);
   });
@@ -139,10 +122,7 @@ void main() {
     await tester.pump();
 
     final gestureDetector = tester.widget<GestureDetector>(
-      find.ancestor(
-        of: find.byIcon(Icons.arrow_upward_rounded),
-        matching: find.byType(GestureDetector),
-      ),
+      find.ancestor(of: findKnife(KnifeIcon.arrowUpRight), matching: find.byType(GestureDetector)),
     );
     expect(gestureDetector.onTap, isNotNull);
   });

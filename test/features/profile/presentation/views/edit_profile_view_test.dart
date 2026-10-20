@@ -1,287 +1,166 @@
-// test/features/profile/presentation/views/edit_profile_view_test.dart
-//
-// Widget tests for [EditProfileView]. Covers:
-// - Avatar overlay spinner when isUploadingImage is true (form stays mounted)
-// - Form fields rendering (name, email, location)
-// - Email field is disabled (read-only)
-// - Profile avatar shows user initial when no image URL
-// - Profile avatar shows error fallback when image URL is invalid
-// - Date of birth placeholder text when no date selected
-// - Date of birth formatted text and clear button when date is set
-// - Save button renders and triggers saveProfile
-// - Pick image button triggers pickProfileImage
-// - Tapping date of birth triggers selectDateOfBirth
-// - Name validation shows error for empty input
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/controllers/auth_controller.dart';
+
 import 'package:ghar360/core/data/models/user_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
-import 'package:ghar360/features/profile/data/profile_repository.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/profile/presentation/controllers/edit_profile_controller.dart';
 import 'package:ghar360/features/profile/presentation/views/edit_profile_view.dart';
-import 'package:mocktail/mocktail.dart';
-
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/profile_test_harness.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  late MockAuthController authController;
-  late MockProfileRepository profileRepository;
-
-  setUp(() {
-    // Suppress RenderFlex overflow errors that occur in narrow test screens.
-    FlutterError.onError = (details) {
-      if (!details.summary.toString().contains('overflowed')) {
-        FlutterError.presentError(details);
-      }
-    };
-
-    GetxTestBinding.init();
-
-    authController = MockAuthController();
-    profileRepository = MockProfileRepository();
-
-    // Default: no current user (controller handles null gracefully).
-    when(() => authController.currentUser).thenReturn(Rxn<UserModel>());
-    when(() => authController.updateUserProfile(any())).thenAnswer((_) async => true);
-
-    GetxTestBinding.bind()
-      ..register<AuthController>(authController)
-      ..register<ProfileRepository>(profileRepository);
-  });
-
-  tearDown(() {
-    FlutterError.onError = FlutterError.presentError;
-    GetxTestBinding.reset();
-  });
-
-  /// Builds and registers an [EditProfileController] (invoking onInit via
-  /// Get.put) so the [GetView] can resolve it.
-  EditProfileController registerController() {
-    final controller = EditProfileController();
-    Get.put<EditProfileController>(controller);
-    return controller;
-  }
-
-  Future<void> pumpView(WidgetTester tester) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: const EditProfileView(),
-      ),
-    );
+  late ProfileHarness h;
+  setUp(() => h = ProfileHarness());
+  tearDown(() => h.close());
+  Finder key(String value) => find.byKey(ValueKey('qa.profile.edit.$value'));
+  Future<void> pump(WidgetTester tester) => h.pump(tester, const EditProfileView());
+  Future<void> save(WidgetTester tester) async {
+    await tester.ensureVisible(key('save'));
+    await tester.pumpAndSettle();
+    await tester.tap(key('save'));
     await tester.pump();
   }
 
-  group('EditProfileView', () {
-    testWidgets('shows avatar overlay spinner when isUploadingImage is true', (tester) async {
-      final controller = registerController();
-      controller.isUploadingImage.value = true;
-
-      await pumpView(tester);
-
-      // Form stays mounted; spinner is only on the avatar.
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.profile.edit.full_name_input')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.profile.edit.save')), findsOneWidget);
-    });
-
-    testWidgets('renders form fields and save button when not loading', (tester) async {
-      registerController();
-
-      await pumpView(tester);
-
-      expect(find.byKey(const ValueKey('qa.profile.edit.full_name_input')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.profile.edit.email_input')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.profile.edit.location_input')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.profile.edit.save')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.profile.edit.pick_image')), findsOneWidget);
-    });
-
-    testWidgets('email field is disabled (read-only)', (tester) async {
-      registerController();
-
-      await pumpView(tester);
-
-      final emailField = tester.widget<TextFormField>(
-        find.byKey(const ValueKey('qa.profile.edit.email_input')),
-      );
-      expect(emailField.enabled, isFalse);
-    });
-
-    testWidgets('name field is enabled', (tester) async {
-      registerController();
-
-      await pumpView(tester);
-
-      final nameField = tester.widget<TextFormField>(
-        find.byKey(const ValueKey('qa.profile.edit.full_name_input')),
-      );
-      expect(nameField.enabled, isTrue);
-    });
-
-    testWidgets('shows user initial in avatar when no profile image and name set', (tester) async {
-      final user = testUserModel(fullName: 'Alice', email: 'alice@example.com');
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-
-      final controller = registerController();
-      controller.profileImageUrl.value = '';
-
-      await pumpView(tester);
-
-      // The avatar shows the first letter of the name uppercased.
-      expect(find.text('A'), findsOneWidget);
-    });
-
-    testWidgets('shows "U" fallback when no profile image and empty name', (tester) async {
-      registerController();
-
-      await pumpView(tester);
-
-      // No name set → fallback 'U'.
-      expect(find.text('U'), findsOneWidget);
-    });
-
-    testWidgets('shows date of birth placeholder when no date selected', (tester) async {
-      registerController();
-
-      await pumpView(tester);
-
-      expect(find.text('select_your_date_of_birth'.tr), findsOneWidget);
-      expect(find.byIcon(Icons.clear), findsNothing);
-    });
-
-    testWidgets('shows formatted date and clear button when date is set', (tester) async {
-      final controller = registerController();
-      controller.dateOfBirth.value = DateTime(1995, 6, 15);
-
-      await pumpView(tester);
-
-      expect(find.text('15/06/1995'), findsOneWidget);
-      expect(find.byIcon(Icons.clear), findsOneWidget);
-    });
-
-    testWidgets('tapping clear button clears the date of birth', (tester) async {
-      final controller = registerController();
-      controller.dateOfBirth.value = DateTime(1995, 6, 15);
-
-      await pumpView(tester);
-      expect(controller.dateOfBirth.value, isNotNull);
-
-      // The clear icon is inside a scrollable; ensure it is visible first.
-      await tester.ensureVisible(find.byIcon(Icons.clear));
-      await tester.pump();
-      await tester.tap(find.byIcon(Icons.clear), warnIfMissed: false);
-      await tester.pump();
-
-      expect(controller.dateOfBirth.value, isNull);
-    });
-
-    testWidgets('tapping save button calls saveProfile', (tester) async {
-      final user = testUserModel(fullName: 'Alice', email: 'alice@example.com');
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-      when(() => authController.updateUserProfile(any())).thenAnswer((_) async => true);
-
-      final controller = registerController();
-      controller.nameController.text = 'Alice';
-      controller.profileImageUrl.value = '';
-      controller.dateOfBirth.value = null;
-
-      await pumpView(tester);
-
-      // The save button may be off-screen inside the scrollable.
-      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.edit.save')));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('qa.profile.edit.save')), warnIfMissed: false);
-      await tester.pump();
-
-      verify(() => authController.updateUserProfile(any())).called(1);
-    });
-
-    testWidgets('tapping pick image button opens image source bottom sheet', (tester) async {
-      registerController();
-
-      await pumpView(tester);
-
-      // Tap the camera icon button to open the image picker bottom sheet.
-      await tester.tap(find.byKey(const ValueKey('qa.profile.edit.pick_image')));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // The bottom sheet offers camera and gallery options.
-      expect(find.text('take_photo'.tr), findsOneWidget);
-      expect(find.text('choose_from_gallery'.tr), findsOneWidget);
-
-      // Dismiss the bottom sheet.
-      Get.back<void>();
-      await tester.pump(const Duration(milliseconds: 100));
-    });
-
-    testWidgets('tapping date of birth field triggers selectDateOfBirth', (tester) async {
-      registerController();
-
-      await pumpView(tester);
-
-      // The DOB field may be off-screen; scroll it into view first.
-      await tester.ensureVisible(find.byKey(const ValueKey('qa.profile.edit.dob_input')));
-      await tester.pump();
-
-      // Tapping the DOB GestureDetector opens a date picker dialog.
-      await tester.tap(
-        find.byKey(const ValueKey('qa.profile.edit.dob_input')),
-        warnIfMissed: false,
-      );
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // A date picker dialog should be shown.
-      expect(find.byType(Dialog), findsWidgets);
-    });
-
-    testWidgets('save button text shows save_changes when not loading', (tester) async {
-      registerController();
-
-      await pumpView(tester);
-
-      expect(find.text('save_changes'.tr), findsOneWidget);
-    });
-
-    testWidgets('renders profile image fallback when URL is invalid', (tester) async {
-      final user = testUserModel(fullName: 'Bob', email: 'bob@example.com');
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-
-      final controller = registerController();
-      // Invalid URL → RobustNetworkImage shows the errorWidget (CircleAvatar
-      // with initial).
-      controller.profileImageUrl.value = 'not-a-real-url';
-
-      await pumpView(tester);
-
-      // The error fallback avatar shows the first letter of the name.
-      expect(find.text('B'), findsWidgets);
-    });
-
-    testWidgets('loads user data into form fields on init', (tester) async {
-      final user = testUserModel(fullName: 'John Doe', email: 'john@example.com').copyWith(
-        profileImageUrl: '',
+  testWidgets('loads user fields, avatar initial and birth date', (tester) async {
+    h.session.initial = h.session.initial.copyWith(
+      user: profile().copyWith(
+        fullName: 'Alice',
+        email: 'alice@example.com',
         dateOfBirth: '1995-06-15',
-        preferences: {'location': 'Mumbai'},
-      );
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
+        preferences: const UserPreferences(locationPreference: ['Mumbai']),
+      ),
+    );
+    await pump(tester);
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('Alice'), findsOneWidget);
+    expect(find.text('alice@example.com'), findsOneWidget);
+    expect(find.text('Mumbai'), findsOneWidget);
+    expect(find.text('15/06/1995'), findsOneWidget);
+    expect(tester.widget<TextFormField>(key('email_input')).enabled, isFalse);
+    expect(tester.widget<TextFormField>(key('full_name_input')).enabled, isTrue);
+  });
+  testWidgets('no saved place displays empty', (tester) async {
+    h.session.initial = h.session.initial.copyWith(
+      user: profile().copyWith(preferences: const UserPreferences()),
+    );
+    await pump(tester);
+    expect(tester.widget<TextFormField>(key('location_input')).controller!.text, isEmpty);
+  });
+  testWidgets('null user has empty local form and fallback avatar', (tester) async {
+    h.session.initial = h.session.initial.copyWith(user: null);
+    await pump(tester);
+    expect(find.text('U'), findsOneWidget);
+    expect(find.text(tr('select_your_date_of_birth')), findsOneWidget);
+  });
+  testWidgets('invalid date has placeholder and can open date picker', (tester) async {
+    h.session.initial = h.session.initial.copyWith(
+      user: profile().copyWith(dateOfBirth: 'not-a-date'),
+    );
+    await pump(tester);
+    expect(find.text(tr('select_your_date_of_birth')), findsOneWidget);
+    await tester.ensureVisible(key('dob_input'));
+    await tester.pump();
+    await tester.tap(key('dob_input'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+  });
+  testWidgets('clear birth date is persisted as null', (tester) async {
+    await pump(tester);
+    await tester.ensureVisible(findKnife(KnifeIcon.close));
+    await tester.pump();
+    await tester.tap(findKnife(KnifeIcon.close));
+    await tester.pump();
+    expect(find.text(tr('select_your_date_of_birth')), findsOneWidget);
+    await save(tester);
+    await tester.pumpAndSettle();
+    expect(h.session.lastProfile!['date_of_birth'], isNull);
+    expect(find.text('Back destination'), findsOneWidget);
+  });
+  testWidgets('empty name validates without submitting', (tester) async {
+    await pump(tester);
+    await tester.enterText(key('full_name_input'), '');
+    await save(tester);
+    expect(h.session.lastProfile, isNull);
+    expect(find.text(tr('name_required')), findsOneWidget);
+  });
+  testWidgets('failed save retains local draft and route, retry succeeds', (tester) async {
+    h.session.save = () async => throw NetworkException('offline');
+    await pump(tester);
+    await tester.enterText(key('full_name_input'), 'Draft Name');
+    await save(tester);
+    await tester.pumpAndSettle();
+    expect(find.byType(EditProfileView), findsOneWidget);
+    expect(find.text('Draft Name'), findsOneWidget);
+    expect(h.container.read(editProfileProvider).error, isA<NetworkException>());
+    h.session.save = null;
+    await save(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('Back destination'), findsOneWidget);
+    expect(h.session.lastProfile!['full_name'], 'Draft Name');
+  });
+  testWidgets('avatar upload keeps the form mounted and drafts intact', (tester) async {
+    final pending = Completer<bool>();
+    h.session.upload = () => pending.future;
+    await pump(tester);
+    await tester.enterText(key('full_name_input'), 'Draft');
+    final future = h.container.read(editProfileProvider.notifier).uploadImage('/photo.jpg');
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Draft'), findsOneWidget);
+    expect(key('save'), findsOneWidget);
+    pending.complete(true);
+    await future;
+    await tester.pump();
+    expect(find.text('Draft'), findsOneWidget);
+  });
+  testWidgets('image source sheet offers camera and gallery then cancels', (tester) async {
+    await pump(tester);
+    await tester.tap(key('pick_image'));
+    await tester.pumpAndSettle();
+    expect(find.text(tr('take_photo')), findsOneWidget);
+    expect(find.text(tr('choose_from_gallery')), findsOneWidget);
+    Navigator.of(tester.element(find.text(tr('take_photo')))).pop();
+    await tester.pumpAndSettle();
+    expect(h.session.lastImage, isNull);
+  });
+  testWidgets('invalid avatar URL uses user initial', (tester) async {
+    h.session.initial = h.session.initial.copyWith(
+      user: profile().copyWith(fullName: 'Bob', profileImageUrl: 'invalid-url'),
+    );
+    await pump(tester);
+    expect(find.text('B'), findsOneWidget);
+  });
+  testWidgets('server field errors show under their fields and keep the draft', (tester) async {
+    h.session.save = () async => throw ValidationException(
+      'The request was not valid.',
+      code: 'VALIDATION_ERROR',
+      fieldErrors: {
+        'full_name': ['string_too_long'],
+        'date_of_birth': ['date_from_datetime_parsing'],
+        'preferences.location': ['string_type'],
+      },
+    );
+    await pump(tester);
+    await tester.enterText(key('full_name_input'), 'A very long draft name');
+    await tester.enterText(key('location_input'), 'Draft city');
+    await save(tester);
+    await tester.pumpAndSettle();
 
-      final controller = registerController();
+    expect(find.byType(EditProfileView), findsOneWidget);
+    expect(find.text('A very long draft name'), findsOneWidget);
+    expect(find.text('Draft city'), findsOneWidget);
+    expect(find.text(tr('field_error_too_long')), findsOneWidget);
+    expect(find.text(tr('field_error_invalid')), findsNWidgets(2));
+    expect(find.text(tr('form_check_fields')), findsOneWidget);
+    expect(find.text('VALIDATION_ERROR'), findsNothing);
 
-      await pumpView(tester);
-
-      expect(controller.nameController.text, 'John Doe');
-      expect(controller.emailController.text, 'john@example.com');
-      expect(controller.locationController.text, 'Mumbai');
-      expect(find.text('15/06/1995'), findsOneWidget);
-    });
+    await tester.enterText(key('full_name_input'), 'Shorter');
+    await tester.pump();
+    expect(find.text(tr('field_error_too_long')), findsNothing);
+    expect(find.text(tr('field_error_invalid')), findsNWidgets(2));
   });
 }

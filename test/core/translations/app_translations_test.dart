@@ -2,30 +2,20 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/translations/app_messages.dart';
 
 void main() {
   test('contains required translation keys in supported locales', () {
-    final keys = AppTranslations().keys;
+    final keys = appMessages;
     const required = <String>[
       'Call',
       'WhatsApp',
-      'profile_picture',
       'unavailable',
       'agent_contact_unavailable',
       'could_not_open_phone_dialer',
       'could_not_open_whatsapp',
-      'auth_phone_title',
-      'auth_phone_subtitle',
       'auth_login_subtitle',
-      'auth_signup_personal_subtitle',
       'auth_signup_security_title',
-      'auth_signup_security_subtitle',
-      'auth_chip_verified',
-      'auth_chip_transparent',
-      'auth_chip_support',
-      'auth_chip_private',
-      'auth_chip_secure',
       'onboarding_slide_1_title',
       'onboarding_slide_1_desc',
       'onboarding_slide_2_title',
@@ -45,7 +35,7 @@ void main() {
   });
 
   test('new translation keys exist in both en_US and hi_IN', () {
-    final keys = AppTranslations().keys;
+    final keys = appMessages;
     const newKeys = <String>[
       'take_photo',
       'choose_from_gallery',
@@ -76,7 +66,7 @@ void main() {
   // which is why 24 auth/onboarding keys silently existed in en_US only, and
   // why 'property_purpose' and 'complete' were rendered to users as raw keys.
   test('en_US and hi_IN define exactly the same keys', () {
-    final keys = AppTranslations().keys;
+    final keys = appMessages;
     final en = keys['en_US']!.keys.toSet();
     final hi = keys['hi_IN']!.keys.toSet();
 
@@ -93,13 +83,13 @@ void main() {
   });
 
   test('every translation key referenced in lib/ is defined in both locales', () {
-    final keys = AppTranslations().keys;
+    final keys = appMessages;
     final en = keys['en_US']!;
     final hi = keys['hi_IN']!;
 
-    // Matches `'some_key'.tr` and `'some_key'.trParams({...})`. Keys composed
+    // Matches literal Flutter localization lookups. Keys composed
     // at runtime (e.g. 'doc_$id') are not literals and are correctly skipped.
-    final pattern = RegExp(r"'([a-z0-9_]+)'\s*\.tr(Params)?\b");
+    final pattern = RegExp(r"(?:\.text|authFailureMessageKey)\(\s*'([a-z0-9_]+)'");
     final referenced = <String, String>{};
 
     for (final entity in Directory('lib').listSync(recursive: true)) {
@@ -120,7 +110,8 @@ void main() {
     expect(
       undefined..sort(),
       isEmpty,
-      reason: 'GetX renders the key itself when a lookup misses, so these show as raw text',
+      reason:
+          'The localization fallback renders the key itself when a lookup misses, so these show as raw text',
     );
   });
 }
