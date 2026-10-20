@@ -9,6 +9,8 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -97,7 +99,7 @@ jobs:
           PY
 
       - name: Upload coverage to Codecov
-        if: github.event_name == 'push' && secrets.CODECOV_TOKEN != ''
+        if: github.event_name == 'push' && env.CODECOV_TOKEN != ''
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -107,5 +109,5 @@ jobs:
           fail_ci_if_error: true
 
       - name: Skip Codecov upload (no token)
-        if: github.event_name == 'push' && secrets.CODECOV_TOKEN == ''
+        if: github.event_name == 'push' && env.CODECOV_TOKEN == ''
         run: echo "CODECOV_TOKEN is not set; skipping Codecov upload."
