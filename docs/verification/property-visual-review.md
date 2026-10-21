@@ -1,6 +1,6 @@
 # Property screen visual verification
 
-[Open the 38-image gallery](property-visuals.html). Source images are in `test/visual/goldens/`; test definitions are in `test/visual/property_screens_golden_test.dart`.
+[Open the 38-image gallery](property-visuals.html). The gallery was captured before the empty, error and 834px variants were added: the test now generates 68 comparisons (five states, 834px content variants and two after-scroll images), and `property-visuals.html` shows 38 of them. The goldens in `test/visual/goldens/` are the full set. Source images are in `test/visual/goldens/`; test definitions are in `test/visual/property_screens_golden_test.dart`.
 
 ## Scope and result
 
@@ -28,7 +28,7 @@ The compact Saved cards use one column; the 390px layout uses two. Long card tit
 
 ## Fonts and boundaries
 
-[Font provenance and licenses](../../assets/fonts/README.md) cover unchanged Manrope, Sora and Noto Sans Devanagari files from the official Google Fonts repository. The app no longer fetches fonts at runtime. `sources.json` pins source revision and file hashes. The font files total 918,044 bytes; licenses are bundled.
+[Font provenance and licenses](../../assets/fonts/README.md) cover the bundled Erode (Fontshare) and Noto Serif Devanagari files. The app no longer fetches fonts at runtime. `sources.json` pins source revision and file hashes. The bundled TTFs total 1,815,424 bytes; licenses are bundled.
 
 These are widget screenshots on the macOS Flutter test renderer. They do not prove native MapLibre tile rendering, GPS/permission behavior, OAuth, WebView, push notifications, platform text rendering, or device frame performance. The native canvas is clearly labeled. Shell navigation and other journeys have separate tests and native evidence. No before/after performance improvement is claimed.
 

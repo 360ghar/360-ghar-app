@@ -1,12 +1,14 @@
 # Riverpod migration verification
 
+> Evidence note: screenshots, native XML captures and JSON observations cited here are scratch artifacts kept on the verification machine. They are not committed (see `.gitignore`), so links to them do not resolve in a clone.
+
 Verification snapshot: **25 September 2026**, Flutter **3.47.4**, Dart **3.13.3**, macOS ARM64. Source and automated checks pass. The isolated iOS fixture journeys below pass; credentialed services and physical-device acceptance remain open. No release was published and no production account, booking, or data write was used.
 
 ## Automated results
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Full test suite | **3,390 passed, 0 skipped, 0 failed**, 124s | `/tmp/360ghar-final-tests-4.log` |
+| Full test suite | **3,390 passed, 0 skipped, 0 failed**, 124s (2026-10-21 rerun after the merge with main: 3,661 passed, 0 failed; 92.36% line coverage; `flutter test test/contract` 257 passed) | `/tmp/360ghar-final-tests-4.log` |
 | Line coverage | **91.67%**: 17,035 / 18,582 lines across 235 instrumented files | `coverage/lcov.info`; LF/LH totals agree with deduplicated DA records |
 | Coverage gate | **85%, unchanged** | [CI workflow](../../.github/workflows/lint.yaml), byte-identical to HEAD during the audit |
 | Analyzer | No issues, 14.3s | `/tmp/360ghar-final-analyze-3.log` |

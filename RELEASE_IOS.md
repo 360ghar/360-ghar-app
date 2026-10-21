@@ -1,6 +1,6 @@
 # ghar360 — iOS App Store Submission Guide
 
-End-to-end checklist for shipping **ghar360** (`1.0.9+15`, bundle `com.the360ghar.ghar360`, iOS 15.0+, team `HMWGCVU4SV`) to the App Store. Work top-to-bottom. Items marked **[external]** must be done outside this repo (browser / console / backend).
+End-to-end checklist for shipping **ghar360** (`1.0.9+16`, bundle `com.the360ghar.ghar360`, iOS 15.0+, team `HMWGCVU4SV`) to the App Store. Work top-to-bottom. Items marked **[external]** must be done outside this repo (browser / console / backend).
 
 > Companion: `docs/ACCOUNT_DELETION_CONTRACT.md` (the backend endpoint the app depends on).
 
@@ -30,7 +30,7 @@ iOS cannot reuse the Web/Android OAuth client for the native redirect. In the **
 Implement `POST /api/v1/auth/delete-account` (authenticated, bearer session token). See `docs/ACCOUNT_DELETION_CONTRACT.md`. Server must hard-delete **or** soft-delete (`deleted_at` + revoke all sessions/refresh tokens + block future auth) so the account is **unusable after deletion** (Apple verifies this). Without it, deletion surfaces a 404 and the app will be rejected.
 
 ### 1.3 Universal Links — host the AASA file **[external — web/infra]**
-The app declares `applinks:` for `360ghar.com` and `www.360ghar.com`, plus `webcredentials:***********`. Each domain must serve a valid **apple-app-site-association** JSON at:
+The app declares `applinks:` for `360ghar.com` and `www.360ghar.com`, plus `webcredentials:360ghar.com`. Each domain must serve a valid **apple-app-site-association** JSON at:
 - `https://<domain>/.well-known/apple-app-site-association` **and** `https://<domain>/apple-app-site-association`
 containing team ID `HMWGCVU4SV`, bundle id `com.the360ghar.ghar360`, under `applinks` and `webcredentials`. If missing, universal links silently fail (property deep links won't open the app).
 
@@ -112,7 +112,9 @@ flutter build ios --config-only
 # 3. Verify source privacy settings + deployment-target consistency before building
 ./tool/verify_ios_release.sh
 
-# 4. Build the release (Dart + native compile check)
+# 4. Compile check only. This binary is not the store artifact: a store build must come from
+#    `shorebird release ios` (see docs/shorebird.md and .github/workflows/release-ios.yml) so
+#    that it can receive Shorebird patches.
 flutter build ios --release
 
 # 5. Verify the built app bundle before archiving
@@ -146,7 +148,7 @@ open ios/Runner.xcworkspace
 ## 7. Verification checklist (before "Submit for Review")
 
 - [ ] `flutter analyze lib` clean (only the known orphan `feature_flags.dart` error, which isn't compiled).
-- [ ] Release build archives & uploads without errors/warnings (known exception: the six "Upload Symbols Failed" dSYM warnings for prebuilt SwiftPM frameworks — expected, non-fatal; see `docs/dSYM_UPLOAD_RCA.md`).
+- [ ] Release build archives & uploads without errors or warnings. `tool/generate_binary_dsyms.sh` covers the prebuilt SwiftPM frameworks, so a missing-dSYM warning is a release-symbol regression (see `docs/dSYM_UPLOAD_RCA.md`).
 - [ ] Sign in via **Phone OTP** and **Apple** on a physical iPhone.
 - [ ] Google button hidden on iOS (expected for v1) — or, if §1.1 done, Google sign-in works.
 - [ ] **Account create → Delete Account → confirm the account cannot log back in** (requires §1.2 backend).
@@ -160,7 +162,7 @@ open ios/Runner.xcworkspace
 
 ## 8. Known issues / follow-ups (non-blocking for submission)
 
-- **Flaky test under full-suite concurrency**: `flutter test` exits 1 with exactly one failure, but a *different* file each run (seen in `app_design_extensions_test.dart` and `preferences_controller_test.dart`); each passes in isolation. Order-dependent pollution of shared GetX/GetStorage global state across concurrently-running suites. Non-blocking for submission — fix before enabling a CI test gate, e.g. with `flutter test -j 1` as an interim.
+- **Golden tests are macOS-only**: `test/visual/*_golden_test.dart` carries `@TestOn('mac-os')` because the baselines are rendered on macOS; Linux CI skips them. Run `flutter test test/visual` locally before a release.
 - **SwiftPM minimum-platform footgun**: `flutter pub get` (or `flutter clean` + `pub get`) regenerates `FlutterGeneratedPluginSwiftPackage/Package.swift` with `.iOS("13.0")` (Flutter's hardcoded default). Firebase plugins require `.iOS("15.0")`, so the next Xcode-only build/archive fails with "The package product 'firebase-*' requires minimum platform version 15.0 ... but this target supports 13.0" until you re-run `flutter build ios --config-only` (patches the generated package to the project's 15.0). `tool/verify_ios_release.sh` now fails fast if this regresses.
 - **Missing dSYMs for prebuilt SwiftPM frameworks**: App Store Connect reports "Upload Symbols Failed" for FirebaseAnalytics, GoogleAppMeasurement, GoogleAppMeasurementIdentitySupport, MapLibre, RecaptchaEnterpriseSDK and GoogleAdsOnDeviceConversion — their binary artifacts ship without dSYMs (expected, non-fatal; crashes there won't be symbolized). Full RCA + tooling in `docs/dSYM_UPLOAD_RCA.md`; `tool/upload_ios_symbols.sh` uploads every dSYM that does exist. Track upstream: firebase/firebase-ios-sdk, maplibre/maplibre-gl-native, GoogleCloudPlatform/recaptcha-enterprise-mobile-sdk, googleads/google-ads-on-device-conversion-ios-sdk.
 - No iOS CI/Fastlane (out of scope this cycle; manual build per §6).

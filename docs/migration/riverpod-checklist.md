@@ -1,5 +1,7 @@
 # Riverpod migration checklist
 
+> Evidence note: screenshots, native XML captures and JSON observations cited here are scratch artifacts kept on the verification machine. They are not committed (see `.gitignore`), so links to them do not resolve in a clone.
+
 Status: implementation and automated acceptance complete. iOS simulator authentication and fixture journeys pass; remaining native checks and environment limits are recorded below. This tracks the 25 September 2026 request, which replaces the old GetX architecture rules. Source and executable tests take precedence over historical audit reports.
 
 ## Baseline and protected work
@@ -38,7 +40,7 @@ References: [Riverpod 3 migration](https://riverpod.dev/docs/3.0_migration), [ex
 | P0 | Assistant | Implemented. Provider/controller/view tests distinguish history failure from empty data, preserve drafts/interrupted messages, and cancel stale conversation/account streams. |
 | P1 | Settings, tools and support | Implemented. Failed persistence retry, retained inputs, validation, policies, feedback and shared session data are tested. See [auth/profile mapping](auth-profile-tests.md). |
 | P1 | Shared recovery UI and accessibility | Automated checks pass for narrow/large-text/keyboard/tablet layouts, both themes and reduced motion. Real-font visual evidence is recorded below. Native VoiceOver/TalkBack and platform integration checks remain separate. |
-| P0 | Final verification | Latest full suite: 3,390 passed, zero skips/failures; 91.67% coverage. Analyzer and formatting are clean; final iOS and Android debug builds pass. Seven iOS auth flows, one multi-screen fixture flow and Saved refresh failure/retry flows pass. Remaining native acceptance is recorded below. |
+| P0 | Final verification | Latest full suite (2026-10-21, merged with main): 3,661 passed, zero failures; 92.36% coverage; contract tests 257 passed. Analyzer and formatting are clean; final iOS and Android debug builds pass. Seven iOS auth flows, one multi-screen fixture flow and Saved refresh failure/retry flows pass. Remaining native acceptance is recorded below. |
 
 ## Screen and state evidence
 
@@ -83,7 +85,7 @@ not load that package. The read-only importer is separate from runtime storage.
 | --- | --- |
 | Baseline full suite | 3,700 passed, 2 skipped; 88.01% coverage. This is the pre-migration checkpoint, not the final result. |
 | Earlier migrated full suite | 3,212 passed, zero skips; 16,555 / 18,276 lines = 90.58%. Log: `/tmp/360ghar-full-tests-1.log`. |
-| Latest full suite | 3,390 passed, zero skipped, zero failed in 124 seconds after the final Visits color adjustment. Includes actual-SDK bootstrap, delayed-unregister, auth keyboard and location recovery regressions. Log: `/tmp/360ghar-final-tests-4.log`. Final coverage: **17,035 / 18,582 lines = 91.67%** across 235 instrumented files. The CI 85% gate is byte-identical to `HEAD`. |
+| Latest full suite | 3,390 passed, zero skipped, zero failed in 124 seconds after the final Visits color adjustment (since superseded: 3,661 passed and 92.36% coverage on 2026-10-21, after the merge with main and the contract tests). Includes actual-SDK bootstrap, delayed-unregister, auth keyboard and location recovery regressions. Log: `/tmp/360ghar-final-tests-4.log`. Final coverage: **17,035 / 18,582 lines = 91.67%** across 235 instrumented files. The CI 85% gate is byte-identical to `HEAD`. |
 | Static analysis | No issues, 14.3 seconds. Log: `/tmp/360ghar-final-analyze-3.log`. |
 | Formatting and whitespace | 476 files checked, zero changes in 3.52 seconds; `git diff --check` clean. Log: `/tmp/360ghar-final-format-check-4.log`. |
 | Core integration | `integration/critical_flow_test.dart` uses a real provider session, actual repositories and SQLite for discovery→swipe→booking, offline ownership across logout/A→B→A, and ambiguous booking reconciliation without a second POST. |
@@ -146,7 +148,7 @@ collects the evidence and remaining environment limits.
 | Credentials and device integrations | Google/Apple OAuth, SMS/email and push delivery, physical GPS/permission recovery, camera/gallery, external tour/video/background behavior, installed-release data upgrade and VoiceOver/TalkBack remain unverified. No Android device is available. Mocks/builds and synthetic simulator checks do not close these checks. |
 
 - [x] Riverpod migration and GetX/GetStorage adapter/dependency removal verified.
-- [x] Latest full suite passes with 91.67% coverage and the unchanged 85% gate; behavior mappings and architecture docs updated.
+- [x] Latest full suite passes with 92.36% coverage and the unchanged 85% gate; behavior mappings and architecture docs updated.
 - [x] Real-font visuals, interaction workloads, native builds and passing iOS auth/fixture/refresh-recovery journeys are recorded; credential/device limits remain explicit.
 - [x] Replaced the unverified before image with a true `HEAD` build capture and recorded source/configuration provenance.
 - [ ] Verify credential-dependent integrations and physical-device/installed-release acceptance when those environments are available.

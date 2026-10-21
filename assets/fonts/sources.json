@@ -70,13 +70,13 @@
     },
     {
       "path": "assets/fonts/notoserifdevanagari/NotoSerifDevanagari[wdth,wght].ttf",
-      "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserifdevanagari/NotoSerifDevanagari%5Bwdth%2Cwght%5D.ttf",
+      "source": "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/notoserifdevanagari/NotoSerifDevanagari%5Bwdth%2Cwght%5D.ttf",
       "sha256": "1191e07bfeb062d80e252eb85b0eafdfbda1e350707a2a60628668e8f677dbbb",
       "bytes": 757692
     },
     {
       "path": "assets/fonts/notoserifdevanagari/OFL.txt",
-      "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserifdevanagari/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/notoserifdevanagari/OFL.txt",
       "sha256": "a216f6f8d85c7228093e0ee5e258d9d377e6671f68acb4db1930b29583d0f331",
       "bytes": 4386
     }

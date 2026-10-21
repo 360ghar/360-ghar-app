@@ -80,10 +80,9 @@ Follow these instructions to get a copy of the project up and running on your lo
 
 1.  **Clone the repository:**
     ```bash
-    git clone git@github.com-personal:360ghar/360-ghar-app.git
+    git clone git@github.com:360ghar/360-ghar-app.git
     cd 360-ghar-app
     ```
-    First verify the personal SSH profile as described in [the workspace guide](../CLAUDE.md).
 
 2.  **Set up environment variables:**
     Create a gitignored `.env.development` from the template (local only — **not** packaged into the app):

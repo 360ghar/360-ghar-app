@@ -1,8 +1,6 @@
 # CLAUDE.md
 
 This file describes the implemented application architecture and contributor workflow.
-Read the workspace `../CLAUDE.md` for repository boundaries and the personal GitHub
-account rule. Use the `github.com-personal` SSH alias for GitHub operations.
 
 ## Project overview
 

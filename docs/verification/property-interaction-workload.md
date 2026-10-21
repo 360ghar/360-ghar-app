@@ -1,5 +1,7 @@
 # Property interaction workload
 
+> Evidence note: screenshots, native XML captures and JSON observations cited here are scratch artifacts kept on the verification machine. They are not committed (see `.gitignore`), so links to them do not resolve in a clone.
+
 Recorded on 2026-09-25 with Flutter 3.47.4 / Dart 3.13.3 on the shared macOS ARM64 development host. Raw observations and exact SDK revisions are in [property-interaction-workload.json](property-interaction-workload.json).
 
 This is one debug widget-test run with controlled input and I/O. Wall time measures test work on the host, not frame latency, FPS, touch latency, native startup, or battery use. The host also ran other verification work. There is no before/after speed claim or hardware acceptance threshold. This run preceded the final shared TextButton foreground contrast correction; these timing observations were not remeasured for that color-only change.

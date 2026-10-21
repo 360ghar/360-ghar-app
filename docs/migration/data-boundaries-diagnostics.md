@@ -1,6 +1,6 @@
 # Property parsing and diagnostic boundaries
 
-Property list endpoints now require an explicit list: bare arrays, `items`, `data` arrays, or a nested `data.items` envelope. Valid empty lists remain successful empty pages. Null/scalar bodies, unknown envelopes, invalid item fields or identities, mixed rows, and malformed pagination produce `ServerException(code: MALFORMED_RESPONSE)` with no raw response details. Fetch, search, and batch share the parser. Detail parsing uses the same typed malformed response contract. A bad row cannot silently advance pagination past a missing property. Nested metadata is retained; supplied outer metadata takes precedence.
+Property list endpoints require the cursor-page envelope with a top-level `items` list. Bare arrays, `data` arrays and a nested `data.items` envelope are rejected as `MALFORMED_RESPONSE`. Valid empty lists remain successful empty pages. Null/scalar bodies, unknown envelopes, invalid item fields or identities, mixed rows, and malformed pagination produce `ServerException(code: MALFORMED_RESPONSE)` with no raw response details. Fetch, search, and batch share the parser. Detail parsing uses the same typed malformed response contract. A bad row cannot silently advance pagination past a missing property. Nested metadata is retained; supplied outer metadata takes precedence.
 
 Focused datasource, repository, and property-provider validation: **100 tests passed**, `/tmp/properties-strict-tests.log`.
 

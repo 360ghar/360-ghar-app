@@ -126,9 +126,10 @@ once.
 and `_meta` (JSON text). It does not read `deep_link`. A push with a `type_key` and no `route`
 opens the place of that type (`visit_reminder` opens Visits).
 
-**Links.** The app parses `https://360ghar.com/...` property links only. The backend sends no
-custom scheme link for this app. `ghar360://` is the OAuth callback scheme and is not a property
-link.
+**Links.** The app parses `https://360ghar.com/...` property links and the custom scheme forms
+`ghar360://property/{id}`, `ghar360://p/{id}` and `ghar360://360ghar.com/p/{id}`
+(`DeepLinkService.propertyPathForUri`). The backend sends no custom scheme link for this app.
+`ghar360://login-callback` is the OAuth callback and is never a property link.
 
 ## Backend endpoints the app does not call
 
@@ -143,7 +144,7 @@ The app deletes an account with `DELETE /users/me`.
 |---|---|
 | App update source (`app-core-8`) | The app reads release data from Firebase Remote Config. `AppVersionCheckRequest` (`app`, `platform`, `current_version`, `build_number` as an integer) is the typed body for `POST /versions/check` and is not sent. Switching the source needs a product decision. |
 | Auth gate (`app-core-7`, `be-user-26`) | The app derives the profile gate on the device. It does not call `GET /users/me/auth-state`. `UserModel` reads `role`, `phone_verified` and `email_verified`. |
-| `ghar360://` property links (`r2-notify-realtime-2`) | Not parsed. `contract-audit/decisions.md` records HTTPS-only for this app. A parser is one line in `DeepLinkService.propertyPathForUri`. |
+| `ghar360://` property links (`r2-notify-realtime-2`) | Parsed. `DeepLinkService.propertyPathForUri` accepts `ghar360://property/{id}`, `ghar360://p/{id}` and the https form with the scheme swapped; `deep_link_service_test.dart` covers them. The backend does not send them yet. |
 | Corrupt legacy store (`r2-client-caches-0`) | Kept as a recoverable startup failure, as `docs/persistence.md` describes. |
 
 ## Fixtures and enums

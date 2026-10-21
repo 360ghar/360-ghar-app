@@ -36,7 +36,7 @@ Work top to bottom; every box should be checked before you hit **Submit for Revi
 **Tech that drives review/privacy answers:** Firebase (FCM / Crashlytics / Analytics /
 Performance / Remote Config / App Check), Supabase, geolocator (when-in-use / precise location
 only), image_picker (**photo library and camera** — the profile-picture flow offers
-`ImageSource.camera`, see `edit_profile_controller.dart`), MapLibre, webview_flutter.
+`ImageSource.camera`, see `edit_profile_view.dart`), MapLibre, webview_flutter.
 **No** App Tracking Transparency, **no** IDFA, **no** cross-app tracking.
 
 ---

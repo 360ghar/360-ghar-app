@@ -1,5 +1,7 @@
 # HEAD baseline native build
 
+> Evidence note: screenshots, native XML captures and JSON observations cited here are scratch artifacts kept on the verification machine. They are not committed (see `.gitignore`), so links to them do not resolve in a clone.
+
 Source: `aa839932e85752755a11aa5de33970327cb226c9`, extracted with `git archive HEAD`.
 
 This is a separate build tree. It does not contain the migrated product source.

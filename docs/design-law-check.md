@@ -65,8 +65,8 @@ listed without the `.png` suffix.
 | Content clipped where sections overlap | fixed | Explore empty state, see above. |
 | Cramped display type | pass | Erode at line height 1.25, no negative tracking; prices keep their natural spacing (`₹85 L`). |
 | Grain on top of content | pass | Grain is painted under the art and never over text or controls. |
-| Cool blue-charcoal dark | pass | Night surfaces are a green-black (`#0E1715`, `#15201D`), chosen to carry the teal accent and the marigold action; the law names green-black as a valid dark. |
-| Cream / beige page, slop gray | fixed | The page is white by day. `warmCream` and the gray-100 family are gone. The native splash still used `#f9fafb` / `#121417`; regenerated to `#FFFFFF` / `#0E1715` (the current page colours). Mint `#E6F2EE` and amber `#FFF4D1` appear only as small tonal slips (selected tab, second button, caution note). |
+| Cool blue-charcoal dark | pass | Night surfaces are a green-black (`#0F2826` and the `night*` steps in `app_design_tokens.dart`), chosen to carry the teal accent and the marigold action; the law names green-black as a valid dark. |
+| Cream / beige page, slop gray | fixed | The page is white by day. `warmCream` and the gray-100 family are gone. The native splash still used `#f9fafb` / `#121417`; regenerated to the sky colours `#DDEFE9` / `#0F2826` (the current first-frame colours). Mint `#E6F2EE` and amber `#FFF4D1` appear only as small tonal slips (selected tab, second button, caution note). |
 | Default Google font rotation | pass | The signature face is Erode (Fontshare). Manrope stays as the quiet body face; the Noto Devanagari faces only carry Hindi glyphs. |
 | Inner-glow box, pulsing live dot | fixed | The Explore marker pulse is removed; markers are still paper slips. |
 | Off-centre strike line | fixed | The document checklist no longer strikes text; done rows use a real checkbox. |
