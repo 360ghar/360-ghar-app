@@ -1,3 +1,6 @@
+@TestOn('mac-os')
+library;
+
 // The navigation strip and rail in both themes, at 390 px with the Discover tab chosen.
 
 import 'package:flutter/material.dart';

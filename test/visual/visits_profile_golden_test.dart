@@ -1,3 +1,6 @@
+@TestOn('mac-os')
+library;
+
 // Visits and Profile tab goldens: loading, empty, error and content states in
 // {light, dark} × {(390, en, 1x), (320, hi, 2x)}, plus content at 834 px.
 

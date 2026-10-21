@@ -1,3 +1,6 @@
+@TestOn('mac-os')
+library;
+
 // Property details golden: content in {light, dark} × {(390, en, 1x), (320, hi, 2x)}, and the
 // collapsed header (scrolled, 390 × 844, en) in light and dark.
 // The fixture photo is served from test/fixtures/images so the photo header is real.

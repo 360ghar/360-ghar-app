@@ -1,3 +1,6 @@
+@TestOn('mac-os')
+library;
+
 import 'dart:io';
 import 'dart:math' as math;
 
