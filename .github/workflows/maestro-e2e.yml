@@ -8,7 +8,28 @@ on:
     branches: [main, develop]
 
 jobs:
+  secrets-check:
+    name: Check Maestro secrets
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    env:
+      API_BASE_URL: ${{ secrets.API_BASE_URL }}
+      TEST_PHONE: ${{ secrets.TEST_PHONE }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "$API_BASE_URL" ] && [ -n "$TEST_PHONE" ] && [ -n "$TEST_PASSWORD" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Maestro E2E skipped: API_BASE_URL, TEST_PHONE or TEST_PASSWORD secret is not set."
+          fi
+
   maestro-android:
+    needs: secrets-check
+    if: needs.secrets-check.outputs.enabled == 'true'
     name: Maestro Android E2E
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -108,6 +129,8 @@ jobs:
           if-no-files-found: warn
 
   maestro-ios:
+    needs: secrets-check
+    if: needs.secrets-check.outputs.enabled == 'true'
     name: Maestro iOS E2E
     runs-on: macos-latest
     timeout-minutes: 90
