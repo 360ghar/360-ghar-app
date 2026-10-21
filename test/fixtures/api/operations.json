@@ -3005,7 +3005,7 @@
     "body": "ClientRegistrationRequest",
     "query": {},
     "responses": [
-      "200",
+      "201",
       "422"
     ]
   },
@@ -3491,7 +3491,7 @@
     "body": "ClientRegistrationRequest",
     "query": {},
     "responses": [
-      "200",
+      "201",
       "422"
     ]
   },
