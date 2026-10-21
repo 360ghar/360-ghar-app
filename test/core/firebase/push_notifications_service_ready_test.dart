@@ -2,6 +2,7 @@
 // and callbacks through the same disposal path used by the application.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
@@ -351,6 +352,8 @@ void main() {
       expect(apnsCalls, greaterThanOrEqualTo(8));
     },
     timeout: const Timeout(Duration(seconds: 20)),
+    // The service takes the Apple path from the real Platform, not the test override.
+    skip: !(Platform.isIOS || Platform.isMacOS),
   );
 
   test('getToken handles apns-token-not-set FirebaseException', () async {
