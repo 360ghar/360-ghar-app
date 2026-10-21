@@ -131,11 +131,9 @@ open ios/Runner.xcworkspace
 #   After archiving (or any time you want to backfill Crashlytics):
 #   ./tool/upload_ios_symbols.sh            # uploads every available dSYM to Crashlytics + coverage report
 #   ./tool/upload_ios_symbols.sh --dry-run  # coverage report only
-#     - Expected: 6 "Upload Symbols Failed" warnings from App Store Connect for
-#       prebuilt SwiftPM frameworks (FirebaseAnalytics, GoogleAppMeasurement,
-#       GoogleAppMeasurementIdentitySupport, MapLibre, RecaptchaEnterpriseSDK,
-#       GoogleAdsOnDeviceConversion). Their vendors ship no dSYMs — non-fatal,
-#       crashes in those frameworks just won't be symbolized. See
+#     - Expected: no "Upload Symbols Failed" warnings. tool/generate_binary_dsyms.sh builds dSYMs
+#       for the prebuilt SwiftPM frameworks (FirebaseAnalytics, GoogleAppMeasurement, MapLibre,
+#       RecaptchaEnterpriseSDK and others), so a warning is a release-symbol regression. See
 #       docs/dSYM_UPLOAD_RCA.md.
 #
 #   CLI alternative (single command, same result):
@@ -164,6 +162,6 @@ open ios/Runner.xcworkspace
 
 - **Golden tests are macOS-only**: `test/visual/*_golden_test.dart` carries `@TestOn('mac-os')` because the baselines are rendered on macOS; Linux CI skips them. Run `flutter test test/visual` locally before a release.
 - **SwiftPM minimum-platform footgun**: `flutter pub get` (or `flutter clean` + `pub get`) regenerates `FlutterGeneratedPluginSwiftPackage/Package.swift` with `.iOS("13.0")` (Flutter's hardcoded default). Firebase plugins require `.iOS("15.0")`, so the next Xcode-only build/archive fails with "The package product 'firebase-*' requires minimum platform version 15.0 ... but this target supports 13.0" until you re-run `flutter build ios --config-only` (patches the generated package to the project's 15.0). `tool/verify_ios_release.sh` now fails fast if this regresses.
-- **Missing dSYMs for prebuilt SwiftPM frameworks**: App Store Connect reports "Upload Symbols Failed" for FirebaseAnalytics, GoogleAppMeasurement, GoogleAppMeasurementIdentitySupport, MapLibre, RecaptchaEnterpriseSDK and GoogleAdsOnDeviceConversion — their binary artifacts ship without dSYMs (expected, non-fatal; crashes there won't be symbolized). Full RCA + tooling in `docs/dSYM_UPLOAD_RCA.md`; `tool/upload_ios_symbols.sh` uploads every dSYM that does exist. Track upstream: firebase/firebase-ios-sdk, maplibre/maplibre-gl-native, GoogleCloudPlatform/recaptcha-enterprise-mobile-sdk, googleads/google-ads-on-device-conversion-ios-sdk.
+- **Missing dSYMs for prebuilt SwiftPM frameworks**: App Store Connect reports "Upload Symbols Failed" for FirebaseAnalytics, GoogleAppMeasurement, GoogleAppMeasurementIdentitySupport, MapLibre, RecaptchaEnterpriseSDK or GoogleAdsOnDeviceConversion. Their binary artifacts ship without dSYMs, and `tool/generate_binary_dsyms.sh` (run by the Crashlytics build phase) generates them, so any such warning is a regression. Full RCA and tooling in `docs/dSYM_UPLOAD_RCA.md`; `tool/upload_ios_symbols.sh` uploads every dSYM that exists.
 - No iOS CI/Fastlane (out of scope this cycle; manual build per §6).
 - Re-enable real Google sign-in on iOS when ready (§1.1).

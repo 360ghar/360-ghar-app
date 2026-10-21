@@ -15,7 +15,9 @@ env:
 
 jobs:
   release-ios:
-    # Release signing secrets are only for the default branch.
+    # Dispatch guard only: it stops accidental runs from other branches. It does not protect the
+    # secrets from someone who can edit this workflow on a branch. Move the signing secrets into a
+    # GitHub Environment with a deployment rule for main to restrict them.
     if: github.ref == 'refs/heads/main'
     runs-on: macos-15
 

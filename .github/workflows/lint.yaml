@@ -11,6 +11,7 @@ jobs:
   # need a macOS runner. `--fix` only repairs the deployment target `flutter pub get` rewrites.
   ios-release-config:
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

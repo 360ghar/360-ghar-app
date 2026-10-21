@@ -28,7 +28,10 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Maestro E2E skipped: a required secret is not set (API_BASE_URL, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, TEST_PHONE, TEST_PASSWORD, TEST_NEW_IDENTIFIER)."
+            msg="Maestro E2E skipped: a required secret is not set (API_BASE_URL, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, TEST_PHONE, TEST_PASSWORD, TEST_NEW_IDENTIFIER)."
+            echo "::notice::${msg}"
+            echo "### E2E coverage skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "${msg}" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   maestro-android:

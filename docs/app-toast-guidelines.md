@@ -55,7 +55,7 @@ The optional `mainButton` accepts a `TextButton`. With accessible navigation ena
 - The host draws a cut-corner paper shape (`CutBorder`) with 14-pixel left, 16-pixel right and 12-pixel vertical padding.
 - A standard notification expires after three seconds and supports horizontal swipe dismissal.
 - A new message replaces the current message and resets its timer; messages do not queue.
-- The host exposes a live-region announcement. The tone selects the colors.
+- The host exposes a live-region announcement. The tone selects the icon and its color; the sheet and text colors are fixed.
 
 Keep titles and messages short. Add both English and Hindi catalog entries. Verify narrow layouts, large text, both themes, dismissal, and the notification lifetime. Avoid repeated notifications from provider rebuilds.
 
