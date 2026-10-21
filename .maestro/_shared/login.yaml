@@ -49,5 +49,5 @@ appId: com.the360ghar.ghar360
       - tapOn:
           id: qa.auth.profile_completion.skip
 
-- runFlow: assert_dashboard_ready.yaml
 - runFlow: dismiss_location_explainer.yaml
+- runFlow: assert_dashboard_ready.yaml

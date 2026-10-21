@@ -15,6 +15,8 @@ env:
 
 jobs:
   release-ios:
+    # Release signing secrets are only for the default branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-15
 
     steps:
@@ -69,10 +71,27 @@ jobs:
             "FIREBASE_PERFORMANCE": env("FIREBASE_PERFORMANCE", "false"),
             "FIREBASE_IAM": env("FIREBASE_IAM", "false"),
         }
+        required = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "GOOGLE_PLACES_API_KEY",
+                    "GOOGLE_WEB_CLIENT_ID", "GOOGLE_IOS_CLIENT_ID"]
+        missing = [k for k in required if not payload[k]]
+        if missing:
+            raise SystemExit("::error::Missing required secrets: " + ", ".join(missing))
         with open("dart_defines.json", "w", encoding="utf-8") as f:
             json.dump(payload, f)
         print("dart_defines.json written (values not printed)")
         PY
+
+    - name: Configure Firebase (iOS plist)
+      env:
+        IOS_GOOGLE_SERVICES_PLIST_BASE64: ${{ secrets.IOS_GOOGLE_SERVICES_PLIST_BASE64 }}
+      run: |
+        set -euo pipefail
+        if [ -z "${IOS_GOOGLE_SERVICES_PLIST_BASE64}" ]; then
+          echo "::error::IOS_GOOGLE_SERVICES_PLIST_BASE64 secret is missing. The Xcode target bundles ios/Runner/GoogleService-Info.plist, which is not committed."
+          exit 1
+        fi
+        printf '%s' "${IOS_GOOGLE_SERVICES_PLIST_BASE64}" | base64 --decode > ios/Runner/GoogleService-Info.plist
+        echo "GoogleService-Info.plist written (values not printed)"
 
     - name: Setup Xcode
       uses: maxim-lobanov/setup-xcode@v1
@@ -86,7 +105,8 @@ jobs:
         IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
         KEYCHAIN_PASSWORD: shorebird-ios-ci-ghar360
       run: |
-        set -euxo pipefail
+        # No -x: this step expands signing material and a password.
+        set -euo pipefail
         if [ -z "${IOS_CERT_P12_BASE64}" ] || [ -z "${IOS_CERT_PASSWORD}" ] || [ -z "${IOS_PROVISION_PROFILE_BASE64}" ]; then
           echo "::error::iOS signing secrets missing. Set IOS_DISTRIBUTION_CERT_P12_BASE64, IOS_DISTRIBUTION_CERT_PASSWORD, and IOS_PROVISION_PROFILE_BASE64 (see docs/shorebird.md)."
           exit 1

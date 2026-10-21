@@ -17,12 +17,13 @@ It imports schemas only: no app start-up, no database, no network. `tool/gen_enu
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 APP = Path(__file__).resolve().parents[1]
-BACKEND = APP.parent / "360ghar-backend"
+BACKEND = Path(os.environ.get("BACKEND_DIR", APP.parent / "360ghar-backend"))
 OUT = APP / "test" / "fixtures" / "api"
 sys.path.insert(0, str(BACKEND))
 
