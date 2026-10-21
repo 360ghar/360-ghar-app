@@ -12,17 +12,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/utils/webview_helper.dart';
+import '../../helpers/knife_finders.dart';
+import '../../helpers/provider_test_app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  setUpAll(() {
-    Get.testMode = true;
-  });
 
   /// Helper that forces a non-Android target platform for the duration of a
   /// single test. This avoids the Android-specific pigeon channel path in
@@ -131,32 +128,25 @@ void main() {
   // ── createSafeWebView (error fallback) ───────────────────────────────────
 
   group('WebViewHelper.createSafeWebView', () {
-    Future<void> pumpWithGet(WidgetTester tester, WidgetBuilder builder) async {
-      await tester.pumpWidget(
-        GetMaterialApp(
-          translations: AppTranslations(),
-          locale: const Locale('en', 'US'),
-          fallbackLocale: const Locale('en', 'US'),
-          home: Scaffold(body: Builder(builder: builder)),
-        ),
-      );
+    Future<void> pumpHelper(WidgetTester tester, WidgetBuilder builder) async {
+      await tester.pumpProviderApp(Scaffold(body: Builder(builder: builder)));
     }
 
     testWidgets('renders default error widget when platform unavailable', (tester) async {
-      await pumpWithGet(
+      await pumpHelper(
         tester,
         (context) => WebViewHelper.createSafeWebView(context: context, url: 'https://example.com'),
       );
 
       // The default error widget shows the public_off icon and translated
       // title/body text.
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
       expect(find.text('360° Tour Unavailable'), findsOneWidget);
       expect(find.text('Virtual tour could not be loaded'), findsOneWidget);
     });
 
     testWidgets('renders default error widget with width and height', (tester) async {
-      await pumpWithGet(
+      await pumpHelper(
         tester,
         (context) => WebViewHelper.createSafeWebView(
           context: context,
@@ -168,11 +158,11 @@ void main() {
 
       // The Container is wrapped in a SizedBox with the given dimensions.
       expect(find.byType(SizedBox), findsWidgets);
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     testWidgets('uses custom errorWidget when provided', (tester) async {
-      await pumpWithGet(
+      await pumpHelper(
         tester,
         (context) => WebViewHelper.createSafeWebView(
           context: context,
@@ -183,33 +173,33 @@ void main() {
 
       expect(find.text('CUSTOM_FALLBACK'), findsOneWidget);
       // The default error widget should NOT be shown.
-      expect(find.byIcon(Icons.public_off), findsNothing);
+      expect(findKnife(KnifeIcon.alert), findsNothing);
     });
 
     testWidgets('error widget is returned for invalid URL too', (tester) async {
-      await pumpWithGet(
+      await pumpHelper(
         tester,
         (context) => WebViewHelper.createSafeWebView(context: context, url: 'not-a-valid-url'),
       );
 
       // Even with an invalid URL, the platform-unavailable error path is
       // triggered first (createBaseController throws before URL parsing).
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     testWidgets('error widget is returned for empty URL', (tester) async {
-      await pumpWithGet(
+      await pumpHelper(
         tester,
         (context) => WebViewHelper.createSafeWebView(context: context, url: ''),
       );
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     testWidgets('onPageStarted/onPageFinished callbacks are accepted', (tester) async {
       // These callbacks are passed to createController which throws before
       // they can be used; the error widget is returned instead.
-      await pumpWithGet(
+      await pumpHelper(
         tester,
         (context) => WebViewHelper.createSafeWebView(
           context: context,
@@ -219,7 +209,7 @@ void main() {
         ),
       );
 
-      expect(find.byIcon(Icons.public_off), findsOneWidget);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
   });
 }

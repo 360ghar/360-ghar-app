@@ -1,338 +1,295 @@
-import 'dart:convert';
-
-import 'package:flutter/services.dart';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart' as getx;
-import 'package:get_storage/get_storage.dart';
-
+import 'package:ghar360/core/network/api_response.dart';
 import 'package:ghar360/core/network/etag_cache.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory directory;
+  late AppDatabase database;
+  late StorageScope scope;
+  late ETagCache cache;
 
-  const channel = MethodChannel('plugins.flutter.io/path_provider');
-  setUpAll(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      channel,
-      (MethodCall methodCall) async {
-        if (methodCall.method == 'getApplicationDocumentsDirectory') return '.';
-        return null;
-      },
+  setUpAll(sqfliteFfiInit);
+  setUp(() async {
+    directory = await Directory.systemTemp.createTemp('ghar360-etag-test-');
+    database = await AppDatabase.open(
+      factory: databaseFactoryFfi,
+      databasePath: '${directory.path}/cache.db',
+      legacyReader: () async => {},
+    );
+    scope = database.activateScope(environment: 'https://api.example.com', accountId: 'account-a');
+    cache = ETagCache(database: database, scope: () => scope);
+  });
+  tearDown(() async {
+    await database.close();
+    await directory.delete(recursive: true);
+  });
+
+  const response = ApiResponse(statusCode: 200, body: {'ok': true}, headers: {'etag': 'W/"abc"'});
+
+  test('missing entry is absent', () async {
+    expect(await cache.read('missing', scope: scope), isNull);
+  });
+
+  test('stores ETag and decoded body with explicit freshness and expiry', () async {
+    await cache.cacheResponse('key', response, scope: scope);
+    final entry = (await cache.read('key', scope: scope))!;
+    expect(entry.etag, 'W/"abc"');
+    expect(entry.value, {'ok': true});
+    expect(entry.schemaVersion, AppDatabase.cacheSchemaVersion);
+    expect(entry.freshUntil.difference(entry.createdAt), ETagCache.freshFor);
+    expect(entry.expiresAt.difference(entry.freshUntil), ETagCache.retainFor - ETagCache.freshFor);
+  });
+
+  test('stored response survives database reopen', () async {
+    await cache.cacheResponse('key', response, scope: scope);
+    await database.close();
+    database = await AppDatabase.open(
+      factory: databaseFactoryFfi,
+      databasePath: '${directory.path}/cache.db',
+      legacyReader: () async => {},
+    );
+    scope = database.activateScope(environment: 'https://api.example.com', accountId: 'account-a');
+    cache = ETagCache(database: database, scope: () => scope);
+    expect((await cache.read('key', scope: scope))?.value, {'ok': true});
+  });
+
+  test('expired entry is not returned', () async {
+    final now = DateTime.now();
+    await database.writeCache(
+      scope: scope,
+      key: 'key',
+      value: {'ok': true},
+      etag: 'old',
+      freshUntil: now.subtract(const Duration(hours: 25)),
+      expiresAt: now.subtract(const Duration(hours: 24)),
+    );
+    expect(await cache.read('key', scope: scope), isNull);
+  });
+
+  test('stale entry remains available for server revalidation until expiry', () async {
+    final now = DateTime.now();
+    await database.writeCache(
+      scope: scope,
+      key: 'key',
+      value: {'ok': true},
+      etag: 'old',
+      freshUntil: now.subtract(const Duration(minutes: 1)),
+      expiresAt: now.add(const Duration(hours: 1)),
+    );
+    final entry = (await cache.read('key', scope: scope))!;
+    expect(entry.isStaleAt(now), isTrue);
+    expect(entry.etag, 'old');
+  });
+
+  for (final headers in [
+    <String, String>{},
+    {'etag': ''},
+  ]) {
+    test('skips response without usable ETag: $headers', () async {
+      await cache.cacheResponse(
+        'key',
+        ApiResponse(statusCode: 200, body: {'ok': true}, headers: headers),
+        scope: scope,
+      );
+      expect(await cache.read('key', scope: scope), isNull);
+    });
+  }
+
+  for (final body in [null, '']) {
+    test('skips empty body: $body', () async {
+      await cache.cacheResponse(
+        'key',
+        ApiResponse(statusCode: 200, body: body, headers: {'etag': 'valid'}),
+        scope: scope,
+      );
+      expect(await cache.read('key', scope: scope), isNull);
+    });
+  }
+
+  for (final name in ['etag', 'ETag', 'ETAG']) {
+    test('ETag header matching is case insensitive: $name', () async {
+      await cache.cacheResponse(
+        'key',
+        ApiResponse(statusCode: 200, body: {'ok': true}, headers: {name: 'valid'}),
+        scope: scope,
+      );
+      expect((await cache.read('key', scope: scope))?.etag, 'valid');
+    });
+  }
+
+  test('overwrites the old response for the same scoped key', () async {
+    await cache.cacheResponse('key', response, scope: scope);
+    await cache.cacheResponse(
+      'key',
+      const ApiResponse(statusCode: 200, body: {'version': 2}, headers: {'etag': 'new'}),
+      scope: scope,
+    );
+    final entry = (await cache.read('key', scope: scope))!;
+    expect(entry.etag, 'new');
+    expect(entry.value, {'version': 2});
+  });
+
+  test('preserves text response type across persistence', () async {
+    await cache.cacheResponse(
+      'key',
+      const ApiResponse(statusCode: 200, body: '<main>Widget</main>', headers: {'etag': 'html'}),
+      scope: scope,
+    );
+    expect((await cache.read('key', scope: scope))?.value, '<main>Widget</main>');
+  });
+
+  test('accounts and environments cannot read each other\'s responses', () async {
+    await cache.cacheResponse('key', response, scope: scope);
+    scope = database.activateScope(environment: 'https://api.example.com', accountId: 'account-b');
+    expect(await cache.read('key', scope: scope), isNull);
+    scope = database.activateScope(
+      environment: 'https://staging.example.com',
+      accountId: 'account-a',
+    );
+    expect(await cache.read('key', scope: scope), isNull);
+  });
+
+  test('old account lease cannot write after an account transition', () async {
+    final oldScope = scope;
+    scope = database.activateScope(environment: 'https://api.example.com', accountId: 'account-b');
+    await expectLater(
+      cache.cacheResponse('key', response, scope: oldScope),
+      throwsA(isA<StorageFailure>().having((error) => error.code, 'code', 'STORAGE_SCOPE_CHANGED')),
+    );
+    expect(await cache.read('key', scope: scope), isNull);
+  });
+
+  test('clear removes every response while retaining preferences', () async {
+    await database.writePreference('language_code', 'hi');
+    await cache.cacheResponse('one', response, scope: scope);
+    await cache.cacheResponse('two', response, scope: scope);
+    await cache.clear();
+    expect(await cache.read('one', scope: scope), isNull);
+    expect(await cache.read('two', scope: scope), isNull);
+    expect(database.readPreference<String>('language_code'), 'hi');
+  });
+
+  test('clear succeeds when cache is empty', () async {
+    await expectLater(cache.clear(), completes);
+  });
+
+  test('storage write failure is explicit and cannot report persisted data', () async {
+    await database.close();
+    await expectLater(
+      cache.cacheResponse('key', response, scope: scope),
+      throwsA(isA<StorageFailure>()),
     );
   });
 
-  setUp(() async {
-    await GetStorage.init();
-    await GetStorage().erase();
-  });
-
-  tearDown(() async {
-    await GetStorage().erase();
-  });
-
-  group('ETagCache.getETag', () {
-    test('returns null for a missing key', () {
-      final cache = ETagCache();
-      expect(cache.getETag('missing'), isNull);
-    });
-
-    test('returns the cached ETag value after cacheResponse', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: jsonEncode(<String, dynamic>{'ok': true}),
-          headers: const <String, String>{'etag': 'W/"abc123"'},
-        ),
-      );
-
-      expect(cache.getETag('key1'), 'W/"abc123"');
-    });
-
-    test('returns null for an expired entry', () async {
-      final cache = ETagCache();
-      // Manually write an expired entry (timestamp older than 5 minutes).
-      await GetStorage().write('etag_cache_key2', <String, dynamic>{
-        'etag': 'W/"old"',
-        'body': '{"ok":true}',
-        'timestamp': DateTime.now().millisecondsSinceEpoch - (6 * 60 * 1000),
+  group('Cache-Control: no-store', () {
+    for (final header in [
+      'no-store',
+      'private, no-store',
+      'No-Store, max-age=0',
+      'public,no-store',
+    ]) {
+      test('a response marked "$header" is never stored', () async {
+        await cache.cacheResponse(
+          'key',
+          ApiResponse(
+            statusCode: 200,
+            body: {'ok': true},
+            headers: {'etag': 'W/"abc"', 'cache-control': header},
+          ),
+          scope: scope,
+        );
+        expect(await cache.read('key', scope: scope), isNull);
       });
+    }
 
-      expect(cache.getETag('key2'), isNull);
-      // Expired entry should also be removed from storage.
-      expect(GetStorage().hasData('etag_cache_key2'), isFalse);
+    test('the header name is matched without case', () async {
+      await cache.cacheResponse(
+        'key',
+        const ApiResponse(
+          statusCode: 200,
+          body: {'ok': true},
+          headers: {'ETag': 'W/"abc"', 'Cache-Control': 'private, no-store'},
+        ),
+        scope: scope,
+      );
+      expect(await cache.read('key', scope: scope), isNull);
     });
 
-    test('returns null when stored entry has no etag field', () {
-      final cache = ETagCache();
-      GetStorage().write('etag_cache_key3', <String, dynamic>{
-        'body': '{"ok":true}',
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      });
+    test('a no-store response deletes the row stored for the key before', () async {
+      await cache.cacheResponse('key', response, scope: scope);
+      expect(await cache.read('key', scope: scope), isNotNull);
 
-      expect(cache.getETag('key3'), isNull);
+      await cache.cacheResponse(
+        'key',
+        const ApiResponse(
+          statusCode: 200,
+          body: {'ok': false},
+          headers: {'etag': 'W/"next"', 'cache-control': 'private, no-store'},
+        ),
+        scope: scope,
+      );
+
+      expect(await cache.read('key', scope: scope), isNull);
+    });
+
+    test('other Cache-Control directives still store the response', () async {
+      await cache.cacheResponse(
+        'key',
+        const ApiResponse(
+          statusCode: 200,
+          body: {'ok': true},
+          headers: {'etag': 'W/"abc"', 'cache-control': 'private, max-age=60'},
+        ),
+        scope: scope,
+      );
+      expect(await cache.read('key', scope: scope), isNotNull);
+    });
+
+    test('isNoStore reads the directive list', () {
+      expect(ETagCache.isNoStore({'Cache-Control': 'private, no-store'}), isTrue);
+      expect(ETagCache.isNoStore({'cache-control': 'no-cache'}), isFalse);
+      expect(ETagCache.isNoStore({'cache-control': 'no-store-ish'}), isFalse);
+      expect(ETagCache.isNoStore(const {}), isFalse);
     });
   });
 
-  group('ETagCache.getCachedBody', () {
-    test('returns null for a missing key', () {
-      final cache = ETagCache();
-      expect(cache.getCachedBody('missing'), isNull);
-    });
-
-    test('returns the cached body after cacheResponse', () {
-      final cache = ETagCache();
-      const bodyStr = '{"ok":true}';
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: bodyStr,
-          headers: <String, String>{'etag': 'W/"abc123"'},
-        ),
+  group('schema version', () {
+    test('a row written under an older cache schema reads as a miss', () async {
+      final now = DateTime.now();
+      await database.writeCache(
+        scope: scope,
+        key: 'key',
+        value: {'ok': true},
+        etag: 'old-shape',
+        freshUntil: now.add(const Duration(minutes: 5)),
+        expiresAt: now.add(const Duration(hours: 1)),
+        schemaVersion: AppDatabase.cacheSchemaVersion - 1,
       );
-
-      expect(cache.getCachedBody('key1'), bodyStr);
+      expect(await cache.read('key', scope: scope), isNull);
     });
 
-    test('returns null for an expired entry', () async {
-      final cache = ETagCache();
-      await GetStorage().write('etag_cache_key2', <String, dynamic>{
-        'etag': 'W/"old"',
-        'body': '{"ok":true}',
-        'timestamp': DateTime.now().millisecondsSinceEpoch - (6 * 60 * 1000),
-      });
-
-      expect(cache.getCachedBody('key2'), isNull);
-      expect(GetStorage().hasData('etag_cache_key2'), isFalse);
+    test('the current schema version reads back', () async {
+      await cache.cacheResponse('key', response, scope: scope);
+      expect(
+        (await cache.read('key', scope: scope))?.schemaVersion,
+        AppDatabase.cacheSchemaVersion,
+      );
     });
   });
 
-  group('ETagCache.cacheResponse', () {
-    test('stores etag and body when both present', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: '{"ok":true}',
-          headers: <String, String>{'etag': 'W/"abc123"'},
-        ),
+  group('account scope', () {
+    test('one account never reads the row of another for the same key', () async {
+      await cache.cacheResponse('key', response, scope: scope);
+      final other = database.activateScope(
+        environment: 'https://api.example.com',
+        accountId: 'account-b',
       );
 
-      expect(cache.getETag('key1'), 'W/"abc123"');
-      expect(cache.getCachedBody('key1'), '{"ok":true}');
-    });
-
-    test('skips caching when no etag header is present', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: '{"ok":true}',
-          headers: <String, String>{},
-        ),
-      );
-
-      expect(cache.getETag('key1'), isNull);
-      expect(cache.getCachedBody('key1'), isNull);
-    });
-
-    test('skips caching when etag header is empty', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: '{"ok":true}',
-          headers: <String, String>{'etag': ''},
-        ),
-      );
-
-      expect(cache.getETag('key1'), isNull);
-    });
-
-    test('skips caching when body is empty', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: null,
-          bodyString: '',
-          headers: <String, String>{'etag': 'W/"abc123"'},
-        ),
-      );
-
-      expect(cache.getETag('key1'), isNull);
-      expect(cache.getCachedBody('key1'), isNull);
-    });
-
-    test('skips caching when body is the literal string "null"', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: null,
-          bodyString: 'null',
-          headers: <String, String>{'etag': 'W/"abc123"'},
-        ),
-      );
-
-      expect(cache.getETag('key1'), isNull);
-    });
-
-    test('skips caching when body is whitespace "null"', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: null,
-          bodyString: '  null  ',
-          headers: <String, String>{'etag': 'W/"abc123"'},
-        ),
-      );
-
-      expect(cache.getETag('key1'), isNull);
-    });
-
-    test('falls back to jsonEncode(body) when bodyString is null', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: null,
-          headers: <String, String>{'etag': 'W/"abc123"'},
-        ),
-      );
-
-      expect(cache.getETag('key1'), 'W/"abc123"');
-      expect(cache.getCachedBody('key1'), '{"ok":true}');
-    });
-
-    test('header lookup is case-insensitive (ETag vs etag)', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: '{"ok":true}',
-          headers: <String, String>{'ETag': 'W/"caseInsensitive"'},
-        ),
-      );
-
-      expect(cache.getETag('key1'), 'W/"caseInsensitive"');
-    });
-
-    test('header lookup is case-insensitive (ETAG uppercase)', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: '{"ok":true}',
-          headers: <String, String>{'ETAG': 'W/"upper"'},
-        ),
-      );
-
-      expect(cache.getETag('key1'), 'W/"upper"');
-    });
-
-    test('overwrites a previous cached value for the same key', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'v': 1},
-          bodyString: '{"v":1}',
-          headers: <String, String>{'etag': 'W/"first"'},
-        ),
-      );
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'v': 2},
-          bodyString: '{"v":2}',
-          headers: <String, String>{'etag': 'W/"second"'},
-        ),
-      );
-
-      expect(cache.getETag('key1'), 'W/"second"');
-      expect(cache.getCachedBody('key1'), '{"v":2}');
-    });
-
-    test('skips caching when headers are null', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: '{"ok":true}',
-          headers: null,
-        ),
-      );
-
-      expect(cache.getETag('key1'), isNull);
-    });
-  });
-
-  group('ETagCache.clear', () {
-    // NOTE: ETagCache.clear() iterates `_box.getKeys().where(...)` which in the
-    // current GetStorage runtime returns dynamic keys, causing an internal type
-    // error. The source catches this and logs a warning, so clear() never
-    // throws — it simply may not remove entries. These tests assert the
-    // documented contract (no-throw) without depending on the underlying
-    // GetStorage iteration quirk.
-    test('completes without throwing when entries exist', () {
-      final cache = ETagCache();
-      cache.cacheResponse(
-        'key1',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': true},
-          bodyString: '{"ok":true}',
-          headers: <String, String>{'etag': 'W/"a"'},
-        ),
-      );
-      cache.cacheResponse(
-        'key2',
-        const getx.Response<dynamic>(
-          statusCode: 200,
-          body: <String, dynamic>{'ok': false},
-          bodyString: '{"ok":false}',
-          headers: <String, String>{'etag': 'W/"b"'},
-        ),
-      );
-
-      expect(() => cache.clear(), returnsNormally);
-    });
-
-    test('is a no-op when cache is empty', () {
-      final cache = ETagCache();
-      expect(() => cache.clear(), returnsNormally);
-    });
-
-    test('does not throw when storage contains unrelated keys', () {
-      GetStorage().write('unrelated_key', 'keep me');
-      final cache = ETagCache();
-      expect(() => cache.clear(), returnsNormally);
+      expect(await cache.read('key', scope: other), isNull);
     });
   });
 }

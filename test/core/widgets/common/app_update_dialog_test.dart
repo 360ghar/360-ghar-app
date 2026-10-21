@@ -1,26 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/app_update_models.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/core/widgets/common/app_update_dialog.dart';
-import '../../../helpers/getx_test_binding.dart';
+import '../../../helpers/provider_test_app.dart';
 
 void main() {
-  setUp(() => GetxTestBinding.init());
-  tearDown(() => GetxTestBinding.reset());
-
   Future<void> pumpDialog(WidgetTester tester, AppUpdateDialog dialog) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: Center(child: dialog)),
-      ),
-    );
+    await tester.pumpProviderApp(Scaffold(body: Center(child: dialog)));
   }
 
   testWidgets('renders optional update dialog with version info and release notes', (tester) async {

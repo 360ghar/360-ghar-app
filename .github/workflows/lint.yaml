@@ -7,6 +7,34 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  # The iOS release checks read the Xcode project and the generated SwiftPM package, so they
+  # need a macOS runner. `--fix` only repairs the deployment target `flutter pub get` rewrites.
+  ios-release-config:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.44.6'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      # The check requires the Crashlytics dSYM tooling the Xcode build phase uses.
+      - name: Install FlutterFire CLI
+        run: |
+          dart pub global activate flutterfire_cli
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
+      - name: Verify iOS release privacy configuration
+        run: ./tool/verify_ios_release.sh --fix
+
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -89,8 +117,20 @@ jobs:
           print("Coverage threshold met.")
           PY
 
+      - name: Check Codecov token
+        id: codecov
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "${CODECOV_TOKEN}" ]; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Codecov upload skipped (not a push, or CODECOV_TOKEN is not set)."
+          fi
+
       - name: Upload coverage to Codecov
-        if: github.event_name == 'push' && secrets.CODECOV_TOKEN != ''
+        if: steps.codecov.outputs.upload == 'true'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -98,7 +138,3 @@ jobs:
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: true
-
-      - name: Skip Codecov upload (no token)
-        if: github.event_name == 'push' && secrets.CODECOV_TOKEN == ''
-        run: echo "CODECOV_TOKEN is not set; skipping Codecov upload."

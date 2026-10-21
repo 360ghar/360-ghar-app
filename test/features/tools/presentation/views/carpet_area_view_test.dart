@@ -2,29 +2,23 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/features/tools/presentation/controllers/carpet_area_controller.dart';
 import 'package:ghar360/features/tools/presentation/views/carpet_area_view.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/pump_app.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 void main() {
-  late CarpetAreaController controller;
-
-  setUp(() {
-    GetxTestBinding.init();
-    controller = CarpetAreaController();
-    Get.put<CarpetAreaController>(controller);
-  });
-
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
+  late ProviderContainer container;
+  CarpetAreaController getController() => container.read(carpetAreaProvider.notifier);
+  CarpetAreaState readState() => container.read(carpetAreaProvider);
 
   Future<void> pumpView(WidgetTester tester) async {
-    await tester.pumpApp(const CarpetAreaView());
+    await tester.pumpProviderApp(const CarpetAreaView());
+    container = ProviderScope.containerOf(tester.element(find.byType(CarpetAreaView)));
     await tester.pump();
   }
 
@@ -38,23 +32,30 @@ void main() {
 
   group('CarpetAreaView', () {
     testWidgets('renders scaffold with correct key and app bar title', (tester) async {
-      await pumpView(tester);
+      final semantics = tester.ensureSemantics();
+      try {
+        await pumpView(tester);
 
-      expect(find.byKey(const ValueKey('qa.tools.carpet_area.screen')), findsOneWidget);
-      expect(find.text('Carpet vs Built-up'), findsOneWidget);
+        expect(find.byKey(const ValueKey('qa.tools.carpet_area.screen')), findsOneWidget);
+        expect(find.bySemanticsIdentifier('qa.tools.carpet_area.screen'), findsOneWidget);
+        expect(find.bySemanticsLabel(RegExp(r'qa\.tools')), findsNothing);
+        expect(find.text('Carpet vs Built-up'), findsOneWidget);
+      } finally {
+        semantics.dispose();
+      }
     });
 
     testWidgets('renders back and refresh icons in app bar', (tester) async {
       await pumpView(tester);
 
       expect(find.byTooltip('Back'), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      expect(findKnife(KnifeIcon.retry), findsOneWidget);
     });
 
     testWidgets('renders info container with info icon', (tester) async {
       await pumpView(tester);
 
-      expect(find.byIcon(Icons.info_outline), findsOneWidget);
+      expect(findKnife(KnifeIcon.info), findsOneWidget);
     });
 
     testWidgets('renders super built-up area label and input field', (tester) async {
@@ -96,22 +97,22 @@ void main() {
 
       await tapCalculate(tester);
 
-      expect(controller.validationError.value, isNotEmpty);
-      expect(controller.hasCalculated.value, isFalse);
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      expect((readState().validationKey ?? ''), isNotEmpty);
+      expect(readState().hasCalculated, isFalse);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     testWidgets('calculates carpet area and shows results', (tester) async {
       await pumpView(tester);
 
-      controller.superBuiltUpController.text = '1000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '1000';
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.hasCalculated.value, isTrue);
-      expect(controller.carpetArea.value, greaterThan(0));
-      expect(controller.builtUpArea.value, greaterThan(0));
+      expect(readState().hasCalculated, isTrue);
+      expect(readState().carpetArea, greaterThan(0));
+      expect(readState().builtUpArea, greaterThan(0));
       expect(find.text('Area Breakdown'), findsOneWidget);
     });
 
@@ -120,7 +121,7 @@ void main() {
     ) async {
       await pumpView(tester);
 
-      controller.superBuiltUpController.text = '1000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '1000';
       await tester.pump();
 
       await tapCalculate(tester);
@@ -133,19 +134,21 @@ void main() {
     testWidgets('shows usable area percentage in results', (tester) async {
       await pumpView(tester);
 
-      controller.superBuiltUpController.text = '1000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '1000';
       await tester.pump();
 
       await tapCalculate(tester);
 
       expect(find.text('Usable Area'), findsOneWidget);
-      expect(find.byIcon(Icons.pie_chart), findsOneWidget);
+      // The share is the headline number, with no icon tile beside it.
+      expect(find.byKey(const ValueKey('qa.tools.carpet_area.usable')), findsOneWidget);
+      expect(findKnife(KnifeIcon.area), findsNothing);
     });
 
     testWidgets('loading percentage slider updates controller value', (tester) async {
       await pumpView(tester);
 
-      final initialValue = controller.loadingPercentage.value;
+      final initialValue = readState().loadingPercentage;
       final slider = find.byType(Slider);
       await tester.ensureVisible(slider);
       await tester.pumpAndSettle();
@@ -153,17 +156,17 @@ void main() {
       await tester.drag(slider, const Offset(100, 0));
       await tester.pumpAndSettle();
 
-      expect(controller.loadingPercentage.value, isNot(equals(initialValue)));
+      expect(readState().loadingPercentage, isNot(equals(initialValue)));
     });
 
     testWidgets('changing slider recalculates if already calculated', (tester) async {
       await pumpView(tester);
 
-      controller.superBuiltUpController.text = '1000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '1000';
       await tester.pump();
 
       await tapCalculate(tester);
-      final initialCarpet = controller.carpetArea.value;
+      final initialCarpet = readState().carpetArea;
 
       // Change loading percentage via slider
       final slider = find.byType(Slider);
@@ -173,29 +176,29 @@ void main() {
       await tester.pumpAndSettle();
 
       // Carpet area should have changed due to recalculation
-      expect(controller.carpetArea.value, isNot(equals(initialCarpet)));
+      expect(readState().carpetArea, isNot(equals(initialCarpet)));
     });
 
     testWidgets('refresh button clears all fields and results', (tester) async {
       await pumpView(tester);
 
-      controller.superBuiltUpController.text = '1000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '1000';
       await tester.pump();
 
       await tapCalculate(tester);
-      expect(controller.hasCalculated.value, isTrue);
+      expect(readState().hasCalculated, isTrue);
 
-      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.tap(findKnife(KnifeIcon.retry));
       await tester.pumpAndSettle();
 
-      expect(controller.hasCalculated.value, isFalse);
-      expect(controller.superBuiltUpController.text, isEmpty);
-      expect(controller.loadingPercentage.value, 25.0);
-      expect(controller.carpetArea.value, 0);
-      expect(controller.builtUpArea.value, 0);
+      expect(readState().hasCalculated, isFalse);
+      expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text, isEmpty);
+      expect(readState().loadingPercentage, 25.0);
+      expect(readState().carpetArea, 0);
+      expect(readState().builtUpArea, 0);
     });
 
-    testWidgets('back button is wired to Get.back', (tester) async {
+    testWidgets('back button is wired to Navigator.maybePop', (tester) async {
       await pumpView(tester);
 
       final backButton = find.byTooltip('Back');
@@ -213,7 +216,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(field, '1200');
 
-      expect(controller.superBuiltUpController.text, '1200');
+      expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text, '1200');
     });
 
     testWidgets('shows current loading percentage value in text', (tester) async {
@@ -232,15 +235,15 @@ void main() {
     testWidgets('calculates with different loading percentage', (tester) async {
       await pumpView(tester);
 
-      controller.superBuiltUpController.text = '1000';
-      controller.loadingPercentage.value = 30;
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '1000';
+      getController().onLoadingChanged(30);
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.hasCalculated.value, isTrue);
+      expect(readState().hasCalculated, isTrue);
       // With 30% loading, built-up = 1000 / 1.3 ≈ 769
-      expect(controller.builtUpArea.value, closeTo(769.23, 1));
+      expect(readState().builtUpArea, closeTo(769.23, 1));
     });
   });
 }

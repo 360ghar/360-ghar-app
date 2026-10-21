@@ -1,20 +1,23 @@
 appId: com.the360ghar.ghar360
 ---
 - runFlow: ../_shared/launch_clean.yaml
+- extendedWaitUntil:
+    visible:
+      id: qa.splash.next
+    timeout: 20000
 - tapOn:
     id: qa.splash.next
-    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
 - tapOn:
     id: qa.splash.next
-    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
 - tapOn:
     id: qa.splash.get_started
-    optional: true
-- tapOn:
-    id: qa.splash.skip
-    optional: true
+- extendedWaitUntil:
+    visible:
+      id: qa.auth.phone_entry.identifier_input
+    timeout: 20000
 - assertVisible:
-    id: qa.auth.phone_entry.phone_input
-- assertVisible:
-    id: qa.auth.login.password_input
-    optional: true
+    id: qa.auth.phone_entry.continue

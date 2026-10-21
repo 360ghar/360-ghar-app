@@ -1,492 +1,462 @@
 import 'package:flutter/material.dart';
-
-import 'package:get/get.dart';
-
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/mixins/theme_mixin.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
-import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/core/widgets/common/max_content_width.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/widgets/common/error_states.dart';
+import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
-import 'package:ghar360/features/profile/presentation/controllers/profile_controller.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/core/widgets/paper/paper_sheet.dart';
+import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
+import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
+import 'package:ghar360/features/auth/data/auth_failure.dart';
+import 'package:ghar360/features/profile/presentation/widgets/paper_parts.dart';
+import 'package:go_router/go_router.dart';
 
-class ProfileView extends GetView<ProfileController> with ThemeMixin {
+/// The Profile tab: the home scene, the account on the top sheet, then each
+/// menu group as its own sheet on the sky with its title above it.
+class ProfileView extends ConsumerWidget {
   const ProfileView({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return buildThemeAwareScaffold(
-      title: 'profile'.tr,
-      body: SafeArea(
-        top: false,
-        child: Semantics(
-          label: 'profile'.tr,
-          identifier: 'qa.profile.screen',
-          child: Obx(() {
-            final Widget child;
-            final Key key;
-
-            if (controller.isLoading) {
-              key = const ValueKey('loading');
-              child = Center(child: CircularProgressIndicator(color: AppDesign.loadingIndicator));
-            } else {
-              final user = controller.currentUser.value;
-              if (user == null) {
-                key = const ValueKey('empty');
-                child = Center(
-                  child: Text(
-                    'no_user_data_available'.tr,
-                    style: TextStyle(color: AppDesign.textSecondary),
-                  ),
-                );
-              } else {
-                key = const ValueKey('content');
-                child = MaxContentWidth(
-                  // Cap the settings list so it stays centered and readable on
-                  // tablet/desktop widths. On compact (phone) widths
-                  // MaxContentWidth is a no-op (full-bleed) so the phone layout
-                  // is visually unchanged.
-                  maxWidth: 720,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildProfileHeader(context, user),
-                        const SizedBox(height: 32),
-
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSectionHeader(context, 'account_section'.tr),
-                              const SizedBox(height: 8),
-                              Column(
-                                children: [
-                                  _buildMenuItem(
-                                    context: context,
-                                    icon: Icons.favorite_outline,
-                                    title: 'my_preferences'.tr,
-                                    subtitle: 'property_preferences_filters'.tr,
-                                    qaKey: 'qa.profile.menu.preferences',
-                                    onTap: () => Get.toNamed(AppRoutes.preferences),
-                                    showDivider: true,
-                                  ),
-                                  _buildMenuItem(
-                                    context: context,
-                                    icon: Icons.calculate_outlined,
-                                    title: 'tools_calculators'.tr,
-                                    subtitle: 'tools_calculators_subtitle'.tr,
-                                    qaKey: 'qa.profile.menu.tools',
-                                    onTap: () => Get.toNamed(AppRoutes.tools),
-                                    showDivider: false,
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 32),
-
-                              _buildSectionHeader(context, 'support_section'.tr),
-                              const SizedBox(height: 8),
-                              Column(
-                                children: [
-                                  _buildMenuItem(
-                                    context: context,
-                                    icon: Icons.security,
-                                    title: 'privacy_security'.tr,
-                                    subtitle: 'account_security_settings'.tr,
-                                    qaKey: 'qa.profile.menu.privacy',
-                                    onTap: () => Get.toNamed(AppRoutes.privacy),
-                                    showDivider: true,
-                                  ),
-                                  _buildMenuItem(
-                                    context: context,
-                                    icon: Icons.help_outline,
-                                    title: 'help'.tr,
-                                    subtitle: 'get_help_contact_support'.tr,
-                                    qaKey: 'qa.profile.menu.help',
-                                    onTap: () => Get.toNamed(AppRoutes.help),
-                                    showDivider: true,
-                                  ),
-                                  _buildMenuItem(
-                                    context: context,
-                                    icon: Icons.bug_report_outlined,
-                                    title: 'report_a_bug'.tr,
-                                    subtitle: 'report_a_bug_subtitle'.tr,
-                                    qaKey: 'qa.profile.menu.report_bug',
-                                    onTap: () => Get.toNamed(
-                                      AppRoutes.feedback,
-                                      arguments: {'initialBugType': BugType.uiBug},
-                                    ),
-                                    showDivider: true,
-                                  ),
-                                  _buildMenuItem(
-                                    context: context,
-                                    icon: Icons.lightbulb_outline,
-                                    title: 'request_a_feature'.tr,
-                                    subtitle: 'request_a_feature_subtitle'.tr,
-                                    qaKey: 'qa.profile.menu.request_feature',
-                                    onTap: () => Get.toNamed(
-                                      AppRoutes.feedback,
-                                      arguments: {'initialBugType': BugType.featureRequest},
-                                    ),
-                                    showDivider: true,
-                                  ),
-                                  _buildMenuItem(
-                                    context: context,
-                                    icon: Icons.info_outline,
-                                    title: 'about'.tr,
-                                    subtitle: 'app_version_information'.tr,
-                                    qaKey: 'qa.profile.menu.about',
-                                    onTap: () => Get.toNamed(AppRoutes.about),
-                                    showDivider: false,
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 48),
-
-                              _buildLogoutButton(context),
-                              const SizedBox(height: 48),
-                            ],
-                          ),
-                        ),
-                      ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (user, resolving) = ref.watch(authProvider.select((s) => (s.user, s.resolving)));
+    final l10n = context.l10n;
+    final header = SceneHeaderSliver(
+      title: l10n.text('profile'),
+      scene: PaperSceneSpec.profile(),
+      seed: 'profile',
+    );
+    return Scaffold(
+      body: Semantics(
+        label: l10n.text('profile'),
+        identifier: 'qa.profile.screen',
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final side = paperGutter(constraints.maxWidth, 840, min: 16);
+            final bottom = MediaQuery.paddingOf(context).bottom;
+            if (user == null) {
+              return CustomScrollView(
+                slivers: [
+                  header,
+                  SliverFillRemaining(
+                    child: ColoredBox(
+                      color: context.design.surface,
+                      child: resolving
+                          ? LoadingStates.profileSkeleton()
+                          : ErrorStates.profileLoadError(
+                              customMessage: l10n.text('no_user_data_available'),
+                              onRetry: ref.read(authProvider.notifier).retryProfileLoad,
+                              onSignOut: ref.read(authProvider.notifier).signOut,
+                            ),
                     ),
                   ),
-                );
-              }
+                ],
+              );
             }
-
-            return AnimatedSwitcher(
-              duration: AppDurations.contentFade,
-              transitionBuilder: (child, animation) =>
-                  FadeTransition(opacity: animation, child: child),
-              child: KeyedSubtree(key: key, child: child),
-            );
-          }),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileHeader(BuildContext context, UserModel user) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final colorScheme = theme.colorScheme;
-
-    return Semantics(
-      label: 'qa.profile.menu.edit_profile',
-      identifier: 'qa.profile.menu.edit_profile',
-      child: GestureDetector(
-        key: const ValueKey('qa.profile.menu.edit_profile'),
-        onTap: () => Get.toNamed(AppRoutes.editProfile),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.only(top: 32, bottom: 40),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: isDark
-                  ? [
-                      colorScheme.primary.withValues(alpha: 0.15),
-                      colorScheme.primary.withValues(alpha: 0.05),
-                      theme.scaffoldBackgroundColor,
-                    ]
-                  : [
-                      AppDesign.editorialWarm.withValues(alpha: 0.12),
-                      AppDesign.editorialWarm.withValues(alpha: 0.05),
-                      colorScheme.surface,
-                    ],
-              stops: const [0.0, 0.5, 1.0],
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: isDark
-                          ? colorScheme.primary.withValues(alpha: 0.25)
-                          : AppDesign.editorialWarm.withValues(alpha: 0.15),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 8),
+            return SkySheetsScrollView(
+              header: header,
+              seed: 'profile-band',
+              slivers: [
+                SheetSliver(
+                  padding: const EdgeInsets.only(top: 4, bottom: 12),
+                  slivers: [
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: side),
+                      sliver: SliverToBoxAdapter(child: _ProfileHeader(user: user)),
+                    ),
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: side - 16),
+                      sliver: const SliverToBoxAdapter(child: _SessionBanners()),
                     ),
                   ],
                 ),
-                child: CircleAvatar(
-                  radius: 54,
-                  backgroundColor: isDark ? colorScheme.surface : AppDesign.backgroundWhite,
-                  child: user.profileImage != null && user.profileImage!.isNotEmpty
-                      ? ClipOval(
-                          child: RobustNetworkImage(
-                            imageUrl: user.profileImage!,
-                            width: 104,
-                            height: 104,
-                            fit: BoxFit.cover,
+                const SliverToBoxAdapter(child: SheetFoot(seed: 'profile-foot')),
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(side, 28, side, 32 + bottom),
+                  sliver: SliverList.list(
+                    children: [
+                      _MenuGroup(
+                        title: l10n.text('account_section'),
+                        seed: 'profile-account',
+                        items: [
+                          _MenuItem(
+                            icon: KnifeIcon.filter,
+                            titleKey: 'my_preferences',
+                            subtitleKey: 'property_preferences_filters',
+                            qaKey: 'qa.profile.menu.preferences',
+                            onTap: () => context.push(AppRoutes.preferences),
                           ),
-                        )
-                      : CircleAvatar(
-                          radius: 52,
-                          backgroundColor: AppDesign.primaryYellow.withValues(alpha: 0.2),
-                          child: Text(
-                            user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
-                            style: const TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w600,
-                              color: AppDesign.primaryYellowDark,
-                            ),
+                          _MenuItem(
+                            icon: KnifeIcon.kite,
+                            titleKey: 'assistant',
+                            subtitleKey: 'assistant_subtitle',
+                            qaKey: 'qa.profile.menu.assistant',
+                            onTap: () => context.push(AppRoutes.assistant),
                           ),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              Text(
-                user.name.isNotEmpty ? user.name : 'user_name'.tr,
-                style: theme.textTheme.displaySmall?.copyWith(
-                  color: colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 26,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              if (user.email.isNotEmpty || (user.phone?.isNotEmpty ?? false)) ...[
-                const SizedBox(height: 6),
-                Text(
-                  [
-                    if (user.email.isNotEmpty) user.email,
-                    if (user.phone?.isNotEmpty ?? false) user.phone,
-                  ].join('  ·  '),
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.onSurface.withValues(alpha: 0.6),
-                    letterSpacing: 0.3,
-                    height: 1.4,
+                          _MenuItem(
+                            icon: KnifeIcon.calculator,
+                            titleKey: 'tools_calculators',
+                            subtitleKey: 'tools_calculators_subtitle',
+                            qaKey: 'qa.profile.menu.tools',
+                            onTap: () => context.push(AppRoutes.tools),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+                      _MenuGroup(
+                        title: l10n.text('support_section'),
+                        seed: 'profile-support',
+                        items: [
+                          _MenuItem(
+                            icon: KnifeIcon.shield,
+                            titleKey: 'privacy_security',
+                            subtitleKey: 'account_security_settings',
+                            qaKey: 'qa.profile.menu.privacy',
+                            onTap: () => context.push(AppRoutes.privacy),
+                          ),
+                          _MenuItem(
+                            icon: KnifeIcon.info,
+                            titleKey: 'help',
+                            subtitleKey: 'get_help_contact_support',
+                            qaKey: 'qa.profile.menu.help',
+                            onTap: () => context.push(AppRoutes.help),
+                          ),
+                          _MenuItem(
+                            icon: KnifeIcon.alert,
+                            titleKey: 'report_a_bug',
+                            subtitleKey: 'report_a_bug_subtitle',
+                            qaKey: 'qa.profile.menu.report_bug',
+                            onTap: () => context.push(AppRoutes.feedback, extra: BugType.uiBug),
+                          ),
+                          _MenuItem(
+                            icon: KnifeIcon.plus,
+                            titleKey: 'request_a_feature',
+                            subtitleKey: 'request_a_feature_subtitle',
+                            qaKey: 'qa.profile.menu.request_feature',
+                            onTap: () =>
+                                context.push(AppRoutes.feedback, extra: BugType.featureRequest),
+                          ),
+                          _MenuItem(
+                            icon: KnifeIcon.home,
+                            titleKey: 'about',
+                            subtitleKey: 'app_version_information',
+                            qaKey: 'qa.profile.menu.about',
+                            onTap: () => context.push(AppRoutes.about),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const _SignOutButton(),
+                    ],
                   ),
-                  textAlign: TextAlign.center,
                 ),
               ],
-
-              // Profile completion progress bar (Improvement 10).
-              // Surfaces UserModel.profileCompletionPercentage which was
-              // previously computed but never shown.
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: _ProfileCompletionBar(
-                  percentage: user.profileCompletionPercentage,
-                  onImprove: user.profileCompletionPercentage < 100
-                      ? () => Get.toNamed(AppRoutes.editProfile)
-                      : null,
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(left: 16, bottom: 4),
-      child: Text(
-        title,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-          letterSpacing: 1.5,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuItem({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String qaKey,
-    required VoidCallback onTap,
-    bool showDivider = true,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Semantics(
-      label: qaKey,
-      identifier: qaKey,
-      child: Column(
-        children: [
-          ListTile(
-            key: ValueKey(qaKey),
-            onTap: onTap,
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppDesign.primaryYellow.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: AppDesign.primaryYellowDark, size: 22),
-            ),
-            title: Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: colorScheme.onSurface.withValues(alpha: 0.6),
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          ),
-          if (showDivider)
-            Divider(
-              height: 1,
-              thickness: 0.5,
-              indent: 64,
-              endIndent: 16,
-              color: colorScheme.onSurface.withValues(alpha: 0.1),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLogoutButton(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: TextButton(
-        key: const ValueKey('qa.profile.logout'),
-        onPressed: () => _showLogoutDialog(),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-          splashFactory: NoSplash.splashFactory,
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-        ),
-        child: Text(
-          'sign_out'.tr,
-          style: TextStyle(
-            color: theme.colorScheme.error,
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showLogoutDialog() {
-    final theme = Get.theme;
-    Get.dialog(
-      AlertDialog(
-        backgroundColor: theme.colorScheme.surface,
-        title: Text('logout'.tr, style: TextStyle(color: theme.colorScheme.onSurface)),
-        content: Text(
-          'logout_confirm_message'.tr,
-          style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: Text(
-              'cancel'.tr,
-              style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Get.back();
-              controller.signOut();
-            },
-            child: Text('logout'.tr, style: TextStyle(color: theme.colorScheme.error)),
-          ),
-        ],
       ),
     );
   }
 }
 
-/// Displays the profile completion percentage as a progress bar with a label.
-/// Tapping it (when incomplete) navigates to edit-profile.
-class _ProfileCompletionBar extends StatelessWidget {
-  final int percentage;
-  final VoidCallback? onImprove;
+/// Stale or failed profile refresh and a failed sign-out stay visible above
+/// the menu, each with its own retry.
+class _SessionBanners extends ConsumerWidget {
+  const _SessionBanners();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (stale, error, resolving, signOutFailed) = ref.watch(
+      authProvider.select(
+        (s) => (
+          s.stale,
+          s.error,
+          s.resolving,
+          s.mutation.hasError && s.mutationKind == AuthMutation.signOut,
+        ),
+      ),
+    );
+    final session = ref.read(authProvider.notifier);
+    return Column(
+      children: [
+        if (stale || error != null)
+          InlineRetryBanner(
+            message: context.l10n.text(
+              error == null
+                  ? 'network_error'
+                  : authFailureMessageKey(error, fallback: 'something_went_wrong'),
+            ),
+            onRetry: session.retryProfileLoad,
+            isLoading: resolving,
+          ),
+        if (signOutFailed)
+          InlineRetryBanner(
+            message: context.l10n.text('something_went_wrong'),
+            onRetry: session.signOut,
+          ),
+      ],
+    );
+  }
+}
 
-  const _ProfileCompletionBar({required this.percentage, this.onImprove});
+/// The account photo, or the first letter of the name on a round mint
+/// cutout lying on the sheet.
+class ProfileAvatar extends StatelessWidget {
+  const ProfileAvatar({super.key, required this.imageUrl, required this.name, this.size = 72});
+  final String imageUrl;
+  final String name;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isComplete = percentage >= 100;
-    final progress = (percentage / 100).clamp(0.0, 1.0);
+    final design = context.design;
+    final text = Theme.of(context).textTheme;
+    final style = (size >= 96 ? text.displayMedium : text.displaySmall)?.copyWith(
+      color: design.textPrimary,
+      height: 1,
+    );
+    final initial = SizedBox.square(
+      dimension: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: design.slip,
+          shape: BoxShape.circle,
+          boxShadow: paperShadows(PaperElevation.low, design.shadowOn(design.surface)),
+        ),
+        child: Center(
+          // Erode sits its capitals low in the line box; lift the letter to
+          // the optical centre of the circle.
+          child: Transform.translate(
+            offset: Offset(0, -(style?.fontSize ?? 0) * 0.08),
+            child: Text(
+              name.trim().isNotEmpty
+                  ? name.trim()[0].toUpperCase()
+                  : context.l10n.text('user_initial'),
+              style: style,
+              textAlign: TextAlign.center,
+              textScaler: TextScaler.noScaling,
+            ),
+          ),
+        ),
+      ),
+    );
+    if (imageUrl.isEmpty) return initial;
+    return RobustNetworkImageExtension.circular(
+      imageUrl: imageUrl,
+      radius: size / 2,
+      placeholder: initial,
+      errorWidget: initial,
+    );
+  }
+}
 
-    return GestureDetector(
-      onTap: onImprove,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                isComplete
-                    ? 'profile_complete'.tr
-                    : 'profile_complete_percent'.trParams({'percent': '$percentage'}),
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
+/// Avatar, name and contact, then how complete the profile is: a cut strip
+/// filled teal by width. The whole block opens Edit profile.
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({required this.user});
+  final UserModel user;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final design = context.design;
+    final contact = [
+      if (user.email?.isNotEmpty ?? false) user.email!,
+      if (user.phone?.isNotEmpty ?? false) user.phone!,
+    ];
+    final percentage = user.profileCompletionPercentage;
+    final complete = percentage >= 100;
+    return Semantics(
+      identifier: 'qa.profile.menu.edit_profile',
+      button: true,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: const ValueKey('qa.profile.menu.edit_profile'),
+          onTap: () => context.push(AppRoutes.editProfile),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    ProfileAvatar(imageUrl: user.profileImage ?? '', name: user.name),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user.name.isNotEmpty ? user.name : context.l10n.text('user_name'),
+                            style: text.headlineMedium,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          for (final line in contact)
+                            Text(
+                              line,
+                              style: text.bodyMedium?.copyWith(color: design.textSecondary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    PaperIcon(KnifeIcon.chevronRight, color: design.textTertiary, size: 20),
+                  ],
                 ),
-              ),
-              if (!isComplete) ...[
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right,
-                  size: 16,
-                  color: colorScheme.onSurface.withValues(alpha: 0.5),
+                const SizedBox(height: 18),
+                Text(
+                  complete
+                      ? context.l10n.text('profile_complete')
+                      : context.l10n.text(
+                          'profile_complete_percent',
+                          params: {'percent': '$percentage'},
+                        ),
+                  style: text.labelLarge?.copyWith(
+                    color: complete ? design.success : design.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                CutStrip(
+                  key: const ValueKey('qa.profile.completion'),
+                  value: percentage / 100,
+                  seed: 'profile-completion',
+                  color: complete ? design.success : design.accent,
                 ),
               ],
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: colorScheme.onSurface.withValues(alpha: 0.1),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                isComplete ? AppDesign.successGreen : AppDesign.primaryYellow,
-              ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuItem {
+  const _MenuItem({
+    required this.icon,
+    required this.titleKey,
+    required this.subtitleKey,
+    required this.qaKey,
+    required this.onTap,
+  });
+  final KnifeIcon icon;
+  final String titleKey;
+  final String subtitleKey;
+  final String qaKey;
+  final VoidCallback onTap;
+}
+
+/// A group title on the sky over its own sheet of rows: bare teal icon,
+/// title, one line, chevron. Rows are set apart by space, not rules.
+class _MenuGroup extends StatelessWidget {
+  const _MenuGroup({required this.title, required this.seed, required this.items});
+  final String title;
+  final String seed;
+  final List<_MenuItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final design = context.design;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(4, 0, 4, 10),
+          child: Semantics(
+            header: true,
+            child: Text(title, style: Theme.of(context).textTheme.headlineSmall),
+          ),
+        ),
+        PaperSheet(
+          seed: seed,
+          elevation: PaperElevation.low,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              children: [
+                for (final item in items)
+                  Semantics(
+                    identifier: item.qaKey,
+                    child: ListTile(
+                      key: ValueKey<String>(item.qaKey),
+                      onTap: item.onTap,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                      // Icon and chevron sit level with the title line, also when
+                      // large text wraps the row.
+                      titleAlignment: ListTileTitleAlignment.top,
+                      leading: PaperIcon(item.icon, color: design.accent, size: 22),
+                      title: Text(context.l10n.text(item.titleKey)),
+                      subtitle: Text(context.l10n.text(item.subtitleKey)),
+                      trailing: PaperIcon(
+                        KnifeIcon.chevronRight,
+                        color: design.textTertiary,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SignOutButton extends ConsumerWidget {
+  const _SignOutButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final busy = ref.watch(authProvider.select((s) => s.mutation.isLoading));
+    return Center(
+      child: TextButton.icon(
+        key: const ValueKey('qa.profile.logout'),
+        onPressed: busy ? null : () => _confirmSignOut(context, ref),
+        style: TextButton.styleFrom(
+          foregroundColor: context.design.error,
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+        ),
+        icon: const PaperIcon(KnifeIcon.logout, size: 20),
+        label: Text(context.l10n.text('sign_out')),
+      ),
+    );
+  }
+
+  Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.l10n.text('logout')),
+        content: Text(context.l10n.text('logout_confirm_message')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(context.l10n.text('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: context.design.error),
+            child: Text(context.l10n.text('logout')),
           ),
         ],
       ),
     );
+    if (confirmed == true) await ref.read(authProvider.notifier).signOut();
   }
 }

@@ -1,77 +1,59 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
+import 'package:ghar360/core/data/models/wire_enums.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/profile/data/profile_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
-import '../../../helpers/getx_test_binding.dart';
-import '../../../helpers/mocks.dart';
+import '../../../helpers/api_fixtures.dart';
+
+class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
   late MockApiClient mockApiClient;
 
   setUp(() {
-    GetxTestBinding.init();
     mockApiClient = MockApiClient();
-    GetxTestBinding.bind().register<ApiClient>(mockApiClient);
   });
 
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
+  ProfileRepository createRepository() => ProfileRepository(apiClient: mockApiClient);
 
-  ProfileRepository createRepository() {
-    return ProfileRepository();
-  }
+  /// A `SelfUser` body from the backend's own response model.
+  Map<String, dynamic> selfUser({Map<String, dynamic> overrides = const {}}) => {
+    ...asObject(apiFixture('users')['profile']),
+    ...overrides,
+  };
 
-  /// A realistic user payload wrapped in the `{ "data": { ... } }` envelope
-  /// that ResponseParser.unwrapObject handles.
-  Map<String, dynamic> wrappedUserJson({
-    int id = 1,
-    String fullName = 'Test User',
-    String email = 'test@example.com',
-    String? phone,
-    String? dateOfBirth,
-    String? profileImageUrl,
-  }) {
-    return {
-      'data': {
-        'id': id,
-        'supabase_user_id': 'sb-123',
-        'email': email,
-        'full_name': fullName,
-        'phone': phone ?? '+919876543210',
-        'date_of_birth': ?dateOfBirth,
-        'profile_image_url': ?profileImageUrl,
-        'is_active': true,
-        'is_verified': false,
-        'created_at': '2024-01-15T10:30:00Z',
-        'preferences': <String, dynamic>{},
-      },
-    };
-  }
-
-  ApiResponse successResponse(Map<String, dynamic> body) {
-    return ApiResponse(statusCode: 200, body: body, headers: {});
-  }
+  ApiResponse ok(Object? body) => ApiResponse(statusCode: 200, body: body, headers: const {});
 
   group('ProfileRepository', () {
     group('getCurrentUserProfile', () {
-      test('returns UserModel on successful GET', () async {
+      test('returns the SelfUser on a successful GET', () async {
         when(
           () => mockApiClient.get(ApiPaths.usersProfile, useCache: false, dedupe: false),
-        ).thenAnswer((_) async => successResponse(wrappedUserJson()));
+        ).thenAnswer((_) async => ok(selfUser()));
 
-        final repo = createRepository();
-        final user = await repo.getCurrentUserProfile();
+        final user = await createRepository().getCurrentUserProfile();
 
-        expect(user.email, 'test@example.com');
-        expect(user.fullName, 'Test User');
+        expect(user.email, 'asha@example.com');
+        expect(user.fullName, 'Asha Verma');
+        expect(user.preferences.purpose, PropertyPurpose.rent);
         verify(
           () => mockApiClient.get(ApiPaths.usersProfile, useCache: false, dedupe: false),
         ).called(1);
+      });
+
+      test('a body that is not a SelfUser is a malformed response', () async {
+        when(
+          () => mockApiClient.get(ApiPaths.usersProfile, useCache: false, dedupe: false),
+        ).thenAnswer((_) async => ok({'data': selfUser()}));
+
+        await expectLater(
+          createRepository().getCurrentUserProfile(),
+          throwsA(isA<ServerException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+        );
       });
 
       test('rethrows AppException from ApiClient', () async {
@@ -83,9 +65,7 @@ void main() {
           ),
         ).thenThrow(NetworkException('No internet'));
 
-        final repo = createRepository();
-
-        expect(() => repo.getCurrentUserProfile(), throwsA(isA<NetworkException>()));
+        expect(() => createRepository().getCurrentUserProfile(), throwsA(isA<NetworkException>()));
       });
 
       test('rethrows unexpected exceptions', () async {
@@ -97,24 +77,57 @@ void main() {
           ),
         ).thenThrow(Exception('Something broke'));
 
-        final repo = createRepository();
+        expect(() => createRepository().getCurrentUserProfile(), throwsException);
+      });
 
-        expect(() => repo.getCurrentUserProfile(), throwsException);
+      test('a user with no phone keeps a null phone, not an empty string', () async {
+        when(
+          () => mockApiClient.get(ApiPaths.usersProfile, useCache: false, dedupe: false),
+        ).thenAnswer((_) async => ok(selfUser(overrides: {'phone': null})));
+
+        expect((await createRepository().getCurrentUserProfile()).phone, isNull);
       });
     });
 
     group('updateUserProfile', () {
-      test('sends PUT with profile data and returns updated UserModel', () async {
-        final profileData = {'full_name': 'Updated Name'};
+      test('sends PUT with the UserUpdate keys and returns the saved user', () async {
+        final profileData = {'full_name': 'Updated Name', 'date_of_birth': '1994-02-11'};
         when(
           () => mockApiClient.put(ApiPaths.usersProfile, body: profileData),
-        ).thenAnswer((_) async => successResponse(wrappedUserJson(fullName: 'Updated Name')));
+        ).thenAnswer((_) async => ok(selfUser(overrides: {'full_name': 'Updated Name'})));
 
-        final repo = createRepository();
-        final user = await repo.updateUserProfile(profileData);
+        final user = await createRepository().updateUserProfile(profileData);
 
         expect(user.fullName, 'Updated Name');
         verify(() => mockApiClient.put(ApiPaths.usersProfile, body: profileData)).called(1);
+      });
+
+      test('null clears a nullable key', () async {
+        when(
+          () => mockApiClient.put(ApiPaths.usersProfile, body: {'date_of_birth': null}),
+        ).thenAnswer((_) async => ok(selfUser(overrides: {'date_of_birth': null})));
+
+        final user = await createRepository().updateUserProfile({'date_of_birth': null});
+
+        expect(user.dateOfBirth, isNull);
+      });
+
+      test('refuses a key the backend does not declare, before any request', () async {
+        for (final key in [
+          'email',
+          'profile_image_url',
+          'preferences',
+          'first_name',
+          'last_name',
+          'bio',
+        ]) {
+          expect(
+            () => createRepository().updateUserProfile({key: 'x'}),
+            throwsArgumentError,
+            reason: key,
+          );
+        }
+        verifyNever(() => mockApiClient.put(any(), body: any(named: 'body')));
       });
 
       test('rethrows AppException from ApiClient', () async {
@@ -122,35 +135,40 @@ void main() {
           () => mockApiClient.put(ApiPaths.usersProfile, body: any(named: 'body')),
         ).thenThrow(ServerException('Server error', statusCode: 500));
 
-        final repo = createRepository();
-
         expect(
-          () => repo.updateUserProfile({'full_name': 'Test'}),
+          () => createRepository().updateUserProfile({'full_name': 'Test'}),
           throwsA(isA<ServerException>()),
         );
       });
     });
 
     group('updateUserPreferences', () {
-      test('PUTs preferences then fetches and returns updated profile', () async {
-        final prefs = {'push_notifications': false, 'email_notifications': true};
-
+      test('PUTs the patch and returns the preferences the backend holds', () async {
+        final patch = {
+          'purpose': 'buy',
+          'location_preference': ['Gurugram'],
+        };
         when(
-          () => mockApiClient.put(ApiPaths.usersPreferences, body: prefs),
-        ).thenAnswer((_) async => successResponse({'data': <String, dynamic>{}}));
+          () => mockApiClient.put(ApiPaths.usersPreferences, body: patch),
+        ).thenAnswer((_) async => ok(asObject(apiFixture('users')['preferences'])));
 
-        when(
-          () => mockApiClient.get(ApiPaths.usersProfile, useCache: false, dedupe: false),
-        ).thenAnswer((_) async => successResponse(wrappedUserJson()));
+        final preferences = await createRepository().updateUserPreferences(patch);
 
-        final repo = createRepository();
-        final user = await repo.updateUserPreferences(prefs);
+        expect(preferences.purpose, PropertyPurpose.buy);
+        expect(preferences.location, 'Gurugram');
+        verify(() => mockApiClient.put(ApiPaths.usersPreferences, body: patch)).called(1);
+        verifyNever(() => mockApiClient.get(ApiPaths.usersProfile, useCache: false, dedupe: false));
+      });
 
-        expect(user.email, 'test@example.com');
-        verify(() => mockApiClient.put(ApiPaths.usersPreferences, body: prefs)).called(1);
-        verify(
-          () => mockApiClient.get(ApiPaths.usersProfile, useCache: false, dedupe: false),
-        ).called(1);
+      test('refuses keys that are not preferences', () async {
+        expect(
+          () => createRepository().updateUserPreferences({'push_notifications': false}),
+          throwsArgumentError,
+        );
+        expect(
+          () => createRepository().updateUserPreferences({'location': 'Gurugram'}),
+          throwsArgumentError,
+        );
       });
 
       test('rethrows when PUT fails', () async {
@@ -158,10 +176,8 @@ void main() {
           () => mockApiClient.put(ApiPaths.usersPreferences, body: any(named: 'body')),
         ).thenThrow(NetworkException('Offline'));
 
-        final repo = createRepository();
-
         expect(
-          () => repo.updateUserPreferences({'push_notifications': true}),
+          () => createRepository().updateUserPreferences({'purpose': 'rent'}),
           throwsA(isA<NetworkException>()),
         );
       });
@@ -169,32 +185,28 @@ void main() {
 
     group('isProfileComplete', () {
       test('returns true when user has fullName and dateOfBirth', () {
-        final repo = createRepository();
+        final user = UserModel.fromJson(selfUser());
 
-        final json = wrappedUserJson(fullName: 'Complete User', dateOfBirth: '1990-05-20')['data']!;
-        final user = UserModel.fromJson(json);
-        expect(repo.isProfileComplete(user), isTrue);
+        expect(createRepository().isProfileComplete(user), isTrue);
       });
 
       test('returns false when user lacks dateOfBirth', () {
-        final repo = createRepository();
+        final user = UserModel.fromJson(selfUser(overrides: {'date_of_birth': null}));
 
-        final user = UserModel.fromJson(wrappedUserJson()['data']!);
-        expect(repo.isProfileComplete(user), isFalse);
+        expect(createRepository().isProfileComplete(user), isFalse);
       });
     });
 
     group('updateUserLocation', () {
-      test('PUTs latitude and longitude to location endpoint', () async {
+      test('PUTs latitude and longitude to the location endpoint', () async {
         when(
           () => mockApiClient.put(
             ApiPaths.usersLocation,
             body: {'latitude': 28.61, 'longitude': 77.20},
           ),
-        ).thenAnswer((_) async => successResponse({'data': <String, dynamic>{}}));
+        ).thenAnswer((_) async => ok(apiFixture('users')['location']));
 
-        final repo = createRepository();
-        await repo.updateUserLocation({'current_latitude': 28.61, 'current_longitude': 77.20});
+        await createRepository().updateUserLocation(latitude: 28.61, longitude: 77.20);
 
         verify(
           () => mockApiClient.put(
@@ -204,16 +216,10 @@ void main() {
         ).called(1);
       });
 
-      test('skips the API call when latitude is null', () async {
+      test('skips a position outside the range the backend accepts', () async {
         final repo = createRepository();
-        await repo.updateUserLocation({'current_latitude': null, 'current_longitude': 77.20});
-
-        verifyNever(() => mockApiClient.put(ApiPaths.usersLocation, body: any(named: 'body')));
-      });
-
-      test('skips the API call when longitude is null', () async {
-        final repo = createRepository();
-        await repo.updateUserLocation({'current_latitude': 28.61, 'current_longitude': null});
+        await repo.updateUserLocation(latitude: 91, longitude: 77.20);
+        await repo.updateUserLocation(latitude: 28.61, longitude: -181);
 
         verifyNever(() => mockApiClient.put(ApiPaths.usersLocation, body: any(named: 'body')));
       });
@@ -223,9 +229,8 @@ void main() {
           () => mockApiClient.put(ApiPaths.usersLocation, body: any(named: 'body')),
         ).thenThrow(NetworkException('Offline'));
 
-        final repo = createRepository();
         expect(
-          () => repo.updateUserLocation({'current_latitude': 1.0, 'current_longitude': 2.0}),
+          () => createRepository().updateUserLocation(latitude: 1.0, longitude: 2.0),
           throwsA(isA<NetworkException>()),
         );
       });
@@ -235,32 +240,15 @@ void main() {
           () => mockApiClient.put(ApiPaths.usersLocation, body: any(named: 'body')),
         ).thenThrow(Exception('Broke'));
 
-        final repo = createRepository();
         expect(
-          () => repo.updateUserLocation({'current_latitude': 1.0, 'current_longitude': 2.0}),
+          () => createRepository().updateUserLocation(latitude: 1.0, longitude: 2.0),
           throwsException,
         );
       });
     });
 
-    group('updateProfileField', () {
-      test('delegates to updateUserProfile with a single-field map', () async {
-        when(
-          () => mockApiClient.put(ApiPaths.usersProfile, body: {'full_name': 'New Name'}),
-        ).thenAnswer((_) async => successResponse(wrappedUserJson(fullName: 'New Name')));
-
-        final repo = createRepository();
-        final user = await repo.updateProfileField('full_name', 'New Name');
-
-        expect(user.fullName, 'New Name');
-        verify(
-          () => mockApiClient.put(ApiPaths.usersProfile, body: {'full_name': 'New Name'}),
-        ).called(1);
-      });
-    });
-
     group('updateProfileImage', () {
-      test('uploads file and returns parsed user', () async {
+      test('uploads the file and returns the parsed user', () async {
         when(
           () => mockApiClient.upload(
             ApiPaths.usersAvatar,
@@ -268,13 +256,12 @@ void main() {
             filePath: '/tmp/avatar.png',
           ),
         ).thenAnswer(
-          (_) async => successResponse(wrappedUserJson(profileImageUrl: 'https://img.com/a.png')),
+          (_) async => ok(selfUser(overrides: {'profile_image_url': 'https://img.com/a.png'})),
         );
 
-        final repo = createRepository();
-        final user = await repo.updateProfileImage('/tmp/avatar.png');
+        final user = await createRepository().updateProfileImage('/tmp/avatar.png');
 
-        expect(user.email, 'test@example.com');
+        expect(user.profileImageUrl, 'https://img.com/a.png');
         verify(
           () => mockApiClient.upload(
             ApiPaths.usersAvatar,
@@ -293,8 +280,10 @@ void main() {
           ),
         ).thenThrow(NetworkException('Offline'));
 
-        final repo = createRepository();
-        expect(() => repo.updateProfileImage('/tmp/avatar.png'), throwsA(isA<NetworkException>()));
+        expect(
+          () => createRepository().updateProfileImage('/tmp/avatar.png'),
+          throwsA(isA<NetworkException>()),
+        );
       });
 
       test('rethrows unexpected exceptions', () async {
@@ -306,68 +295,7 @@ void main() {
           ),
         ).thenThrow(Exception('Broke'));
 
-        final repo = createRepository();
-        expect(() => repo.updateProfileImage('/tmp/avatar.png'), throwsException);
-      });
-    });
-
-    group('getCurrentUserProfile parsing', () {
-      test('defaults phone to empty string when absent', () async {
-        final json = wrappedUserJson();
-        (json['data'] as Map<String, dynamic>).remove('phone');
-        when(
-          () => mockApiClient.get(
-            ApiPaths.usersProfile,
-            useCache: any(named: 'useCache'),
-            dedupe: any(named: 'dedupe'),
-          ),
-        ).thenAnswer((_) async => successResponse(json));
-
-        final repo = createRepository();
-        final user = await repo.getCurrentUserProfile();
-
-        expect(user.phone, '');
-      });
-
-      test('defaults preferences to empty map when not a Map', () async {
-        final json = wrappedUserJson();
-        (json['data'] as Map<String, dynamic>)['preferences'] = 'not-a-map';
-        when(
-          () => mockApiClient.get(
-            ApiPaths.usersProfile,
-            useCache: any(named: 'useCache'),
-            dedupe: any(named: 'dedupe'),
-          ),
-        ).thenAnswer((_) async => successResponse(json));
-
-        final repo = createRepository();
-        final user = await repo.getCurrentUserProfile();
-
-        expect(user.preferences, isEmpty);
-      });
-
-      test('throws FormatException on empty payload', () async {
-        when(
-          () => mockApiClient.get(
-            ApiPaths.usersProfile,
-            useCache: any(named: 'useCache'),
-            dedupe: any(named: 'dedupe'),
-          ),
-        ).thenAnswer((_) async => successResponse({'data': <String, dynamic>{}}));
-
-        final repo = createRepository();
-        expect(() => repo.getCurrentUserProfile(), throwsA(isA<FormatException>()));
-      });
-    });
-
-    group('updateUserProfile error handling', () {
-      test('rethrows unexpected (non-App) exceptions', () async {
-        when(
-          () => mockApiClient.put(ApiPaths.usersProfile, body: any(named: 'body')),
-        ).thenThrow(Exception('Unexpected'));
-
-        final repo = createRepository();
-        expect(() => repo.updateUserProfile({'full_name': 'x'}), throwsException);
+        expect(() => createRepository().updateProfileImage('/tmp/avatar.png'), throwsException);
       });
     });
   });

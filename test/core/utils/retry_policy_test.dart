@@ -131,6 +131,11 @@ void main() {
   });
 
   group('RetryPolicy.isTransientError', () {
+    test('does not replay cancelled requests', () {
+      final error = NetworkException('cancelled', code: 'CANCELLED');
+      expect(RetryPolicy.isTransientError(error), isFalse);
+      expect(error.isRetryableOffline, isFalse);
+    });
     test('retries network and server exceptions', () {
       expect(RetryPolicy.isTransientError(NetworkException('x')), isTrue);
       expect(RetryPolicy.isTransientError(ServerException('x', statusCode: 500)), isTrue);

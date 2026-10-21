@@ -1,265 +1,232 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
+import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
 import 'package:ghar360/features/visits/data/visits_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
-import '../../../helpers/mocks.dart';
+import '../../../helpers/visits_test_support.dart';
 
-class _MockVisitsRemote extends Mock implements VisitsRemoteDatasource {}
-
-class _MockOfflineQueue extends Mock implements OfflineQueueService {}
+class MockRemoteVisits extends Mock implements VisitsRemoteDatasource {}
 
 void main() {
-  late _MockVisitsRemote remote;
-  late _MockOfflineQueue queue;
-  late VisitsRepository repository;
-
-  setUp(() {
-    remote = _MockVisitsRemote();
-    queue = _MockOfflineQueue();
-    repository = VisitsRepository(remoteDatasource: remote, offlineQueue: queue);
+  late AppDatabase db;
+  late StorageScope scope;
+  late OfflineQueueService queue;
+  late MockRemoteVisits remote;
+  late VisitsRepository repo;
+  final date = DateTime.utc(2030, 1, 1).toIso8601String();
+  setUp(() async {
+    db = await visitTestDatabase();
+    scope = db.activateScope(environment: 'test', accountId: 'a');
+    queue = OfflineQueueService(database: db, scope: () => scope);
+    remote = MockRemoteVisits();
+    repo = VisitsRepository(remoteDatasource: remote, offlineQueue: queue);
   });
+  tearDown(() async {
+    queue.close();
+    await db.close();
+  });
+  void booking(Future<VisitModel> Function() action) {
+    when(
+      () => remote.scheduleVisit(
+        propertyId: 100,
+        scheduledDate: date,
+        specialRequirements: any(named: 'specialRequirements'),
+      ),
+    ).thenAnswer((_) => action());
+  }
 
-  VisitModel visit() => VisitModel(
-    id: 1,
-    propertyId: 10,
-    userId: 1,
-    scheduledDate: DateTime.utc(2024, 6, 1),
-    status: VisitStatus.scheduled,
-    createdAt: DateTime.utc(2024, 1, 1),
+  Future<VisitRequestResult> send() =>
+      repo.scheduleVisit(propertyId: 100, scheduledDate: date, specialRequirements: 'notes');
+  test(
+    'successful booking persists intent before send and returns explicit confirmation',
+    () async {
+      booking(() async {
+        expect((await queue.list()).single.status, PendingActionStatus.needsReconciliation);
+        return visitFixture();
+      });
+      final result = await send();
+      expect(result, isA<VisitConfirmed>());
+      expect((result as VisitConfirmed).visit.id, 1);
+      expect((await queue.list()).single.status, PendingActionStatus.confirmed);
+    },
   );
-
-  group('VisitsRepository.scheduleVisit', () {
-    test('returns remote visit on success', () async {
-      when(
-        () => remote.scheduleVisit(
-          propertyId: 10,
-          scheduledDate: '2024-06-01T00:00:00.000Z',
-          specialRequirements: null,
-        ),
-      ).thenAnswer((_) async => visit());
-
-      final result = await repository.scheduleVisit(
-        propertyId: 10,
-        scheduledDate: '2024-06-01T00:00:00.000Z',
-      );
-
-      expect(result.id, 1);
-      verifyNever(
-        () => queue.enqueueVisit(
-          propertyId: any(named: 'propertyId'),
-          scheduledDate: any(named: 'scheduledDate'),
-          specialRequirements: any(named: 'specialRequirements'),
-        ),
-      );
-    });
-
-    test('enqueues and rethrows on NetworkException', () async {
-      when(
-        () => remote.scheduleVisit(
-          propertyId: 10,
-          scheduledDate: '2024-06-01T00:00:00.000Z',
-          specialRequirements: 'notes',
-        ),
-      ).thenThrow(NetworkException('down', code: 'CONNECTION_ERROR'));
-      when(
-        () => queue.enqueueVisit(
-          propertyId: 10,
-          scheduledDate: '2024-06-01T00:00:00.000Z',
-          specialRequirements: 'notes',
-        ),
-      ).thenAnswer((_) async {});
-
-      await expectLater(
-        () => repository.scheduleVisit(
-          propertyId: 10,
-          scheduledDate: '2024-06-01T00:00:00.000Z',
-          specialRequirements: 'notes',
-        ),
-        throwsA(isA<NetworkException>()),
-      );
-
+  for (final failure in [
+    NetworkException('offline'),
+    ServerException('down', statusCode: 500),
+    const FormatException('malformed'),
+  ]) {
+    test('${failure.runtimeType} remains durable and unresolved without replay', () async {
+      booking(() async => throw failure);
+      final result = await send();
+      expect(result, isA<VisitUnresolved>());
+      expect((await queue.list()).single.status, PendingActionStatus.needsReconciliation);
+      final again = await send();
+      expect(again, isA<VisitUnresolved>());
       verify(
-        () => queue.enqueueVisit(
-          propertyId: 10,
-          scheduledDate: '2024-06-01T00:00:00.000Z',
+        () => remote.scheduleVisit(
+          propertyId: 100,
+          scheduledDate: date,
           specialRequirements: 'notes',
         ),
       ).called(1);
     });
+  }
+  for (final failure in [
+    AuthenticationException('expired', code: 'UNAUTHORIZED'),
+    AuthenticationException('offline', code: AppException.missingAuthHeaderCode),
+    ValidationException('bad'),
+    ApiException('conflict', statusCode: 409),
+  ]) {
+    test('${failure.code ?? failure.runtimeType} records failed intent for review', () async {
+      booking(() async => throw failure);
+      expect(await send(), isA<VisitFailed>());
+      expect((await queue.list()).single.status, PendingActionStatus.failed);
+    });
+  }
+  test('persistence failure returns explicit failure and never sends POST', () async {
+    await db.close();
+    final result = await send();
+    expect(result, isA<VisitFailed>());
+    verifyNever(
+      () => remote.scheduleVisit(
+        propertyId: any(named: 'propertyId'),
+        scheduledDate: any(named: 'scheduledDate'),
+        specialRequirements: any(named: 'specialRequirements'),
+      ),
+    );
   });
-
-  group('VisitsRepository.fetchVisitsSummary', () {
-    test('delegates to remote datasource and returns payload', () async {
-      final payload = VisitsPayload(visits: [visit()], hasMore: true, nextCursor: 'next');
-      when(
-        () => remote.fetchVisitsSummary(cursor: null, limit: 50),
-      ).thenAnswer((_) async => payload);
-
-      final result = await repository.fetchVisitsSummary();
-
-      expect(result.visits.length, 1);
-      expect(result.hasMore, isTrue);
-      expect(result.nextCursor, 'next');
-      verify(() => remote.fetchVisitsSummary(cursor: null, limit: 50)).called(1);
-    });
-
-    test('forwards cursor and limit to remote', () async {
-      final payload = const VisitsPayload(visits: [], hasMore: false);
-      when(
-        () => remote.fetchVisitsSummary(cursor: 'abc', limit: 10),
-      ).thenAnswer((_) async => payload);
-
-      final result = await repository.fetchVisitsSummary(cursor: 'abc', limit: 10);
-
-      expect(result.visits, isEmpty);
-      verify(() => remote.fetchVisitsSummary(cursor: 'abc', limit: 10)).called(1);
-    });
-
-    test('propagates exceptions from remote', () async {
-      when(
-        () => remote.fetchVisitsSummary(
-          cursor: any(named: 'cursor'),
-          limit: any(named: 'limit'),
-        ),
-      ).thenThrow(NetworkException('down'));
-
-      expect(() => repository.fetchVisitsSummary(), throwsA(isA<NetworkException>()));
-    });
+  test('account switch before persistence cannot create action for another user', () async {
+    scope = db.activateScope(environment: 'test');
+    expect(await send(), isA<VisitFailed>());
+    expect(await queue.list(), isEmpty);
   });
-
-  group('VisitsRepository.fetchRelationshipManager', () {
-    test('delegates to remote datasource and returns agent', () async {
-      final agent = testAgentModel(id: 7);
-      when(() => remote.fetchRelationshipManager()).thenAnswer((_) async => agent);
-
-      final result = await repository.fetchRelationshipManager();
-
-      expect(result.id, 7);
-      expect(result.name, 'Test Agent');
-      verify(() => remote.fetchRelationshipManager()).called(1);
+  test('account switch during POST cannot write new-account action status', () async {
+    final pending = Completer<VisitModel>();
+    final started = Completer<void>();
+    booking(() {
+      if (!started.isCompleted) started.complete();
+      return pending.future;
     });
-
-    test('propagates exceptions from remote', () async {
-      when(
-        () => remote.fetchRelationshipManager(),
-      ).thenThrow(ServerException('Down', statusCode: 500));
-
-      expect(() => repository.fetchRelationshipManager(), throwsA(isA<ServerException>()));
-    });
+    final result = send();
+    await started.future;
+    scope = db.activateScope(environment: 'test', accountId: 'b');
+    pending.complete(visitFixture());
+    await result;
+    expect(await queue.list(), isEmpty);
+    scope = db.activateScope(environment: 'test', accountId: 'a');
+    expect((await queue.list()).single.status, PendingActionStatus.needsReconciliation);
   });
-
-  group('VisitsRepository.cancelVisit', () {
-    test('delegates to remote and returns its result', () async {
-      when(() => remote.cancelVisit(5, reason: 'not interested')).thenAnswer((_) async => true);
-
-      final result = await repository.cancelVisit(5, reason: 'not interested');
-
-      expect(result, isTrue);
-      verify(() => remote.cancelVisit(5, reason: 'not interested')).called(1);
-    });
-
-    test('returns false when remote returns false', () async {
-      when(() => remote.cancelVisit(5, reason: 'any')).thenAnswer((_) async => false);
-
-      expect(await repository.cancelVisit(5, reason: 'any'), isFalse);
-    });
-
-    test('propagates exceptions from remote', () async {
-      when(() => remote.cancelVisit(5, reason: 'any')).thenThrow(NetworkException('down'));
-
-      expect(() => repository.cancelVisit(5, reason: 'any'), throwsA(isA<NetworkException>()));
-    });
+  test('reconciliation only GETs pages and confirms matching property and UTC instant', () async {
+    booking(() async => throw NetworkException('offline'));
+    final result = await send() as VisitUnresolved;
+    when(
+      () => remote.fetchVisitsSummary(cursor: null, limit: 50),
+    ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: true, nextCursor: 'page2'));
+    when(() => remote.fetchVisitsSummary(cursor: 'page2', limit: 50)).thenAnswer(
+      (_) async =>
+          VisitsPayload(visits: [visitFixture(date: DateTime.parse(date))], hasMore: false),
+    );
+    expect((await repo.reconcile(result.action))!.id, 1);
+    expect((await queue.list()).single.status, PendingActionStatus.confirmed);
+    verify(
+      () =>
+          remote.scheduleVisit(propertyId: 100, scheduledDate: date, specialRequirements: 'notes'),
+    ).called(1);
   });
-
-  group('VisitsRepository.rescheduleVisit', () {
-    test('delegates to remote with new date and reason', () async {
-      when(
-        () => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: 'conflict'),
-      ).thenAnswer((_) async => true);
-
-      final result = await repository.rescheduleVisit(8, newDate: '2024-07-01', reason: 'conflict');
-
-      expect(result, isTrue);
-      verify(() => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: 'conflict')).called(1);
-    });
-
-    test('forwards null reason to remote', () async {
-      when(
-        () => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: null),
-      ).thenAnswer((_) async => true);
-
-      final result = await repository.rescheduleVisit(8, newDate: '2024-07-01');
-
-      expect(result, isTrue);
-      verify(() => remote.rescheduleVisit(8, newDate: '2024-07-01', reason: null)).called(1);
-    });
-
-    test('propagates exceptions from remote', () async {
-      when(
-        () => remote.rescheduleVisit(
-          8,
-          newDate: '2024-07-01',
-          reason: any(named: 'reason'),
-        ),
-      ).thenThrow(ServerException('Down', statusCode: 500));
-
-      expect(
-        () => repository.rescheduleVisit(8, newDate: '2024-07-01'),
-        throwsA(isA<ServerException>()),
-      );
-    });
+  test('no reconciliation match retains request and stops repeated cursors', () async {
+    booking(() async => throw NetworkException('offline'));
+    final result = await send() as VisitUnresolved;
+    when(
+      () => remote.fetchVisitsSummary(cursor: any(named: 'cursor'), limit: 50),
+    ).thenAnswer((_) async => const VisitsPayload(visits: [], hasMore: true, nextCursor: 'repeat'));
+    expect(await repo.reconcile(result.action), isNull);
+    expect((await queue.list()).single.status, PendingActionStatus.needsReconciliation);
+    verify(() => remote.fetchVisitsSummary(cursor: 'repeat', limit: 50)).called(1);
   });
-
-  group('VisitsRepository.scheduleVisit (no offline queue)', () {
-    test('rethrows NetworkException without enqueueing when no queue available', () async {
-      final repo = VisitsRepository(remoteDatasource: remote, offlineQueue: null);
+  test('reconciliation failure propagates and preserves pending record', () async {
+    booking(() async => throw NetworkException('offline'));
+    final result = await send() as VisitUnresolved;
+    when(
+      () => remote.fetchVisitsSummary(cursor: null, limit: 50),
+    ).thenThrow(NetworkException('offline'));
+    await expectLater(repo.reconcile(result.action), throwsA(isA<NetworkException>()));
+    expect((await queue.list()).length, 1);
+  });
+  test('delegates visit listing cursor and limit and preserves typed failures', () async {
+    final payload = VisitsPayload(visits: [visitFixture()], hasMore: true, nextCursor: 'next');
+    when(
+      () => remote.fetchVisitsSummary(cursor: 'cursor', limit: 12),
+    ).thenAnswer((_) async => payload);
+    expect(await repo.fetchVisitsSummary(cursor: 'cursor', limit: 12), same(payload));
+    when(
+      () => remote.fetchVisitsSummary(cursor: null, limit: 50),
+    ).thenThrow(NetworkException('offline'));
+    await expectLater(() => repo.fetchVisitsSummary(), throwsA(isA<NetworkException>()));
+  });
+  test('delegates relationship manager and propagates failure', () async {
+    final agent = agentFixture();
+    when(() => remote.fetchRelationshipManager()).thenAnswer((_) async => agent);
+    expect(await repo.fetchRelationshipManager(), same(agent));
+    when(() => remote.fetchRelationshipManager()).thenThrow(ServerException('down'));
+    await expectLater(() => repo.fetchRelationshipManager(), throwsA(isA<ServerException>()));
+  });
+  test('cancel passes the reason, returns the updated visit and propagates failures', () async {
+    final cancelled = visitFixture(status: VisitStatus.cancelled);
+    when(() => remote.cancelVisit(1, reason: 'reason')).thenAnswer((_) async => cancelled);
+    expect(await repo.cancelVisit(1, reason: 'reason'), same(cancelled));
+    when(() => remote.cancelVisit(1, reason: 'reason')).thenThrow(NetworkException('offline'));
+    await expectLater(
+      () => repo.cancelVisit(1, reason: 'reason'),
+      throwsA(isA<NetworkException>()),
+    );
+    when(() => remote.cancelVisit(1, reason: 'reason')).thenThrow(
+      ApiException(
+        'The request could not be completed.',
+        code: 'VISIT_NOT_CANCELLABLE',
+        statusCode: 400,
+      ),
+    );
+    await expectLater(
+      () => repo.cancelVisit(1, reason: 'reason'),
+      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'VISIT_NOT_CANCELLABLE')),
+    );
+  });
+  test(
+    'reschedule passes new date and optional reason, returns the visit, propagates failure',
+    () async {
+      final moved = visitFixture(status: VisitStatus.rescheduled);
       when(
-        () => remote.scheduleVisit(
-          propertyId: 10,
-          scheduledDate: '2024-06-01T00:00:00.000Z',
-          specialRequirements: null,
-        ),
-      ).thenThrow(NetworkException('down', code: 'CONNECTION_ERROR'));
-
+        () => remote.rescheduleVisit(1, newDate: date, reason: null),
+      ).thenAnswer((_) async => moved);
+      expect(await repo.rescheduleVisit(1, newDate: date), same(moved));
+      when(
+        () => remote.rescheduleVisit(1, newDate: date, reason: 'reason'),
+      ).thenThrow(NetworkException('offline'));
       await expectLater(
-        () => repo.scheduleVisit(propertyId: 10, scheduledDate: '2024-06-01T00:00:00.000Z'),
+        () => repo.rescheduleVisit(1, newDate: date, reason: 'reason'),
         throwsA(isA<NetworkException>()),
       );
-
-      verifyNever(
-        () => queue.enqueueVisit(
-          propertyId: any(named: 'propertyId'),
-          scheduledDate: any(named: 'scheduledDate'),
-          specialRequirements: any(named: 'specialRequirements'),
-        ),
-      );
-    });
-
-    test('rethrows non-network exceptions without touching the queue', () async {
-      when(
-        () => remote.scheduleVisit(
-          propertyId: 10,
-          scheduledDate: '2024-06-01T00:00:00.000Z',
-          specialRequirements: null,
-        ),
-      ).thenThrow(ServerException('Down', statusCode: 500));
-
-      await expectLater(
-        () => repository.scheduleVisit(propertyId: 10, scheduledDate: '2024-06-01T00:00:00.000Z'),
-        throwsA(isA<ServerException>()),
-      );
-
-      verifyNever(
-        () => queue.enqueueVisit(
-          propertyId: any(named: 'propertyId'),
-          scheduledDate: any(named: 'scheduledDate'),
-          specialRequirements: any(named: 'specialRequirements'),
-        ),
-      );
-    });
+    },
+  );
+  test('concurrent booking calls share one persisted operation and one POST', () async {
+    final pending = Completer<VisitModel>();
+    booking(() => pending.future);
+    final first = send();
+    final second = send();
+    expect(identical(first, second), true);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect((await queue.list()).length, 1);
+    pending.complete(visitFixture());
+    await Future.wait([first, second]);
+    verify(
+      () =>
+          remote.scheduleVisit(propertyId: 100, scheduledDate: date, specialRequirements: 'notes'),
+    ).called(1);
   });
 }

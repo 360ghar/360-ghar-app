@@ -1,0 +1,11 @@
+# Property parsing and diagnostic boundaries
+
+Property list endpoints require the cursor-page envelope with a top-level `items` list. Bare arrays, `data` arrays and a nested `data.items` envelope are rejected as `MALFORMED_RESPONSE`. Valid empty lists remain successful empty pages. Null/scalar bodies, unknown envelopes, invalid item fields or identities, mixed rows, and malformed pagination produce `ServerException(code: MALFORMED_RESPONSE)` with no raw response details. Fetch, search, and batch share the parser. Detail parsing uses the same typed malformed response contract. A bad row cannot silently advance pagination past a missing property. Nested metadata is retained; supplied outer metadata takes precedence.
+
+Focused datasource, repository, and property-provider validation: **100 tests passed**, `/tmp/properties-strict-tests.log`.
+
+DebugLogger redacts structured errors before they reach output: only type, validated code, HTTP status, and stack remain. Detailed diagnostic context keeps known method and numeric counters rather than arbitrary keys or payload values. Output failures cannot replace the application result. BestEffort, null-check diagnostics, visit date fallbacks, auth-header warnings, malformed SSE events, notification failures, and analytics debug logs do not print exception bodies, tokens, user IDs, dates, event parameters, or conversation data. Caller messages remain developer-authored labels; payload interpolation is not a supported logging input.
+
+HTTP logging and Firebase Performance receive static path labels, excluding resource identifiers, credentials, query values, and fragments. Actual request URLs are unchanged. Metric creation/start/attribute/stop errors do not change successful responses or HTTP failures. Response-size encoding is optional and cannot reject a response; stopping the metric is still attempted after an attribute error.
+
+Focused diagnostics, HTTP/auth/SSE, visit, and notification validation: **265 tests passed**, `/tmp/diagnostics-verified.log`. This includes output-boundary redaction assertions, hostile error stringification, output sink failure, monitoring failure injection, and localhost SSE recovery. Analyzer reports no issues across 18 modified source/test targets, `/tmp/diagnostics-analyze-final.log`.

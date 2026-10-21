@@ -1,35 +1,24 @@
+import 'dart:typed_data';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:get/get.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/image_cache_service.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 
 class ImageLoadingService {
-  static bool isValidUrl(String url) {
-    if (url.isEmpty) return false;
-    try {
-      final uri = Uri.parse(url);
-      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https') && uri.hasAuthority;
-    } catch (e) {
-      return false;
-    }
-  }
+  static bool isValidUrl(String url) => ImageCacheService.isValidUrl(url);
 
-  static String? getValidImageUrl(String? url) {
-    if (url == null || url.isEmpty) {
-      debugPrint('🔍 ImageLoad: URL is null or empty');
-      return null;
-    }
-    if (!ImageCacheService.instance.isValidImageUrl(url)) {
-      debugPrint('🔍 ImageLoad: URL failed isValidImageUrl: "$url"');
-      return null;
-    }
-    return url;
-  }
+  static String? getValidImageUrl(String? url) => url != null && isValidUrl(url) ? url : null;
 }
 
-class RobustNetworkImage extends StatelessWidget {
+/// Displays remote raster and SVG images through the same disk cache.
+/// Failed images have an explicit retry; invalid URLs have a static fallback.
+class RobustNetworkImage extends ConsumerStatefulWidget {
   final String imageUrl;
   final double? width;
   final double? height;
@@ -39,6 +28,7 @@ class RobustNetworkImage extends StatelessWidget {
   final BorderRadius? borderRadius;
   final int? memCacheWidth;
   final int? memCacheHeight;
+  final ImageCacheService? cacheService;
 
   const RobustNetworkImage({
     super.key,
@@ -51,212 +41,244 @@ class RobustNetworkImage extends StatelessWidget {
     this.borderRadius,
     this.memCacheWidth,
     this.memCacheHeight,
+    this.cacheService,
   });
 
   @override
-  Widget build(BuildContext context) {
-    // Validate image URL first
-    final validUrl = ImageLoadingService.getValidImageUrl(imageUrl);
+  ConsumerState<RobustNetworkImage> createState() => _RobustNetworkImageState();
+}
 
-    // If no valid URL, show error widget (not a forever-spinning loader)
-    if (validUrl == null || validUrl.isEmpty) {
-      final errorFallback = errorWidget ?? _buildDefaultErrorWidget();
-      if (borderRadius != null) {
-        return ClipRRect(borderRadius: borderRadius!, child: errorFallback);
-      }
-      return errorFallback;
+class _RobustNetworkImageState extends ConsumerState<RobustNetworkImage> {
+  Future<Uint8List?>? _svgBytes;
+  int _attempt = 0;
+  bool _retrying = false;
+  ImageProvider? _decodedProvider;
+
+  ImageCacheService get _cache => widget.cacheService ?? ref.read(imageCacheServiceProvider);
+
+  @override
+  void didUpdateWidget(RobustNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.imageUrl != oldWidget.imageUrl || widget.cacheService != oldWidget.cacheService) {
+      _svgBytes = null;
+      _retrying = false;
+      _attempt++;
     }
-
-    // Use unified image builder with SVG support
-    final imageWidget = _buildUnifiedImage(validUrl);
-
-    // Apply border radius if specified
-    if (borderRadius != null) {
-      return ClipRRect(borderRadius: borderRadius!, child: imageWidget);
-    }
-
-    return imageWidget;
   }
 
-  Widget _buildUnifiedImage(String url) {
-    debugPrint('🔍 ImageLoad: Loading image URL: "$url"');
-    if (_isSvgUrl(url)) {
-      return _buildSvgImage(url);
-    }
+  @override
+  Widget build(BuildContext context) {
+    final url = ImageLoadingService.getValidImageUrl(widget.imageUrl);
+    final image = url == null
+        ? _buildError(context, canRetry: false)
+        : LayoutBuilder(
+            builder: (context, constraints) {
+              if (_isSvgUrl(url)) return _buildSvg(context, url);
+              final ratio = MediaQuery.devicePixelRatioOf(context);
+              final logicalWidth =
+                  (widget.width?.isFinite == true ? widget.width : null) ??
+                  (constraints.hasBoundedWidth
+                      ? constraints.maxWidth
+                      : MediaQuery.sizeOf(context).width);
+              final logicalHeight =
+                  widget.height ?? (constraints.hasBoundedHeight ? constraints.maxHeight : null);
+              final decodeWidth = _decodeSize(widget.memCacheWidth, logicalWidth, ratio);
+              final decodeHeight = _decodeSize(widget.memCacheHeight, logicalHeight, ratio);
+              _decodedProvider = ResizeImage.resizeIfNeeded(
+                decodeWidth,
+                decodeHeight,
+                CachedNetworkImageProvider(url, cacheManager: _cache.cacheManager),
+              );
+              return CachedNetworkImage(
+                key: ValueKey('$url:$_attempt'),
+                cacheManager: _cache.cacheManager,
+                imageUrl: url,
+                width: widget.width,
+                height: widget.height,
+                fit: widget.fit,
+                filterQuality: FilterQuality.medium,
+                memCacheWidth: decodeWidth,
+                memCacheHeight: decodeHeight,
+                fadeOutDuration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 150),
+                fadeInDuration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 150),
+                placeholder: (context, _) => _buildPlaceholder(context),
+                errorWidget: (context, _, _) => _buildError(context, canRetry: true),
+              );
+            },
+          );
+    return widget.borderRadius == null
+        ? image
+        : ClipRRect(borderRadius: widget.borderRadius!, child: image);
+  }
 
-    return CachedNetworkImage(
-      imageUrl: url,
-      width: width,
-      height: height,
-      fit: fit,
-      filterQuality: FilterQuality.medium,
-      memCacheWidth: memCacheWidth,
-      memCacheHeight: memCacheHeight,
-      placeholder: (context, placeholderUrl) => placeholder ?? _buildDefaultPlaceholder(),
-      errorWidget: (context, error, stackTrace) {
-        debugPrint('🔍 ImageLoad: Failed to load "$url": $error');
-        return errorWidget ?? _buildDefaultErrorWidget();
+  int? _decodeSize(int? explicit, double? logical, double ratio) {
+    if (explicit != null) return explicit.clamp(1, 2048);
+    if (logical == null || !logical.isFinite || logical <= 0) return null;
+    return (logical * ratio).ceil().clamp(1, 2048);
+  }
+
+  bool _isSvgUrl(String url) {
+    final uri = Uri.parse(url);
+    return uri.path.toLowerCase().endsWith('.svg') || uri.queryParameters['format'] == 'svg';
+  }
+
+  Widget _buildSvg(BuildContext context, String url) {
+    _svgBytes ??= _cache.getImageBytes(url);
+    return FutureBuilder<Uint8List?>(
+      future: _svgBytes,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) return _buildPlaceholder(context);
+        final bytes = snapshot.data;
+        if (bytes == null) return _buildError(context, canRetry: true);
+        return SvgPicture.memory(
+          bytes,
+          key: ValueKey('$url:$_attempt'),
+          width: widget.width,
+          height: widget.height,
+          fit: widget.fit,
+          placeholderBuilder: _buildPlaceholder,
+          errorBuilder: (context, _, _) => _buildError(context, canRetry: true),
+        );
       },
     );
   }
 
-  bool _isSvgUrl(String url) {
-    final lower = url.toLowerCase();
-    return lower.endsWith('.svg') || lower.contains('/svg?') || lower.contains('format=svg');
+  Future<void> _retry() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+    final url = widget.imageUrl;
+    final attempt = _attempt;
+    try {
+      await _cache.removeFromCache(url);
+      await _decodedProvider?.evict();
+      await CachedNetworkImageProvider(url, cacheManager: _cache.cacheManager).evict();
+    } catch (_) {
+      // Keep the local fallback if storage cannot remove a corrupt entry.
+    } finally {
+      if (mounted && widget.imageUrl == url && _attempt == attempt) {
+        setState(() {
+          _retrying = false;
+          _svgBytes = null;
+          _attempt++;
+        });
+      }
+    }
   }
 
-  Widget _buildSvgImage(String url) {
-    return SvgPicture.network(
-      url,
-      width: width,
-      height: height,
-      fit: fit,
-      placeholderBuilder: (context) => placeholder ?? _buildDefaultPlaceholder(),
-    );
+  Widget _buildPlaceholder(BuildContext context) {
+    // A quiet tonal slot; the photo replaces it without a spinner.
+    return widget.placeholder ??
+        Container(width: widget.width, height: widget.height, color: context.design.slip);
   }
 
-  Widget _buildDefaultPlaceholder() {
-    return Container(
-      width: width,
-      height: height,
-      color: AppDesign.inputBackground,
-      child: Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(color: AppDesign.loadingIndicator, strokeWidth: 2),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDefaultErrorWidget() {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppDesign.primaryYellow.withValues(alpha: 0.1),
-            AppDesign.primaryYellow.withValues(alpha: 0.05),
-          ],
-        ),
-        border: Border.all(color: AppDesign.primaryYellow.withValues(alpha: 0.3), width: 1),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppDesign.primaryYellow.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.home_outlined,
-                color: AppDesign.primaryYellow,
-                size: width != null && width! < 100 ? 20 : 32,
-              ),
-            ),
-            if (width != null && width! > 100) ...[
-              const SizedBox(height: 8),
-              Text(
-                'property_image'.tr,
-                style: TextStyle(
-                  color: AppDesign.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
+  Widget _buildError(BuildContext context, {required bool canRetry}) {
+    if (_retrying) return _buildPlaceholder(context);
+    final fallback =
+        widget.errorWidget ??
+        Container(
+          width: widget.width,
+          height: widget.height,
+          color: context.design.slip,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PaperIcon(
+                  canRetry ? KnifeIcon.retry : KnifeIcon.home,
+                  color: context.design.textSecondary,
+                  size: widget.width != null && widget.width! < 100 ? 20 : 32,
                 ),
-              ),
-            ],
-          ],
-        ),
-      ),
+                if ((widget.width ?? 0) > 100 && (widget.height ?? 200) >= 80) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    canRetry ? context.l10n.text('retry') : context.l10n.text('property_image'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: context.design.textSecondary),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+    if (!canRetry) return fallback;
+    return Semantics(
+      button: true,
+      label: context.l10n.text('retry'),
+      child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _retry, child: fallback),
     );
   }
 }
 
-// Extension for easier usage with different configurations
 extension RobustNetworkImageExtension on RobustNetworkImage {
   static Widget circular({
     required String imageUrl,
     required double radius,
     Widget? placeholder,
     Widget? errorWidget,
-  }) {
-    return ClipOval(
-      child: RobustNetworkImage(
-        imageUrl: imageUrl,
-        width: radius * 2,
-        height: radius * 2,
-        fit: BoxFit.cover,
-        placeholder: placeholder,
-        errorWidget: errorWidget,
-      ),
-    );
-  }
+  }) => ClipOval(
+    child: RobustNetworkImage(
+      imageUrl: imageUrl,
+      width: radius * 2,
+      height: radius * 2,
+      placeholder: placeholder,
+      errorWidget: errorWidget,
+    ),
+  );
 
   static Widget avatar({
     required String imageUrl,
     double size = 40,
     Widget? placeholder,
     Widget? errorWidget,
-  }) {
-    return ClipOval(
-      child: RobustNetworkImage(
-        imageUrl: imageUrl,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        placeholder:
-            placeholder ??
-            Container(
-              width: size,
-              height: size,
-              color: AppDesign.inputBackground,
-              child: Icon(Icons.person, color: AppDesign.textSecondary),
-            ),
-        errorWidget:
-            errorWidget ??
-            Container(
-              width: size,
-              height: size,
-              color: AppDesign.inputBackground,
-              child: Icon(Icons.person, color: AppDesign.textSecondary),
-            ),
-      ),
-    );
-  }
+  }) => ClipOval(
+    child: Builder(
+      builder: (context) {
+        final fallback = Container(
+          width: size,
+          height: size,
+          color: context.design.inputBackground,
+          child: PaperIcon(KnifeIcon.user, color: context.design.textSecondary),
+        );
+        return RobustNetworkImage(
+          imageUrl: imageUrl,
+          width: size,
+          height: size,
+          placeholder: placeholder ?? fallback,
+          errorWidget: errorWidget ?? fallback,
+        );
+      },
+    ),
+  );
+}
 
-  /// Cache management utilities
-  static Future<void> clearImageCache() async {
-    await ImageCacheService.instance.clearCache();
-  }
-
-  static Future<void> cleanExpiredCache() async {
-    await ImageCacheService.instance.cleanExpiredCache();
-  }
-
-  static Future<void> smartCacheCleanup() async {
-    await ImageCacheService.instance.smartCleanup();
-  }
-
-  static Future<void> removeImageFromCache(String imageUrl) async {
-    await ImageCacheService.instance.removeFromCache(imageUrl);
-  }
-
-  static Future<bool> isImageCached(String imageUrl) async {
-    return ImageCacheService.instance.isImageCached(imageUrl);
-  }
-
-  static Future<void> preloadImage(String imageUrl) async {
-    await ImageCacheService.instance.preloadImage(imageUrl);
-  }
-
-  static Future<Map<String, dynamic>> getCacheStats() async {
-    return ImageCacheService.instance.getCacheStats();
-  }
+/// Starts downloading and decoding [url] at the size a [RobustNetworkImage]
+/// with the same [width] and [height] decode sizes will ask for, so the image
+/// shows at once when that widget appears (the next Discover card).
+Future<void> precacheNetworkImage(
+  BuildContext context,
+  ImageCacheService cache,
+  String url, {
+  int? width,
+  int? height,
+}) async {
+  final valid = ImageLoadingService.getValidImageUrl(url);
+  if (valid == null) return;
+  final uri = Uri.parse(valid);
+  if (uri.path.toLowerCase().endsWith('.svg')) return;
+  await precacheImage(
+    ResizeImage.resizeIfNeeded(
+      width?.clamp(1, 2048),
+      height?.clamp(1, 2048),
+      CachedNetworkImageProvider(valid, cacheManager: cache.cacheManager),
+    ),
+    context,
+    onError: (_, _) {},
+  );
 }

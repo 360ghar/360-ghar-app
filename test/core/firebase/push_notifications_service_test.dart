@@ -8,12 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
 import 'package:ghar360/core/firebase/push_notifications_service.dart';
+import 'package:ghar360/core/routes/route_policy.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(PushNotificationsService.dispose);
+  tearDown(PushNotificationsService.dispose);
 
   group('PushNotificationsService (Firebase not ready)', () {
     late bool prevEnabled;
@@ -273,7 +275,6 @@ void main() {
     // private, but we can exercise them indirectly through the callback hooks
     // and verify the navigation logic by registering a Get navigator.
     setUp(() {
-      Get.testMode = true;
       PushNotificationsService.onNotificationTap = null;
       PushNotificationsService.onTokenRegistration = null;
     });
@@ -418,7 +419,6 @@ void main() {
       FirebaseRuntimeState.isReady = false;
       PushNotificationsService.onNotificationTap = null;
       PushNotificationsService.onTokenRegistration = null;
-      Get.testMode = true;
     });
 
     tearDown(() {
@@ -449,7 +449,7 @@ void main() {
       );
     }
 
-    testWidgets('fires onNotificationTap with decoded JSON payload and navigates', (tester) async {
+    testWidgets('fires onNotificationTap with decoded JSON payload', (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         await setupFlnMock();
@@ -459,22 +459,8 @@ void main() {
           receivedData = data;
         };
 
-        // Set up a GetMaterialApp with a route table so Get.toNamed works.
-        await tester.pumpWidget(
-          GetMaterialApp(
-            initialRoute: '/home',
-            getPages: [
-              GetPage(
-                name: '/home',
-                page: () => const Scaffold(body: SizedBox()),
-              ),
-              GetPage(
-                name: '/property/:id',
-                page: () => const Scaffold(body: Text('property_details')),
-              ),
-            ],
-          ),
-        );
+        // The application owns routing; the native service emits the payload.
+        await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
         await PushNotificationsService.initLocalNotifications();
 
@@ -495,7 +481,7 @@ void main() {
       }
     });
 
-    testWidgets('navigates to property deep link when property_id is set', (tester) async {
+    testWidgets('emits a valid property destination when property_id is set', (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         await setupFlnMock();
@@ -505,21 +491,7 @@ void main() {
           receivedData = data;
         };
 
-        await tester.pumpWidget(
-          GetMaterialApp(
-            initialRoute: '/home',
-            getPages: [
-              GetPage(
-                name: '/home',
-                page: () => const Scaffold(body: SizedBox()),
-              ),
-              GetPage(
-                name: '/property/:id',
-                page: () => const Scaffold(body: Text('property_details')),
-              ),
-            ],
-          ),
-        );
+        await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
         await PushNotificationsService.initLocalNotifications();
 
@@ -530,36 +502,22 @@ void main() {
 
         expect(receivedData, isNotNull);
         expect(receivedData!['property_id'], '99');
-        // Navigation to the deep-link route should have occurred.
-        expect(Get.currentRoute, contains('/property/'));
+        expect(notificationDestination(receivedData!), '/property/99');
       } finally {
         teardownFlnMock();
         debugDefaultTargetPlatformOverride = null;
       }
     });
 
-    testWidgets('navigates using propertyId (camelCase) fallback', (tester) async {
+    testWidgets('does not read the retired propertyId (camelCase) key', (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         await setupFlnMock();
 
-        PushNotificationsService.onNotificationTap = (_) {};
+        Map<String, dynamic>? receivedData;
+        PushNotificationsService.onNotificationTap = (data) => receivedData = data;
 
-        await tester.pumpWidget(
-          GetMaterialApp(
-            initialRoute: '/home',
-            getPages: [
-              GetPage(
-                name: '/home',
-                page: () => const Scaffold(body: SizedBox()),
-              ),
-              GetPage(
-                name: '/property/:id',
-                page: () => const Scaffold(body: Text('property_details')),
-              ),
-            ],
-          ),
-        );
+        await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
         await PushNotificationsService.initLocalNotifications();
 
@@ -567,7 +525,7 @@ void main() {
         await sendNotificationTap(payload);
         await tester.pumpAndSettle();
 
-        expect(Get.currentRoute, contains('/property/'));
+        expect(notificationDestination(receivedData!), isNull);
       } finally {
         teardownFlnMock();
         debugDefaultTargetPlatformOverride = null;
@@ -584,17 +542,7 @@ void main() {
           tapped = true;
         };
 
-        await tester.pumpWidget(
-          GetMaterialApp(
-            initialRoute: '/home',
-            getPages: [
-              GetPage(
-                name: '/home',
-                page: () => const Scaffold(body: SizedBox()),
-              ),
-            ],
-          ),
-        );
+        await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
         await PushNotificationsService.initLocalNotifications();
 
@@ -620,17 +568,7 @@ void main() {
           tapped = true;
         };
 
-        await tester.pumpWidget(
-          GetMaterialApp(
-            initialRoute: '/home',
-            getPages: [
-              GetPage(
-                name: '/home',
-                page: () => const Scaffold(body: SizedBox()),
-              ),
-            ],
-          ),
-        );
+        await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
         await PushNotificationsService.initLocalNotifications();
 
@@ -654,17 +592,7 @@ void main() {
           tapped = true;
         };
 
-        await tester.pumpWidget(
-          GetMaterialApp(
-            initialRoute: '/home',
-            getPages: [
-              GetPage(
-                name: '/home',
-                page: () => const Scaffold(body: SizedBox()),
-              ),
-            ],
-          ),
-        );
+        await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
         await PushNotificationsService.initLocalNotifications();
 
@@ -679,24 +607,15 @@ void main() {
       }
     });
 
-    testWidgets('does not navigate when payload has no route or property_id', (tester) async {
+    testWidgets('has no destination when payload has no route or property_id', (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         await setupFlnMock();
 
-        PushNotificationsService.onNotificationTap = (_) {};
+        Map<String, dynamic>? receivedData;
+        PushNotificationsService.onNotificationTap = (data) => receivedData = data;
 
-        await tester.pumpWidget(
-          GetMaterialApp(
-            initialRoute: '/home',
-            getPages: [
-              GetPage(
-                name: '/home',
-                page: () => const Scaffold(body: SizedBox()),
-              ),
-            ],
-          ),
-        );
+        await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
 
         await PushNotificationsService.initLocalNotifications();
 
@@ -704,8 +623,8 @@ void main() {
         await sendNotificationTap(payload);
         await tester.pumpAndSettle();
 
-        // No navigation should occur.
-        expect(Get.currentRoute, '/home');
+        expect(receivedData, {'title': 'No route here'});
+        expect(notificationDestination(receivedData!), isNull);
       } finally {
         teardownFlnMock();
         debugDefaultTargetPlatformOverride = null;

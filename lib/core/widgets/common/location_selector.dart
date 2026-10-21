@@ -1,616 +1,449 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
-import 'package:get/get.dart';
-
-import 'package:ghar360/core/controllers/location_controller.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/popular_city.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/services/google_places_service.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/features/location/application/location_search_controller.dart';
+import 'package:ghar360/features/location/application/location_source.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-class LocationSelector extends GetView<LocationController> {
-  final PageType pageType;
+Future<void> showLocationPicker(BuildContext context, {required PageType pageType}) {
+  final container = ProviderScope.containerOf(context);
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => UncontrolledProviderScope(
+      container: container,
+      child: LocationPickerModal(pageType: pageType),
+    ),
+  );
+}
 
+class LocationSelector extends ConsumerWidget {
   const LocationSelector({super.key, required this.pageType});
-
+  final PageType pageType;
   @override
-  Widget build(BuildContext context) {
-    final pageStateService = Get.find<PageStateService>();
-
-    return Obx(() {
-      final currentPageState = _getPageState(pageStateService);
-      final locationText = currentPageState.locationDisplayText;
-      final selectorId = 'qa.location.selector.trigger.${pageType.name}';
-
-      return Semantics(
-        label: locationText.isNotEmpty ? locationText : 'location'.tr,
-        identifier: selectorId,
-        button: true,
-        child: GestureDetector(
-          key: ValueKey(selectorId),
-          onTap: () => _showLocationPicker(context),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppDesign.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppDesign.divider, width: 0.5),
-            ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (area, source) = ref.watch(
+      propertyLocationProvider(pageType).select((state) => (state.location?.name, state.source)),
+    );
+    final name = area?.trim();
+    final text = name == null
+        ? context.l10n.text('select_location')
+        : name.isEmpty
+        ? context.l10n.text('current_location')
+        : name;
+    final label = source == LocationSource.ip
+        ? '$text · ${context.l10n.text('location_approximate')}'
+        : text;
+    final id = 'qa.location.selector.trigger.${pageType.name}';
+    final design = context.design;
+    // A flat text control: bare pin, the area, a chevron. No pill.
+    return Semantics(
+      identifier: id,
+      button: true,
+      label: label,
+      child: InkWell(
+        key: ValueKey(id),
+        borderRadius: BorderRadius.circular(AppBorderRadius.sm),
+        onTap: () => showLocationPicker(context, pageType: pageType),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.location_on, size: 16, color: AppDesign.primaryYellow),
-                const SizedBox(width: 4),
+                PaperIcon(KnifeIcon.pin, size: 18, color: design.accent),
+                const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    locationText,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppDesign.textPrimary,
-                    ),
+                    label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelLarge,
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(Icons.keyboard_arrow_down, size: 16, color: AppDesign.textSecondary),
+                PaperIcon(KnifeIcon.chevronDown, size: 18, color: design.textSecondary),
               ],
             ),
           ),
         ),
-      );
-    });
-  }
-
-  PageStateModel _getPageState(PageStateService pageStateService) {
-    switch (pageType) {
-      case PageType.explore:
-        return pageStateService.exploreState.value;
-      case PageType.discover:
-        return pageStateService.discoverState.value;
-      case PageType.likes:
-        return pageStateService.likesState.value;
-    }
-  }
-
-  void _showLocationPicker(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: AppDesign.transparent,
-      builder: (context) => LocationPickerModal(pageType: pageType),
+      ),
     );
   }
 }
 
-class LocationPickerModal extends StatefulWidget {
-  final PageType pageType;
-
+class LocationPickerModal extends ConsumerStatefulWidget {
   const LocationPickerModal({super.key, required this.pageType});
-
+  final PageType pageType;
   @override
-  State<LocationPickerModal> createState() => _LocationPickerModalState();
+  ConsumerState<LocationPickerModal> createState() => _LocationPickerModalState();
 }
 
-class _LocationPickerModalState extends State<LocationPickerModal> {
-  final TextEditingController _searchController = TextEditingController();
-  final LocationController locationController = Get.find<LocationController>();
-  final PageStateService pageStateService = Get.find<PageStateService>();
-  double? _radiusKm;
-  Timer? _searchDebounce;
-  bool _isSelectingPlace = false;
-  bool _isUsingCurrentLocation = false;
-
-  bool _hasOverlay() {
-    final overlayContext = Get.overlayContext;
-    if (overlayContext == null) return false;
-    return Overlay.maybeOf(overlayContext) != null;
-  }
-
-  void _showSnackbarSafe({
-    required String title,
-    required String message,
-    Duration? duration,
-    Color? backgroundColor,
-    Color? textColor,
-  }) {
-    if (!_hasOverlay()) {
-      DebugLogger.warning('Skipped snackbar (no overlay): $title');
-      return;
-    }
-
-    try {
-      AppToast.custom(
-        title: title,
-        message: message,
-        backgroundColor: backgroundColor ?? AppDesign.snackbarBackground,
-        textColor: textColor,
-        duration: duration ?? const Duration(seconds: 3),
-      );
-    } catch (e, stackTrace) {
-      DebugLogger.error('Failed to show snackbar: $title', e, stackTrace);
-    }
-  }
-
-  // Local helper to fetch the correct page state for this modal
-  PageStateModel _getPageState(PageStateService service) {
-    switch (widget.pageType) {
-      case PageType.explore:
-        return service.exploreState.value;
-      case PageType.discover:
-        return service.discoverState.value;
-      case PageType.likes:
-        return service.likesState.value;
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    // Clear previous suggestions
-    locationController.clearPlaceSuggestions();
-    // Initialize radius from current page filters (default 10km)
-    final pageState = _getPageState(pageStateService);
-    _radiusKm = (pageState.filters.radiusKm ?? 10.0).clamp(5.0, 50.0).toDouble();
-  }
-
+class _LocationPickerModalState extends ConsumerState<LocationPickerModal> {
+  final _searchController = TextEditingController();
+  double? _radius;
+  PlaceSuggestion? _lastSelected;
+  AsyncValue<void> _settings = const AsyncData(null);
   @override
   void dispose() {
-    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  void _onSearchChanged(String query) {
-    _searchDebounce?.cancel();
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      locationController.clearPlaceSuggestions();
-      // Rebuild so popular cities reappear when the field is cleared.
-      if (mounted) setState(() {});
-      return;
-    }
-    // Immediate rebuild so popular-city filter updates while typing.
-    if (mounted) setState(() {});
-    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
-      // Skip if the field was cleared/changed while the timer was pending.
-      if (!mounted || _searchController.text.trim() != trimmed) return;
-      locationController.getPlaceSuggestions(trimmed);
-    });
+  Future<void> _select(PlaceSuggestion suggestion) async {
+    final scope = ref.read(storageScopeProvider);
+    final controller = ref.read(locationSearchProvider(widget.pageType).notifier);
+    final locationState = ref.read(propertyLocationProvider(widget.pageType));
+    if (locationState.load.isLoading || locationState.save.isLoading) return;
+    _lastSelected = suggestion;
+    final location = await controller.resolve(suggestion);
+    if (!mounted || location == null || !identical(scope, ref.read(storageScopeProvider))) return;
+    final saved = await ref
+        .read(propertyLocationProvider(widget.pageType).notifier)
+        .select(location);
+    if (!mounted || !saved || !identical(scope, ref.read(storageScopeProvider))) return;
+    final title = context.l10n.text('location_selected');
+    Navigator.of(context).pop();
+    AppToast.success(title, location.name);
   }
 
-  void _clearSearch() {
-    _searchDebounce?.cancel();
-    _searchController.clear();
-    locationController.clearPlaceSuggestions();
+  Future<void> _useCurrent() async {
+    final scope = ref.read(storageScopeProvider);
+    if (ref.read(locationSearchProvider(widget.pageType)).selection.isLoading) return;
+    await ref.read(propertyLocationProvider(widget.pageType).notifier).useCurrent();
+    if (!mounted || !identical(scope, ref.read(storageScopeProvider))) return;
+    final state = ref.read(propertyLocationProvider(widget.pageType));
+    if (state.location == null ||
+        state.load.hasError ||
+        state.save.hasError ||
+        state.save.isLoading) {
+      return;
+    }
+    final title = context.l10n.text('location_updated');
+    final message = state.source == LocationSource.ip
+        ? context.l10n.text('using_approximate_location')
+        : context.l10n.text('using_current_location');
+    Navigator.of(context).pop();
+    AppToast.success(title, message);
+  }
+
+  Future<void> _openSettings(bool appSettings) async {
+    if (_settings.isLoading) return;
+    setState(() => _settings = const AsyncLoading());
+    try {
+      final source = ref.read(deviceLocationSourceProvider);
+      final opened = await (appSettings ? source.openAppSettings() : source.openLocationSettings());
+      if (!opened) throw LocationException('Settings unavailable', code: 'SETTINGS_UNAVAILABLE');
+      if (mounted) setState(() => _settings = const AsyncData(null));
+    } catch (error, stack) {
+      if (mounted) setState(() => _settings = AsyncError(error, stack));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(locationSearchProvider(widget.pageType), (previous, next) {
+      if (next.query != _searchController.text) {
+        _searchController.value = TextEditingValue(
+          text: next.query,
+          selection: TextSelection.collapsed(offset: next.query.length),
+        );
+      }
+    });
+    final search = ref.watch(locationSearchProvider(widget.pageType));
+    final searchController = ref.read(locationSearchProvider(widget.pageType).notifier);
+    final location = ref.watch(propertyLocationProvider(widget.pageType));
+    final filters = ref.watch(propertyFiltersProvider);
+    final radius = (_radius ?? filters.forPage(widget.pageType).radiusKm ?? 10)
+        .clamp(5.0, 50.0)
+        .toDouble();
+    final suggestions = PopularCity.buildSuggestionsList(search.query.trim(), search.suggestions);
+    final busy = location.load.isLoading || location.save.isLoading || search.selection.isLoading;
+    final error = location.load.error;
+    final code = error is LocationException ? error.code : null;
+    final screen = MediaQuery.sizeOf(context);
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     final modalId = 'qa.location.selector.modal.${widget.pageType.name}';
-    final viewInsets = MediaQuery.viewInsetsOf(context);
     return Semantics(
-      label: 'select_location'.tr,
       identifier: modalId,
+      label: context.l10n.text('select_location'),
       child: Padding(
-        padding: EdgeInsets.only(bottom: viewInsets.bottom),
-        child: Material(
+        padding: EdgeInsets.only(bottom: keyboard),
+        child: SizedBox(
           key: ValueKey(modalId),
-          color: AppDesign.scaffoldBackground,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          clipBehavior: Clip.antiAlias,
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.7,
-            child: Column(
-              children: [
-                // Handle bar
-                Container(
-                  margin: const EdgeInsets.only(top: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppDesign.divider,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.location_on, color: AppDesign.primaryYellow),
-                      const SizedBox(width: 8),
-                      Expanded(
+          height: (screen.height - keyboard) * 0.85,
+          child: Column(
+            children: [
+              // The same head as the filter sheet: Erode title, bare close.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Semantics(
+                        header: true,
                         child: Text(
-                          'select_location'.tr,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppDesign.textPrimary,
-                          ),
+                          context.l10n.text('select_location'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.headlineMedium,
                         ),
                       ),
-                      IconButton(
-                        icon: Icon(Icons.close, color: AppDesign.textSecondary),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      tooltip: context.l10n.text('close'),
+                      icon: const PaperIcon(KnifeIcon.close),
+                    ),
+                  ],
                 ),
-
-                // Search bar
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: AppDesign.inputBackground,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppDesign.divider, width: 0.5),
-                  ),
-                  child: Semantics(
-                    label: 'qa.location.selector.search_input.${widget.pageType.name}',
-                    identifier: 'qa.location.selector.search_input.${widget.pageType.name}',
-                    child: TextField(
-                      key: ValueKey('qa.location.selector.search_input.${widget.pageType.name}'),
-                      controller: _searchController,
-                      style: TextStyle(color: AppDesign.textPrimary),
-                      onChanged: _onSearchChanged,
-                      decoration: InputDecoration(
-                        hintText: 'search_location_hint'.tr,
-                        hintStyle: TextStyle(color: AppDesign.textSecondary),
-                        prefixIcon: Icon(Icons.search, color: AppDesign.iconColor),
-                        suffixIcon: Obx(() {
-                          if (locationController.isSearchingPlaces.value) {
-                            return Container(
-                              width: 20,
-                              height: 20,
-                              margin: const EdgeInsets.all(12),
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
-                              ),
-                            );
-                          } else if (_searchController.text.isNotEmpty) {
-                            return IconButton(
-                              icon: Icon(Icons.clear, color: AppDesign.iconColor),
-                              onPressed: _clearSearch,
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        }),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Semantics(
+                  identifier: 'qa.location.selector.search_input.${widget.pageType.name}',
+                  child: TextField(
+                    key: ValueKey('qa.location.selector.search_input.${widget.pageType.name}'),
+                    controller: _searchController,
+                    onChanged: searchController.updateQuery,
+                    onSubmitted: (_) => searchController.search(),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      labelText: context.l10n.text('search_location_hint'),
+                      prefixIcon: const PaperIcon(KnifeIcon.search),
+                      suffixIcon: search.query.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: context.l10n.text('clear_search'),
+                              icon: const PaperIcon(KnifeIcon.close),
+                              onPressed: () {
+                                _searchController.clear();
+                                searchController.updateQuery('');
+                              },
+                            ),
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 16),
-
-                // Radius selector
-                _buildRadiusSelector(),
-
-                // Quick actions
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    children: [
-                      _buildQuickActionTile(
-                        qaKey: 'qa.location.selector.use_current_location.${widget.pageType.name}',
-                        icon: Icons.my_location,
-                        title: 'use_current_location'.tr,
-                        subtitle: 'get_location_from_gps'.tr,
-                        iconColor: AppDesign.primaryYellow,
-                        onTap: () => _useCurrentLocation(),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                // Search results + popular cities
-                Expanded(
-                  child: Obx(() {
-                    final remote = locationController.placeSuggestions.toList(growable: false);
-                    final placesError = locationController.placesError.value;
-                    final isSearching = locationController.isSearchingPlaces.value;
-                    final query = _searchController.text.trim();
-                    final hasQuery = query.isNotEmpty;
-                    final list = PopularCity.buildSuggestionsList(query, remote);
-
-                    if (isSearching && list.isEmpty) {
-                      return const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                  children: [
+                    if (search.query.trim().length >= 2)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          key: ValueKey(
+                            'qa.location.selector.search_submit.${widget.pageType.name}',
+                          ),
+                          onPressed: search.search.isLoading
+                              ? null
+                              : () => searchController.search(),
+                          icon: const PaperIcon(KnifeIcon.search),
+                          label: Text(context.l10n.text('search')),
                         ),
-                      );
-                    }
-
-                    if (placesError.isNotEmpty && list.isEmpty && hasQuery) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.error_outline, size: 48, color: AppDesign.errorRed),
-                              const SizedBox(height: 16),
-                              Text(
-                                placesError,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(fontSize: 16, color: AppDesign.textSecondary),
+                      ),
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      spacing: 16,
+                      children: [
+                        Text(context.l10n.text('search_radius')),
+                        Text('${radius.toInt()} ${context.l10n.text('km_unit')}'),
+                      ],
+                    ),
+                    Slider(
+                      value: radius,
+                      min: 5,
+                      max: 50,
+                      divisions: 9,
+                      label: '${radius.toInt()} ${context.l10n.text('km_unit')}',
+                      onChanged: (value) => setState(() => _radius = value),
+                      onChangeEnd: (value) => ref
+                          .read(propertyFiltersProvider.notifier)
+                          .update(
+                            widget.pageType,
+                            filters.forPage(widget.pageType).copyWith(radiusKm: value),
+                          ),
+                    ),
+                    if (filters.save.hasError)
+                      _LocationRecovery(
+                        messageKey: 'location_storage_failed',
+                        onRetry: ref.read(propertyFiltersProvider.notifier).retrySave,
+                      ),
+                    Semantics(
+                      identifier:
+                          'qa.location.selector.use_current_location.${widget.pageType.name}',
+                      child: ListTile(
+                        key: ValueKey(
+                          'qa.location.selector.use_current_location.${widget.pageType.name}',
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                        leading: PaperIcon(KnifeIcon.locate, color: context.design.accent),
+                        title: Text(context.l10n.text('use_current_location')),
+                        subtitle: Text(context.l10n.text('get_location_from_gps')),
+                        trailing: location.load.isLoading
+                            ? LoadingStates.buttonSpinner(
+                                size: 20,
+                                semanticsLabel: context.l10n.text('getting_location'),
+                              )
+                            : PaperIcon(
+                                KnifeIcon.chevronRight,
+                                color: context.design.textSecondary,
                               ),
-                            ],
+                        onTap: busy ? null : _useCurrent,
+                      ),
+                    ),
+                    if (error != null)
+                      _LocationRecovery(
+                        messageKey: switch (code) {
+                          'LOCATION_DENIED_FOREVER' => 'location_permission_permanently_denied',
+                          'LOCATION_DENIED' => 'location_permission_denied',
+                          'LOCATION_DISABLED' => 'location_services_disabled',
+                          _ => 'unable_to_get_current_location',
+                        },
+                        onRetry: busy ? null : _useCurrent,
+                      ),
+                    if (code == 'LOCATION_DENIED_FOREVER' || code == 'LOCATION_DISABLED')
+                      TextButton(
+                        onPressed: _settings.isLoading
+                            ? null
+                            : () => _openSettings(code == 'LOCATION_DENIED_FOREVER'),
+                        child: Text(context.l10n.text('open_settings')),
+                      ),
+                    if (_settings.hasError)
+                      _LocationRecovery(
+                        messageKey: 'location_settings_failed',
+                        onRetry: () => _openSettings(code == 'LOCATION_DENIED_FOREVER'),
+                      ),
+                    if (location.save.hasError)
+                      _LocationRecovery(
+                        messageKey: 'location_storage_failed',
+                        onRetry: ref
+                            .read(propertyLocationProvider(widget.pageType).notifier)
+                            .retrySave,
+                      ),
+                    if (search.selection.hasError)
+                      _LocationRecovery(
+                        messageKey: 'location_details_failed',
+                        onRetry: _lastSelected == null ? null : () => _select(_lastSelected!),
+                      ),
+                    if (search.search.isLoading)
+                      Semantics(
+                        label: context.l10n.text('loading'),
+                        child: const LinearProgressIndicator(),
+                      ),
+                    if (search.search.hasError)
+                      _LocationRecovery(
+                        messageKey: 'failed_to_search_locations',
+                        onRetry: () => searchController.search(),
+                      ),
+                    if (suggestions.isEmpty &&
+                        search.query.isNotEmpty &&
+                        !search.search.isLoading &&
+                        !search.search.hasError)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          context.l10n.text('no_locations_found'),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    for (var index = 0; index < suggestions.listItemCount; index++)
+                      if (suggestions.suggestionAt(index) case final PlaceSuggestion suggestion)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: PaperIcon(
+                            PopularCity.isPopularPlaceId(suggestion.placeId)
+                                ? KnifeIcon.building
+                                : KnifeIcon.pin,
+                            color: context.design.accent,
+                          ),
+                          title: Text(suggestion.mainText),
+                          subtitle: suggestion.secondaryText.isEmpty
+                              ? null
+                              : Text(suggestion.secondaryText),
+                          onTap: busy ? null : () => _select(suggestion),
+                        )
+                      else
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 4),
+                          child: Semantics(
+                            header: true,
+                            child: Text(
+                              context.l10n.text('popular_cities'),
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
                           ),
                         ),
-                      );
-                    }
-
-                    if (list.isEmpty && hasQuery) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.location_off, size: 48, color: AppDesign.textSecondary),
-                            const SizedBox(height: 16),
-                            Text(
-                              'no_locations_found'.tr,
-                              style: TextStyle(fontSize: 16, color: AppDesign.textSecondary),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    if (list.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-
-                    return ListView.builder(
-                      itemCount: list.listItemCount,
-                      itemBuilder: (context, index) {
-                        final suggestion = list.suggestionAt(index);
-                        if (suggestion == null) {
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                            child: Text(
-                              'popular_cities'.tr,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppDesign.textSecondary,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          );
-                        }
-                        final isPopular = PopularCity.isPopularPlaceId(suggestion.placeId);
-                        return _buildLocationTile(
-                          title: suggestion.mainText,
-                          subtitle: suggestion.secondaryText,
-                          isPopular: isPopular,
-                          onTap: () => _selectPlaceSuggestion(suggestion),
-                        );
-                      },
-                    );
-                  }),
+                    if (search.usedFallback)
+                      TextButton(
+                        onPressed: () =>
+                            launchUrl(Uri.parse('https://www.openstreetmap.org/copyright')),
+                        child: Text(context.l10n.text('location_search_attribution')),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRadiusSelector() {
-    final current = _getPageState(pageStateService);
-    final radiusValue = (_radiusKm ?? current.filters.radiusKm ?? 10.0).clamp(5.0, 50.0).toDouble();
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppDesign.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppDesign.divider, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'search_radius'.tr,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppDesign.textPrimary,
-                ),
-              ),
-              Text(
-                '${radiusValue.toInt()} ${'km_unit'.tr}',
-                style: TextStyle(fontSize: 12, color: AppDesign.textSecondary),
               ),
             ],
           ),
-          Slider(
-            value: radiusValue,
-            min: 5,
-            max: 50,
-            divisions: 9, // 5,10,15,...,50
-            label: '${radiusValue.toInt()} km',
-            activeColor: AppDesign.primaryYellow,
-            onChanged: (val) {
-              setState(() => _radiusKm = val);
-              final state = _getPageState(pageStateService);
-              final updatedFilters = state.filters.copyWith(radiusKm: val);
-              pageStateService.updatePageFilters(widget.pageType, updatedFilters);
-            },
-          ),
-        ],
+        ),
       ),
     );
   }
+}
 
-  Widget _buildQuickActionTile({
-    String? qaKey,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color iconColor,
-    required VoidCallback onTap,
-  }) {
+/// A flat failure line with an optional retry. The retry sits under the
+/// message, so long Hindi labels at 2x never share a row with it.
+class _LocationRecovery extends StatelessWidget {
+  const _LocationRecovery({required this.messageKey, this.onRetry});
+  final String messageKey;
+  final VoidCallback? onRetry;
+  @override
+  Widget build(BuildContext context) {
+    final design = context.design;
     return Semantics(
-      label: qaKey,
-      identifier: qaKey,
+      liveRegion: true,
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        // Material so ListTile ink/tileColor are not blocked by parent DecoratedBox.
-        child: Material(
-          color: AppDesign.surface,
-          borderRadius: BorderRadius.circular(12),
-          clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            key: qaKey != null ? ValueKey(qaKey) : null,
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: iconColor, size: 20),
+        key: ValueKey(messageKey),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PaperIcon(KnifeIcon.alert, size: 20, color: design.error),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    context.l10n.text(messageKey),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: design.error),
+                  ),
+                ),
+              ],
             ),
-            title: Text(
-              title,
-              style: TextStyle(fontWeight: FontWeight.w500, color: AppDesign.textPrimary),
-            ),
-            subtitle: Text(
-              subtitle,
-              style: TextStyle(color: AppDesign.textSecondary, fontSize: 12),
-            ),
-            trailing: Icon(Icons.arrow_forward_ios, size: 16, color: AppDesign.textSecondary),
-            onTap: onTap,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+            if (onRetry != null)
+              TextButton(onPressed: onRetry, child: Text(context.l10n.text('retry'))),
+          ],
         ),
       ),
     );
-  }
-
-  Widget _buildLocationTile({
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    bool isPopular = false,
-  }) {
-    final accent = isPopular ? AppDesign.primaryYellow : AppDesign.accentBlue;
-    return Material(
-      color: AppDesign.transparent,
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(isPopular ? Icons.location_city : Icons.location_on, color: accent, size: 20),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(fontWeight: FontWeight.w500, color: AppDesign.textPrimary),
-        ),
-        subtitle: subtitle.isNotEmpty
-            ? Text(subtitle, style: TextStyle(color: AppDesign.textSecondary, fontSize: 12))
-            : null,
-        onTap: onTap,
-      ),
-    );
-  }
-
-  void _useCurrentLocation() async {
-    if (_isUsingCurrentLocation || _isSelectingPlace) return;
-    _isUsingCurrentLocation = true;
-    // Capture any theme-derived colors up-front to avoid using context across awaits
-    final onErrorColor = Theme.of(context).colorScheme.onError;
-    try {
-      // Persist first; only dismiss the sheet after success (matches
-      // LocationSearchController.useCurrentLocation).
-      await pageStateService.useCurrentLocationForPage(widget.pageType);
-
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-
-      _showSnackbarSafe(
-        title: 'location_updated'.tr,
-        message: 'using_current_location'.tr,
-        duration: const Duration(seconds: 2),
-      );
-    } catch (e) {
-      _showSnackbarSafe(
-        title: 'error'.tr,
-        message: 'unable_to_get_current_location'.tr,
-        backgroundColor: AppDesign.errorRed,
-        textColor: onErrorColor,
-      );
-    } finally {
-      _isUsingCurrentLocation = false;
-    }
-  }
-
-  void _selectPlaceSuggestion(PlaceSuggestion suggestion) async {
-    if (_isSelectingPlace || _isUsingCurrentLocation) return;
-    _isSelectingPlace = true;
-    // Capture any theme-derived colors up-front to avoid using context across awaits
-    final onErrorColor = Theme.of(context).colorScheme.onError;
-    try {
-      // Resolve details before closing so failures stay visible in the sheet.
-      final locationData = await locationController.getPlaceDetails(
-        suggestion.placeId,
-        preferredName: suggestion.mainText,
-      );
-      if (locationData == null) {
-        final detailError = locationController.placesError.value;
-        _showSnackbarSafe(
-          title: 'error'.tr,
-          message: detailError.isNotEmpty ? detailError : 'unable_to_select_location'.tr,
-          backgroundColor: AppDesign.errorRed,
-          textColor: onErrorColor,
-        );
-        return;
-      }
-
-      // Persist first; only dismiss the sheet after success (matches
-      // LocationSearchController.selectPlace).
-      await pageStateService.updateLocationForPage(widget.pageType, locationData, source: 'manual');
-
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-
-      _showSnackbarSafe(
-        title: 'location_selected'.tr,
-        message: suggestion.mainText,
-        duration: const Duration(seconds: 2),
-      );
-    } catch (e) {
-      _showSnackbarSafe(
-        title: 'error'.tr,
-        message: 'unable_to_select_location'.tr,
-        backgroundColor: AppDesign.errorRed,
-        textColor: onErrorColor,
-      );
-    } finally {
-      _isSelectingPlace = false;
-    }
   }
 }

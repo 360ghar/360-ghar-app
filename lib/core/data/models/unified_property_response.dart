@@ -3,23 +3,23 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'unified_property_response.g.dart';
 
-/// Uniform cursor-paginated response envelope returned by all list endpoints.
+/// `CursorPage` of `Property`, returned by `GET /properties` and `GET /swipes`.
 ///
-/// Shape: `{items: [...], next_cursor: "<base64>"|null, has_more: bool, limit: int}`.
-/// The legacy `total`/`page`/`total_pages` fields are gone; pagination is
-/// driven exclusively by [nextCursor] + [hasMore].
+/// Shape: `{items: [...], next_cursor: an opaque string or null, has_more: bool, limit: int,
+/// total: int|null}`. The server always sends all five keys. `total` is null unless the request
+/// set `include_total=true`. Pagination is driven by [nextCursor] and [hasMore]; a cursor is
+/// opaque and is passed back unchanged with the same filters.
 @JsonSerializable(explicitToJson: true)
 class UnifiedPropertyResponse {
+  @JsonKey(required: true, disallowNullValue: true)
   final List<PropertyModel> items;
+  @JsonKey(required: true, disallowNullValue: true)
   final int limit;
-  @JsonKey(name: 'next_cursor')
+  @JsonKey(name: 'next_cursor', required: true)
   final String? nextCursor;
-  @JsonKey(name: 'has_more')
+  @JsonKey(name: 'has_more', required: true, disallowNullValue: true)
   final bool hasMore;
-  @JsonKey(name: 'filters_applied')
-  final Map<String, dynamic> filtersApplied;
-  @JsonKey(name: 'search_center')
-  final SearchCenter? searchCenter;
+  @JsonKey(required: true)
   final int? total;
 
   const UnifiedPropertyResponse({
@@ -27,8 +27,6 @@ class UnifiedPropertyResponse {
     this.limit = 20,
     this.nextCursor,
     this.hasMore = false,
-    this.filtersApplied = const <String, dynamic>{},
-    this.searchCenter,
     this.total,
   });
 
@@ -43,16 +41,4 @@ class UnifiedPropertyResponse {
 
   bool get isEmpty => items.isEmpty;
   int get currentItemCount => items.length;
-}
-
-@JsonSerializable(explicitToJson: true)
-class SearchCenter {
-  final double latitude;
-  final double longitude;
-
-  const SearchCenter({required this.latitude, required this.longitude});
-
-  factory SearchCenter.fromJson(Map<String, dynamic> json) => _$SearchCenterFromJson(json);
-
-  Map<String, dynamic> toJson() => _$SearchCenterToJson(this);
 }

@@ -1,78 +1,90 @@
 import 'package:flutter/material.dart';
-
-import 'package:get/get.dart';
-
-import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_art.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/design/paper/paper_scene_data.dart';
+import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/core/utils/responsive.dart';
+import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
+import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
+import 'package:ghar360/core/widgets/common/property_location_recovery.dart';
+import 'package:ghar360/core/widgets/common/property_recovery_banner.dart';
 import 'package:ghar360/core/widgets/common/unified_top_bar.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/discover/presentation/controllers/discover_controller.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_stack.dart';
+import 'package:ghar360/features/location/presentation/widgets/location_explainer.dart';
+import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import 'package:ghar360/features/properties/application/swipe_history.dart';
+import 'package:go_router/go_router.dart';
 
-class DiscoverView extends GetView<DiscoverController> {
+class DiscoverView extends ConsumerWidget {
   const DiscoverView({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    final pageStateService = Get.find<PageStateService>();
+  static void _filters(BuildContext context) =>
+      showPropertyFilterBottomSheet(context, pageType: PageType.discover);
 
-    return Semantics(
-      label: 'discover'.tr,
-      identifier: 'qa.discover.screen',
-      child: Scaffold(
-        key: const ValueKey('qa.discover.screen'),
-        backgroundColor: AppDesign.scaffoldBackground,
-        appBar: DiscoverTopBar(
-          onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: 'discover'),
-        ),
-        body: SafeArea(
-          top: false,
-          child: Column(
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(swipeHistoryProvider.select((history) => history.failures), (previous, next) {
+      if (next.isNotEmpty && next != previous) {
+        AppToast.error(context.l10n.text('error'), context.l10n.text('swipe_save_failed'));
+      }
+    });
+    // The frame watches nothing: each part below watches only what it draws,
+    // so a swipe rebuilds the deck and not the whole screen.
+    return LocationExplainerGate(
+      child: Semantics(
+        label: context.l10n.text('discover'),
+        identifier: 'qa.discover.screen',
+        child: Scaffold(
+          key: const ValueKey('qa.discover.screen'),
+          backgroundColor: context.design.background,
+          appBar: DiscoverTopBar(
+            onFilterTap: () => _filters(context),
+            additionalActions: [
+              // The Assistant's mark is the onboarding kite: bare, no box.
+              TextButton.icon(
+                key: const ValueKey('qa.discover.assistant'),
+                onPressed: () => context.push(AppRoutes.assistant),
+                icon: PaperIcon(KnifeIcon.kite, size: 22, color: context.design.accent),
+                label: Text(context.l10n.text('assistant')),
+              ),
+            ],
+          ),
+          // The deck stands in front of the city: the far towers and the
+          // sector blocks rise from the foot of the page behind the cards.
+          body: Stack(
             children: [
-              // Subtle refresh indicator (reactive only)
-              Obx(() {
-                final isRefreshing = pageStateService.discoverState.value.isRefreshing;
-                if (!isRefreshing) return const SizedBox.shrink();
-                return const LinearProgressIndicator(
-                  minHeight: 2,
-                  backgroundColor: AppDesign.transparent,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
-                );
-              }),
-              // Main content (reacts only to state)
-              Expanded(
-                child: Obx(() {
-                  final Widget child;
-                  final Key key;
-                  switch (controller.state.value) {
-                    case DiscoverState.loading:
-                      key = const ValueKey('loading');
-                      child = _buildLoadingState();
-                    case DiscoverState.error:
-                      key = const ValueKey('error');
-                      child = _buildErrorState();
-                    case DiscoverState.empty:
-                      key = const ValueKey('empty');
-                      child = _buildEmptyState(context);
-                    case DiscoverState.loaded:
-                    case DiscoverState.prefetching:
-                      key = const ValueKey('loaded');
-                      child = _buildSwipeInterface(context);
-                    default:
-                      key = const ValueKey('loading');
-                      child = _buildLoadingState();
-                  }
-                  return AnimatedSwitcher(
-                    duration: AppDurations.contentFade,
-                    transitionBuilder: (child, animation) =>
-                        FadeTransition(opacity: animation, child: child),
-                    child: KeyedSubtree(key: key, child: child),
-                  );
-                }),
+              const Positioned.fill(child: PageGrain()),
+              // When the shell lays the body under its roofline, the lawn
+              // runs on behind it.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 200 + MediaQuery.paddingOf(context).bottom,
+                child: const _City(),
+              ),
+              const SafeArea(
+                top: false,
+                child: Column(
+                  children: [
+                    _RefreshBar(),
+                    _DiscoverBanners(),
+                    PropertyRecoveryBanner(feed: PropertyFeed.discover),
+                    Expanded(child: _DiscoverBody()),
+                  ],
+                ),
               ),
             ],
           ),
@@ -80,138 +92,253 @@ class DiscoverView extends GetView<DiscoverController> {
       ),
     );
   }
+}
 
-  Widget _buildLoadingState() {
+const _feed = PropertyFeed.discover;
+
+/// The far towers, sector blocks and lawn of the city, standing at the foot
+/// of the page behind the deck. Painted once at the full height of the box;
+/// a wide box shows more of the street. No clouds, so nothing floats in the
+/// gutters.
+class _City extends StatelessWidget {
+  const _City();
+
+  static final _art = () {
+    final art = paperHeaders['skyline']!;
+    return PaperArtData(
+      width: art.width,
+      height: art.height,
+      shadow: art.shadow,
+      layers: [
+        for (final layer in art.layers)
+          if (layer.id != 'clouds') layer,
+      ],
+    );
+  }();
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: RepaintBoundary(child: CustomPaint(painter: _CityPainter(context.design))),
+  );
+}
+
+class _CityPainter extends CustomPainter {
+  const _CityPainter(this.design);
+
+  final AppPalette design;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final art = _City._art;
+    final scale = size.height / art.height;
+    canvas
+      ..save()
+      ..clipRect(Offset.zero & size)
+      ..translate((size.width - art.width * scale) / 2, 0)
+      ..scale(scale);
+    paintPaperArt(canvas, art.size, art, design.inks);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_CityPainter old) => old.design.isDark != design.isDark;
+}
+
+class _RefreshBar extends ConsumerWidget {
+  const _RefreshBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final refreshing = ref.watch(propertyQueryProvider(_feed).select((page) => page.isRefreshing));
+    return SizedBox(
+      height: 2,
+      child: refreshing ? const LinearProgressIndicator(minHeight: 2) : null,
+    );
+  }
+}
+
+class _DiscoverBanners extends ConsumerWidget {
+  const _DiscoverBanners();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasCards = ref.watch(visiblePropertiesProvider(_feed).select((deck) => deck.isNotEmpty));
+    final locationBusy = ref.watch(
+      propertyLocationProvider(
+        PageType.discover,
+      ).select((location) => location.load.hasError || location.load.isLoading),
+    );
+    final (paginationError, error, busy) = ref.watch(
+      propertyQueryProvider(_feed).select(
+        (page) => (page.paginationError, page.error, page.isLoadingMore || page.isRefreshing),
+      ),
+    );
+    final failed = paginationError ?? (hasCards && error is! LocationException ? error : null);
     return Column(
       children: [
-        // Contextual loading message so users know what's happening when
-        // location acquisition takes time (previously a bare skeleton with
-        // no explanation, which could look like the app was stuck).
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        if (hasCards && locationBusy)
+          const PropertyLocationRecovery(pageType: PageType.discover, inline: true),
+        if (failed != null)
+          InlineRetryBanner(
+            message: context.l10n.text(
+              paginationError != null ? 'load_more_failed' : 'refresh_content_failed',
+            ),
+            error: failed,
+            isLoading: busy,
+            identifier: 'qa.discover.content.retry',
+            onRetry: () {
+              final query = ref.read(propertyQueryProvider(_feed).notifier);
+              if (paginationError != null) {
+                query.loadMore(retry: true);
+              } else {
+                query.load(refresh: true);
+              }
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _DiscoverBody extends ConsumerWidget {
+  const _DiscoverBody();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Only the top three cards are drawn; changes further down the deck do
+    // not rebuild this.
+    final (top, second, third, empty) = ref.watch(
+      visiblePropertiesProvider(_feed).select(
+        (deck) => (
+          deck.isNotEmpty ? deck[0] : null,
+          deck.length > 1 ? deck[1] : null,
+          deck.length > 2 ? deck[2] : null,
+          deck.isEmpty,
+        ),
+      ),
+    );
+    final (isLoading, isLoadingMore, idle, showFullError, error) = ref.watch(
+      propertyQueryProvider(_feed).select(
+        (page) => (
+          page.isLoading,
+          page.isLoadingMore,
+          page.phase == PropertyLoadPhase.idle,
+          page.showFullError,
+          page.error,
+        ),
+      ),
+    );
+    final (noLocation, locationFailed) = ref.watch(
+      propertyLocationProvider(
+        PageType.discover,
+      ).select((location) => (location.location == null, location.load.hasError)),
+    );
+    final hydrated = ref.watch(swipeHistoryProvider.select((history) => history.hydrated));
+    final controller = ref.read(discoverProvider.notifier);
+    final loading = !hydrated || (empty && (isLoading || isLoadingMore || idle));
+    if (empty && noLocation && (locationFailed || error is LocationException)) {
+      return const PropertyLocationRecovery(pageType: PageType.discover);
+    }
+    if (loading) return LoadingStates.swipeCardSkeleton();
+    if (showFullError && empty) {
+      return ErrorStates.genericError(
+        error: error!,
+        onRetry: controller.retryLoading,
+        seed: 'discover',
+      );
+    }
+    if (empty) {
+      return ErrorStates.swipeDeckEmpty(
+        onRefresh: controller.refreshDeck,
+        onChangeFilters: () => DiscoverView._filters(context),
+      );
+    }
+    final cards = [top!, ?second, ?third];
+    final design = context.design;
+    // Both buttons are paper on the page: the same shape, the same short
+    // shadow. Pass is a white sheet with a brick mark; Like is the marigold.
+    Widget lifted(Widget button) => DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppBorderRadius.button),
+        boxShadow: paperShadows(PaperElevation.low, design.shadowOn(design.background)),
+      ),
+      child: button,
+    );
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          // The turned sheets under the top card reach about 10 px into the
+          // gutters and the gap above the buttons.
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
           child: Column(
             children: [
-              Icon(
-                Icons.travel_explore_rounded,
-                size: 28,
-                color: AppDesign.primaryYellow.withValues(alpha: 0.8),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'discovering_properties_message'.tr,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: AppDesign.textPrimary,
+              Expanded(
+                child: Semantics(
+                  identifier: 'qa.discover.swipe_stack',
+                  label: context.l10n.text('discover'),
+                  child: PropertySwipeStack(
+                    key: const ValueKey('qa.discover.swipe_stack'),
+                    properties: cards,
+                    onSwipeLeft: controller.swipeLeft,
+                    onSwipeRight: controller.swipeRight,
+                    onSwipeUp: (property) =>
+                        context.push(AppRoutes.detailsFor(property.id), extra: property),
+                    isLoadingMore: isLoadingMore,
+                    canSwipe: (property) => ref
+                        .read(visiblePropertiesProvider(_feed))
+                        .any((item) => item.id == property.id),
+                    onRefresh: controller.refreshDeck,
+                    onChangeFilters: () => DiscoverView._filters(context),
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'finding_nearby_properties_hint'.tr,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: AppDesign.textSecondary),
+              const SizedBox(height: 22),
+              // Both buttons keep one height when a label wraps.
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: lifted(
+                        FilledButton.icon(
+                          key: const ValueKey('qa.discover.action.pass'),
+                          style: ButtonStyle(
+                            minimumSize: const WidgetStatePropertyAll(Size(48, 52)),
+                            backgroundColor: WidgetStateProperty.resolveWith(
+                              (states) =>
+                                  states.contains(WidgetState.pressed) ||
+                                      states.contains(WidgetState.hovered)
+                                  ? design.tabBehind
+                                  : design.surface,
+                            ),
+                            foregroundColor: WidgetStatePropertyAll(design.textPrimary),
+                          ),
+                          onPressed: () => controller.swipeLeft(top),
+                          icon: PaperIcon(KnifeIcon.close, size: 20, color: design.favoriteActive),
+                          label: Text(context.l10n.text('pass')),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: lifted(
+                        FilledButton.icon(
+                          key: const ValueKey('qa.discover.action.like'),
+                          style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
+                          onPressed: () => controller.swipeRight(top),
+                          icon: const PaperIcon(KnifeIcon.heart, size: 20),
+                          label: Text(context.l10n.text('like')),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
-
-        // Show loading progress if available
-        Obx(() {
-          if (controller.isPrefetching.value) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'loading_more_properties'.tr,
-                    style: TextStyle(fontSize: 14, color: AppDesign.textSecondary),
-                  ),
-                ],
-              ),
-            );
-          }
-          return const SizedBox();
-        }),
-
-        // Main loading
-        Expanded(child: LoadingStates.swipeCardSkeleton()),
-      ],
-    );
-  }
-
-  Widget _buildErrorState() {
-    return Obx(() {
-      final errorMessage = controller.error.value;
-      if (errorMessage == null) return const SizedBox();
-
-      return ErrorStates.genericError(error: errorMessage, onRetry: controller.retryLoading);
-    });
-  }
-
-  Widget _buildEmptyState(BuildContext context) {
-    return ErrorStates.swipeDeckEmpty(
-      onRefresh: controller.refreshDeck,
-      onChangeFilters: () =>
-          showPropertyFilterBottomSheet(Get.context ?? context, pageType: 'discover'),
-    );
-  }
-
-  Widget _buildSwipeInterface(BuildContext context) {
-    // Phone: cardMaxWidth is double.infinity → no cap, identical to before.
-    // Medium+ (tablet/iPad): cap and center so cards stay a comfortable width.
-    final cardMaxWidth = responsiveValue<double>(
-      context,
-      compact: double.infinity,
-      medium: 520,
-      expanded: 520,
-      large: 520,
-      fallback: 520,
-    );
-
-    return Column(
-      children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: cardMaxWidth),
-                child: Obx(
-                  () => Semantics(
-                    label: 'qa.discover.swipe_stack',
-                    identifier: 'qa.discover.swipe_stack',
-                    child: PropertySwipeStack(
-                      key: const ValueKey('qa.discover.swipe_stack'),
-                      properties: controller.deck
-                          .skip(controller.currentIndex.value)
-                          .take(3)
-                          .toList(),
-                      onSwipeLeft: controller.swipeLeft,
-                      onSwipeRight: controller.swipeRight,
-                      onSwipeUp: (property) => controller.viewPropertyDetails(property),
-                      onRefresh: controller.refreshDeck,
-                      onChangeFilters: () => showPropertyFilterBottomSheet(
-                        Get.context ?? context,
-                        pageType: 'discover',
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

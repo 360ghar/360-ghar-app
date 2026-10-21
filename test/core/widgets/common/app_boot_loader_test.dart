@@ -1,26 +1,19 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/widgets/common/app_boot_loader.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
-    Get.testMode = true;
-    Get.reset();
-  });
-
-  tearDown(Get.reset);
-
   Widget wrap(Widget child) {
-    return GetMaterialApp(
-      translations: AppTranslations(),
+    return MaterialApp(
+      localizationsDelegates: const [AppLocalizations.delegate],
       locale: const Locale('en', 'US'),
-      fallbackLocale: const Locale('en', 'US'),
+      supportedLocales: AppLocalizations.supportedLocales,
       home: child,
     );
   }
@@ -31,6 +24,21 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('Starting...'), findsOneWidget);
     expect(find.image(const AssetImage(AppBootLoader.logoAsset)), findsOneWidget);
+  });
+
+  testWidgets('dark theme uses the light mark on the night page tone', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(brightness: Brightness.dark),
+        localizationsDelegates: const [AppLocalizations.delegate],
+        locale: const Locale('en', 'US'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const AppBootLoader(),
+      ),
+    );
+    expect(find.image(const AssetImage(AppBootLoader.logoAssetDark)), findsOneWidget);
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    expect(scaffold.backgroundColor, const AppPalette(isDark: true).background);
   });
 
   testWidgets('shows retry after slow threshold', (tester) async {

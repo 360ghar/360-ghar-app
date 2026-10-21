@@ -8,7 +8,35 @@ on:
     branches: [main, develop]
 
 jobs:
+  secrets-check:
+    name: Check Maestro secrets
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    env:
+      API_BASE_URL: ${{ secrets.API_BASE_URL }}
+      TEST_PHONE: ${{ secrets.TEST_PHONE }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      TEST_NEW_IDENTIFIER: ${{ secrets.TEST_NEW_IDENTIFIER }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "$API_BASE_URL" ] && [ -n "$TEST_PHONE" ] && [ -n "$TEST_PASSWORD" ] &&
+             [ -n "$TEST_NEW_IDENTIFIER" ] && [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            msg="Maestro E2E skipped: a required secret is not set (API_BASE_URL, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, TEST_PHONE, TEST_PASSWORD, TEST_NEW_IDENTIFIER)."
+            echo "::notice::${msg}"
+            echo "### E2E coverage skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "${msg}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   maestro-android:
+    needs: secrets-check
+    if: needs.secrets-check.outputs.enabled == 'true'
     name: Maestro Android E2E
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -84,6 +112,7 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          TEST_NEW_IDENTIFIER: ${{ secrets.TEST_NEW_IDENTIFIER }}
         with:
           # API 30 + default target is more reliably cached on ubuntu runners than
           # API 34 google_apis (which failed with a corrupt system-image zip).
@@ -108,6 +137,8 @@ jobs:
           if-no-files-found: warn
 
   maestro-ios:
+    needs: secrets-check
+    if: needs.secrets-check.outputs.enabled == 'true'
     name: Maestro iOS E2E
     runs-on: macos-latest
     timeout-minutes: 90
@@ -191,6 +222,7 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          TEST_NEW_IDENTIFIER: ${{ secrets.TEST_NEW_IDENTIFIER }}
         run: ./scripts/run_maestro_ci.sh ios full
 
       - name: Upload iOS Maestro artifacts

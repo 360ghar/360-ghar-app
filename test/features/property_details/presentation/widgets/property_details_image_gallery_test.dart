@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/core/data/models/property_image_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_image_gallery.dart';
+import '../../../../helpers/image_test_cache.dart';
+import '../../../../helpers/knife_finders.dart';
 
 PropertyModel _propertyWithGalleryImages() {
   return const PropertyModel(
@@ -19,7 +23,7 @@ PropertyModel _propertyWithGalleryImages() {
         id: 1,
         propertyId: 1,
         imageUrl: 'https://example.com/main.jpg',
-        isMain: true,
+        isMainImage: true,
         displayOrder: 0,
       ),
       PropertyImageModel(
@@ -73,14 +77,11 @@ PropertyModel _propertyWithNoImages() {
 }
 
 void main() {
-  // Suppress FlutterError overflow exceptions that can occur in constrained
-  // test viewports so they don't fail the test suite.
+  late ImageTestCache cache;
   setUp(() {
-    FlutterError.onError = (FlutterErrorDetails details) {
-      final summary = details.exception.toString();
-      if (summary.contains('RenderFlex overflowed')) return;
-      FlutterError.presentError(details);
-    };
+    cache = ImageTestCache();
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
   });
 
   Future<void> pumpGallery(
@@ -89,9 +90,11 @@ void main() {
     Size size = const Size(400, 300),
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SizedBox(width: size.width, height: size.height, child: child),
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(width: size.width, height: size.height, child: child),
+          ),
         ),
       ),
     );
@@ -100,14 +103,27 @@ void main() {
   }
 
   testWidgets('renders PageView with gallery images and shows counter', (tester) async {
-    await pumpGallery(tester, PropertyDetailsImageGallery(property: _propertyWithGalleryImages()));
+    await pumpGallery(
+      tester,
+      PropertyDetailsImageGallery(
+        cacheService: cache.service,
+        property: _propertyWithGalleryImages(),
+      ),
+    );
 
     // The page counter "1/3" should be visible since there are 3 images.
     expect(find.text('1/3'), findsOneWidget);
+    expect(cache.prefetched, ['https://example.com/img2.jpg', 'https://example.com/img3.jpg']);
   });
 
   testWidgets('hides counter when only one image', (tester) async {
-    await pumpGallery(tester, PropertyDetailsImageGallery(property: _propertyWithMainImageOnly()));
+    await pumpGallery(
+      tester,
+      PropertyDetailsImageGallery(
+        cacheService: cache.service,
+        property: _propertyWithMainImageOnly(),
+      ),
+    );
 
     // No counter should be shown for single-image galleries.
     expect(find.byType(PageView), findsOneWidget);
@@ -116,14 +132,23 @@ void main() {
   });
 
   testWidgets('shows placeholder icon when no valid images', (tester) async {
-    await pumpGallery(tester, PropertyDetailsImageGallery(property: _propertyWithNoImages()));
+    await pumpGallery(
+      tester,
+      PropertyDetailsImageGallery(cacheService: cache.service, property: _propertyWithNoImages()),
+    );
 
-    expect(find.byIcon(Icons.image), findsOneWidget);
+    expect(findKnife(KnifeIcon.camera), findsOneWidget);
     expect(find.byType(PageView), findsNothing);
   });
 
   testWidgets('updates counter when swiping to next page', (tester) async {
-    await pumpGallery(tester, PropertyDetailsImageGallery(property: _propertyWithGalleryImages()));
+    await pumpGallery(
+      tester,
+      PropertyDetailsImageGallery(
+        cacheService: cache.service,
+        property: _propertyWithGalleryImages(),
+      ),
+    );
 
     expect(find.text('1/3'), findsOneWidget);
 
@@ -138,7 +163,11 @@ void main() {
   testWidgets('wraps gallery in SizedBox when maxHeight is provided', (tester) async {
     await pumpGallery(
       tester,
-      PropertyDetailsImageGallery(property: _propertyWithGalleryImages(), maxHeight: 200),
+      PropertyDetailsImageGallery(
+        cacheService: cache.service,
+        property: _propertyWithGalleryImages(),
+        maxHeight: 200,
+      ),
     );
 
     // The SizedBox with height 200 should wrap the gallery.
@@ -149,7 +178,13 @@ void main() {
   });
 
   testWidgets('does not wrap in SizedBox when maxHeight is null', (tester) async {
-    await pumpGallery(tester, PropertyDetailsImageGallery(property: _propertyWithGalleryImages()));
+    await pumpGallery(
+      tester,
+      PropertyDetailsImageGallery(
+        cacheService: cache.service,
+        property: _propertyWithGalleryImages(),
+      ),
+    );
 
     // No SizedBox with a specific height should wrap the gallery directly.
     // The gallery Stack should be the direct child (no height cap).
@@ -158,7 +193,13 @@ void main() {
   });
 
   testWidgets('opens full-screen gallery on tap', (tester) async {
-    await pumpGallery(tester, PropertyDetailsImageGallery(property: _propertyWithGalleryImages()));
+    await pumpGallery(
+      tester,
+      PropertyDetailsImageGallery(
+        cacheService: cache.service,
+        property: _propertyWithGalleryImages(),
+      ),
+    );
 
     // Tap the gallery to open the full-screen PhotoView route.
     await tester.tap(find.byType(PageView));
@@ -166,6 +207,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     // Fullscreen route uses a close button, not a Dialog.
-    expect(find.byIcon(Icons.close), findsOneWidget);
+    expect(findKnife(KnifeIcon.close), findsOneWidget);
   });
 }

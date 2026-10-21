@@ -1,8 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:get/get.dart';
-
-import 'package:ghar360/core/controllers/page_state_service.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
 /// Debug-only diagnostic for tracking null-check operator exceptions.
@@ -17,47 +14,27 @@ class NullCheckTrap {
     if (!kDebugMode) return;
     try {
       DebugLogger.error('🚨 [NULL_CHECK_TRAP] SOURCE: $source');
-      DebugLogger.error('🚨 [NULL_CHECK_TRAP] Current route: ${Get.currentRoute}');
-
-      if (Get.isRegistered<PageStateService>()) {
-        final svc = Get.find<PageStateService>();
-        final explore = svc.exploreState.value;
-        final discover = svc.discoverState.value;
-        final likes = svc.likesState.value;
-
-        DebugLogger.error('🚨 [NULL_CHECK_TRAP] Current page: ${svc.currentPageType.value}');
-
-        String locSummary(state) => state.selectedLocation == null
-            ? 'no-location'
-            : '(${state.selectedLocation!.latitude}, ${state.selectedLocation!.longitude})';
-
-        DebugLogger.error(
-          '🚨 [NULL_CHECK_TRAP] Explore => props:${explore.properties.length}, loading:${explore.isLoading}, error:${explore.error != null}, loc:${locSummary(explore)}',
-        );
-        DebugLogger.error(
-          '🚨 [NULL_CHECK_TRAP] Discover => props:${discover.properties.length}, loading:${discover.isLoading}, error:${discover.error != null}, loc:${locSummary(discover)}',
-        );
-        DebugLogger.error(
-          '🚨 [NULL_CHECK_TRAP] Likes => props:${likes.properties.length}, loading:${likes.isLoading}, error:${likes.error != null}, loc:${locSummary(likes)}',
-        );
-      } else {
-        DebugLogger.error('🚨 [NULL_CHECK_TRAP] PageStateService not registered yet');
-      }
+      // Route/query, GPS, and account values are deliberately excluded.
+      DebugLogger.error('NULL_CHECK_TRAP: Flutter ${defaultTargetPlatform.name}');
     } catch (e) {
       // Avoid throwing from the trap itself
-      DebugLogger.warning('⚠️ [NULL_CHECK_TRAP] Context logging failed: $e');
+      DebugLogger.warning('NULL_CHECK_TRAP context logging failed', e);
     }
   }
 
   static void capture(dynamic error, StackTrace stack, {String source = 'zone'}) {
     if (!kDebugMode || _fired) return;
-    final text = error?.toString() ?? '';
+    String text;
+    try {
+      text = error?.toString() ?? '';
+    } catch (_) {
+      return;
+    }
     if (!text.contains('Null check operator used on a null value')) return;
     _fired = true;
 
     DebugLogger.error('🔥 [NULL_CHECK_TRAP] FIRST NULL CHECK OPERATOR EXCEPTION CAPTURED');
     DebugLogger.error('🔥 [NULL_CHECK_TRAP] Error type: ${error.runtimeType}');
-    DebugLogger.error('🔥 [NULL_CHECK_TRAP] Error: $error');
     _logCommonContext(source: source);
     DebugLogger.error('🔥 [NULL_CHECK_TRAP] STACK TRACE (full):');
     DebugLogger.error(stack.toString());
@@ -65,16 +42,17 @@ class NullCheckTrap {
 
   static void captureFlutterError(FlutterErrorDetails details) {
     if (!kDebugMode || _fired) return;
-    final text = details.exception.toString();
+    String text;
+    try {
+      text = details.exception.toString();
+    } catch (_) {
+      return;
+    }
     if (!text.contains('Null check operator used on a null value')) return;
     _fired = true;
 
     DebugLogger.error('🔥 [NULL_CHECK_TRAP] FIRST NULL CHECK OPERATOR (FlutterError)');
-    DebugLogger.error('🔥 [NULL_CHECK_TRAP] Library: ${details.library}');
-    DebugLogger.error('🔥 [NULL_CHECK_TRAP] Context: ${details.context}');
-    DebugLogger.error(
-      '🔥 [NULL_CHECK_TRAP] Exception: ${details.exception.runtimeType} | ${details.exception}',
-    );
+    DebugLogger.error('NULL_CHECK_TRAP exception type: ${details.exception.runtimeType}');
     _logCommonContext(source: 'flutter_error');
     DebugLogger.error('🔥 [NULL_CHECK_TRAP] STACK TRACE (FlutterError):');
     DebugLogger.error(details.stack?.toString() ?? 'no stack');
@@ -89,7 +67,6 @@ class NullCheckTrap {
     _stringFired = true;
 
     DebugLogger.error('🔥 [NULL_CHECK_TRAP] STRING-ONLY NULL CHECK MESSAGE CAPTURED');
-    DebugLogger.error('🔥 [NULL_CHECK_TRAP] Message: $message');
     _logCommonContext(source: source);
     final stack = StackTrace.current;
     DebugLogger.error('🔥 [NULL_CHECK_TRAP] STACK TRACE (call site):');

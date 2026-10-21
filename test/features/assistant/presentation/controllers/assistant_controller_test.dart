@@ -1,39 +1,27 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/network/sse_client.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
+import 'package:ghar360/features/assistant/data/models/assistant_frame.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/data/models/conversation_model.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
+import 'package:ghar360/features/assistant/presentation/controllers/assistant_history_controller.dart';
 import 'package:mocktail/mocktail.dart';
 
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
+import '../../../../helpers/assistant_test_harness.dart';
 
 void main() {
+  late AssistantTestHarness harness;
   late MockAssistantRepository mockRepository;
-  late MockSseClient mockSseClient;
-
   setUp(() {
-    GetxTestBinding.init();
-    mockRepository = MockAssistantRepository();
-    mockSseClient = MockSseClient();
-    GetxTestBinding.bind()
-      ..register<AssistantRepository>(mockRepository)
-      ..register<SseClient>(mockSseClient);
+    harness = AssistantTestHarness();
+    mockRepository = harness.repository;
   });
-
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
-
-  AssistantController createController() {
-    final c = AssistantController();
-    c.onInit();
-    return c;
-  }
+  tearDown(() => harness.dispose());
+  TestAssistantController createController([int? id]) => harness.conversation(id);
+  TestAssistantHistoryController createHistoryController() => harness.history();
 
   /// Creates a [ConversationModel] with sensible defaults for tests.
   ConversationModel testConversation({required int id, String? title, int messageCount = 0}) {
@@ -50,7 +38,7 @@ void main() {
     // ── sendMessage ─────────────────────────────────────────────────────
 
     test('sendMessage adds user message and assistant placeholder, sets streaming', () {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hello', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -58,12 +46,12 @@ void main() {
       final controller = createController();
       controller.sendMessage('hello');
 
-      expect(controller.messages.length, 2);
-      expect(controller.messages[0].role, ChatRole.user);
-      expect(controller.messages[0].content, 'hello');
-      expect(controller.messages[1].role, ChatRole.assistant);
-      expect(controller.messages[1].isStreaming, isTrue);
-      expect(controller.isStreaming.value, isTrue);
+      expect(controller.snapshot.messages.length, 2);
+      expect(controller.snapshot.messages[0].role, ChatRole.user);
+      expect(controller.snapshot.messages[0].content, 'hello');
+      expect(controller.snapshot.messages[1].role, ChatRole.assistant);
+      expect(controller.snapshot.messages[1].isStreaming, isTrue);
+      expect(controller.snapshot.isStreaming, isTrue);
 
       streamController.close();
     });
@@ -85,29 +73,33 @@ void main() {
           timestamp: DateTime(2024, 1, 2),
         ),
       ];
-      when(() => mockRepository.getConversationMessages(5)).thenAnswer((_) async => msgs);
+      when(
+        () => mockRepository.getMessagesPage(5),
+      ).thenAnswer((_) async => MessagesPage(items: msgs, hasMore: false));
 
-      final controller = createController();
-      await controller.selectConversation(5);
+      final controller = createController(5);
+      await controller.loadMessages();
 
-      expect(controller.conversationId.value, 5);
-      expect(controller.messages.length, 2);
-      expect(controller.messages[0].content, 'Hi');
-      expect(controller.messages[1].content, 'Hello!');
+      expect(controller.snapshot.conversationId, 5);
+      expect(controller.snapshot.messages.length, 2);
+      expect(controller.snapshot.messages[0].content, 'Hi');
+      expect(controller.snapshot.messages[1].content, 'Hello!');
     });
 
     // ── selectConversation (error) ───────────────────────────────────────
 
     test('selectConversation handles error gracefully', () async {
-      when(() => mockRepository.getConversationMessages(99)).thenThrow(Exception('Network error'));
+      when(() => mockRepository.getMessagesPage(99)).thenThrow(Exception('Network error'));
 
-      final controller = createController();
-      await controller.selectConversation(99);
+      final controller = createController(99);
+      await controller.loadMessages();
+      expect(controller.snapshot.loadStatus, ConversationLoadStatus.failed);
+      expect(controller.snapshot.loadError, isA<Exception>());
 
       // conversationId is set even on error.
-      expect(controller.conversationId.value, 99);
+      expect(controller.snapshot.conversationId, 99);
       // Messages are cleared then error returns [] from repository.
-      expect(controller.messages, isEmpty);
+      expect(controller.snapshot.messages, isEmpty);
     });
 
     // ── loadConversations (success) ──────────────────────────────────────
@@ -123,16 +115,16 @@ void main() {
       );
       when(() => mockRepository.getConversations()).thenAnswer((_) async => page);
 
-      final controller = createController();
+      final controller = createHistoryController();
       await controller.loadConversations();
 
-      expect(controller.conversations.length, 2);
-      expect(controller.conversations[0].title, 'First');
-      expect(controller.conversations[1].title, 'Second');
-      expect(controller.conversationsNextCursor.value, 'cursor_abc');
-      expect(controller.conversationsHasMore.value, isTrue);
-      expect(controller.isLoadingConversations.value, isFalse);
-      expect(controller.conversationsError.value, isFalse);
+      expect(controller.snapshot.conversations.length, 2);
+      expect(controller.snapshot.conversations[0].title, 'First');
+      expect(controller.snapshot.conversations[1].title, 'Second');
+      expect(controller.snapshot.nextCursor, 'cursor_abc');
+      expect(controller.snapshot.hasMore, isTrue);
+      expect(controller.snapshot.isLoading, isFalse);
+      expect(controller.snapshot.error != null, isFalse);
     });
 
     // ── loadConversations (error) ────────────────────────────────────────
@@ -140,12 +132,12 @@ void main() {
     test('loadConversations sets error flag on failure', () async {
       when(() => mockRepository.getConversations()).thenThrow(Exception('Server down'));
 
-      final controller = createController();
+      final controller = createHistoryController();
       await controller.loadConversations();
 
-      expect(controller.conversations, isEmpty);
-      expect(controller.conversationsError.value, isTrue);
-      expect(controller.isLoadingConversations.value, isFalse);
+      expect(controller.snapshot.conversations, isEmpty);
+      expect(controller.snapshot.error != null, isTrue);
+      expect(controller.snapshot.isLoading, isFalse);
     });
 
     // ── deleteConversation (success) ─────────────────────────────────────
@@ -153,18 +145,22 @@ void main() {
     test('deleteConversation removes item from list on success', () async {
       when(() => mockRepository.deleteConversation(3)).thenAnswer((_) async => true);
 
-      final controller = createController();
-      controller.conversations.assignAll([
-        testConversation(id: 1),
-        testConversation(id: 3),
-        testConversation(id: 5),
-      ]);
+      final controller = createHistoryController();
+      controller.seed(
+        controller.snapshot.copyWith(
+          conversations: [
+            testConversation(id: 1),
+            testConversation(id: 3),
+            testConversation(id: 5),
+          ],
+        ),
+      );
 
       await controller.deleteConversation(3);
 
-      expect(controller.conversations.length, 2);
-      expect(controller.conversations.any((c) => c.id == 3), isFalse);
-      expect(controller.isDeleting.value, isFalse);
+      expect(controller.snapshot.conversations.length, 2);
+      expect(controller.snapshot.conversations.any((c) => c.id == 3), isFalse);
+      expect(controller.snapshot.deletingId != null, isFalse);
     });
 
     // ── deleteConversation (failure) ─────────────────────────────────────
@@ -172,14 +168,18 @@ void main() {
     test('deleteConversation keeps list intact on failure', () async {
       when(() => mockRepository.deleteConversation(3)).thenAnswer((_) async => false);
 
-      final controller = createController();
-      controller.conversations.assignAll([testConversation(id: 1), testConversation(id: 3)]);
+      final controller = createHistoryController();
+      controller.seed(
+        controller.snapshot.copyWith(
+          conversations: [testConversation(id: 1), testConversation(id: 3)],
+        ),
+      );
 
       await controller.deleteConversation(3);
 
       // List should remain unchanged when delete returns false.
-      expect(controller.conversations.length, 2);
-      expect(controller.isDeleting.value, isFalse);
+      expect(controller.snapshot.conversations.length, 2);
+      expect(controller.snapshot.deletingId != null, isFalse);
     });
 
     // ── deleteConversation sets isDeleting correctly ─────────────────────
@@ -188,26 +188,26 @@ void main() {
       final completer = Completer<bool>();
       when(() => mockRepository.deleteConversation(7)).thenAnswer((_) => completer.future);
 
-      final controller = createController();
-      controller.conversations.assignAll([testConversation(id: 7)]);
+      final controller = createHistoryController();
+      controller.seed(controller.snapshot.copyWith(conversations: [testConversation(id: 7)]));
 
       // Fire and forget — don't await yet.
       final future = controller.deleteConversation(7);
 
       // isDeleting should be true while the future is pending.
-      expect(controller.isDeleting.value, isTrue);
+      expect(controller.snapshot.deletingId != null, isTrue);
 
       completer.complete(true);
       await future;
 
       // isDeleting should be false after completion.
-      expect(controller.isDeleting.value, isFalse);
+      expect(controller.snapshot.deletingId != null, isFalse);
     });
 
     // ── conversation_id parsed as int from SSE event ─────────────────────
 
     test('conversation_info event with int conversation_id sets value', () async {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'test', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -215,20 +215,18 @@ void main() {
       final controller = createController();
       controller.sendMessage('test');
 
-      streamController.add(
-        const SseEvent(event: 'conversation_info', data: {'conversation_id': 42}),
-      );
+      streamController.add(const ConversationInfoFrame(42));
       // Allow microtask to flush so the stream listener processes the event.
       await Future<void>.value();
-      expect(controller.conversationId.value, 42);
+      expect(controller.snapshot.conversationId, 42);
 
       await streamController.close();
     });
 
-    // ── conversation_id parsed as string from SSE event ──────────────────
+    // ── a frame with no usable id ────────────────────────────────────────
 
-    test('conversation_info event with string conversation_id parses to int', () async {
-      final streamController = StreamController<SseEvent>();
+    test('conversation_info with a non-positive id does not set the conversation', () async {
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'test', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -236,11 +234,9 @@ void main() {
       final controller = createController();
       controller.sendMessage('test');
 
-      streamController.add(
-        const SseEvent(event: 'conversation_info', data: {'conversation_id': '99'}),
-      );
+      streamController.add(const ConversationInfoFrame(0));
       await Future<void>.value();
-      expect(controller.conversationId.value, 99);
+      expect(controller.snapshot.conversationId, isNull);
 
       await streamController.close();
     });
@@ -248,19 +244,51 @@ void main() {
     // ── cancelStream ─────────────────────────────────────────────────────
 
     test('cancelStream stops streaming and clears state', () {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
-      expect(controller.isStreaming.value, isTrue);
+      expect(controller.snapshot.isStreaming, isTrue);
 
       controller.cancelStream();
 
-      expect(controller.isStreaming.value, isFalse);
-      expect(controller.activeToolCall.value, isNull);
+      expect(controller.snapshot.isStreaming, isFalse);
+      expect(controller.snapshot.activeToolCall, isNull);
+      // The in-flight assistant message is settled too, so the typing
+      // indicator does not animate forever after a manual cancel.
+      expect(controller.snapshot.messages[1].isStreaming, isFalse);
+    });
+
+    // ── SSE 'error' event ────────────────────────────────────────────────
+
+    test('an error frame exposes failed status, a typed error and preserves the draft', () async {
+      final streamController = StreamController<AssistantFrame>();
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
+
+      final controller = createController();
+      controller.sendMessage('hi');
+      // No usable message: finishing as a normal empty turn would be hidden by
+      // the view's shrink rule — the user gets no error and no retry affordance.
+      streamController.add(
+        const ErrorFrame(code: AssistantErrorCode.streamError, message: 'Try again.'),
+      );
+      await Future<void>.value();
+
+      expect(controller.snapshot.streamStatus, AssistantStreamStatus.failed);
+      expect(
+        controller.snapshot.streamError,
+        isA<ServerException>().having((e) => e.code, 'code', 'STREAM_ERROR'),
+      );
+      expect(controller.snapshot.draft, 'hi');
+      expect(controller.snapshot.messages[1].content, isEmpty);
+      expect(controller.snapshot.messages[1].isStreaming, isFalse);
+      expect(controller.snapshot.isStreaming, isFalse);
+      await streamController.close();
     });
 
     // ── deleteConversation success resets active conversation ─────────────
@@ -268,30 +296,36 @@ void main() {
     test('deleteConversation resets active conversation when deleting current one', () async {
       when(() => mockRepository.deleteConversation(10)).thenAnswer((_) async => true);
 
-      final controller = createController();
-      controller.conversations.assignAll([testConversation(id: 10), testConversation(id: 20)]);
-      // Simulate that conversation 10 is currently active.
-      controller.conversationId.value = 10;
-      controller.messages.add(
-        ChatMessageModel(
-          id: 'msg1',
-          role: ChatRole.user,
-          content: 'hello',
-          timestamp: DateTime.now(),
+      final controller = createHistoryController();
+      controller.seed(
+        controller.snapshot.copyWith(
+          conversations: [testConversation(id: 10), testConversation(id: 20)],
         ),
       );
-
+      final active = createController(10);
+      active.seed(
+        AssistantState(
+          conversationId: 10,
+          messages: [
+            ChatMessageModel(
+              id: 'm1',
+              role: ChatRole.user,
+              content: 'hello',
+              timestamp: DateTime.now(),
+            ),
+          ],
+        ),
+      );
       await controller.deleteConversation(10);
 
-      expect(controller.conversations.length, 1);
-      expect(controller.conversationId.value, isNull);
-      expect(controller.messages, isEmpty);
+      expect(controller.snapshot.conversations.length, 1);
+      expect(harness.container.read(assistantControllerProvider(10)).messages, isEmpty);
     });
 
     // ── sendMessage edge cases ────────────────────────────────────────────
 
     test('sendMessage ignores empty/whitespace text', () {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(
           message: any(named: 'message'),
@@ -302,8 +336,8 @@ void main() {
       final controller = createController();
 
       controller.sendMessage('   ');
-      expect(controller.messages, isEmpty);
-      expect(controller.isStreaming.value, isFalse);
+      expect(controller.snapshot.messages, isEmpty);
+      expect(controller.snapshot.isStreaming, isFalse);
       verifyNever(
         () => mockRepository.streamChat(
           message: any(named: 'message'),
@@ -315,25 +349,25 @@ void main() {
     });
 
     test('sendMessage ignores when already streaming', () {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'first', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('first');
-      expect(controller.messages.length, 2);
+      expect(controller.snapshot.messages.length, 2);
 
       // Now streaming — second call should be ignored.
       controller.sendMessage('second');
-      expect(controller.messages.length, 2);
-      expect(controller.messages[0].content, 'first');
+      expect(controller.snapshot.messages.length, 2);
+      expect(controller.snapshot.messages[0].content, 'first');
 
       streamController.close();
     });
 
     test('sendMessage trims whitespace from text', () {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hello', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -341,20 +375,20 @@ void main() {
       final controller = createController();
       controller.sendMessage('  hello  ');
 
-      expect(controller.messages[0].content, 'hello');
+      expect(controller.snapshot.messages[0].content, 'hello');
       verify(() => mockRepository.streamChat(message: 'hello', conversationId: null)).called(1);
 
       streamController.close();
     });
 
     test('sendMessage passes existing conversationId to repository', () {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: 5),
       ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
-      controller.conversationId.value = 5;
+      controller.seed(controller.snapshot.copyWith(conversationId: 5));
       controller.sendMessage('hi');
 
       verify(() => mockRepository.streamChat(message: 'hi', conversationId: 5)).called(1);
@@ -363,8 +397,8 @@ void main() {
     });
 
     test('sendMessage does not start new stream while already streaming', () async {
-      final firstController = StreamController<SseEvent>();
-      final secondController = StreamController<SseEvent>();
+      final firstController = StreamController<AssistantFrame>();
+      final secondController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'first', conversationId: null),
       ).thenAnswer((_) => firstController.stream);
@@ -375,14 +409,14 @@ void main() {
       final controller = createController();
       controller.sendMessage('first');
       await Future<void>.value();
-      expect(controller.isStreaming.value, isTrue);
+      expect(controller.snapshot.isStreaming, isTrue);
 
       // Second message is ignored because streaming is in progress.
       controller.sendMessage('second');
       await Future<void>.value();
 
-      expect(controller.messages.length, 2);
-      expect(controller.messages[0].content, 'first');
+      expect(controller.snapshot.messages.length, 2);
+      expect(controller.snapshot.messages[0].content, 'first');
       verifyNever(() => mockRepository.streamChat(message: 'second', conversationId: null));
 
       firstController.close();
@@ -392,7 +426,7 @@ void main() {
     // ── SSE event handling ────────────────────────────────────────────────
 
     test('text_chunk event appends text to assistant message', () async {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -400,35 +434,19 @@ void main() {
       final controller = createController();
       controller.sendMessage('hi');
 
-      streamController.add(const SseEvent(event: 'text_chunk', data: {'text': 'Hello'}));
+      streamController.add(const TextChunkFrame('Hello'));
       await Future<void>.value();
-      expect(controller.messages[1].content, 'Hello');
+      expect(controller.snapshot.messages[1].content, 'Hello');
 
-      streamController.add(const SseEvent(event: 'text_chunk', data: {'text': ' world'}));
+      streamController.add(const TextChunkFrame(' world'));
       await Future<void>.value();
-      expect(controller.messages[1].content, 'Hello world');
-
-      await streamController.close();
-    });
-
-    test('text_chunk event with missing text field does not crash', () async {
-      final streamController = StreamController<SseEvent>();
-      when(
-        () => mockRepository.streamChat(message: 'hi', conversationId: null),
-      ).thenAnswer((_) => streamController.stream);
-
-      final controller = createController();
-      controller.sendMessage('hi');
-
-      streamController.add(const SseEvent(event: 'text_chunk', data: {}));
-      await Future<void>.value();
-      expect(controller.messages[1].content, '');
+      expect(controller.snapshot.messages[1].content, 'Hello world');
 
       await streamController.close();
     });
 
     test('tool_call_start event sets activeToolCall', () async {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -436,17 +454,15 @@ void main() {
       final controller = createController();
       controller.sendMessage('hi');
 
-      streamController.add(
-        const SseEvent(event: 'tool_call_start', data: {'tool': 'search_properties'}),
-      );
+      streamController.add(const ToolCallStartFrame(callId: 'call_1', tool: 'search_properties'));
       await Future<void>.value();
-      expect(controller.activeToolCall.value, 'search_properties');
+      expect(controller.snapshot.activeToolCall, 'search_properties');
 
       await streamController.close();
     });
 
-    test('tool_call_end event clears activeToolCall', () async {
-      final streamController = StreamController<SseEvent>();
+    test('tool_call_end clears the call it names', () async {
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -454,40 +470,116 @@ void main() {
       final controller = createController();
       controller.sendMessage('hi');
 
-      streamController.add(const SseEvent(event: 'tool_call_start', data: {'tool': 'search'}));
+      streamController.add(const ToolCallStartFrame(callId: 'call_1', tool: 'search'));
       await Future<void>.value();
-      expect(controller.activeToolCall.value, 'search');
+      expect(controller.snapshot.activeToolCall, 'search');
 
-      streamController.add(const SseEvent(event: 'tool_call_end', data: {}));
+      streamController.add(const ToolCallEndFrame(callId: 'call_1', tool: 'search', success: true));
       await Future<void>.value();
-      expect(controller.activeToolCall.value, isNull);
+      expect(controller.snapshot.activeToolCall, isNull);
+      expect(controller.snapshot.failedTool, isNull);
+
+      await streamController.close();
+    });
+
+    test('two parallel calls: one end frame does not clear the other call', () async {
+      final streamController = StreamController<AssistantFrame>();
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
+
+      final controller = createController();
+      controller.sendMessage('hi');
+
+      streamController
+        ..add(const ToolCallStartFrame(callId: 'call_a', tool: 'discovery_search'))
+        ..add(const ToolCallStartFrame(callId: 'call_b', tool: 'discovery_property_get'));
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.snapshot.activeToolCalls, {
+        'call_a': 'discovery_search',
+        'call_b': 'discovery_property_get',
+      });
+      expect(controller.snapshot.activeToolCall, 'discovery_property_get');
+
+      streamController.add(
+        const ToolCallEndFrame(callId: 'call_b', tool: 'discovery_property_get', success: true),
+      );
+      await Future<void>.value();
+      expect(controller.snapshot.activeToolCalls, {'call_a': 'discovery_search'});
+      expect(controller.snapshot.activeToolCall, 'discovery_search');
+
+      streamController.add(
+        const ToolCallEndFrame(callId: 'call_a', tool: 'discovery_search', success: true),
+      );
+      await Future<void>.value();
+      expect(controller.snapshot.activeToolCalls, isEmpty);
+
+      await streamController.close();
+    });
+
+    test('an end frame with success false is remembered for the reply', () async {
+      final streamController = StreamController<AssistantFrame>();
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
+
+      final controller = createController();
+      controller.sendMessage('hi');
+
+      streamController
+        ..add(const ToolCallStartFrame(callId: 'call_a', tool: 'bookings_create'))
+        ..add(const ToolCallEndFrame(callId: 'call_a', tool: 'bookings_create', success: false));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.snapshot.activeToolCalls, isEmpty);
+      expect(controller.snapshot.failedTool, 'bookings_create');
+      expect(controller.snapshot.turnUsedTool, isTrue);
+
+      // The next message starts clean.
+      controller.cancelStream();
+      when(
+        () => mockRepository.streamChat(message: 'again', conversationId: null),
+      ).thenAnswer((_) => const Stream<AssistantFrame>.empty());
+      controller.sendMessage('again');
+      expect(controller.snapshot.failedTool, isNull);
+
+      await streamController.close();
+    });
+
+    test('an end frame for a call that never started changes nothing', () async {
+      final streamController = StreamController<AssistantFrame>();
+      when(
+        () => mockRepository.streamChat(message: 'hi', conversationId: null),
+      ).thenAnswer((_) => streamController.stream);
+
+      final controller = createController();
+      controller.sendMessage('hi');
+      streamController.add(const ToolCallStartFrame(callId: 'call_a', tool: 'search'));
+      streamController.add(const ToolCallEndFrame(callId: 'call_x', tool: 'other', success: true));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.snapshot.activeToolCalls, {'call_a': 'search'});
 
       await streamController.close();
     });
 
     test('widget event adds a widget message', () async {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
-      final initialCount = controller.messages.length;
+      final initialCount = controller.snapshot.messages.length;
 
       streamController.add(
-        const SseEvent(
-          event: 'widget',
-          data: {
-            'widget_name': 'property_card',
-            'structured_content': {'id': 1},
-          },
-        ),
+        const WidgetFrame(widgetName: 'property_card', structuredContent: {'id': 1}),
       );
       await Future<void>.value();
 
-      expect(controller.messages.length, initialCount + 1);
-      final widgetMsg = controller.messages.last;
+      expect(controller.snapshot.messages.length, initialCount + 1);
+      final widgetMsg = controller.snapshot.messages.last;
       expect(widgetMsg.role, ChatRole.widget);
       expect(widgetMsg.widgetName, 'property_card');
       expect(widgetMsg.widgetData, {'id': 1});
@@ -495,36 +587,43 @@ void main() {
       await streamController.close();
     });
 
-    test('widget event with missing fields does not add a message', () async {
-      final streamController = StreamController<SseEvent>();
-      when(
-        () => mockRepository.streamChat(message: 'hi', conversationId: null),
-      ).thenAnswer((_) => streamController.stream);
+    test(
+      'a widget frame with no content, an error payload or an unsafe name adds no message',
+      () async {
+        final streamController = StreamController<AssistantFrame>();
+        when(
+          () => mockRepository.streamChat(message: 'hi', conversationId: null),
+        ).thenAnswer((_) => streamController.stream);
 
-      final controller = createController();
-      controller.sendMessage('hi');
-      final initialCount = controller.messages.length;
+        final controller = createController();
+        controller.sendMessage('hi');
+        final initialCount = controller.snapshot.messages.length;
 
-      streamController.add(const SseEvent(event: 'widget', data: {'widget_name': 'property_card'}));
-      await Future<void>.value();
-      expect(controller.messages.length, initialCount);
+        streamController.add(const WidgetFrame(widgetName: 'property_card'));
+        await Future<void>.value();
+        expect(controller.snapshot.messages.length, initialCount);
 
-      streamController.add(
-        const SseEvent(
-          event: 'widget',
-          data: {
-            'structured_content': {'id': 1},
-          },
-        ),
-      );
-      await Future<void>.value();
-      expect(controller.messages.length, initialCount);
+        streamController.add(
+          const WidgetFrame(
+            widgetName: 'property_card',
+            structuredContent: {'error': true, 'message': 'Not found'},
+          ),
+        );
+        await Future<void>.value();
+        expect(controller.snapshot.messages.length, initialCount);
 
-      await streamController.close();
-    });
+        streamController.add(
+          const WidgetFrame(widgetName: '../secret', structuredContent: {'id': 1}),
+        );
+        await Future<void>.value();
+        expect(controller.snapshot.messages.length, initialCount);
+
+        await streamController.close();
+      },
+    );
 
     test('done event replaces assistant content with authoritative text', () async {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -532,21 +631,21 @@ void main() {
       final controller = createController();
       controller.sendMessage('hi');
 
-      streamController.add(const SseEvent(event: 'text_chunk', data: {'text': 'partial'}));
+      streamController.add(const TextChunkFrame('partial'));
       await Future<void>.value();
-      expect(controller.messages[1].content, 'partial');
+      expect(controller.snapshot.messages[1].content, 'partial');
 
-      streamController.add(const SseEvent(event: 'done', data: {'response_text': 'Final answer'}));
+      streamController.add(const DoneFrame('Final answer'));
       await Future<void>.value();
-      expect(controller.messages[1].content, 'Final answer');
-      expect(controller.messages[1].isStreaming, isFalse);
-      expect(controller.isStreaming.value, isFalse);
+      expect(controller.snapshot.messages[1].content, 'Final answer');
+      expect(controller.snapshot.messages[1].isStreaming, isFalse);
+      expect(controller.snapshot.isStreaming, isFalse);
 
       await streamController.close();
     });
 
     test('done event with empty response_text keeps streamed content', () async {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -554,19 +653,19 @@ void main() {
       final controller = createController();
       controller.sendMessage('hi');
 
-      streamController.add(const SseEvent(event: 'text_chunk', data: {'text': 'streamed text'}));
+      streamController.add(const TextChunkFrame('streamed text'));
       await Future<void>.value();
 
-      streamController.add(const SseEvent(event: 'done', data: {'response_text': ''}));
+      streamController.add(const DoneFrame(''));
       await Future<void>.value();
-      expect(controller.messages[1].content, 'streamed text');
-      expect(controller.isStreaming.value, isFalse);
+      expect(controller.snapshot.messages[1].content, 'streamed text');
+      expect(controller.snapshot.isStreaming, isFalse);
 
       await streamController.close();
     });
 
-    test('error event appends error message and finishes streaming', () async {
-      final streamController = StreamController<SseEvent>();
+    test('error event hides raw error text and finishes streaming', () async {
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -575,18 +674,19 @@ void main() {
       controller.sendMessage('hi');
 
       streamController.add(
-        const SseEvent(event: 'error', data: {'message': 'Something went wrong'}),
+        const ErrorFrame(code: AssistantErrorCode.agentError, message: 'Something went wrong'),
       );
       await Future<void>.value();
-      expect(controller.messages[1].content, 'Something went wrong');
-      expect(controller.isStreaming.value, isFalse);
-      expect(controller.activeToolCall.value, isNull);
+      expect(controller.snapshot.streamStatus, AssistantStreamStatus.failed);
+      expect(controller.snapshot.messages[1].content, isEmpty);
+      expect(controller.snapshot.isStreaming, isFalse);
+      expect(controller.snapshot.activeToolCall, isNull);
 
       await streamController.close();
     });
 
     test('stream onError finishes streaming', () async {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -596,14 +696,14 @@ void main() {
 
       streamController.addError(Exception('network error'));
       await Future<void>.value();
-      expect(controller.isStreaming.value, isFalse);
-      expect(controller.activeToolCall.value, isNull);
+      expect(controller.snapshot.isStreaming, isFalse);
+      expect(controller.snapshot.activeToolCall, isNull);
 
       await streamController.close();
     });
 
     test('stream onDone finishes streaming', () async {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -613,8 +713,8 @@ void main() {
 
       await streamController.close();
       await Future<void>.value();
-      expect(controller.isStreaming.value, isFalse);
-      expect(controller.messages[1].isStreaming, isFalse);
+      expect(controller.snapshot.isStreaming, isFalse);
+      expect(controller.snapshot.messages[1].isStreaming, isFalse);
     });
 
     // ── loadMoreConversations ─────────────────────────────────────────────
@@ -635,17 +735,17 @@ void main() {
         () => mockRepository.getConversations(cursor: 'cursor_1'),
       ).thenAnswer((_) async => secondPage);
 
-      final controller = createController();
+      final controller = createHistoryController();
       await controller.loadConversations();
-      expect(controller.conversations.length, 2);
+      expect(controller.snapshot.conversations.length, 2);
 
       await controller.loadMoreConversations();
-      expect(controller.conversations.length, 4);
-      expect(controller.conversations[2].id, 3);
-      expect(controller.conversations[3].id, 4);
-      expect(controller.conversationsHasMore.value, isFalse);
-      expect(controller.conversationsNextCursor.value, isNull);
-      expect(controller.isLoadingMoreConversations.value, isFalse);
+      expect(controller.snapshot.conversations.length, 4);
+      expect(controller.snapshot.conversations[2].id, 3);
+      expect(controller.snapshot.conversations[3].id, 4);
+      expect(controller.snapshot.hasMore, isFalse);
+      expect(controller.snapshot.nextCursor, isNull);
+      expect(controller.snapshot.isLoading, isFalse);
     });
 
     test('loadMoreConversations is no-op when hasMore is false', () async {
@@ -656,52 +756,52 @@ void main() {
       );
       when(() => mockRepository.getConversations()).thenAnswer((_) async => firstPage);
 
-      final controller = createController();
+      final controller = createHistoryController();
       await controller.loadConversations();
-      expect(controller.conversations.length, 1);
+      expect(controller.snapshot.conversations.length, 1);
 
       await controller.loadMoreConversations();
       // List unchanged — no additional fetch was made.
-      expect(controller.conversations.length, 1);
+      expect(controller.snapshot.conversations.length, 1);
     });
 
     test('loadMoreConversations is no-op when cursor is null', () async {
-      final controller = createController();
-      controller.conversations.assignAll([testConversation(id: 1)]);
-      controller.conversationsHasMore.value = true;
-      controller.conversationsNextCursor.value = null;
+      final controller = createHistoryController();
+      controller.seed(controller.snapshot.copyWith(conversations: [testConversation(id: 1)]));
+      controller.seed(controller.snapshot.copyWith(hasMore: true));
+      controller.seed(controller.snapshot.copyWith(nextCursor: null));
 
       await controller.loadMoreConversations();
-      expect(controller.conversationsHasMore.value, isFalse);
+      expect(controller.snapshot.hasMore, isFalse);
     });
 
     test('loadMoreConversations is no-op when cursor is empty', () async {
-      final controller = createController();
-      controller.conversations.assignAll([testConversation(id: 1)]);
-      controller.conversationsHasMore.value = true;
-      controller.conversationsNextCursor.value = '';
+      final controller = createHistoryController();
+      controller.seed(controller.snapshot.copyWith(conversations: [testConversation(id: 1)]));
+      controller.seed(controller.snapshot.copyWith(hasMore: true));
+      controller.seed(controller.snapshot.copyWith(nextCursor: ''));
 
       await controller.loadMoreConversations();
-      expect(controller.conversationsHasMore.value, isFalse);
+      expect(controller.snapshot.hasMore, isFalse);
     });
 
     test('loadMoreConversations is no-op when already loading more', () async {
-      final controller = createController();
-      controller.conversations.assignAll([testConversation(id: 1)]);
-      controller.conversationsHasMore.value = true;
-      controller.conversationsNextCursor.value = 'cursor';
-      controller.isLoadingMoreConversations.value = true;
+      final controller = createHistoryController();
+      controller.seed(controller.snapshot.copyWith(conversations: [testConversation(id: 1)]));
+      controller.seed(controller.snapshot.copyWith(hasMore: true));
+      controller.seed(controller.snapshot.copyWith(nextCursor: 'cursor'));
+      controller.seed(controller.snapshot.copyWith(status: HistoryLoadStatus.loadingMore));
 
       await controller.loadMoreConversations();
       verifyNever(() => mockRepository.getConversations(cursor: any(named: 'cursor')));
     });
 
     test('loadMoreConversations is no-op when isLoadingConversations is true', () async {
-      final controller = createController();
-      controller.conversations.assignAll([testConversation(id: 1)]);
-      controller.conversationsHasMore.value = true;
-      controller.conversationsNextCursor.value = 'cursor';
-      controller.isLoadingConversations.value = true;
+      final controller = createHistoryController();
+      controller.seed(controller.snapshot.copyWith(conversations: [testConversation(id: 1)]));
+      controller.seed(controller.snapshot.copyWith(hasMore: true));
+      controller.seed(controller.snapshot.copyWith(nextCursor: 'cursor'));
+      controller.seed(controller.snapshot.copyWith(status: HistoryLoadStatus.loading));
 
       await controller.loadMoreConversations();
       verifyNever(() => mockRepository.getConversations(cursor: any(named: 'cursor')));
@@ -724,12 +824,12 @@ void main() {
         () => mockRepository.getConversations(cursor: 'cursor_1'),
       ).thenAnswer((_) async => secondPage);
 
-      final controller = createController();
+      final controller = createHistoryController();
       await controller.loadConversations();
       await controller.loadMoreConversations();
 
-      expect(controller.conversations.length, 3);
-      expect(controller.conversations.map((c) => c.id).toList(), [1, 2, 3]);
+      expect(controller.snapshot.conversations.length, 3);
+      expect(controller.snapshot.conversations.map((c) => c.id).toList(), [1, 2, 3]);
     });
 
     test('loadMoreConversations sets error flag on failure', () async {
@@ -743,12 +843,12 @@ void main() {
         () => mockRepository.getConversations(cursor: 'cursor_1'),
       ).thenThrow(Exception('Network error'));
 
-      final controller = createController();
+      final controller = createHistoryController();
       await controller.loadConversations();
       await controller.loadMoreConversations();
 
-      expect(controller.conversationsError.value, isTrue);
-      expect(controller.isLoadingMoreConversations.value, isFalse);
+      expect(controller.snapshot.error != null, isTrue);
+      expect(controller.snapshot.isLoading, isFalse);
     });
 
     // ── loadConversations guards ──────────────────────────────────────────
@@ -758,8 +858,8 @@ void main() {
         () => mockRepository.getConversations(),
       ).thenAnswer((_) async => const ConversationsPage(items: [], hasMore: false));
 
-      final controller = createController();
-      controller.isLoadingConversations.value = true;
+      final controller = createHistoryController();
+      controller.seed(controller.snapshot.copyWith(status: HistoryLoadStatus.loading));
 
       await controller.loadConversations();
       verifyNever(() => mockRepository.getConversations());
@@ -770,8 +870,8 @@ void main() {
         () => mockRepository.getConversations(),
       ).thenAnswer((_) async => const ConversationsPage(items: [], hasMore: false));
 
-      final controller = createController();
-      controller.isLoadingMoreConversations.value = true;
+      final controller = createHistoryController();
+      controller.seed(controller.snapshot.copyWith(status: HistoryLoadStatus.loadingMore));
 
       await controller.loadConversations();
       verifyNever(() => mockRepository.getConversations());
@@ -780,22 +880,22 @@ void main() {
     // ── startNewConversation ──────────────────────────────────────────────
 
     test('startNewConversation clears messages and conversationId', () {
-      final streamController = StreamController<SseEvent>();
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
       controller.sendMessage('hi');
-      controller.conversationId.value = 7;
-      expect(controller.messages, isNotEmpty);
-      expect(controller.isStreaming.value, isTrue);
+      controller.seed(controller.snapshot.copyWith(conversationId: 7));
+      expect(controller.snapshot.messages, isNotEmpty);
+      expect(controller.snapshot.isStreaming, isTrue);
 
       controller.startNewConversation();
 
-      expect(controller.conversationId.value, isNull);
-      expect(controller.messages, isEmpty);
-      expect(controller.isStreaming.value, isFalse);
+      expect(controller.snapshot.conversationId, isNull);
+      expect(controller.snapshot.messages, isEmpty);
+      expect(controller.snapshot.isStreaming, isFalse);
 
       streamController.close();
     });
@@ -805,19 +905,23 @@ void main() {
     test('deleteConversation handles exception gracefully', () async {
       when(() => mockRepository.deleteConversation(3)).thenThrow(Exception('Server error'));
 
-      final controller = createController();
-      controller.conversations.assignAll([testConversation(id: 1), testConversation(id: 3)]);
+      final controller = createHistoryController();
+      controller.seed(
+        controller.snapshot.copyWith(
+          conversations: [testConversation(id: 1), testConversation(id: 3)],
+        ),
+      );
 
       await controller.deleteConversation(3);
 
-      expect(controller.conversations.length, 2);
-      expect(controller.isDeleting.value, isFalse);
+      expect(controller.snapshot.conversations.length, 2);
+      expect(controller.snapshot.deletingId != null, isFalse);
     });
 
     // ── onClose ───────────────────────────────────────────────────────────
 
-    test('onClose cancels stream subscription', () {
-      final streamController = StreamController<SseEvent>();
+    test('provider disposal cancels stream subscription', () {
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: null),
       ).thenAnswer((_) => streamController.stream);
@@ -826,49 +930,77 @@ void main() {
       controller.sendMessage('hi');
       expect(streamController.hasListener, isTrue);
 
-      controller.onClose();
+      harness.container.dispose();
       expect(streamController.hasListener, isFalse);
 
       streamController.close();
     });
 
-    // ── conversation_info with invalid id ─────────────────────────────────
+    // ── the backend limit and a missing conversation ──────────────────────
 
-    test('conversation_info event with non-int/non-string id does not set value', () async {
-      final streamController = StreamController<SseEvent>();
+    test('a message over 4000 characters is not sent', () {
+      final controller = createController();
+
+      controller.sendMessage('x' * 4001);
+
+      expect(controller.snapshot.messages, isEmpty);
+      verifyNever(
+        () => mockRepository.streamChat(
+          message: any(named: 'message'),
+          conversationId: any(named: 'conversationId'),
+        ),
+      );
+    });
+
+    test('a message of exactly 4000 characters is sent', () {
+      final text = 'x' * 4000;
+      when(
+        () => mockRepository.streamChat(message: text, conversationId: null),
+      ).thenAnswer((_) => const Stream<AssistantFrame>.empty());
+      final controller = createController();
+
+      controller.sendMessage(text);
+
+      expect(controller.snapshot.messages, hasLength(2));
+    });
+
+    test('a 404 for the conversation clears its id so the next message starts a new one', () async {
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: 5),
       ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
-      controller.conversationId.value = 5;
+      controller.seed(controller.snapshot.copyWith(conversationId: 5));
       controller.sendMessage('hi');
 
-      // A bool value is neither int nor String, so conversationId stays unchanged.
-      streamController.add(
-        const SseEvent(event: 'conversation_info', data: {'conversation_id': true}),
+      streamController.addError(
+        ApiException('The request could not be completed.', code: 'NOT_FOUND', statusCode: 404),
       );
       await Future<void>.value();
-      expect(controller.conversationId.value, 5);
+
+      expect(controller.snapshot.streamStatus, AssistantStreamStatus.failed);
+      expect(isConversationMissing(controller.snapshot.streamError), isTrue);
+      expect(controller.snapshot.conversationId, isNull);
 
       await streamController.close();
     });
 
-    test('conversation_info event with non-numeric string sets conversationId to null', () async {
-      final streamController = StreamController<SseEvent>();
+    test('other failures keep the conversation id', () async {
+      final streamController = StreamController<AssistantFrame>();
       when(
         () => mockRepository.streamChat(message: 'hi', conversationId: 5),
       ).thenAnswer((_) => streamController.stream);
 
       final controller = createController();
-      controller.conversationId.value = 5;
+      controller.seed(controller.snapshot.copyWith(conversationId: 5));
       controller.sendMessage('hi');
 
-      streamController.add(
-        const SseEvent(event: 'conversation_info', data: {'conversation_id': 'not_a_number'}),
-      );
+      streamController.addError(NetworkException('offline'));
       await Future<void>.value();
-      expect(controller.conversationId.value, isNull);
+
+      expect(controller.snapshot.conversationId, 5);
+      expect(isConversationMissing(controller.snapshot.streamError), isFalse);
 
       await streamController.close();
     });

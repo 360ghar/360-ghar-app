@@ -1,26 +1,27 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/widgets/common/max_content_width.dart';
-import '../../../helpers/getx_test_binding.dart';
 
 void main() {
-  setUp(() => GetxTestBinding.init());
-  tearDown(() => GetxTestBinding.reset());
-
   Future<void> pumpWidget(
     WidgetTester tester,
     Widget child, {
     Size size = const Size(400, 800),
   }) async {
     await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
+      MaterialApp(
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
+        supportedLocales: AppLocalizations.supportedLocales,
         home: MediaQuery(
           data: MediaQueryData(size: size),
           child: Scaffold(body: child),

@@ -1,10 +1,13 @@
 // lib/core/data/models/app_update_models.dart
 
+import 'package:ghar360/core/data/models/wire_enums.dart';
 import 'package:json_annotation/json_annotation.dart';
 
 part 'app_update_models.g.dart';
 
-@JsonSerializable(fieldRename: FieldRename.snake)
+/// Body of `POST /api/v1/versions/check` (`AppVersionCheckRequest`). `app` and `platform` are
+/// enum values, `current_version` is 1 to 20 characters and `build_number` is a number, left out
+/// when the build number is unknown.
 class AppVersionCheckRequest {
   const AppVersionCheckRequest({
     required this.app,
@@ -13,15 +16,26 @@ class AppVersionCheckRequest {
     this.buildNumber,
   });
 
-  final String app;
-  final String platform;
+  /// `current_version` is 1 to 20 characters.
+  static const maxVersionLength = 20;
+
+  final AppKey app;
+  final DevicePlatform platform;
   final String currentVersion;
   final int? buildNumber;
 
-  factory AppVersionCheckRequest.fromJson(Map<String, dynamic> json) =>
-      _$AppVersionCheckRequestFromJson(json);
-
-  Map<String, dynamic> toJson() => _$AppVersionCheckRequestToJson(this);
+  Map<String, dynamic> toJson() {
+    final version = currentVersion.trim();
+    if (version.isEmpty || version.length > maxVersionLength) {
+      throw const FormatException('current_version must be 1 to 20 characters');
+    }
+    return {
+      'app': app.wire,
+      'platform': platform.wire,
+      'current_version': version,
+      'build_number': ?buildNumber,
+    };
+  }
 }
 
 @JsonSerializable(fieldRename: FieldRename.snake)
@@ -35,7 +49,9 @@ class AppVersionCheckResponse {
     this.minSupportedVersion,
   });
 
+  @JsonKey(required: true)
   final bool updateAvailable;
+  @JsonKey(defaultValue: false)
   final bool isMandatory;
   final String? latestVersion;
   final String? downloadUrl;

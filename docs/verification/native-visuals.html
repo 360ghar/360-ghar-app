@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>360 Ghar · Native visual verification</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172321; background: #f5f6f3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1280px; margin: 0 auto; padding: 32px 20px 48px; }
+    h1 { margin: 0 0 12px; font-size: clamp(1.7rem, 4vw, 2.4rem); line-height: 1.15; }
+    h2 { margin: 0 0 8px; font-size: 1.3rem; }
+    p { max-width: 80ch; margin: 8px 0; line-height: 1.55; }
+    a { color: #075e50; text-underline-offset: 3px; }
+    a:focus-visible { outline: 3px solid #167968; outline-offset: 5px; }
+    nav { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 20px 0 28px; }
+    section { margin-top: 36px; scroll-margin-top: 20px; }
+    .meta { color: #4d5b57; }
+    .note { padding: 14px 18px; border-left: 3px solid #317b6d; background: #eaf0eb; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-top: 18px; align-items: start; }
+    .comparison, .recovery { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 720px; }
+    figure { min-width: 0; margin: 0; padding: 14px; border: 1px solid #d6dfd9; border-radius: 10px; background: #fff; }
+    figure > a { display: block; }
+    img { display: block; width: 100%; height: auto; border: 1px solid #e5e8e3; border-radius: 5px; background: #f1f3ef; }
+    figcaption { padding-top: 12px; font-size: .9rem; line-height: 1.45; }
+    figcaption strong { display: block; margin-bottom: 4px; font-size: 1rem; }
+    code { overflow-wrap: anywhere; font-size: .85em; }
+    footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid #d6dfd9; font-size: .9rem; }
+    @media (max-width: 480px) {
+      main { padding: 24px 14px 36px; }
+      .grid { grid-template-columns: 1fr; }
+      figure { max-width: 340px; width: 100%; justify-self: center; }
+    }
+    @media print { body { background: #fff; } nav { display: none; } figure { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+  <p><strong>Evidence note:</strong> the screenshots on this page and the baseline provenance record are scratch artifacts kept on the verification machine. They are not committed, so the images show as broken here.</p>
+  <header>
+    <h1>Native visual verification</h1>
+    <p class="meta">360 Ghar · iPhone 17e · iOS 27 · Simulator debug builds</p>
+    <p>Phone-entry comparison and Riverpod screen captures. Select an image to view its full resolution.</p>
+    <p class="note">The app uses a synthetic fixture account and property data. MapLibre renders actual map tiles with mock Delhi GPS. The tour renders a local page in a native WebView. These captures do not prove OAuth, push delivery, or production backend behavior.</p>
+    <nav aria-label="Gallery sections">
+      <a href="#phone-entry">Phone-entry comparison</a>
+      <a href="#screens">Riverpod screens</a>
+      <a href="#recovery">Refresh recovery</a>
+    </nav>
+  </header>
+
+  <section id="phone-entry" aria-labelledby="phone-entry-heading">
+    <h2 id="phone-entry-heading">Phone-entry comparison</h2>
+    <p>Before: isolated build from source <code>aa839932e85752755a11aa5de33970327cb226c9</code>. After: Riverpod migration. Both captures show the keyboard on the same iPhone 17e and use synthetic configuration. Default scroll positions differ.</p>
+    <p><a href="baseline-native-build.md">Baseline build and capture evidence</a></p>
+    <div class="grid comparison">
+      <figure>
+        <a href="../migration/screenshots/phone-entry-before-ios.png"><img src="../migration/screenshots/phone-entry-before-ios.png" alt="Phone-entry screen from the verified HEAD baseline build with automatic focus and keyboard visible" width="1170" height="2532" decoding="async"></a>
+        <figcaption><strong>Before · HEAD baseline</strong>Keyboard visible · source <code>aa839932e85752755a11aa5de33970327cb226c9</code></figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/phone-entry-keyboard-after-ios.png"><img src="../migration/screenshots/phone-entry-keyboard-after-ios.png" alt="Phone-entry screen after the Riverpod migration with keyboard visible" width="1170" height="2532" decoding="async"></a>
+        <figcaption><strong>After · Riverpod</strong>Keyboard visible · native capture</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="screens" aria-labelledby="screens-heading">
+    <h2 id="screens-heading">Riverpod screens</h2>
+    <p>Native navigation and rendering with the local fixture server.</p>
+    <div class="grid">
+      <figure>
+        <a href="../migration/screenshots/onboarding-after-ios.png"><img src="../migration/screenshots/onboarding-after-ios.png" alt="Riverpod onboarding screen" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Onboarding</strong>Entry journey</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/phone-entry-after-ios.png"><img src="../migration/screenshots/phone-entry-after-ios.png" alt="Full phone-entry screen after dismissing the keyboard" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Phone entry</strong>Full page · keyboard dismissed</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/discover-after-ios.png"><img src="../migration/screenshots/discover-after-ios.png" alt="Discover screen with synthetic property cards" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Discover</strong>Fixture property cards</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/explore-after-ios.png"><img src="../migration/screenshots/explore-after-ios.png" alt="Explore screen with MapLibre map tiles and synthetic properties" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Explore</strong>Actual MapLibre tiles · mock Delhi GPS</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/saved-after-ios.png"><img src="../migration/screenshots/saved-after-ios.png" alt="Saved screen with a liked fixture property" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Saved</strong>Fixture liked properties</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/details-after-ios.png"><img src="../migration/screenshots/details-after-ios.png" alt="Property details screen for a synthetic property" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Property details</strong>Fixture property content</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/tour-after-ios.png"><img src="../migration/screenshots/tour-after-ios.png" alt="Local fixture tour page rendered in a native WebView" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Tour</strong>Local page · native WebView</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/visits-after-ios.png"><img src="../migration/screenshots/visits-after-ios.png" alt="Visits screen with a scheduled fixture visit" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Visits</strong>Fixture scheduled visit</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/profile-after-ios.png"><img src="../migration/screenshots/profile-after-ios.png" alt="Profile screen for the synthetic fixture account" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Profile</strong>Synthetic fixture account</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/preferences-after-ios.png"><img src="../migration/screenshots/preferences-after-ios.png" alt="Preferences screen after the Riverpod migration" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Preferences</strong>Native preference controls</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="recovery" aria-labelledby="recovery-heading">
+    <h2 id="recovery-heading">Refresh recovery</h2>
+    <p>The local fixture server is stopped after content loads, then restarted for an explicit retry. The loaded Saved property remains visible.</p>
+    <div class="grid recovery">
+      <figure>
+        <a href="../migration/screenshots/saved-refresh-failure-ios.png"><img src="../migration/screenshots/saved-refresh-failure-ios.png" alt="Saved refresh failure with retained property content and a retry control" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Riverpod · Refresh failed</strong>Loaded content retained · inline error and retry</figcaption>
+      </figure>
+      <figure>
+        <a href="../migration/screenshots/saved-refresh-recovered-ios.png"><img src="../migration/screenshots/saved-refresh-recovered-ios.png" alt="Saved screen after successful retry with the property retained and error cleared" width="1170" height="2532" loading="lazy" decoding="async"></a>
+        <figcaption><strong>Riverpod · Retry succeeded</strong>Loaded content retained · error cleared</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <footer>
+    <a href="riverpod-final-verification.md">Verification report</a> ·
+    <a href="../../.maestro/README.md">Fixture flow and device setup</a>
+  </footer>
+</main>
+</body>
+</html>

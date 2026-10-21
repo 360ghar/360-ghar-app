@@ -1,11 +1,3 @@
 appId: com.the360ghar.ghar360
 ---
-- launchApp:
-    clearState: true
-    clearKeychain: true
-- assertVisible: "Tour Homes In 360° Before You Visit"
-- tapOn: "Skip"
-- extendedWaitUntil:
-    visible: "Enter your mobile number"
-    timeout: 15000
-- assertVisible: "Continue"
+- runFlow: auth/onboarding_skip_to_phone_entry.yaml

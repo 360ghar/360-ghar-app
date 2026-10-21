@@ -2,11 +2,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/map/map_controller.dart';
+import 'package:ghar360/core/utils/best_effort.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
+import 'package:ghar360/features/explore/presentation/controllers/explore_map_session.dart';
 import 'package:ghar360/features/explore/presentation/widgets/property_marker_chip.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 // Style ids for the search-radius circle (fill + outline) GeoJSON layers.
@@ -29,23 +33,42 @@ const String _clusterCountLayerId = 'explore-cluster-count';
 /// ghar360's clustering is zoom-based, so we use MapLibre's native GeoJSON
 /// clustering (`cluster: true`) for the aggregated circles + counts (cheap,
 /// GPU-rendered, scales to high counts) and tap-to-zoom-in. Individual property
-/// markers keep their exact custom look + selected-state pulse + tap-to-select
+/// markers keep their paper price slip + selected state + tap-to-select
 /// by projecting each point to a screen pixel via `toScreenLocation` and
 /// positioning the existing [PropertyMarkerChip] in a [Stack]. Chips whose
 /// point falls inside a rendered cluster circle are hidden so the native
 /// cluster owns that area — giving the native-cluster aggregation while
 /// preserving the bespoke chip design for singletons.
-class ExploreMap extends StatefulWidget {
-  const ExploreMap({required this.controller, super.key});
-
-  final ExploreController controller;
+class ExploreMap extends ConsumerStatefulWidget {
+  const ExploreMap({super.key});
 
   @override
-  State<ExploreMap> createState() => _ExploreMapState();
+  ConsumerState<ExploreMap> createState() => _ExploreMapState();
 }
 
-class _ExploreMapState extends State<ExploreMap> {
-  ExploreController get _controller => widget.controller;
+class _ExploreMapState extends ConsumerState<ExploreMap> {
+  ExploreController get _controller => ref.read(exploreProvider.notifier);
+  final ExploreMapSession _session = ExploreMapSession();
+  ExploreController? _owner;
+  bool _active = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final wasActive = _active;
+    _active = TickerMode.valuesOf(context).enabled;
+    _owner = ref.read(exploreProvider.notifier);
+    _owner!.setVisible(_active);
+    if (_active && !wasActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_active) return;
+        _applyCamera();
+        _syncRadiusCircle();
+        _syncPropertiesSource();
+        _updateOverlays();
+      });
+    }
+  }
 
   MapLibreMapController? _mapController;
   bool _styleLoaded = false;
@@ -70,81 +93,90 @@ class _ExploreMapState extends State<ExploreMap> {
   // callers cannot interleave remove+add (sourceAlreadyExists / sourceNotFound).
   Future<void> _styleMutationChain = Future<void>.value();
 
-  final List<Worker> _workers = [];
-
-  @override
-  void initState() {
-    super.initState();
-    // Re-sync the native cluster source whenever the marker set changes.
-    _workers.add(ever<int>(_controller.markersRevision, (_) => _syncPropertiesSource()));
-    // Re-sync the radius ring when the radius changes.
-    _workers.add(ever<double>(_controller.currentRadius, (_) => _syncRadiusCircle()));
-    // Re-sync the ring + overlays when the resolved center changes.
-    _workers.add(
-      ever<LatLng>(_controller.currentCenter, (_) {
-        _syncRadiusCircle();
-        _updateOverlays();
-      }),
-    );
-  }
-
   @override
   void dispose() {
     _mapController?.removeListener(_onCameraChanged);
-    for (final w in _workers) {
-      w.dispose();
-    }
-    _workers.clear();
+    _mapController?.onFeatureTapped.remove(_onFeatureTapped);
+    _owner?.setVisible(false);
+    _session.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      // Touch reactives so the overlay rebuilds when markers/selection change.
-      final _ = _controller.markersRevision.value;
-      final markers = _controller.propertyMarkers;
-
-      final signature = markers.map((m) => '${m.property.id}:${m.isSelected}').join('|');
-      if (signature != _markerSignature) {
-        _markerSignature = signature;
-        if (_mapController != null && _styleLoaded) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _syncPropertiesSource();
-            _updateOverlays();
-          });
-        }
-      }
-
-      return Stack(
-        children: [
-          MapLibreMap(
-            key: const ValueKey('qa.explore.maplibre'),
-            styleString: kLibertyStyle,
-            initialCameraPosition: CameraPosition(
-              target: _controller.currentCenter.value,
-              zoom: _controller.currentZoom.value,
-            ),
-            minMaxZoomPreference: const MinMaxZoomPreference(kDefaultMinZoom, kDefaultMaxZoom),
-            // Required so the wrapper can read cameraPosition for the camera-idle
-            // re-fetch logic and for overlay projection.
-            trackCameraPosition: true,
-            rotateGesturesEnabled: false,
-            tiltGesturesEnabled: false,
-            // We manage GeoJSON layers ourselves; empty annotationOrder skips
-            // package AnnotationManager init (avoids styleNotFound zone errors).
-            annotationOrder: const [],
-            annotationConsumeTapEvents: const [AnnotationType.symbol],
-            // Keep attribution clear of the bottom property list sheet.
-            attributionButtonPosition: AttributionButtonPosition.topLeft,
-            onMapCreated: _onMapCreated,
-            onStyleLoadedCallback: _onStyleLoaded,
-            onCameraIdle: _onCameraIdle,
-          ),
-          ..._buildMarkerOverlays(markers),
-        ],
-      );
+    final markers = ref.watch(exploreMarkersProvider);
+    ref.listen(exploreProvider.select((state) => state.cameraRevision), (_, _) => _applyCamera());
+    ref.listen(
+      propertyFiltersProvider.select((state) => state.forPage(PageType.explore).radiusKm),
+      (_, _) => _syncRadiusCircle(),
+    );
+    ref.listen(exploreProvider.select((state) => state.center), (_, _) {
+      _syncRadiusCircle();
+      _updateOverlays();
     });
+
+    final signature = markers
+        .map(
+          (m) =>
+              '${m.property.id}:${m.position.latitude}:${m.position.longitude}:${m.label}:${m.isSelected}',
+        )
+        .join('|');
+    if (signature != _markerSignature) {
+      _markerSignature = signature;
+      if (_mapController != null && _styleLoaded) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _syncPropertiesSource();
+          _updateOverlays();
+        });
+      }
+    }
+
+    return Stack(
+      children: [
+        MapLibreMap(
+          key: const ValueKey('qa.explore.maplibre'),
+          styleString: kLibertyStyle,
+          initialCameraPosition: CameraPosition(
+            target: _controller.currentCenter,
+            zoom: _controller.currentZoom,
+          ),
+          minMaxZoomPreference: const MinMaxZoomPreference(kDefaultMinZoom, kDefaultMaxZoom),
+          // Required so the wrapper can read cameraPosition for the camera-idle
+          // re-fetch logic and for overlay projection.
+          trackCameraPosition: true,
+          rotateGesturesEnabled: false,
+          tiltGesturesEnabled: false,
+          // We manage GeoJSON layers ourselves; empty annotationOrder skips
+          // package AnnotationManager init (avoids styleNotFound zone errors).
+          annotationOrder: const [],
+          annotationConsumeTapEvents: const [AnnotationType.symbol],
+          // Keep attribution clear of the bottom property list sheet.
+          attributionButtonPosition: AttributionButtonPosition.topLeft,
+          onMapCreated: _onMapCreated,
+          onStyleLoadedCallback: _onStyleLoaded,
+          onCameraIdle: _onCameraIdle,
+        ),
+        ..._buildMarkerOverlays(markers),
+      ],
+    );
+  }
+
+  Future<void> _applyCamera() async {
+    if (!mounted || !_active || !_styleLoaded) return;
+    final state = ref.read(exploreProvider);
+    if (state.fitBounds) {
+      final points = _controller.propertiesWithLocation
+          .map((property) => LatLng(property.latitude!, property.longitude!))
+          .toList();
+      _session.programmaticMove = true;
+      try {
+        await _session.mapController.fitBounds(points);
+      } catch (_) {
+        _session.programmaticMove = false;
+      }
+    } else {
+      await _session.moveProgrammatic(state.center, state.zoom);
+    }
   }
 
   List<Widget> _buildMarkerOverlays(List<PropertyMarker> markers) {
@@ -169,7 +201,6 @@ class _ExploreMapState extends State<ExploreMap> {
               isSelected: marker.isSelected,
               label: marker.label,
               onTap: () {
-                DebugLogger.info('Property marker tapped: ${marker.property.title}');
                 _controller.selectProperty(marker.property);
               },
             ),
@@ -182,7 +213,7 @@ class _ExploreMapState extends State<ExploreMap> {
 
   void _onMapCreated(MapLibreMapController controller) {
     _mapController = controller;
-    _controller.attachMap(controller);
+    _session.attach(controller);
     controller.addListener(_onCameraChanged);
     // Cluster circle taps: zoom in to break the cluster apart.
     controller.onFeatureTapped.add(_onFeatureTapped);
@@ -198,7 +229,7 @@ class _ExploreMapState extends State<ExploreMap> {
     if (layerId != _clusterCircleLayerId) return;
     final controller = _mapController;
     if (controller == null) return;
-    final currentZoom = controller.cameraPosition?.zoom ?? _controller.currentZoom.value;
+    final currentZoom = controller.cameraPosition?.zoom ?? _controller.currentZoom;
     controller.animateCamera(
       CameraUpdate.newLatLngZoom(
         coordinates,
@@ -216,6 +247,8 @@ class _ExploreMapState extends State<ExploreMap> {
     // Sources/layers must be (re)added here; this can fire again on a style
     // reload, so ready flags are reset and sync routines recreate sources.
     _styleLoaded = true;
+    final mapAtStyleLoad = _mapController;
+    if (!mounted || mapAtStyleLoad == null) return;
     _radiusCenter = null;
     _radiusKm = null;
     _radiusSourceReady = false;
@@ -224,8 +257,10 @@ class _ExploreMapState extends State<ExploreMap> {
     await _syncRadiusCircle();
     await _syncPropertiesSource();
     // Let the controller move the camera to the resolved location.
-    _controller.onMapReady();
+    _session.isMapReady = true;
+    await _applyCamera();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _mapRendered = true;
       _updateOverlays();
     });
@@ -233,19 +268,55 @@ class _ExploreMapState extends State<ExploreMap> {
 
   void _onCameraIdle() {
     final controller = _mapController;
-    if (controller == null) return;
+    if (controller == null || !_active) return;
     final pos = controller.cameraPosition;
     if (pos != null) {
-      _controller.onCameraIdle(pos.target, pos.zoom);
+      _controller.onCameraIdle(pos.target, pos.zoom, programmatic: _session.programmaticMove);
+      _session.programmaticMove = false;
     }
     _updateOverlays();
   }
 
-  Future<void> _updateOverlays() async {
-    final controller = _mapController;
-    if (!mounted || controller == null || !_styleLoaded || !_mapRendered) return;
+  // Coalescing latch for overlay projection. MapLibre notifies on every camera
+  // frame, and one pass costs a platform-channel round trip per marker, so
+  // passes must not overlap (a stale pass can otherwise land last and strand
+  // the chips off their pins). Events are remembered, never dropped:
+  // INVARIANT — the last camera event always produces a final sync, because a
+  // request arriving mid-pass sets _syncQueued, which forces one more pass
+  // after the in-flight one drains.
+  bool _syncing = false;
+  bool _syncQueued = false;
 
-    final markers = _controller.propertyMarkers;
+  Future<void> _updateOverlays() async {
+    if (_syncing) {
+      _syncQueued = true;
+      return;
+    }
+    _syncing = true;
+    try {
+      do {
+        _syncQueued = false;
+        try {
+          await _computeAndSetOverlays();
+        } catch (e) {
+          // Every caller is fire-and-forget, so an escaping error would land in
+          // the zone handler instead of anywhere useful.
+          DebugLogger.warning('Explore overlay projection pass failed: ${e.runtimeType}');
+          // Note: a queued event still drains, but a failed pass is not
+          // re-armed — re-arming would retry unboundedly against a destroyed
+          // surface. Recovery rides on the next camera/idle/style event.
+        }
+      } while (_syncQueued && mounted);
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  Future<void> _computeAndSetOverlays() async {
+    final controller = _mapController;
+    if (!mounted || !_active || controller == null || !_styleLoaded || !_mapRendered) return;
+
+    final markers = ref.read(exploreMarkersProvider);
     final positions = <int, Offset>{};
     for (final marker in markers) {
       final p = await controller.toScreenLocation(marker.position);
@@ -277,6 +348,9 @@ class _ExploreMapState extends State<ExploreMap> {
     final controller = _mapController;
     final result = <int>{};
     if (controller == null || positions.isEmpty || !_mapRendered) return result;
+    // Reached after the projection awaits: the tree may have gone away, and
+    // context.size throws on a deactivated element.
+    if (!mounted) return result;
 
     final size = context.size;
     if (size == null) return result;
@@ -338,9 +412,9 @@ class _ExploreMapState extends State<ExploreMap> {
     final run = _styleMutationChain.then((_) => work());
     // Keep the chain alive even if one mutation fails.
     _styleMutationChain = run.catchError((Object e, StackTrace st) {
-      DebugLogger.warning('Explore map style mutation failed: $e');
+      DebugLogger.warning('Explore map style mutation failed: ${e.runtimeType}');
     });
-    return run;
+    return _styleMutationChain;
   }
 
   Future<void> _syncRadiusCircle() {
@@ -349,9 +423,9 @@ class _ExploreMapState extends State<ExploreMap> {
 
   Future<void> _syncRadiusCircleImpl() async {
     final controller = _mapController;
-    if (!mounted || controller == null || !_styleLoaded) return;
-    final center = _controller.currentCenter.value;
-    final radiusKm = _controller.currentRadius.value;
+    if (!mounted || !_active || controller == null || !_styleLoaded) return;
+    final center = _controller.currentCenter;
+    final radiusKm = _controller.currentRadius;
     if (_radiusSourceReady &&
         _radiusCenter?.latitude == center.latitude &&
         _radiusCenter?.longitude == center.longitude &&
@@ -367,23 +441,23 @@ class _ExploreMapState extends State<ExploreMap> {
       } else {
         await _ensureRadiusLayers(controller, geojson);
       }
-      if (!mounted || !_styleLoaded) return;
+      if (!mounted || !_active || !_styleLoaded) return;
       _radiusCenter = center;
       _radiusKm = radiusKm;
       _radiusSourceReady = true;
     } on PlatformException catch (e, st) {
-      DebugLogger.warning('Explore radius sync failed: ${e.code} ${e.message}');
+      DebugLogger.warning('Explore radius sync failed: ${e.code}');
       DebugLogger.debug('$st');
       // Recover by forcing a full recreate on the next attempt.
       _radiusSourceReady = false;
       try {
         await _ensureRadiusLayers(controller, geojson);
-        if (!mounted || !_styleLoaded) return;
+        if (!mounted || !_active || !_styleLoaded) return;
         _radiusCenter = center;
         _radiusKm = radiusKm;
         _radiusSourceReady = true;
       } on PlatformException catch (e2) {
-        DebugLogger.warning('Explore radius recreate failed: ${e2.code} ${e2.message}');
+        DebugLogger.warning('Explore radius recreate failed: ${e2.code}');
       }
     }
   }
@@ -392,26 +466,32 @@ class _ExploreMapState extends State<ExploreMap> {
     MapLibreMapController controller,
     Map<String, dynamic> geojson,
   ) async {
-    try {
-      await controller.removeLayer(_radiusFillLayerId);
-    } catch (_) {}
-    try {
-      await controller.removeLayer(_radiusLineLayerId);
-    } catch (_) {}
-    try {
-      await controller.removeSource(_radiusSourceId);
-    } catch (_) {}
+    // Removing a layer/source that does not exist yet throws; that is the
+    // expected first-render path, so treat these as best-effort cleanup.
+    await BestEffort.runAsync(
+      () => controller.removeLayer(_radiusFillLayerId),
+      label: 'explore-radius-remove-fill-layer',
+    );
+    await BestEffort.runAsync(
+      () => controller.removeLayer(_radiusLineLayerId),
+      label: 'explore-radius-remove-line-layer',
+    );
+    await BestEffort.runAsync(
+      () => controller.removeSource(_radiusSourceId),
+      label: 'explore-radius-remove-source',
+    );
 
     await controller.addGeoJsonSource(_radiusSourceId, geojson);
     await controller.addFillLayer(
       _radiusSourceId,
       _radiusFillLayerId,
-      const FillLayerProperties(fillColor: '#FBF3D0', fillOpacity: 0.35),
+      // The chosen area in peacock teal (AppDesignTokens.teal700): a faint wash, a firm edge.
+      const FillLayerProperties(fillColor: '#0C6A61', fillOpacity: 0.08),
     );
     await controller.addLineLayer(
       _radiusSourceId,
       _radiusLineLayerId,
-      const LineLayerProperties(lineColor: '#F5B400', lineOpacity: 0.4, lineWidth: 1.5),
+      const LineLayerProperties(lineColor: '#0C6A61', lineOpacity: 0.55, lineWidth: 1.5),
     );
   }
 
@@ -421,9 +501,9 @@ class _ExploreMapState extends State<ExploreMap> {
 
   Future<void> _syncPropertiesSourceImpl() async {
     final controller = _mapController;
-    if (!mounted || controller == null || !_styleLoaded) return;
+    if (!mounted || !_active || controller == null || !_styleLoaded) return;
 
-    final markers = _controller.propertyMarkers;
+    final markers = ref.read(exploreMarkersProvider);
     final features = <Map<String, dynamic>>[
       for (final m in markers)
         {
@@ -439,8 +519,12 @@ class _ExploreMapState extends State<ExploreMap> {
     final geojson = <String, dynamic>{'type': 'FeatureCollection', 'features': features};
 
     // Content-aware signature (sorted ids) so set vs recreate is correct.
-    final ids = markers.map((m) => m.property.id).toList()..sort();
-    final signature = ids.join(',');
+    final points =
+        markers
+            .map((m) => '${m.property.id}:${m.position.latitude}:${m.position.longitude}')
+            .toList()
+          ..sort();
+    final signature = points.join(',');
     if (_propertiesSourceReady && _propertiesSignature == signature) {
       return;
     }
@@ -451,22 +535,22 @@ class _ExploreMapState extends State<ExploreMap> {
       } else {
         await _ensurePropertiesLayers(controller, geojson);
       }
-      if (!mounted || !_styleLoaded) return;
+      if (!mounted || !_active || !_styleLoaded) return;
       _propertiesSignature = signature;
       _propertiesSourceReady = true;
       await _updateOverlays();
     } on PlatformException catch (e, st) {
-      DebugLogger.warning('Explore properties sync failed: ${e.code} ${e.message}');
+      DebugLogger.warning('Explore properties sync failed: ${e.code}');
       DebugLogger.debug('$st');
       _propertiesSourceReady = false;
       try {
         await _ensurePropertiesLayers(controller, geojson);
-        if (!mounted || !_styleLoaded) return;
+        if (!mounted || !_active || !_styleLoaded) return;
         _propertiesSignature = signature;
         _propertiesSourceReady = true;
         await _updateOverlays();
       } on PlatformException catch (e2) {
-        DebugLogger.warning('Explore properties recreate failed: ${e2.code} ${e2.message}');
+        DebugLogger.warning('Explore properties recreate failed: ${e2.code}');
       }
     }
   }
@@ -475,15 +559,18 @@ class _ExploreMapState extends State<ExploreMap> {
     MapLibreMapController controller,
     Map<String, dynamic> geojson,
   ) async {
-    try {
-      await controller.removeLayer(_clusterCountLayerId);
-    } catch (_) {}
-    try {
-      await controller.removeLayer(_clusterCircleLayerId);
-    } catch (_) {}
-    try {
-      await controller.removeSource(_propertiesSourceId);
-    } catch (_) {}
+    await BestEffort.runAsync(
+      () => controller.removeLayer(_clusterCountLayerId),
+      label: 'explore-properties-remove-count-layer',
+    );
+    await BestEffort.runAsync(
+      () => controller.removeLayer(_clusterCircleLayerId),
+      label: 'explore-properties-remove-circle-layer',
+    );
+    await BestEffort.runAsync(
+      () => controller.removeSource(_propertiesSourceId),
+      label: 'explore-properties-remove-source',
+    );
 
     await controller.addSource(
       _propertiesSourceId,
@@ -493,7 +580,7 @@ class _ExploreMapState extends State<ExploreMap> {
       _propertiesSourceId,
       _clusterCircleLayerId,
       const CircleLayerProperties(
-        // Matches AppDesignTokens.brandGold (0xFFF5B400).
+        // Matches AppDesignTokens.gold500 (0xFFF5B400).
         circleColor: '#F5B400',
         circleRadius: [
           'step',
@@ -516,7 +603,7 @@ class _ExploreMapState extends State<ExploreMap> {
         textField: ['get', 'point_count_abbreviated'],
         textSize: 12,
         textFont: ['Noto Sans Bold'],
-        textColor: '#1A1A1A',
+        textColor: '#182320', // AppDesignTokens.ink900
         textAllowOverlap: true,
         textIgnorePlacement: true,
       ),

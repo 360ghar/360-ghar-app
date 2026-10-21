@@ -1,8 +1,7 @@
 // test/features/profile/data/support_repository_test.dart
 //
 // Unit tests for [SupportRepository.submitBugReport].
-// Registers a [MockApiClient] in the GetX container so the real
-// [SupportRepository] can resolve it during construction.
+// Injects an API client into the real repository.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
@@ -12,22 +11,15 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/profile/data/support_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
-import '../../../helpers/getx_test_binding.dart';
-import '../../../helpers/mocks.dart';
+class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
   late MockApiClient apiClient;
   late SupportRepository repository;
 
   setUp(() {
-    GetxTestBinding.init();
     apiClient = MockApiClient();
-    GetxTestBinding.bind().register<ApiClient>(apiClient);
-    repository = SupportRepository();
-  });
-
-  tearDown(() {
-    GetxTestBinding.reset();
+    repository = SupportRepository(apiClient: apiClient);
   });
 
   BugReportRequest sampleRequest() => const BugReportRequest(
@@ -38,14 +30,28 @@ void main() {
     description: 'Tapping the gallery crashes the app.',
   );
 
+  /// A `BugReportResponse` body: every key is present, a key that can be empty is null.
   Map<String, dynamic> sampleResponseJson() => {
     'id': 42,
+    'user_id': 5,
     'source': 'app',
     'bug_type': 'ui_bug',
     'severity': 'medium',
     'status': 'open',
     'title': 'Crash on detail page',
     'description': 'Tapping the gallery crashes the app.',
+    'steps_to_reproduce': null,
+    'expected_behavior': null,
+    'actual_behavior': null,
+    'device_info': null,
+    'app_version': null,
+    'media_urls': null,
+    'tags': null,
+    'assigned_to': null,
+    'resolution': null,
+    'resolved_at': null,
+    'created_at': '2026-09-30T10:15:02Z',
+    'updated_at': '2026-09-30T10:15:02Z',
   };
 
   group('submitBugReport', () {
@@ -62,19 +68,18 @@ void main() {
       verify(() => apiClient.post(ApiPaths.bugs, body: any(named: 'body'))).called(1);
     });
 
-    test('unwraps data envelope before parsing', () async {
+    test('does not unwrap a data envelope: the contract has none', () async {
       when(() => apiClient.post(ApiPaths.bugs, body: any(named: 'body'))).thenAnswer(
         (_) async =>
             ApiResponse(statusCode: 201, body: {'data': sampleResponseJson()}, headers: {}),
       );
 
-      final response = await repository.submitBugReport(sampleRequest());
-      expect(response.id, 42);
+      expect(() => repository.submitBugReport(sampleRequest()), throwsA(isA<ServerException>()));
     });
 
     test('throws ServerException when response payload is empty', () async {
       when(() => apiClient.post(ApiPaths.bugs, body: any(named: 'body'))).thenAnswer(
-        (_) async => ApiResponse(statusCode: 200, body: <String, dynamic>{}, headers: {}),
+        (_) async => const ApiResponse(statusCode: 200, body: <String, dynamic>{}, headers: {}),
       );
 
       // The FormatException from ResponseParser is caught and wrapped in

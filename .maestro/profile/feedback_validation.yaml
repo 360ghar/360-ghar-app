@@ -14,18 +14,24 @@ appId: com.the360ghar.ghar360
     timeout: 15000
 - scrollUntilVisible:
     element:
-      text: "Send Feedback"
+      id: qa.profile.help.send_feedback
 - tapOn:
-    text: "Send Feedback"
+    id: qa.profile.help.send_feedback
 - extendedWaitUntil:
     visible:
       id: qa.profile.feedback.screen
     timeout: 15000
 - scrollUntilVisible:
     element:
-      text: "Send Feedback"
+      id: qa.profile.feedback.submit
 - tapOn:
-    text: "Send Feedback"
-- assertVisible:
-    text: "Please describe the issue in a short title"
-    optional: true
+    id: qa.profile.feedback.submit
+- scrollUntilVisible:
+    element:
+      text: "Please describe the issue in a short title"
+    direction: UP
+- assertVisible: "Please describe the issue in a short title"
+- scrollUntilVisible:
+    element:
+      text: "Please provide a short description of the problem"
+- assertVisible: "Please provide a short description of the problem"

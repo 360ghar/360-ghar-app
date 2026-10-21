@@ -2,17 +2,28 @@
 
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
-
+import 'package:ghar360/core/controllers/app_update_controller.dart';
 import 'package:ghar360/core/data/models/app_update_models.dart';
+import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 
-enum AppUpdateAction { update, remindLater }
+export 'package:ghar360/core/controllers/app_update_controller.dart' show AppUpdateAction;
 
 class AppUpdateDialog extends StatelessWidget {
-  const AppUpdateDialog({super.key, required this.response, required this.currentVersion});
+  const AppUpdateDialog({
+    super.key,
+    required this.response,
+    required this.currentVersion,
+    this.onAction,
+    this.busy = false,
+    this.errorKey,
+  });
 
   final AppVersionCheckResponse response;
   final String currentVersion;
+  final ValueChanged<AppUpdateAction>? onAction;
+  final bool busy;
+  final String? errorKey;
 
   @override
   Widget build(BuildContext context) {
@@ -23,20 +34,43 @@ class AppUpdateDialog extends StatelessWidget {
     final minSupportedVersion = response.minSupportedVersion;
 
     return PopScope(
-      canPop: !isMandatory,
+      canPop: !isMandatory && !busy,
       child: AlertDialog(
-        title: Text(isMandatory ? 'mandatory_update_required'.tr : 'update_available'.tr),
+        title: Text(
+          isMandatory
+              ? context.l10n.text('mandatory_update_required')
+              : context.l10n.text('update_available'),
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('${'current_version'.tr}: $currentVersion', style: theme.textTheme.bodySmall),
+              if (busy)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: LinearProgressIndicator(semanticsLabel: context.l10n.text('loading')),
+                ),
+              if (errorKey != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      context.l10n.text(errorKey!),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: context.design.error),
+                    ),
+                  ),
+                ),
+              Text(
+                '${context.l10n.text('current_version')}: $currentVersion',
+                style: theme.textTheme.bodySmall?.copyWith(color: context.design.textSecondary),
+              ),
               if (latestVersionLabel != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    '${'latest_version'.tr}: $latestVersionLabel',
+                    '${context.l10n.text('latest_version')}: $latestVersionLabel',
                     style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -44,8 +78,8 @@ class AppUpdateDialog extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    '${'minimum_supported'.tr}: $minSupportedVersion',
-                    style: theme.textTheme.bodySmall,
+                    '${context.l10n.text('minimum_supported')}: $minSupportedVersion',
+                    style: theme.textTheme.bodySmall?.copyWith(color: context.design.textSecondary),
                   ),
                 ),
               if ((releaseNotes ?? '').isNotEmpty)
@@ -57,37 +91,42 @@ class AppUpdateDialog extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: Text(
-                    isMandatory ? 'mandatory_update_desc'.tr : 'optional_update_desc'.tr,
+                    isMandatory
+                        ? context.l10n.text('mandatory_update_desc')
+                        : context.l10n.text('optional_update_desc'),
                     style: theme.textTheme.bodyMedium,
                   ),
                 ),
             ],
           ),
         ),
-        actions: _buildActions(isMandatory),
+        actions: _buildActions(context, isMandatory),
       ),
     );
   }
 
-  List<Widget> _buildActions(bool isMandatory) {
-    if (isMandatory) {
-      return [
-        TextButton(
-          onPressed: () => Get.back(result: AppUpdateAction.update),
-          child: Text('update_now'.tr),
-        ),
-      ];
+  void _act(BuildContext context, AppUpdateAction action) {
+    if (onAction != null) {
+      onAction!(action);
+    } else {
+      Navigator.of(context).pop(action);
     }
+  }
 
+  // ElevatedButton shares the FilledButton primary style in this theme; the
+  // controller dialog test finds it by type.
+  List<Widget> _buildActions(BuildContext context, bool isMandatory) {
+    final update = ElevatedButton(
+      onPressed: busy ? null : () => _act(context, AppUpdateAction.update),
+      child: Text(context.l10n.text(isMandatory ? 'update_now' : 'update')),
+    );
+    if (isMandatory) return [update];
     return [
       TextButton(
-        onPressed: () => Get.back(result: AppUpdateAction.remindLater),
-        child: Text('not_now'.tr),
+        onPressed: busy ? null : () => _act(context, AppUpdateAction.remindLater),
+        child: Text(context.l10n.text('not_now')),
       ),
-      ElevatedButton(
-        onPressed: () => Get.back(result: AppUpdateAction.update),
-        child: Text('update'.tr),
-      ),
+      update,
     ];
   }
 }

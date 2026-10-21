@@ -1,215 +1,126 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
-import 'package:get/get.dart';
-
-import 'package:ghar360/core/controllers/app_update_controller.dart';
-import 'package:ghar360/core/data/models/app_update_models.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/mixins/theme_mixin.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/features/profile/presentation/widgets/profile_sheet_page.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
-class AboutView extends StatefulWidget {
-  const AboutView({super.key});
-
-  @override
-  State<AboutView> createState() => _AboutViewState();
-}
-
-class _AboutViewState extends State<AboutView> with ThemeMixin {
-  late final Future<AppVersionInfo?> _versionInfoFuture;
-  late final String _platformLabel;
-
-  @override
-  void initState() {
-    super.initState();
-    _versionInfoFuture = Get.find<AppUpdateController>().getVersionInfo();
-    _platformLabel = _computePlatformLabel();
+final packageVersionProvider = FutureProvider<PackageInfo?>((ref) async {
+  try {
+    return await PackageInfo.fromPlatform();
+  } catch (_) {
+    return null;
   }
+});
 
+class AboutView extends ConsumerWidget {
+  const AboutView({super.key});
   @override
-  Widget build(BuildContext context) {
-    return buildThemeAwareScaffold(
-      title: 'about_360ghar'.tr,
-      body: Semantics(
-        label: 'qa.profile.about.screen',
-        identifier: 'qa.profile.about.screen',
-        child: SingleChildScrollView(
-          key: const ValueKey('qa.profile.about.screen'),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // App Logo and Name Section
-              buildThemeAwareCard(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: AppDesign.primaryYellow,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Icon(Icons.home, size: 40, color: AppDesign.buttonText),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '360ghar',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: AppDesign.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      'about_tagline'.tr,
-                      style: TextStyle(fontSize: 16, color: AppDesign.textSecondary),
-                    ),
-                  ],
-                ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final info = ref.watch(packageVersionProvider).value;
+    final l10n = context.l10n;
+    final design = context.design;
+    final text = Theme.of(context).textTheme;
+    Widget section(String key) => SheetSectionTitle(l10n.text(key));
+    return ProfileSheetPage(
+      title: l10n.text('about_360ghar'),
+      identifier: 'qa.profile.about.screen',
+      children: [
+        Row(
+          children: [
+            Image.asset(
+              design.isDark ? 'assets/icons/logo_mark_dark.png' : 'assets/icons/logo_mark.png',
+              width: 64,
+              height: 64,
+              semanticLabel: '360ghar',
+              errorBuilder: (_, _, _) => const SizedBox.square(dimension: 64),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('360ghar', style: text.headlineMedium),
+                  Text(
+                    l10n.text('about_tagline'),
+                    style: text.bodyMedium?.copyWith(color: design.textSecondary),
+                  ),
+                ],
               ),
-
-              const SizedBox(height: 20),
-
-              // App Description
-              buildThemeAwareCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    buildSectionTitle('about_app_section_title'.tr),
-                    const SizedBox(height: 16),
-                    Text(
-                      'about_app_section_body'.tr,
-                      style: TextStyle(fontSize: 16, color: AppDesign.textPrimary, height: 1.5),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Features Section
-              buildThemeAwareCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    buildSectionTitle('about_key_features_title'.tr),
-                    const SizedBox(height: 16),
-                    _buildFeatureItem(
-                      icon: Icons.swipe,
-                      title: 'about_feature_swipe_title'.tr,
-                      description: 'about_feature_swipe_desc'.tr,
-                    ),
-                    _buildFeatureItem(
-                      icon: Icons.threesixty,
-                      title: 'about_feature_tours_title'.tr,
-                      description: 'about_feature_tours_desc'.tr,
-                    ),
-                    _buildFeatureItem(
-                      icon: Icons.favorite,
-                      title: 'about_feature_favorites_title'.tr,
-                      description: 'about_feature_favorites_desc'.tr,
-                    ),
-                    _buildFeatureItem(
-                      icon: Icons.location_on,
-                      title: 'about_feature_location_title'.tr,
-                      description: 'about_feature_location_desc'.tr,
-                    ),
-                    _buildFeatureItem(
-                      icon: Icons.person,
-                      title: 'about_feature_agent_title'.tr,
-                      description: 'about_feature_agent_desc'.tr,
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // App Information
-              buildThemeAwareCard(
-                child: FutureBuilder<AppVersionInfo?>(
-                  future: _versionInfoFuture,
-                  builder: (context, snapshot) {
-                    final version = snapshot.data?.version;
-                    final buildNumber = snapshot.data?.buildNumber;
-
-                    return Column(
-                      children: [
-                        _buildInfoRow('about_version_label'.tr, version ?? '—'),
-                        _buildInfoRow(
-                          'about_build_label'.tr,
-                          buildNumber != null ? buildNumber.toString() : '—',
-                        ),
-                        _buildInfoRow('about_platform_label'.tr, _platformLabel),
-                      ],
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              const SizedBox(height: 30),
-
-              // Copyright
-              Center(
-                child: Column(
-                  children: [
-                    Text(
-                      'about_copyright'.tr,
-                      style: TextStyle(fontSize: 14, color: AppDesign.textTertiary),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'about_made_with_love'.tr,
-                      style: TextStyle(fontSize: 12, color: AppDesign.textTertiary),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ),
+        section('about_app_section_title'),
+        Text(
+          l10n.text('about_app_section_body'),
+          style: text.bodyLarge?.copyWith(color: design.textPrimary),
+        ),
+        section('about_key_features_title'),
+        for (final (icon, key) in const [
+          (KnifeIcon.compare, 'about_feature_swipe'),
+          (KnifeIcon.tour, 'about_feature_tours'),
+          (KnifeIcon.heartSolid, 'about_feature_favorites'),
+          (KnifeIcon.pin, 'about_feature_location'),
+          (KnifeIcon.user, 'about_feature_agent'),
+        ])
+          _feature(
+            context,
+            icon: icon,
+            title: l10n.text('${key}_title'),
+            description: l10n.text('${key}_desc'),
+          ),
+        const SizedBox(height: 16),
+        _infoRow(
+          context,
+          l10n.text('about_version_label'),
+          info?.version ?? l10n.text('unavailable'),
+        ),
+        _infoRow(
+          context,
+          l10n.text('about_build_label'),
+          info?.buildNumber.isNotEmpty == true ? info!.buildNumber : l10n.text('unavailable'),
+        ),
+        _infoRow(context, l10n.text('about_platform_label'), _computePlatformLabel()),
+        const SizedBox(height: 32),
+        Text(
+          l10n.text('about_copyright'),
+          style: text.bodySmall?.copyWith(color: design.textSecondary),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          l10n.text('about_made_with_love'),
+          style: text.bodySmall?.copyWith(color: design.textSecondary),
+        ),
+      ],
     );
   }
 
-  Widget _buildFeatureItem({
-    required IconData icon,
+  Widget _feature(
+    BuildContext context, {
+    required KnifeIcon icon,
     required String title,
     required String description,
   }) {
+    final text = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppDesign.primaryYellow.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: AppDesign.primaryYellow, size: 20),
-          ),
+          PaperIcon(icon, color: context.design.accent, size: 24),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppDesign.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
+                Text(title, style: text.titleSmall),
+                const SizedBox(height: 2),
                 Text(
                   description,
-                  style: TextStyle(fontSize: 14, color: AppDesign.textSecondary, height: 1.4),
+                  style: text.bodyMedium?.copyWith(color: context.design.textSecondary),
                 ),
               ],
             ),
@@ -219,20 +130,20 @@ class _AboutViewState extends State<AboutView> with ThemeMixin {
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  Widget _infoRow(BuildContext context, String label, String value) {
+    final text = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: 16, color: AppDesign.textSecondary)),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: AppDesign.textPrimary,
+          Expanded(
+            child: Text(
+              label,
+              style: text.bodyMedium?.copyWith(color: context.design.textSecondary),
             ),
+          ),
+          Flexible(
+            child: Text(value, style: text.titleSmall, textAlign: TextAlign.end),
           ),
         ],
       ),
@@ -240,9 +151,9 @@ class _AboutViewState extends State<AboutView> with ThemeMixin {
   }
 
   static String _computePlatformLabel() {
-    if (GetPlatform.isIOS) return 'iOS';
-    if (GetPlatform.isAndroid) return 'Android';
-    if (GetPlatform.isWeb) return 'Web';
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) return 'iOS';
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) return 'Android';
+    if (kIsWeb) return 'Web';
     return 'Flutter';
   }
 }

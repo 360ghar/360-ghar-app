@@ -1,136 +1,25 @@
-import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/property_image_model.dart';
+import 'package:ghar360/core/data/models/wire_enums.dart';
+import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:json_annotation/json_annotation.dart';
+
+export 'package:ghar360/core/data/models/wire_enums.dart'
+    show
+        FurnishingLevel,
+        KitchenType,
+        ListingGenderPreference,
+        ListingSharingType,
+        PropertyPurpose,
+        PropertyStatus,
+        PropertyType,
+        VentilationType;
 
 part 'property_model.g.dart';
 
-// Enums matching backend schema
-enum PropertyType {
-  @JsonValue('house')
-  house,
-  @JsonValue('apartment')
-  apartment,
-  @JsonValue('builder_floor')
-  builderFloor,
-  @JsonValue('room')
-  room,
-  @JsonValue('villa')
-  villa,
-  @JsonValue('plot')
-  plot,
-  @JsonValue('condo')
-  condo,
-  @JsonValue('penthouse')
-  penthouse,
-  @JsonValue('studio')
-  studio,
-  @JsonValue('loft')
-  loft,
-  @JsonValue('pg')
-  pg,
-  @JsonValue('flatmate')
-  flatmate,
-  @JsonValue('office')
-  office,
-  @JsonValue('shop')
-  shop,
-  @JsonValue('warehouse')
-  warehouse,
-}
-
-enum PropertyPurpose {
-  @JsonValue('buy')
-  buy,
-  @JsonValue('rent')
-  rent,
-  @JsonValue('short_stay')
-  shortStay,
-}
-
-extension PropertyTypeWireValue on PropertyType {
-  String get wireValue {
-    switch (this) {
-      case PropertyType.house:
-        return 'house';
-      case PropertyType.apartment:
-        return 'apartment';
-      case PropertyType.builderFloor:
-        return 'builder_floor';
-      case PropertyType.room:
-        return 'room';
-      case PropertyType.villa:
-        return 'villa';
-      case PropertyType.plot:
-        return 'plot';
-      case PropertyType.condo:
-        return 'condo';
-      case PropertyType.penthouse:
-        return 'penthouse';
-      case PropertyType.studio:
-        return 'studio';
-      case PropertyType.loft:
-        return 'loft';
-      case PropertyType.pg:
-        return 'pg';
-      case PropertyType.flatmate:
-        return 'flatmate';
-      case PropertyType.office:
-        return 'office';
-      case PropertyType.shop:
-        return 'shop';
-      case PropertyType.warehouse:
-        return 'warehouse';
-    }
-  }
-}
-
-extension PropertyPurposeWireValue on PropertyPurpose {
-  String get wireValue {
-    switch (this) {
-      case PropertyPurpose.buy:
-        return 'buy';
-      case PropertyPurpose.rent:
-        return 'rent';
-      case PropertyPurpose.shortStay:
-        return 'short_stay';
-    }
-  }
-}
-
-enum PropertyStatus {
-  @JsonValue('available')
-  available,
-  @JsonValue('sold')
-  sold,
-  @JsonValue('rented')
-  rented,
-  @JsonValue('under_offer')
-  underOffer,
-  @JsonValue('maintenance')
-  maintenance,
-}
-
-enum ListingGenderPreference {
-  @JsonValue('any')
-  any,
-  @JsonValue('male')
-  male,
-  @JsonValue('female')
-  female,
-}
-
-enum ListingSharingType {
-  @JsonValue('private_room')
-  privateRoom,
-  @JsonValue('shared_room')
-  sharedRoom,
-}
-
+/// An amenity of a listing. `id` is the amenity id, the value `amenity_ids` takes on a write.
 @JsonSerializable()
 class PropertyAmenity {
-  @JsonKey(defaultValue: -1)
   final int id;
-  @JsonKey(defaultValue: 'Unknown')
   final String title;
   final String? icon;
   final String? category;
@@ -141,11 +30,31 @@ class PropertyAmenity {
   Map<String, dynamic> toJson() => _$PropertyAmenityToJson(this);
 }
 
+/// The agent who handles a listing. Only `GET /properties/{id}` sends it;
+/// lists, swipes and visits send null.
+@JsonSerializable()
+class PropertyAgent {
+  final int id;
+  final String name;
+  @JsonKey(name: 'contact_number')
+  final String? contactNumber;
+  @JsonKey(name: 'avatar_url')
+  final String? avatarUrl;
+
+  const PropertyAgent({required this.id, required this.name, this.contactNumber, this.avatarUrl});
+
+  factory PropertyAgent.fromJson(Map<String, dynamic> json) => _$PropertyAgentFromJson(json);
+  Map<String, dynamic> toJson() => _$PropertyAgentToJson(this);
+}
+
+/// The public keys of `listing_preferences` that this app reads. An unknown enum value is null.
 @JsonSerializable()
 class ListingPreferences {
-  @JsonKey(name: 'gender_preference', unknownEnumValue: ListingGenderPreference.any)
+  @JsonKey(name: 'gender_preference')
+  @ListingGenderPreferenceConverter()
   final ListingGenderPreference? genderPreference;
-  @JsonKey(name: 'sharing_type', unknownEnumValue: ListingSharingType.privateRoom)
+  @JsonKey(name: 'sharing_type')
+  @ListingSharingTypeConverter()
   final ListingSharingType? sharingType;
 
   const ListingPreferences({this.genderPreference, this.sharingType});
@@ -155,20 +64,52 @@ class ListingPreferences {
   Map<String, dynamic> toJson() => _$ListingPreferencesToJson(this);
 }
 
+/// A `YYYY-MM-DD` value as a local calendar date. Anything else is a contract break.
+DateTime? _dateOnlyFromJson(Object? value) {
+  if (value == null) return null;
+  final match = value is String ? RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value) : null;
+  if (match == null) throw FormatException('Expected a YYYY-MM-DD date, got ${value.runtimeType}');
+  final year = int.parse(match[1]!);
+  final month = int.parse(match[2]!);
+  final day = int.parse(match[3]!);
+  final date = DateTime(year, month, day);
+  // DateTime rolls 2026-02-30 over to March; an impossible date is a contract break.
+  if (date.year != year || date.month != month || date.day != day) {
+    throw FormatException('Not a calendar date: $value');
+  }
+  return date;
+}
+
+String? _dateOnlyToJson(DateTime? value) {
+  if (value == null) return null;
+  String two(int part) => part.toString().padLeft(2, '0');
+  return '${value.year.toString().padLeft(4, '0')}-${two(value.month)}-${two(value.day)}';
+}
+
+/// `Property` (list, search, swipes) and `PropertyDetail` (`GET /properties/{id}`).
+///
+/// A key the backend always sends is `required` here, so a renamed or dropped key fails the parse
+/// instead of reading as a default. A field no screen shows (`ownerId`, the two timestamps) is
+/// nullable in Dart so callers need not invent one, but its key is still required on the wire.
 @JsonSerializable(explicitToJson: true, checked: true)
 class PropertyModel {
-  @JsonKey(defaultValue: -1)
+  @JsonKey(required: true)
   final int id;
-  @JsonKey(defaultValue: 'Unknown Property')
+  @JsonKey(name: 'owner_id', required: true, disallowNullValue: true)
+  final int? ownerId;
+  @JsonKey(required: true)
   final String title;
   final String? description;
-  @JsonKey(name: 'property_type', unknownEnumValue: PropertyType.house)
+  @JsonKey(name: 'property_type', required: true)
+  @PropertyTypeConverter()
   final PropertyType? propertyType;
-  @JsonKey(unknownEnumValue: PropertyPurpose.buy)
+  @JsonKey(required: true)
+  @PropertyPurposeConverter()
   final PropertyPurpose? purpose;
-  @JsonKey(name: 'base_price', defaultValue: 0.0)
+  @JsonKey(name: 'base_price', required: true)
   final double basePrice;
-  @JsonKey(unknownEnumValue: PropertyStatus.available)
+  @JsonKey(required: true)
+  @PropertyStatusConverter()
   final PropertyStatus? status;
 
   // Location fields
@@ -176,7 +117,7 @@ class PropertyModel {
   final double? longitude;
   final String? city;
   final String? state;
-  @JsonKey(defaultValue: 'India')
+  @JsonKey(required: true)
   final String country;
   final String? pincode;
   final String? locality;
@@ -196,18 +137,42 @@ class PropertyModel {
   final int? balconies;
   @JsonKey(name: 'parking_spaces')
   final int? parkingSpaces;
+  @JsonKey(name: 'furnishing_level')
+  @FurnishingLevelConverter()
+  final FurnishingLevel? furnishingLevel;
+  @JsonKey(name: 'kitchen_type')
+  @KitchenTypeConverter()
+  final KitchenType? kitchenType;
+  @JsonKey(name: 'ventilation_type')
+  @VentilationTypeConverter()
+  final VentilationType? ventilationType;
+  @JsonKey(name: 'windows_count')
+  final int? windowsCount;
+  @JsonKey(name: 'ventilation_shafts')
+  final int? ventilationShafts;
 
-  // Pricing
+  // Pricing. The price a listing shows depends on its purpose (see [effectivePrice]).
+  // `price_per_sqft` is computed by the backend from that price and the area.
   @JsonKey(name: 'price_per_sqft')
   final double? pricePerSqft;
   @JsonKey(name: 'monthly_rent')
   final double? monthlyRent;
   @JsonKey(name: 'daily_rate')
   final double? dailyRate;
+
+  /// Per-night price of a short stay. Null for every other purpose.
+  @JsonKey(name: 'nightly_rate')
+  final double? nightlyRate;
   @JsonKey(name: 'security_deposit')
   final double? securityDeposit;
   @JsonKey(name: 'maintenance_charges')
   final double? maintenanceCharges;
+  @JsonKey(name: 'setup_cost')
+  final double? setupCost;
+  @JsonKey(name: 'other_charges')
+  final double? otherCharges;
+  @JsonKey(name: 'other_charges_description')
+  final String? otherChargesDescription;
 
   // Building details
   @JsonKey(name: 'floor_number')
@@ -231,8 +196,12 @@ class PropertyModel {
   // Media
   @JsonKey(name: 'main_image_url')
   final String? mainImageUrl;
+
+  /// Photos. Floor plans are in [floorPlans].
   @JsonKey(name: 'images')
   final List<PropertyImageModel>? images;
+  @JsonKey(name: 'floor_plans')
+  final List<PropertyImageModel>? floorPlans;
   @JsonKey(name: 'video_tour_url')
   final String? videoTourUrl;
   @JsonKey(name: 'video_urls')
@@ -245,11 +214,12 @@ class PropertyModel {
   final String? floorPlanUrl;
 
   // Availability
-  // Backend may send either is_active or is_available
-  @JsonKey(name: 'is_active', defaultValue: true)
+  @JsonKey(name: 'is_available', required: true)
   final bool isAvailable;
-  @JsonKey(name: 'available_from')
-  final String? availableFrom;
+
+  /// A calendar date (`YYYY-MM-DD`), not an instant.
+  @JsonKey(name: 'available_from', fromJson: _dateOnlyFromJson, toJson: _dateOnlyToJson)
+  final DateTime? availableFrom;
   @JsonKey(name: 'calendar_data')
   final Map<String, dynamic>? calendarData;
 
@@ -257,34 +227,39 @@ class PropertyModel {
   final List<String>? tags;
   @JsonKey(name: 'owner_name')
   final String? ownerName;
+
+  /// A phone number to call about the listing. The owner and admins get the owner's number.
+  /// Everyone else gets the assigned agent's number, else the company number. Read it through
+  /// [contactNumber], never as the owner's number.
   @JsonKey(name: 'owner_contact')
   final String? ownerContact;
   @JsonKey(name: 'builder_name')
   final String? builderName;
+  final PropertyAgent? agent;
 
   // Performance metrics
-  @JsonKey(name: 'view_count', defaultValue: 0)
+  @JsonKey(name: 'view_count', required: true)
   final int viewCount;
-  @JsonKey(name: 'like_count', defaultValue: 0)
+  @JsonKey(name: 'like_count', required: true)
   final int likeCount;
-  @JsonKey(name: 'interest_count', defaultValue: 0)
+  @JsonKey(name: 'interest_count', required: true)
   final int interestCount;
 
-  // Timestamps
-  @JsonKey(name: 'created_at')
+  // Timestamps (UTC)
+  @JsonKey(name: 'created_at', required: true, disallowNullValue: true)
   final DateTime? createdAt;
-  @JsonKey(name: 'updated_at')
+  @JsonKey(name: 'updated_at', required: true, disallowNullValue: true)
   final DateTime? updatedAt;
 
   // Client-side calculated fields
   @JsonKey(name: 'distance_km')
   final double? distanceKm;
 
-  // Swipe-related fields
+  // Swipe-related fields. The backend sends null where a flag does not apply.
   @JsonKey(name: 'liked', defaultValue: false)
   final bool liked;
 
-  // User visit scheduling fields (per-property, user-scoped)
+  // User visit scheduling fields (the detail route only; the viewer's own visits)
   @JsonKey(name: 'user_has_scheduled_visit', defaultValue: false)
   final bool userHasScheduledVisit;
   @JsonKey(name: 'user_scheduled_visit_count', defaultValue: 0)
@@ -294,6 +269,7 @@ class PropertyModel {
 
   const PropertyModel({
     required this.id,
+    this.ownerId,
     required this.title,
     this.description,
     this.propertyType,
@@ -316,11 +292,20 @@ class PropertyModel {
     this.bathrooms,
     this.balconies,
     this.parkingSpaces,
+    this.furnishingLevel,
+    this.kitchenType,
+    this.ventilationType,
+    this.windowsCount,
+    this.ventilationShafts,
     this.pricePerSqft,
     this.monthlyRent,
     this.dailyRate,
+    this.nightlyRate,
     this.securityDeposit,
     this.maintenanceCharges,
+    this.setupCost,
+    this.otherCharges,
+    this.otherChargesDescription,
     this.floorNumber,
     this.totalFloors,
     this.ageOfProperty,
@@ -331,6 +316,7 @@ class PropertyModel {
     this.listingPreferences,
     this.mainImageUrl,
     this.images,
+    this.floorPlans,
     this.videoTourUrl,
     this.videoUrls,
     this.virtualTourUrl,
@@ -343,6 +329,7 @@ class PropertyModel {
     this.ownerName,
     this.ownerContact,
     this.builderName,
+    this.agent,
     required this.viewCount,
     required this.likeCount,
     required this.interestCount,
@@ -355,130 +342,75 @@ class PropertyModel {
     this.userNextVisitDate,
   });
 
-  factory PropertyModel.fromJson(Map<String, dynamic> json) {
-    // Normalize backend variations without breaking generated parsing
-    final normalized = Map<String, dynamic>.from(json);
-    if (!normalized.containsKey('is_active') && normalized.containsKey('is_available')) {
-      normalized['is_active'] = normalized['is_available'];
-    }
-    // Normalize date string for user_next_visit_date into ISO if needed
-    final nextVisit = normalized['user_next_visit_date'];
-    if (nextVisit is String && nextVisit.isNotEmpty) {
-      // Let generated code parse ISO-8601 directly; no-op here
-    }
-    return _$PropertyModelFromJson(normalized);
-  }
+  factory PropertyModel.fromJson(Map<String, dynamic> json) => _$PropertyModelFromJson(json);
 
   Map<String, dynamic> toJson() => _$PropertyModelToJson(this);
 
+  /// The copy that is safe to keep on the device: no phone number of the owner, the agent or
+  /// the company. The server marks property responses `private, no-store`.
+  Map<String, dynamic> toStorableJson() {
+    final json = toJson();
+    json.remove('owner_contact');
+    final agentJson = json['agent'];
+    if (agentJson is Map<String, dynamic>) agentJson.remove('contact_number');
+    return json;
+  }
+
+  /// Compact Indian-format price (e.g. `₹2.5 Cr`, `₹50.0 L`, `₹50,000`), or an empty string when
+  /// the listing has no price for its purpose.
+  ///
+  /// Single-digit precision for crore/lakh forms; smaller amounts get Indian digit grouping.
   String get formattedPrice {
-    final price = getEffectivePrice();
-    if (price >= 10000000) {
-      return '₹${(price / 10000000).toStringAsFixed(1)} Cr';
-    } else if (price >= 100000) {
-      return '₹${(price / 100000).toStringAsFixed(1)} L';
-    } else {
-      return '₹${price.toStringAsFixed(0)}';
-    }
+    final price = effectivePrice;
+    return price == null ? '' : IndianCurrency.compact(price, fractionDigits: 1);
   }
 
-  double getEffectivePrice() {
-    switch (purpose) {
-      case PropertyPurpose.rent:
-        return monthlyRent ?? basePrice;
-      case PropertyPurpose.shortStay:
-        return dailyRate ?? basePrice;
-      case PropertyPurpose.buy:
-        return basePrice;
-      default:
-        return basePrice;
-    }
-  }
+  /// The price that matches the purpose: `monthly_rent` for rent, `nightly_rate` for a short
+  /// stay, `base_price` for a sale. Null when that field is empty (or the purpose is unknown).
+  /// There is no fallback to `base_price`: a short stay with no nightly rate has no nightly price.
+  double? get effectivePrice => switch (purpose) {
+    PropertyPurpose.rent => monthlyRent,
+    PropertyPurpose.shortStay => nightlyRate,
+    PropertyPurpose.buy => basePrice,
+    null => null,
+  };
 
-  String get propertyTypeString {
+  /// Plain type label for non-UI exports. Widgets use localizedType(context).
+
+  String get propertyTypeLabelKey {
     switch (propertyType) {
       case PropertyType.house:
-        return 'property_type_house'.tr;
+        return 'property_type_house';
       case PropertyType.apartment:
-        return 'property_type_apartment'.tr;
+        return 'property_type_apartment';
       case PropertyType.builderFloor:
-        return 'property_type_builder_floor'.tr;
+        return 'property_type_builder_floor';
       case PropertyType.room:
-        return 'property_type_room'.tr;
+        return 'property_type_room';
       case PropertyType.villa:
-        return 'property_type_villa'.tr;
+        return 'property_type_villa';
       case PropertyType.plot:
-        return 'property_type_plot'.tr;
+        return 'property_type_plot';
       case PropertyType.condo:
-        return 'property_type_condo'.tr;
+        return 'property_type_condo';
       case PropertyType.penthouse:
-        return 'property_type_penthouse'.tr;
+        return 'property_type_penthouse';
       case PropertyType.studio:
-        return 'property_type_studio'.tr;
+        return 'property_type_studio';
       case PropertyType.loft:
-        return 'property_type_loft'.tr;
+        return 'property_type_loft';
       case PropertyType.pg:
-        return 'property_type_pg'.tr;
+        return 'property_type_pg';
       case PropertyType.flatmate:
-        return 'property_type_flatmate'.tr;
+        return 'property_type_flatmate';
       case PropertyType.office:
-        return 'property_type_office'.tr;
+        return 'property_type_office';
       case PropertyType.shop:
-        return 'property_type_shop'.tr;
+        return 'property_type_shop';
       case PropertyType.warehouse:
-        return 'property_type_warehouse'.tr;
+        return 'property_type_warehouse';
       default:
-        return 'property_type_default'.tr;
-    }
-  }
-
-  String get propertyTypeTranslationKey {
-    switch (propertyType) {
-      case PropertyType.house:
-        return 'house';
-      case PropertyType.apartment:
-        return 'apartment';
-      case PropertyType.builderFloor:
-        return 'builder_floor';
-      case PropertyType.room:
-        return 'room';
-      case PropertyType.villa:
-        return 'villa';
-      case PropertyType.plot:
-        return 'plot';
-      case PropertyType.condo:
-        return 'condo';
-      case PropertyType.penthouse:
-        return 'penthouse';
-      case PropertyType.studio:
-        return 'studio';
-      case PropertyType.loft:
-        return 'loft';
-      case PropertyType.pg:
-        return 'pg';
-      case PropertyType.flatmate:
-        return 'flatmate';
-      case PropertyType.office:
-        return 'office';
-      case PropertyType.shop:
-        return 'shop';
-      case PropertyType.warehouse:
-        return 'warehouse';
-      default:
-        return 'property';
-    }
-  }
-
-  String get purposeString {
-    switch (purpose) {
-      case PropertyPurpose.buy:
-        return 'Buy';
-      case PropertyPurpose.rent:
-        return 'Rent';
-      case PropertyPurpose.shortStay:
-        return 'Short Stay';
-      default:
-        return 'For Sale';
+        return 'property_type_default';
     }
   }
 
@@ -519,40 +451,30 @@ class PropertyModel {
     }
   }
 
-  String? get sharingTypeTranslationKey {
-    switch (listingPreferences?.sharingType) {
-      case ListingSharingType.privateRoom:
-        return 'private_room';
-      case ListingSharingType.sharedRoom:
-        return 'shared_room';
-      default:
-        return null;
-    }
-  }
+  String? get sharingTypeTranslationKey => switch (listingPreferences?.sharingType) {
+    ListingSharingType.privateRoom => 'private_room',
+    ListingSharingType.sharedRoom => 'shared_room',
+    ListingSharingType.masterBedroom => 'master_bedroom',
+    ListingSharingType.entireFlat => 'entire_flat',
+    null => null,
+  };
 
-  String get statusString {
-    switch (status) {
-      case PropertyStatus.available:
-        return 'Available';
-      case PropertyStatus.sold:
-        return 'Sold';
-      case PropertyStatus.rented:
-        return 'Rented';
-      case PropertyStatus.underOffer:
-        return 'Under Offer';
-      case PropertyStatus.maintenance:
-        return 'Maintenance';
-      default:
-        return 'Available';
-    }
-  }
+  /// English status label for non-UI exports. Empty for a status this app does not know.
+  String get statusString => switch (status) {
+    PropertyStatus.available => 'Available',
+    PropertyStatus.sold => 'Sold',
+    PropertyStatus.rented => 'Rented',
+    PropertyStatus.underOffer => 'Under Offer',
+    PropertyStatus.maintenance => 'Maintenance',
+    null => '',
+  };
 
   String get addressDisplay {
     if (fullAddress?.isNotEmpty == true) return fullAddress!;
     if (locality?.isNotEmpty == true && city?.isNotEmpty == true) {
       return '$locality, $city';
     }
-    return city ?? 'Unknown Location';
+    return city ?? '';
   }
 
   // Short address that never exposes full_address. Prefer locality/subLocality + city.
@@ -561,7 +483,8 @@ class PropertyModel {
     if (locality != null && locality!.isNotEmpty) parts.add(locality!);
     if (subLocality != null && subLocality!.isNotEmpty) parts.add(subLocality!);
     if (city != null && city!.isNotEmpty) parts.add(city!);
-    if (parts.isEmpty) return city ?? 'Unknown Location';
+    // Empty when unknown: the UI hides the line rather than print a placeholder.
+    if (parts.isEmpty) return '';
     return parts.join(', ');
   }
 
@@ -577,8 +500,12 @@ class PropertyModel {
   List<PropertyImageModel> get galleryImages =>
       _sortedImages.where((img) => img.isGallery && _looksLikeImageUrl(img.imageUrl)).toList();
 
-  List<PropertyImageModel> get floorPlanImages =>
-      _sortedImages.where((img) => img.isFloorPlan && _looksLikeImageUrl(img.imageUrl)).toList();
+  /// Floor plans come from `floor_plans`; `images` holds photos only.
+  List<PropertyImageModel> get floorPlanImages {
+    final plans = [...(floorPlans ?? const <PropertyImageModel>[])]
+      ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+    return plans.where((img) => _looksLikeImageUrl(img.imageUrl)).toList();
+  }
 
   String get mainImage {
     if (mainImageUrl?.isNotEmpty == true) return mainImageUrl!;
@@ -690,10 +617,19 @@ class PropertyModel {
   // Virtual tour convenience methods
   bool get hasVirtualTour => virtualTourUrl?.isNotEmpty == true;
 
-  // Agent/Owner convenience methods
-  bool get hasOwner => ownerName?.isNotEmpty == true;
-  String get ownerDisplayName => ownerName ?? 'Property Owner';
-  bool get hasOwnerContact => ownerContact?.isNotEmpty == true;
+  // Contact convenience methods
+  /// The number to call about this listing. For the owner and admins it is the owner's number.
+  /// For everyone else it is the assigned agent's number, else the company number. Never present
+  /// it as the owner's number.
+  String? get contactNumber {
+    for (final number in [agent?.contactNumber, ownerContact]) {
+      final trimmed = number?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    }
+    return null;
+  }
+
+  bool get hasContact => contactNumber != null;
 
   // Property details convenience methods
   String get bedroomBathroomText {
@@ -707,76 +643,6 @@ class PropertyModel {
     return '';
   }
 
-  String get areaText {
-    if (areaSqft != null) {
-      return '${areaSqft!.toStringAsFixed(0)} sq ft';
-    }
-    return '';
-  }
-
-  String get distanceText {
-    if (distanceKm != null) {
-      if (distanceKm! < 1) {
-        return '${(distanceKm! * 1000).toStringAsFixed(0)}m away';
-      } else {
-        return '${distanceKm!.toStringAsFixed(1)}km away';
-      }
-    }
-    return '';
-  }
-
-  // Get a fallback description for error widgets
-  String get imageDescription {
-    return '$propertyTypeString in ${city ?? 'Unknown Location'}';
-  }
-
-  // Get initials for fallback display
-  String get titleInitials {
-    final words = title.split(' ');
-    if (words.length >= 2) {
-      return '${words[0][0]}${words[1][0]}'.toUpperCase();
-    } else if (words.isNotEmpty) {
-      final String first = words[0];
-      return first.isNotEmpty ? first.substring(0, 1).toUpperCase() : 'P';
-    }
-    return 'P';
-  }
-
-  // Floor information
-  String get floorText {
-    if (floorNumber != null && totalFloors != null) {
-      return 'Floor $floorNumber/$totalFloors';
-    } else if (floorNumber != null) {
-      return 'Floor $floorNumber';
-    }
-    return '';
-  }
-
-  // Age information
-  String get ageText {
-    if (ageOfProperty != null) {
-      if (ageOfProperty! == 0) {
-        return 'New Construction';
-      } else if (ageOfProperty! == 1) {
-        return '1 year old';
-      } else {
-        return '$ageOfProperty years old';
-      }
-    }
-    return '';
-  }
-
   // User visit helpers
   bool get hasUserScheduled => userHasScheduledVisit || userNextVisitDate != null;
-
-  // Parsed availability date helper
-  DateTime? get availableFromDate {
-    final v = availableFrom;
-    if (v == null || v.isEmpty) return null;
-    try {
-      return DateTime.parse(v);
-    } catch (_) {
-      return null;
-    }
-  }
 }

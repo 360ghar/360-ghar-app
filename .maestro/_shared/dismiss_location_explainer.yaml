@@ -1,0 +1,17 @@
+appId: com.the360ghar.ghar360
+---
+# The first Discover visit shows the location explainer while the OS
+# permission is still undecided. Tests choose "Not now" so no OS prompt opens.
+# The explainer appears after an async permission check, so wait for it (it may not show).
+- extendedWaitUntil:
+    visible:
+      id: qa.location.explainer.skip
+    timeout: 15000
+    optional: true
+- runFlow:
+    when:
+      visible:
+        id: qa.location.explainer.skip
+    commands:
+      - tapOn:
+          id: qa.location.explainer.skip

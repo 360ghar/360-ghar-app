@@ -1,610 +1,332 @@
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_cut.dart';
+import 'package:ghar360/core/storage/storage_failure.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/core/utils/error_mapper.dart';
+import 'package:ghar360/core/utils/error_message.dart';
+import 'package:ghar360/core/widgets/common/retry_wait.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
 
+/// Empty, error, offline and not-found screens. Each shows one paper scene,
+/// a title, one line and one next action.
 class ErrorStates {
-  // Generic error widget with retry functionality
+  ErrorStates._();
+
+  /// A failed load with nothing to show. Retry appears only when a later
+  /// attempt can succeed, and waits out a rate limit first.
   static Widget genericError({
-    required dynamic error,
+    required Object? error,
     VoidCallback? onRetry,
     String? customMessage,
     String? customRetryText,
-  }) {
-    // Derive title, message, and icon safely for both String and AppException
-    String title;
-    String message;
-    IconData icon;
-
-    if (error is AppException) {
-      title = _getErrorTitle(error);
-      message = error.message;
-      icon = ErrorMapper.getErrorIcon(error);
-    } else if (error is String) {
-      title = 'error'.tr;
-      message = error;
-      icon = Icons.error_outline_rounded;
-    } else {
-      title = 'error'.tr;
-      message = 'something_went_wrong'.tr;
-      icon = Icons.error_outline_rounded;
-    }
-
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-        final textTheme = theme.textTheme;
-        final onSurface = theme.colorScheme.onSurface;
-        final subtle = onSurface.withValues(alpha: 0.7);
-
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 56, color: theme.colorScheme.primary),
-                const SizedBox(height: 16),
-                Text(
-                  title,
-                  style:
-                      textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: onSurface,
-                      ) ??
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSurface),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  customMessage ?? message,
-                  style:
-                      textTheme.bodyMedium?.copyWith(color: subtle) ??
-                      TextStyle(fontSize: 16, color: subtle),
-                  textAlign: TextAlign.center,
-                ),
-                if (onRetry != null &&
-                    ((error is AppException && ErrorMapper.isRetryable(error)) ||
-                        error is! AppException)) ...[
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.refresh),
-                    label: Text(
-                      customRetryText ??
-                          ((error is AppException)
-                              ? ErrorMapper.getRetryActionText(error)
-                              : 'retry'.tr),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+    String seed = 'page',
+  }) => Builder(
+    builder: (context) {
+      final l10n = context.l10n;
+      final scene = switch (error) {
+        NetworkException() => PaperScene.offline,
+        NotFoundException() || ApiException(statusCode: 404) => PaperScene.notFound,
+        _ => PaperScene.error,
+      };
+      final title = switch (error) {
+        RateLimitException() => 'rate_limited_title',
+        NetworkException() => 'connection_problem',
+        AuthenticationException() => 'authentication_required',
+        ValidationException() => 'invalid_input',
+        NotFoundException() || ApiException(statusCode: 404) => 'not_found',
+        ServerException() => 'server_error',
+        StorageFailure() || CacheException() => 'local_save_failed',
+        _ => 'something_went_wrong',
+      };
+      final retry = onRetry != null && isRetryableFailure(error);
+      return RetryWait(
+        key: ObjectKey(error),
+        error: error,
+        builder: (context, wait) => StateBlock(
+          scene: scene,
+          seed: PaperVignette.seedFor(
+            scene,
+            scene == PaperScene.notFound && seed == 'details' ? 'property' : seed,
           ),
-        );
-      },
-    );
-  }
+          title: l10n.text(title),
+          message: customMessage ?? errorMessage(context, error),
+          actionLabel: !retry
+              ? null
+              : wait > 0
+              ? l10n.text('retry_in_seconds', params: {'seconds': '$wait'})
+              : customRetryText ?? l10n.text('retry'),
+          onAction: retry && wait == 0 ? onRetry : null,
+          actionIcon: KnifeIcon.retry,
+          identifier: 'qa.state.error',
+        ),
+      );
+    },
+  );
 
-  // Network error specifically
-  static Widget networkError({VoidCallback? onRetry, String? customMessage}) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-        final textTheme = theme.textTheme;
-        final onSurface = theme.colorScheme.onSurface;
-
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.wifi_off, size: 64, color: AppDesign.placeholderText),
-                const SizedBox(height: 16),
-                Text(
-                  'connection_error_title'.tr,
-                  style:
-                      textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: onSurface,
-                      ) ??
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSurface),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  customMessage ?? 'connection_error_message'.tr,
-                  style:
-                      textTheme.bodyMedium?.copyWith(color: onSurface.withValues(alpha: 0.7)) ??
-                      TextStyle(fontSize: 16, color: onSurface.withValues(alpha: 0.7)),
-                  textAlign: TextAlign.center,
-                ),
-                if (onRetry != null) ...[
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.refresh),
-                    label: Text('retry'.tr),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // Empty state
+  /// A list with no rows yet, with one way forward.
   static Widget emptyState({
     required String title,
     required String message,
-    IconData? icon,
-    String? emoji,
     VoidCallback? onAction,
     String? actionText,
-  }) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-        final textTheme = theme.textTheme;
-        final onSurface = theme.colorScheme.onSurface;
+    String seed = 'search',
+  }) => Builder(
+    builder: (context) => StateBlock(
+      scene: PaperScene.empty,
+      seed: seed,
+      title: title,
+      message: message,
+      actionLabel: onAction == null ? null : actionText ?? context.l10n.text('explore_properties'),
+      onAction: onAction,
+      identifier: 'qa.state.empty',
+    ),
+  );
 
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (emoji != null)
-                  Text(
-                    emoji,
-                    style:
-                        textTheme.displayMedium?.copyWith(color: onSurface) ??
-                        TextStyle(fontSize: 56, color: onSurface),
-                  )
-                else if (icon != null)
-                  Icon(icon, size: 64, color: AppDesign.placeholderText)
-                else
-                  Icon(Icons.inbox_outlined, size: 64, color: AppDesign.placeholderText),
-                const SizedBox(height: 16),
-                Text(
-                  title,
-                  style:
-                      textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: onSurface,
-                      ) ??
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSurface),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  message,
-                  style:
-                      textTheme.bodyMedium?.copyWith(color: onSurface.withValues(alpha: 0.7)) ??
-                      TextStyle(fontSize: 16, color: onSurface.withValues(alpha: 0.7)),
-                  textAlign: TextAlign.center,
-                ),
-                if (onAction != null && actionText != null) ...[
-                  const SizedBox(height: 24),
-                  ElevatedButton(onPressed: onAction, child: Text(actionText)),
-                ],
-              ],
+  /// A search that matched nothing.
+  static Widget searchEmpty({required String searchQuery, VoidCallback? onClearSearch}) => Builder(
+    builder: (context) => StateBlock(
+      scene: PaperScene.empty,
+      seed: 'search',
+      title: context.l10n.text('no_results_found'),
+      message: context.l10n.text('no_results_message', params: {'query': searchQuery}),
+      actionLabel: onClearSearch == null ? null : context.l10n.text('clear_search'),
+      onAction: onClearSearch,
+      identifier: 'qa.state.search_empty',
+    ),
+  );
+
+  /// Every card in the deck has been swiped. Changing filters is the way on;
+  /// refresh stays available as a quiet link.
+  static Widget swipeDeckEmpty({VoidCallback? onRefresh, VoidCallback? onChangeFilters}) => Builder(
+    builder: (context) => StateBlock(
+      scene: PaperScene.empty,
+      seed: 'discover',
+      title: context.l10n.text('no_more_properties'),
+      message: context.l10n.text('no_more_properties_message'),
+      actionLabel: onChangeFilters == null ? null : context.l10n.text('change_filters'),
+      actionIcon: KnifeIcon.filter,
+      onAction: onChangeFilters,
+      secondaryLabel: onRefresh == null ? null : context.l10n.text('refresh'),
+      onSecondary: onRefresh,
+      identifier: 'qa.state.deck_empty',
+    ),
+  );
+
+  /// A short failure line inside a form or card, with a retry link.
+  static Widget inlineError({required String message, VoidCallback? onRetry}) => Builder(
+    builder: (context) {
+      final design = context.design;
+      final line = Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PaperIcon(KnifeIcon.alert, size: 20, color: design.error),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: design.error),
             ),
           ),
-        );
-      },
-    );
-  }
-
-  // Search empty state
-  static Widget searchEmpty({
-    required String searchQuery,
-    VoidCallback? onClearSearch,
-    VoidCallback? onTryDifferentSearch,
-  }) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-        final textTheme = theme.textTheme;
-        final onSurface = theme.colorScheme.onSurface;
-
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.search_off, size: 64, color: AppDesign.placeholderText),
-                const SizedBox(height: 16),
-                Text(
-                  'no_results_found'.tr,
-                  style:
-                      textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: onSurface,
-                      ) ??
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSurface),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'no_results_message'.trParams({'query': searchQuery}),
-                  style:
-                      textTheme.bodyMedium?.copyWith(color: onSurface.withValues(alpha: 0.7)) ??
-                      TextStyle(fontSize: 16, color: onSurface.withValues(alpha: 0.7)),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (onClearSearch != null) ...[
-                      ElevatedButton(onPressed: onClearSearch, child: Text('clear_search'.tr)),
-                      const SizedBox(width: 12),
-                    ],
-                    if (onTryDifferentSearch != null)
-                      OutlinedButton(
-                        onPressed: onTryDifferentSearch,
-                        child: Text('try_different_search'.tr),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // No location permission state
-  static Widget locationPermissionDenied({
-    VoidCallback? onRequestPermission,
-    VoidCallback? onOpenSettings,
-  }) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-        final textTheme = theme.textTheme;
-        final onSurface = theme.colorScheme.onSurface;
-
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.location_off, size: 64, color: AppDesign.placeholderText),
-                const SizedBox(height: 16),
-                Text(
-                  'location_access_needed'.tr,
-                  style:
-                      textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: onSurface,
-                      ) ??
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSurface),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'location_access_needed_message'.tr,
-                  style:
-                      textTheme.bodyMedium?.copyWith(color: onSurface.withValues(alpha: 0.7)) ??
-                      TextStyle(fontSize: 16, color: onSurface.withValues(alpha: 0.7)),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                Column(
-                  children: [
-                    if (onRequestPermission != null) ...[
-                      ElevatedButton.icon(
-                        onPressed: onRequestPermission,
-                        icon: const Icon(Icons.location_on),
-                        label: Text('grant_permission'.tr),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (onOpenSettings != null)
-                      TextButton(onPressed: onOpenSettings, child: Text('open_settings'.tr)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // Swipe deck empty state
-  static Widget swipeDeckEmpty({VoidCallback? onRefresh, VoidCallback? onChangeFilters}) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-        final textTheme = theme.textTheme;
-        final onSurface = theme.colorScheme.onSurface;
-        final primary = theme.colorScheme.primary;
-
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.9, end: 1.0),
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeOutBack,
-                  builder: (context, value, child) {
-                    return Transform.scale(scale: value, child: child);
+        ],
+      );
+      final retry = onRetry == null
+          ? null
+          : TextButton(onPressed: onRetry, child: Text(context.l10n.text('retry')));
+      return Semantics(
+        container: true,
+        liveRegion: true,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: retry == null
+              ? line
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    // The retry goes under the message when both do not fit on one line.
+                    final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+                    if (constraints.maxWidth / scale >= 360) {
+                      return Row(
+                        children: [
+                          Expanded(child: line),
+                          retry,
+                        ],
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        line,
+                        Padding(padding: const EdgeInsets.only(left: 22), child: retry),
+                      ],
+                    );
                   },
-                  child: Container(
-                    width: 92,
-                    height: 92,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [primary.withValues(alpha: 0.18), primary.withValues(alpha: 0.06)],
-                      ),
-                      border: Border.all(color: primary.withValues(alpha: 0.18)),
-                    ),
-                    child: Icon(Icons.home_outlined, size: 44, color: primary),
-                  ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'no_more_properties'.tr,
-                  style:
-                      textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: onSurface,
-                      ) ??
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSurface),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'no_more_properties_message'.tr,
-                  style:
-                      textTheme.bodyMedium?.copyWith(color: onSurface.withValues(alpha: 0.7)) ??
-                      TextStyle(fontSize: 16, color: onSurface.withValues(alpha: 0.7)),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (onChangeFilters != null) ...[
-                      ElevatedButton.icon(
-                        onPressed: onChangeFilters,
-                        icon: const Icon(Icons.tune),
-                        label: Text('change_filters'.tr),
-                      ),
-                      const SizedBox(width: 16),
-                    ],
-                    if (onRefresh != null)
-                      OutlinedButton.icon(
-                        onPressed: onRefresh,
-                        icon: const Icon(Icons.refresh),
-                        label: Text('refresh'.tr),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
 
-  // Inline error for smaller spaces
-  static Widget inlineError({
-    required String message,
-    VoidCallback? onRetry,
-    bool showIcon = true,
-  }) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.errorContainer,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              if (showIcon) ...[
-                Icon(Icons.error_outline, color: theme.colorScheme.error, size: 20),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: Text(
-                  message,
-                  style:
-                      theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onErrorContainer,
-                      ) ??
-                      TextStyle(fontSize: 14, color: theme.colorScheme.onErrorContainer),
-                ),
-              ),
-              if (onRetry != null) ...[
-                const SizedBox(width: 8),
-                TextButton(onPressed: onRetry, child: Text('retry'.tr)),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // Error banner (can be dismissed)
-  static Widget errorBanner({
-    required String message,
-    VoidCallback? onDismiss,
-    VoidCallback? onRetry,
-  }) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.errorContainer,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.error_outline, color: theme.colorScheme.error, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  message,
-                  style:
-                      theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onErrorContainer,
-                      ) ??
-                      TextStyle(fontSize: 14, color: theme.colorScheme.onErrorContainer),
-                ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (onRetry != null) ...[
-                    TextButton(onPressed: onRetry, child: Text('retry'.tr)),
-                    const SizedBox(width: 4),
-                  ],
-                  if (onDismiss != null)
-                    IconButton(
-                      onPressed: onDismiss,
-                      icon: const Icon(Icons.close, size: 18),
-                      tooltip: 'dismiss'.tr,
-                      color: theme.colorScheme.onErrorContainer,
-                      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // Profile loading error with retry and sign out options
+  /// The signed-in profile could not load. Retry, or sign out to recover.
   static Widget profileLoadError({
     VoidCallback? onRetry,
     VoidCallback? onSignOut,
     String? customMessage,
     bool isRetrying = false,
-  }) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-        final textTheme = theme.textTheme;
-        final onSurface = theme.colorScheme.onSurface;
+  }) => Builder(
+    builder: (context) => StateBlock(
+      scene: PaperScene.error,
+      seed: 'profile',
+      title: context.l10n.text('profile_load_error'),
+      message: customMessage ?? context.l10n.text('profile_load_error_message'),
+      actionLabel: context.l10n.text(isRetrying ? 'retrying' : 'retry'),
+      actionIcon: KnifeIcon.retry,
+      onAction: isRetrying ? null : onRetry,
+      secondaryLabel: onSignOut == null ? null : context.l10n.text('sign_out'),
+      onSecondary: onSignOut,
+      identifier: 'qa.state.profile_error',
+    ),
+  );
+}
 
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.account_circle_outlined, size: 64, color: AppDesign.placeholderText),
-                const SizedBox(height: 16),
-                Text(
-                  'profile_load_error'.tr,
-                  style:
-                      textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: onSurface,
-                      ) ??
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: onSurface),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  customMessage ?? 'profile_load_error_message'.tr,
-                  style:
-                      textTheme.bodyMedium?.copyWith(color: onSurface.withValues(alpha: 0.7)) ??
-                      TextStyle(fontSize: 16, color: onSurface.withValues(alpha: 0.7)),
-                  textAlign: TextAlign.center,
-                ),
+/// The layout every state screen shares: scene, title, one line, one action,
+/// centred and scrollable so 2x text never overflows.
+class StateBlock extends StatelessWidget {
+  const StateBlock({
+    super.key,
+    required this.scene,
+    required this.seed,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.actionIcon,
+    this.onAction,
+    this.secondaryLabel,
+    this.onSecondary,
+    this.detail,
+    this.identifier = 'qa.state',
+  });
+
+  final PaperScene scene;
+  final String seed;
+  final String title;
+  final String message;
+
+  /// The one next action. Null hides the button; a null [onAction] disables it.
+  final String? actionLabel;
+  final KnifeIcon? actionIcon;
+  final VoidCallback? onAction;
+
+  /// A quiet text link, only where a second way out is needed.
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
+
+  /// Extra content under the message, such as a developer error dump.
+  final Widget? detail;
+  final String identifier;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final design = context.design;
+    final label = actionLabel;
+    final secondary = secondaryLabel;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MountedVignette(scene, seed: seed, width: 240),
+              const SizedBox(height: 24),
+              Semantics(
+                header: true,
+                child: Text(title, style: text.headlineMedium, textAlign: TextAlign.center),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: text.bodyMedium?.copyWith(color: design.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+              if (detail case final detail?) ...[const SizedBox(height: 20), detail],
+              if (label != null) ...[
                 const SizedBox(height: 24),
-                Column(
-                  children: [
-                    if (isRetrying) ...[
-                      const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'retrying'.tr,
-                        style:
-                            textTheme.bodySmall?.copyWith(
-                              color: onSurface.withValues(alpha: 0.7),
-                            ) ??
-                            TextStyle(fontSize: 12, color: onSurface.withValues(alpha: 0.7)),
-                      ),
-                      const SizedBox(height: 12),
-                    ] else if (onRetry != null) ...[
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: onRetry,
-                          icon: const Icon(Icons.refresh),
-                          label: Text('retry'.tr),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (onSignOut != null)
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: onSignOut,
-                          icon: const Icon(Icons.logout),
-                          label: Text('sign_out'.tr),
-                        ),
-                      ),
-                  ],
+                Semantics(
+                  identifier: '$identifier.action',
+                  child: FilledButton(
+                    key: ValueKey('$identifier.action'),
+                    onPressed: onAction,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (actionIcon case final icon?) ...[
+                          PaperIcon(icon, size: 18),
+                          const SizedBox(width: 8),
+                        ],
+                        Flexible(child: Text(label, textAlign: TextAlign.center)),
+                      ],
+                    ),
+                  ),
                 ),
               ],
-            ),
+              if (secondary != null) ...[
+                const SizedBox(height: 8),
+                Semantics(
+                  identifier: '$identifier.secondary',
+                  child: TextButton(
+                    key: ValueKey('$identifier.secondary'),
+                    onPressed: onSecondary,
+                    child: Text(secondary),
+                  ),
+                ),
+              ],
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
+}
 
-  static String _getErrorTitle(AppException error) {
-    if (error is NetworkException) {
-      return 'connection_problem'.tr;
-    } else if (error is AuthenticationException) {
-      return 'authentication_required'.tr;
-    } else if (error is ValidationException) {
-      return 'invalid_input'.tr;
-    } else if (error is NotFoundException) {
-      return 'not_found'.tr;
-    } else if (error is ServerException) {
-      return 'server_error'.tr;
-    }
-    return 'something_went_wrong'.tr;
-  }
+/// A state scene on its white card-stock mat. The scene's own card is the
+/// sky tone, which is also the page tone, so on the sky page it would fade
+/// into the page; the mat gives it a cut white edge to stand on. The mat is
+/// painted outside the scene's box, with no shadow: inside a white sheet it
+/// is the sheet itself, and the layout never moves.
+class MountedVignette extends StatelessWidget {
+  const MountedVignette(this.scene, {super.key, required this.seed, this.width = 220});
+
+  final PaperScene scene;
+  final String seed;
+  final double width;
+
+  /// How far the mat reaches past the scene on each side.
+  static const margin = 12.0;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    painter: _MatPainter(context.design.surface, 'mat-${scene.name}-$seed'),
+    child: PaperVignette(scene, seed: seed, width: width),
+  );
+}
+
+class _MatPainter extends CustomPainter {
+  const _MatPainter(this.color, this.seed);
+
+  final Color color;
+  final String seed;
+
+  @override
+  void paint(Canvas canvas, Size size) => canvas.drawPath(
+    cutPolygon(seed, amp: 2).toPath((Offset.zero & size).inflate(MountedVignette.margin)),
+    Paint()..color = color,
+  );
+
+  @override
+  bool shouldRepaint(_MatPainter old) => old.color != color || old.seed != seed;
 }

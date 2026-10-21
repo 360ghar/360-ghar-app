@@ -1,0 +1,85 @@
+{
+  "conflict": {
+    "error": {
+      "code": "VISIT_CONFLICT",
+      "details": {},
+      "message": "You already have a visit then."
+    }
+  },
+  "forbidden": {
+    "error": {
+      "code": "USER_ACCESS_DENIED",
+      "details": {},
+      "message": "Not allowed."
+    }
+  },
+  "inactive": {
+    "error": {
+      "code": "USER_INACTIVE",
+      "details": {},
+      "message": "This account is deactivated."
+    }
+  },
+  "not_found": {
+    "error": {
+      "code": "PAGE_NOT_FOUND",
+      "details": {},
+      "message": "Page not found."
+    }
+  },
+  "rate_limited": {
+    "error": {
+      "code": "RATE_LIMIT_EXCEEDED",
+      "details": {},
+      "message": "Too many requests."
+    }
+  },
+  "server": {
+    "error": {
+      "code": "INTERNAL_ERROR",
+      "details": {},
+      "message": "An unexpected error occurred"
+    }
+  },
+  "unauthorized": {
+    "error": {
+      "code": "TOKEN_INVALID",
+      "details": {},
+      "message": "The token is not valid."
+    }
+  },
+  "validation": {
+    "error": {
+      "code": "VALIDATION_ERROR",
+      "details": {
+        "fields": [
+          {
+            "field": "body.date_of_birth",
+            "msg": "Must be at least 18 years old",
+            "type": "AGE_RANGE"
+          },
+          {
+            "field": "body.full_name",
+            "msg": "Field required",
+            "type": "missing"
+          },
+          {
+            "field": "query.limit",
+            "msg": "Input should be less than or equal to 100",
+            "type": "less_than_equal"
+          }
+        ]
+      },
+      "message": "Request validation failed"
+    }
+  },
+  "validation_no_fields": {
+    "error": {
+      "code": "INVALID_CURSOR",
+      "details": {
+        "fields": []
+      },
+      "message": "Cursor does not match"
+    }
+  }
+}

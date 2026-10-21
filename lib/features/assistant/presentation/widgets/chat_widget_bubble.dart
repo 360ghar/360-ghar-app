@@ -1,14 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/webview_helper.dart';
+import 'package:ghar360/core/widgets/common/error_states.dart';
+import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/features/assistant/data/assistant_repository.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/presentation/controllers/assistant_controller.dart';
-import 'package:shimmer/shimmer.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// Wrapper HTML that acts as an MCP host for widget iframes.
@@ -33,8 +37,14 @@ const String _wrapperHtml = '''
 var w=document.getElementById('w'),ready=false,theme='light',pendingResult=null;
 var MAX_ACTION_LEN=500;
 
+// targetOrigin MUST be '*'. The iframe is sandboxed without allow-same-origin,
+// so its document has an opaque origin that no concrete targetOrigin can ever
+// match — any other value silently drops every host->widget frame. Safe here:
+// the iframe content is injected locally by us, never fetched cross-origin, and
+// the inbound listener below still verifies e.source.
 function postToWidget(msg){
-  try{w.contentWindow.postMessage(msg,location.origin||'*');}catch(x){}
+  try{w.contentWindow.postMessage(msg,'*');}
+  catch(x){console.warn('[360Ghar] postToWidget failed',x);}
 }
 
 window.addEventListener('message',function(e){
@@ -52,6 +62,13 @@ window.addEventListener('message',function(e){
     if(pendingResult){postToWidget(pendingResult);pendingResult=null;}
     return;
   }
+  // The app has no tool route for widgets. Answer a request at once with a JSON-RPC error, so
+  // the widget shows its error state now instead of waiting for its 30 s timeout.
+  if(d.method==='tools/call'&&d.id!=null){
+    postToWidget({jsonrpc:'2.0',id:d.id,error:{code:-32601,
+      message:'This action is not available in the app. Ask the assistant instead.'}});
+    return;
+  }
   if(d.method==='ui/message'&&d.id!=null){
     var text='';
     try{text=d.params.content[0].text;}catch(x){}
@@ -61,12 +78,22 @@ window.addEventListener('message',function(e){
     postToWidget({jsonrpc:'2.0',id:d.id,result:{success:true}});
     return;
   }
+  // Any other request that expects an answer gets a method-not-found error, never silence.
+  if(d.id!=null&&d.method){
+    postToWidget({jsonrpc:'2.0',id:d.id,error:{code:-32601,message:'Method not found'}});
+  }
 });
 
 window.loadWidget=function(html){
   if(typeof html!=='string')return;
+  // The new document has not run bridge.ts yet, so it has not handshaked.
+  // Without this reset a reload would post the tool result into a dead
+  // document and buffer nothing, leaving the widget stuck on its fallback.
+  ready=false;pendingResult=null;
   w.srcdoc=html;
 };
+
+window.isReady=function(){return ready;};
 
 window.injectToolResult=function(data){
   var msg={jsonrpc:'2.0',method:'ui/notifications/tool-result',
@@ -88,22 +115,67 @@ window.setTheme=function(t){
 ///
 /// Loads a wrapper page that hosts the widget in an iframe, providing the
 /// real `window.parent` relationship the MCP Apps protocol requires.
-class ChatWidgetBubble extends StatefulWidget {
+class ChatWidgetBubble extends ConsumerStatefulWidget {
   final ChatMessageModel message;
+  final ValueChanged<String>? onAction;
 
-  const ChatWidgetBubble({super.key, required this.message});
+  const ChatWidgetBubble({super.key, required this.message, this.onAction});
 
   @override
-  State<ChatWidgetBubble> createState() => _ChatWidgetBubbleState();
+  ConsumerState<ChatWidgetBubble> createState() => _ChatWidgetBubbleState();
 }
 
-class _ChatWidgetBubbleState extends State<ChatWidgetBubble> with AutomaticKeepAliveClientMixin {
+class _ChatWidgetBubbleState extends ConsumerState<ChatWidgetBubble> {
   late final WebViewController _controller;
   bool _isLoading = true;
   bool _hasError = false;
+  bool _wrapperInitialized = false;
+  Timer? _handshakeTimer;
+
+  int _generation = 0;
+  bool _active = true;
+  String? _theme;
 
   @override
-  bool get wantKeepAlive => true;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final active = TickerMode.valuesOf(context).enabled;
+    final theme = Theme.of(context).brightness == Brightness.dark ? 'dark' : 'light';
+    if (active && _wrapperInitialized && _theme != theme) {
+      unawaited(_controller.runJavaScript("setTheme('$theme');").catchError((Object _) {}));
+    }
+    _theme = theme;
+    if (_active == active) return;
+    _active = active;
+    ++_generation;
+    _handshakeTimer?.cancel();
+    if (active) {
+      _retry();
+    } else {
+      unawaited(_controller.runJavaScript("loadWidget('');").catchError((Object _) {}));
+    }
+  }
+
+  void _retry() {
+    ++_generation;
+    _handshakeTimer?.cancel();
+    setState(() {
+      _hasError = false;
+      _isLoading = true;
+      _wrapperInitialized = false;
+    });
+    _armLoadTimeout();
+    unawaited(_controller.loadHtmlString(_wrapperHtml));
+  }
+
+  bool _current(int generation) => mounted && _active && !_hasError && generation == _generation;
+
+  @override
+  void dispose() {
+    ++_generation;
+    _handshakeTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -116,7 +188,7 @@ class _ChatWidgetBubbleState extends State<ChatWidgetBubble> with AutomaticKeepA
         NavigationDelegate(
           onPageFinished: (_) => _onWrapperLoaded(),
           onWebResourceError: (error) {
-            DebugLogger.warning('Widget WebView error: ${error.description}');
+            DebugLogger.warning('Assistant widget WebView failed.');
             if (mounted) setState(() => _hasError = true);
           },
         ),
@@ -127,127 +199,155 @@ class _ChatWidgetBubbleState extends State<ChatWidgetBubble> with AutomaticKeepA
       onMessageReceived: (message) {
         final text = message.message.trim();
         if (text.isEmpty || text.length > 500) return;
-        if (!Get.isRegistered<AssistantController>()) return;
-        Get.find<AssistantController>().sendMessage(text);
+        if (mounted && _active && !_hasError) widget.onAction?.call(text);
       },
     );
     // Load the wrapper page (not the widget directly)
+    _armLoadTimeout();
     _controller.loadHtmlString(_wrapperHtml);
+  }
+
+  void _armLoadTimeout() {
+    final generation = _generation;
+    _handshakeTimer?.cancel();
+    _handshakeTimer = Timer(const Duration(seconds: 15), () {
+      if (_current(generation) && _isLoading) setState(() => _hasError = true);
+    });
   }
 
   /// Called when the wrapper HTML has finished loading.
   /// Fetches the widget HTML and injects it + data into the iframe.
   Future<void> _onWrapperLoaded() async {
-    if (!mounted) return;
+    if (!mounted || !_active) return;
+    final generation = _generation;
+    // onPageFinished can fire more than once; injecting twice would post the
+    // tool result into a document that has not handshaked yet.
+    if (_wrapperInitialized) return;
+    _wrapperInitialized = true;
 
     final widgetName = widget.message.widgetName;
     if (widgetName == null || !AssistantRepository.isValidWidgetName(widgetName)) {
-      DebugLogger.warning('ChatWidgetBubble rejected widget name: $widgetName');
+      DebugLogger.warning('Assistant widget name rejected.');
       setState(() => _hasError = true);
       return;
     }
 
     try {
-      final repository = Get.find<AssistantRepository>();
-      final html = await repository.getWidgetHtml(widgetName);
-      if (!mounted) return;
+      final repository = ref.read(assistantRepositoryProvider);
+      final html = await repository.getWidgetHtml(widgetName).timeout(const Duration(seconds: 15));
+      if (!_current(generation)) return;
       if (html == null) {
         setState(() => _hasError = true);
         return;
       }
 
       // Set theme first so the wrapper knows the theme before handshake
+      if (!mounted) return;
       final isDark = Theme.of(context).brightness == Brightness.dark;
       await _controller.runJavaScript("setTheme('${isDark ? 'dark' : 'light'}');");
-      if (!mounted) return;
+      if (!_current(generation)) return;
 
       // Load widget HTML into the iframe
       await _controller.runJavaScript('loadWidget(${jsonEncode(html)});');
-      if (!mounted) return;
+      if (!_current(generation)) return;
 
       // Inject structured data (wrapper buffers until handshake completes)
       final data = widget.message.widgetData;
       if (data != null) {
         await _controller.runJavaScript('injectToolResult(${jsonEncode(data)});');
       }
-      if (!mounted) return;
+      if (!_current(generation)) return;
 
       setState(() => _isLoading = false);
+      _scheduleHandshakeCheck();
     } catch (e) {
-      DebugLogger.error('Failed to load widget', e);
-      if (mounted) setState(() => _hasError = true);
+      DebugLogger.warning('Assistant widget failed.', e.runtimeType);
+      if (_current(generation)) setState(() => _hasError = true);
     }
+  }
+
+  /// The widget renders its own "loading" fallback until the bridge handshake
+  /// completes and the tool result lands. If that never happens it would sit
+  /// there forever, so fall back to the error state instead.
+  void _scheduleHandshakeCheck({int attempt = 1}) {
+    final generation = _generation;
+    // Generous, and retried once: a cold mid-range device parsing a ~150KB
+    // srcdoc bundle can legitimately take several seconds, and flipping a
+    // healthy widget to the error state would be worse than a slow render.
+    _handshakeTimer?.cancel();
+    _handshakeTimer = Timer(Duration(seconds: attempt == 1 ? 6 : 8), () async {
+      if (!_current(generation)) return;
+      try {
+        final ready = await _controller.runJavaScriptReturningResult('isReady()');
+        if (!_current(generation)) return;
+        // JS booleans serialize as bool | 'true' | 1 depending on the platform
+        // WebView; accept all three rather than normalising per-platform.
+        if (ready == true || ready == 'true' || ready == 1) return;
+        if (attempt == 1) {
+          _scheduleHandshakeCheck(attempt: 2);
+          return;
+        }
+        DebugLogger.warning('Assistant widget handshake timed out.');
+      } catch (e) {
+        DebugLogger.warning('Assistant widget handshake failed.', e.runtimeType);
+      }
+      if (_current(generation)) setState(() => _hasError = true);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     final palette = context.design;
+
+    // A failed widget shrinks to one line; the reply text above still answers.
+    if (_hasError) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+        child: ErrorStates.inlineError(
+          message: context.l10n.text('assistant_widget_unavailable'),
+          onRetry: _retry,
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppBorderRadius.md),
         child: Container(
           height: 400,
-          decoration: BoxDecoration(
-            color: palette.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: palette.border.withValues(alpha: 0.5)),
+          color: palette.surface,
+          child: Stack(
+            children: [
+              WebViewWidget(
+                controller: _controller,
+                gestureRecognizers: WebViewHelper.createInteractiveGestureRecognizers(),
+              ),
+              if (_isLoading) _buildLoadingOverlay(palette),
+            ],
           ),
-          child: _buildContent(palette),
         ),
       ),
     );
   }
 
-  Widget _buildContent(AppPalette palette) {
-    if (_hasError) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.widgets_outlined, size: 36, color: palette.textTertiary),
-            const SizedBox(height: 8),
-            Text(
-              'assistant_widget_unavailable'.tr,
-              style: TextStyle(fontSize: 13, color: palette.textSecondary),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Stack(
-      children: [
-        WebViewWidget(
-          controller: _controller,
-          gestureRecognizers: WebViewHelper.createInteractiveGestureRecognizers(),
-        ),
-        if (_isLoading) _buildLoadingOverlay(palette),
-      ],
-    );
-  }
-
   Widget _buildLoadingOverlay(AppPalette palette) {
     return Positioned.fill(
-      child: Container(
+      child: ColoredBox(
         color: palette.surface,
         child: Center(
-          child: Shimmer.fromColors(
-            baseColor: palette.textTertiary,
-            highlightColor: palette.textSecondary,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.widgets_outlined, size: 36, color: palette.textTertiary),
-                const SizedBox(height: 8),
-                Text(
-                  'assistant_loading_widget'.tr,
-                  style: TextStyle(fontSize: 13, color: palette.textSecondary),
-                ),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LoadingStates.buttonSpinner(size: 22, color: palette.accent),
+              const SizedBox(height: 10),
+              Text(
+                context.l10n.text('assistant_loading_widget'),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: palette.textSecondary),
+              ),
+            ],
           ),
         ),
       ),

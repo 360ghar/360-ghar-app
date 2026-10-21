@@ -1,19 +1,21 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/design/app_design_tokens.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/map/mini_map_view.dart';
+import 'package:ghar360/core/presentation/property_labels.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/core/widgets/property/property_facts.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// The scrollable details section below the hero image in a swipe card.
-///
-/// Order: highlights → property details → amenities → description → 360 → map.
+/// The scrollable half of a swipe card below the photo. Dense and flat:
+/// highlights, the facts, amenities, description, the 360° tour and the map.
 class SwipeCardDetailsSection extends StatelessWidget {
   final PropertyModel property;
   final VoidCallback? onInteractionStart;
@@ -28,468 +30,189 @@ class SwipeCardDetailsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      color: colorScheme.surface,
+    final l10n = context.l10n;
+    final text = Theme.of(context).textTheme;
+    final design = context.design;
+    final features = property.features ?? const [];
+    return ColoredBox(
+      color: design.surface,
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if ((property.features?.isNotEmpty ?? false)) ..._buildHighlights(context),
-
-            _buildPropertyDetailsCard(context),
+            if (features.isNotEmpty) ...[
+              SectionTitle(l10n.text('highlights')),
+              for (final feature in features.take(6))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      PaperIcon(KnifeIcon.star, size: 16, color: design.accent),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(feature, style: text.bodyMedium)),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            SectionTitle(l10n.text('property_details')),
+            FactGrid(facts: keyFacts(context, property)),
+            const SizedBox(height: 16),
+            FactRows(facts: _secondaryFacts(context)),
             const SizedBox(height: AppSpacing.lg),
-
-            if (property.hasAmenities) ..._buildAmenities(context),
-
+            if (property.hasAmenities) ...[
+              SectionTitle(l10n.text('amenities')),
+              AmenityList(
+                amenities: property.amenitiesData,
+                max: 8,
+                moreLabel: (hidden) => l10n.text('more_amenities', params: {'count': '$hidden'}),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
             _ExpandableDescription(description: property.description),
             const SizedBox(height: AppSpacing.lg),
-
-            if (property.virtualTourUrl != null && property.virtualTourUrl!.isNotEmpty)
-              ..._buildVirtualTour(context),
-
-            if (property.hasLocation) ..._buildLocationSection(context),
+            if (property.virtualTourUrl?.isNotEmpty == true) ...[
+              SectionTitle(l10n.text('virtual_tour_title')),
+              _TourPreview(property: property),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+            if (property.hasLocation) ...[
+              SectionTitle(
+                l10n.text('location'),
+                trailing: TextButton(
+                  onPressed: () => _openDirections(context, property),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(child: Text(l10n.text('get_directions'))),
+                      const SizedBox(width: 6),
+                      const PaperIcon(KnifeIcon.arrowUpRight, size: 16),
+                    ],
+                  ),
+                ),
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppBorderRadius.md),
+                child: SizedBox(
+                  height: 180,
+                  child: MiniMapView(latitude: property.latitude!, longitude: property.longitude!),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _sectionHeader(BuildContext context, {required IconData icon, required String title}) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: AppDesign.primaryYellow.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-          ),
-          child: Icon(icon, size: 18, color: AppDesign.primaryYellow),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: colorScheme.onSurface,
-          ),
-        ),
-      ],
-    );
-  }
-
-  List<Widget> _buildHighlights(BuildContext context) {
-    final theme = Theme.of(context);
-
+  List<Fact> _secondaryFacts(BuildContext context) {
+    final l10n = context.l10n;
     return [
-      _sectionHeader(context, icon: Icons.auto_awesome, title: 'highlights'.tr),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: (property.features ?? [])
-            .take(6)
-            .map(
-              (t) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppDesign.accentOrange.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppBorderRadius.round),
-                  border: Border.all(color: AppDesign.accentOrange.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.star_rounded, size: 16, color: AppDesign.accentOrange),
-                    const SizedBox(width: 6),
-                    Text(
-                      t,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: AppDesign.accentOrange,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-            .toList(),
+      Fact(
+        KnifeIcon.building,
+        l10n.text(property.propertyTypeLabelKey),
+        l10n.text('property_type'),
       ),
-      const SizedBox(height: AppSpacing.lg),
+      Fact(KnifeIcon.rupee, l10n.text(property.purposeTranslationKey), l10n.text('purpose')),
+      if (property.genderPreferenceTranslationKey case final key?)
+        Fact(KnifeIcon.guests, l10n.text(key), l10n.text('gender_preference')),
+      if (property.sharingTypeTranslationKey case final key?)
+        Fact(KnifeIcon.sofa, l10n.text(key), l10n.text('room_type')),
+      if (property.localizedAge(context).isNotEmpty)
+        Fact(KnifeIcon.age, property.localizedAge(context), l10n.text('age')),
+      if (property.distanceKm != null)
+        Fact(KnifeIcon.locate, property.localizedDistance(context), l10n.text('distance')),
+      if (property.shortAddressDisplay.isNotEmpty)
+        Fact(KnifeIcon.pin, property.shortAddressDisplay, l10n.text('location')),
+      if (property.builderName?.isNotEmpty == true)
+        Fact(KnifeIcon.briefcase, property.builderName!, l10n.text('builder')),
     ];
   }
+}
 
-  List<Widget> _buildAmenities(BuildContext context) {
-    final theme = Theme.of(context);
-    final amenities = property.amenitiesData;
-    const maxVisible = 8;
+/// The numbers of a home, shared by the swipe card and the details screen.
+List<Fact> keyFacts(BuildContext context, PropertyModel property) {
+  final l10n = context.l10n;
+  return [
+    if (property.bedrooms != null)
+      Fact(KnifeIcon.bed, '${property.bedrooms}', l10n.text('bedrooms')),
+    if (property.bathrooms != null)
+      Fact(KnifeIcon.bath, '${property.bathrooms}', l10n.text('bathrooms')),
+    if (property.areaSqft != null)
+      Fact(KnifeIcon.area, property.localizedArea(context), l10n.text('area')),
+    if (property.parkingSpaces != null)
+      Fact(KnifeIcon.parking, '${property.parkingSpaces}', l10n.text('parking')),
+    if (property.localizedFloor(context).isNotEmpty)
+      Fact(KnifeIcon.floor, property.localizedFloor(context), l10n.text('floor')),
+    if (property.balconies != null)
+      Fact(KnifeIcon.balcony, '${property.balconies}', l10n.text('balconies')),
+  ];
+}
 
-    return [
-      _sectionHeader(context, icon: Icons.spa_outlined, title: 'amenities'.tr),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: amenities
-            .take(maxVisible)
-            .map((amenity) => _AmenityChip(amenity: amenity))
-            .toList(),
-      ),
-      if (amenities.length > maxVisible)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(
-            'more_amenities'.trParams({'count': '${amenities.length - maxVisible}'}),
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: AppDesign.accentBlue,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      const SizedBox(height: AppSpacing.lg),
-    ];
-  }
+/// The main photo with the 360° mark; opens the tour full screen.
+class _TourPreview extends StatelessWidget {
+  const _TourPreview({required this.property});
+  final PropertyModel property;
 
-  List<Widget> _buildVirtualTour(BuildContext context) {
-    final theme = Theme.of(context);
+  static const _onPhoto = [Shadow(color: Color(0x99000000), blurRadius: 6, offset: Offset(0, 1))];
 
-    return [
-      _sectionHeader(context, icon: Icons.threesixty, title: 'virtual_tour_title'.tr),
-      const SizedBox(height: 8),
-      Material(
-        color: AppDesign.transparent,
-        child: InkWell(
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    const ink = Color(0xFFFFFFFF);
+    return Semantics(
+      button: true,
+      label: context.l10n.text('tap_to_load_virtual_tour'),
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: () => context.push(AppRoutes.tour, extra: property.virtualTourUrl),
+        child: ClipRRect(
           borderRadius: BorderRadius.circular(AppBorderRadius.md),
-          onTap: () {
-            Get.toNamed(AppRoutes.tour, arguments: property.virtualTourUrl);
-          },
-          child: Ink(
+          child: SizedBox(
             height: 200,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppBorderRadius.md),
-              border: Border.all(color: AppDesign.border),
-              boxShadow: [
-                BoxShadow(
-                  color: AppDesign.shadowColor,
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                  spreadRadius: 1,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                RobustNetworkImage(
+                  imageUrl: property.mainImage,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 800,
+                  memCacheHeight: 400,
+                ),
+                const ColoredBox(color: Color(0x66000000)),
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const PaperIcon(KnifeIcon.tour, size: 44, color: ink, shadows: _onPhoto),
+                      const SizedBox(height: 8),
+                      Text(
+                        context.l10n.text('tap_to_load_virtual_tour'),
+                        style: text.labelLarge?.copyWith(color: ink, shadows: _onPhoto),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        context.l10n.text('fullscreen_mode'),
+                        style: text.labelSmall?.copyWith(
+                          color: ink.withValues(alpha: .85),
+                          shadows: _onPhoto,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppBorderRadius.md),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  RobustNetworkImage(
-                    imageUrl: property.mainImage,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 800,
-                    memCacheHeight: 400,
-                  ),
-                  Container(color: AppDesign.shadowColor.withValues(alpha: 0.45)),
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: AppDesign.primaryYellow,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppDesign.shadowColor,
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.threesixty,
-                            color: AppDesignTokens.neutral900,
-                            size: 28,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'tap_to_load_virtual_tour'.tr,
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: AppDesign.darkTextPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'fullscreen_mode'.tr,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: AppDesign.darkTextPrimary.withValues(alpha: 0.8),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ),
-      ),
-      const SizedBox(height: AppSpacing.md),
-    ];
-  }
-
-  Widget _buildPropertyDetailsCard(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    final metrics = <_MetricTile>[];
-    if (property.bedrooms != null) {
-      metrics.add(
-        _MetricTile(icon: Icons.bed_outlined, value: '${property.bedrooms}', label: 'bedrooms'.tr),
-      );
-    }
-    if (property.bathrooms != null) {
-      metrics.add(
-        _MetricTile(
-          icon: Icons.bathtub_outlined,
-          value: '${property.bathrooms}',
-          label: 'bathrooms'.tr,
-        ),
-      );
-    }
-    if (property.areaSqft != null) {
-      metrics.add(_MetricTile(icon: Icons.square_foot, value: property.areaText, label: 'area'.tr));
-    }
-    if (property.parkingSpaces != null) {
-      metrics.add(
-        _MetricTile(
-          icon: Icons.local_parking,
-          value: '${property.parkingSpaces}',
-          label: 'parking'.tr,
-        ),
-      );
-    }
-    if (property.floorText.isNotEmpty) {
-      metrics.add(
-        _MetricTile(icon: Icons.layers_outlined, value: property.floorText, label: 'floor'.tr),
-      );
-    }
-    if (property.balconies != null) {
-      metrics.add(
-        _MetricTile(
-          icon: Icons.balcony_outlined,
-          value: '${property.balconies}',
-          label: 'balconies'.tr,
-        ),
-      );
-    }
-
-    final secondary = <_DetailFact>[
-      _DetailFact(
-        icon: Icons.apartment_outlined,
-        label: 'property_type'.tr,
-        value: property.propertyTypeTranslationKey.tr,
-      ),
-      _DetailFact(
-        icon: Icons.sell_outlined,
-        label: 'purpose'.tr,
-        value: property.purposeTranslationKey.tr,
-      ),
-      if (property.genderPreferenceTranslationKey != null)
-        _DetailFact(
-          icon: Icons.people_outline,
-          label: 'gender_preference'.tr,
-          value: property.genderPreferenceTranslationKey!.tr,
-        ),
-      if (property.sharingTypeTranslationKey != null)
-        _DetailFact(
-          icon: Icons.meeting_room_outlined,
-          label: 'room_type'.tr,
-          value: property.sharingTypeTranslationKey!.tr,
-        ),
-      if (property.ageText.isNotEmpty)
-        _DetailFact(icon: Icons.calendar_today_outlined, label: 'age'.tr, value: property.ageText),
-      if (property.distanceKm != null)
-        _DetailFact(
-          icon: Icons.near_me_outlined,
-          label: 'distance'.tr,
-          value: property.distanceText,
-        ),
-      _DetailFact(
-        icon: Icons.location_on_outlined,
-        label: 'location'.tr,
-        value: property.shortAddressDisplay,
-      ),
-      if (property.builderName?.isNotEmpty == true)
-        _DetailFact(
-          icon: Icons.business_outlined,
-          label: 'builder'.tr,
-          value: property.builderName!,
-        ),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppBorderRadius.md),
-        border: Border.all(color: AppDesign.border.withValues(alpha: 0.6)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader(context, icon: Icons.home_work_outlined, title: 'property_details'.tr),
-          if (metrics.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final crossAxisCount = constraints.maxWidth >= 360 ? 3 : 2;
-                return GridView.count(
-                  crossAxisCount: crossAxisCount,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 1.45,
-                  children: metrics
-                      .map(
-                        (m) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surface,
-                            borderRadius: BorderRadius.circular(AppBorderRadius.md),
-                            border: Border.all(color: AppDesign.border.withValues(alpha: 0.5)),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(m.icon, size: 22, color: AppDesign.primaryYellow),
-                              const SizedBox(height: 6),
-                              Text(
-                                m.value,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: colorScheme.onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                m.label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: colorScheme.onSurface.withValues(alpha: 0.6),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
-                );
-              },
-            ),
-          ],
-          if (secondary.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            ...secondary.map((fact) => _buildIconDetailRow(context, fact)),
-          ],
-        ],
       ),
     );
   }
-
-  Widget _buildIconDetailRow(BuildContext context, _DetailFact fact) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Icon(fact.icon, size: 18, color: colorScheme.onSurface.withValues(alpha: 0.55)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              fact.label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              fact.value,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _buildLocationSection(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return [
-      _sectionHeader(context, icon: Icons.map_outlined, title: 'location'.tr),
-      const SizedBox(height: 8),
-      Container(
-        height: 180,
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(AppBorderRadius.md),
-          border: Border.all(color: AppDesign.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: MiniMapView(latitude: property.latitude!, longitude: property.longitude!),
-      ),
-      const SizedBox(height: 8),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: () => _openGoogleMaps(property.latitude!, property.longitude!, property.title),
-          icon: const Icon(Icons.directions),
-          label: Text('get_directions'.tr),
-          style: OutlinedButton.styleFrom(side: const BorderSide(color: AppDesign.primaryYellow)),
-        ),
-      ),
-      const SizedBox(height: AppSpacing.md),
-    ];
-  }
 }
 
-class _MetricTile {
-  final IconData icon;
-  final String value;
-  final String label;
-
-  const _MetricTile({required this.icon, required this.value, required this.label});
-}
-
-class _DetailFact {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _DetailFact({required this.icon, required this.label, required this.value});
-}
-
-/// Collapsible description: ~5 lines with read more / read less.
+/// About five lines, with read more and read less.
 class _ExpandableDescription extends StatefulWidget {
   final String? description;
 
@@ -508,153 +231,51 @@ class _ExpandableDescriptionState extends State<_ExpandableDescription> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final raw = widget.description?.trim() ?? '';
     final hasDescription = raw.isNotEmpty;
-    final text = hasDescription ? raw : 'no_description_available'.tr;
+    final text = hasDescription ? raw : context.l10n.text('no_description_available');
     final canCollapse = hasDescription && raw.length > _expandThresholdChars;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: AppDesign.primaryYellow.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-              ),
-              child: const Icon(Icons.notes_outlined, size: 18, color: AppDesign.primaryYellow),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'description'.tr,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
+        SectionTitle(context.l10n.text('description')),
         Text(
           text,
           maxLines: canCollapse && !_expanded ? _collapsedLines : null,
           overflow: canCollapse && !_expanded ? TextOverflow.ellipsis : TextOverflow.visible,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurface.withValues(alpha: 0.7),
-            height: 1.5,
+            color: context.design.textSecondary,
+            height: 1.55,
           ),
         ),
-        if (canCollapse) ...[
-          const SizedBox(height: 6),
+        if (canCollapse)
           TextButton(
             onPressed: () => setState(() => _expanded = !_expanded),
             style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
               minimumSize: const Size(44, 44),
               alignment: Alignment.centerLeft,
             ),
-            child: Text(
-              _expanded ? 'read_less'.tr : 'read_more'.tr,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: AppDesign.primaryYellow,
-                decoration: TextDecoration.underline,
-                decorationColor: AppDesign.primaryYellow,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: Text(context.l10n.text(_expanded ? 'read_less' : 'read_more')),
           ),
-        ],
       ],
     );
   }
 }
 
-class _AmenityChip extends StatelessWidget {
-  final PropertyAmenity amenity;
-
-  const _AmenityChip({required this.amenity});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final iconUrl = amenity.icon;
-    final hasNetworkIcon =
-        iconUrl != null && (iconUrl.startsWith('http://') || iconUrl.startsWith('https://'));
-
-    final Widget leading = hasNetworkIcon
-        ? CachedNetworkImage(
-            imageUrl: iconUrl,
-            width: 16,
-            height: 16,
-            errorWidget: (_, _, _) =>
-                Icon(_amenityIconForTitle(amenity.title), size: 16, color: AppDesign.accentBlue),
-          )
-        : Icon(_amenityIconForTitle(amenity.title), size: 16, color: AppDesign.accentBlue);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppDesign.accentBlue.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppBorderRadius.round),
-        border: Border.all(color: AppDesign.accentBlue.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          leading,
-          const SizedBox(width: 6),
-          Text(
-            amenity.title,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: AppDesign.accentBlue,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-IconData _amenityIconForTitle(String title) {
-  final t = title.toLowerCase();
-  if (t.contains('pool') || t.contains('swim')) return Icons.pool;
-  if (t.contains('gym') || t.contains('fitness')) return Icons.fitness_center;
-  if (t.contains('park')) return Icons.local_parking;
-  if (t.contains('wifi') || t.contains('internet')) return Icons.wifi;
-  if (t.contains('security') || t.contains('cctv') || t.contains('guard')) {
-    return Icons.security;
-  }
-  if (t.contains('lift') || t.contains('elevator')) return Icons.elevator;
-  if (t.contains('garden') || t.contains('lawn') || t.contains('park ')) {
-    return Icons.yard_outlined;
-  }
-  if (t.contains('power') || t.contains('backup') || t.contains('generator')) {
-    return Icons.bolt;
-  }
-  if (t.contains('club') || t.contains('community')) return Icons.groups_outlined;
-  if (t.contains('play') || t.contains('kids') || t.contains('child')) {
-    return Icons.child_care_outlined;
-  }
-  if (t.contains('ac') || t.contains('air')) return Icons.ac_unit;
-  if (t.contains('water')) return Icons.water_drop_outlined;
-  if (t.contains('pet')) return Icons.pets;
-  if (t.contains('furnish')) return Icons.chair_outlined;
-  if (t.contains('balcony')) return Icons.balcony_outlined;
-  return Icons.check_circle_outline;
-}
-
-Future<void> _openGoogleMaps(double latitude, double longitude, String label) async {
+Future<void> _openDirections(BuildContext context, PropertyModel property) async {
   final url = Uri.parse(
     'https://www.google.com/maps/dir/?api=1'
-    '&destination=$latitude,$longitude&travelmode=driving',
+    '&destination=${property.latitude},${property.longitude}&travelmode=driving',
   );
   if (await canLaunchUrl(url)) {
     await launchUrl(url, mode: LaunchMode.externalApplication);
   } else {
-    AppToast.warning('unable_to_open_maps'.tr, 'check_device_settings'.tr);
+    if (!context.mounted) return;
+    AppToast.warning(
+      context.l10n.text('unable_to_open_maps'),
+      context.l10n.text('check_device_settings'),
+    );
   }
 }

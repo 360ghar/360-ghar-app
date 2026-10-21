@@ -1,81 +1,72 @@
 import 'dart:ui';
 
-import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
+import 'package:flutter/foundation.dart';
 
-import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class LocalizationController extends GetxController {
-  final GetStorage _storage = GetStorage();
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/storage_keys.dart';
 
-  // Supported languages
-  static const List<Locale> supportedLocales = [
-    Locale('en', 'US'), // English
-    Locale('hi', 'IN'), // Hindi
-  ];
+@immutable
+class LocaleSettings {
+  const LocaleSettings({required this.locale, this.persistence = const AsyncData(null)});
+  final Locale locale;
+  final AsyncValue<void> persistence;
+  String get languageName => locale.languageCode == 'hi' ? 'हिंदी' : 'English';
+}
 
-  // Current locale
-  final Rx<Locale> _currentLocale = const Locale('en', 'US').obs;
-  Locale get currentLocale => _currentLocale.value;
+final deviceLocaleProvider = Provider<Locale>((ref) => PlatformDispatcher.instance.locale);
+final localizationProvider = NotifierProvider<LocalizationController, LocaleSettings>(
+  LocalizationController.new,
+);
 
-  // Language names for display
-  final Map<String, String> languageNames = {'en_US': 'English', 'hi_IN': 'हिंदी'};
+class LocalizationController extends Notifier<LocaleSettings> {
+  static const supportedLocales = AppLocalizations.supportedLocales;
+  late AppDatabase _database;
+  Locale? _requestedLocale;
 
   @override
-  void onInit() {
-    super.onInit();
-    _loadLocale();
+  LocaleSettings build() {
+    _database = ref.watch(appDatabaseProvider);
+    final language = _database.readPreference<String>(StorageKeys.languageCode);
+    final country = _database.readPreference<String>(StorageKeys.countryCode);
+    return LocaleSettings(
+      locale: normalize(
+        language != null && country != null
+            ? Locale(language, country)
+            : ref.watch(deviceLocaleProvider),
+      ),
+    );
   }
 
-  void _loadLocale() {
-    String? languageCode = _storage.read('language_code');
-    String? countryCode = _storage.read('country_code');
+  static Locale normalize(Locale locale) =>
+      locale.languageCode == 'hi' ? const Locale('hi', 'IN') : const Locale('en', 'US');
 
-    if (languageCode != null && countryCode != null) {
-      _currentLocale.value = Locale(languageCode, countryCode);
-      Get.updateLocale(_currentLocale.value);
-    } else {
-      // No saved preference: normalize device locale to a supported one
-      final device = Get.deviceLocale;
-      final normalized = _normalizeToSupported(device);
-      _currentLocale.value = normalized;
-      Get.updateLocale(normalized);
+  Future<bool> changeLanguage(String languageCode, String countryCode) async {
+    if (state.persistence.isLoading) return false;
+    final locale = normalize(Locale(languageCode, countryCode));
+    _requestedLocale = locale;
+    state = LocaleSettings(locale: state.locale, persistence: const AsyncLoading());
+    try {
+      await _database.writePreferences({
+        StorageKeys.languageCode: locale.languageCode,
+        StorageKeys.countryCode: locale.countryCode,
+      });
+      if (!ref.mounted) return false;
+      state = LocaleSettings(locale: locale);
+      return true;
+    } catch (error, stack) {
+      if (ref.mounted) {
+        state = LocaleSettings(locale: state.locale, persistence: AsyncError(error, stack));
+      }
+      return false;
     }
   }
 
-  // Map arbitrary device locales to the closest supported locale
-  Locale _normalizeToSupported(Locale? device) {
-    if (device == null) return const Locale('en', 'US');
-
-    switch (device.languageCode) {
-      case 'hi':
-        return const Locale('hi', 'IN');
-      case 'en':
-        return const Locale('en', 'US');
-      default:
-        return const Locale('en', 'US');
-    }
+  Future<bool> retry() {
+    final locale = _requestedLocale ?? state.locale;
+    return changeLanguage(locale.languageCode, locale.countryCode ?? '');
   }
-
-  void changeLanguage(String languageCode, String countryCode) {
-    Locale newLocale = Locale(languageCode, countryCode);
-    _currentLocale.value = newLocale;
-
-    // Save to storage
-    _storage.write('language_code', languageCode);
-    _storage.write('country_code', countryCode);
-
-    // Update GetX locale
-    Get.updateLocale(newLocale);
-
-    AppToast.success('language_changed'.tr, 'language_changed_message'.tr);
-  }
-
-  String getCurrentLanguageName() {
-    String localeKey = '${_currentLocale.value.languageCode}_${_currentLocale.value.countryCode}';
-    return languageNames[localeKey] ?? 'English';
-  }
-
-  bool get isEnglish => _currentLocale.value.languageCode == 'en';
-  bool get isHindi => _currentLocale.value.languageCode == 'hi';
 }

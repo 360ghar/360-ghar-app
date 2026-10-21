@@ -2,29 +2,22 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/features/tools/presentation/controllers/loan_eligibility_controller.dart';
 import 'package:ghar360/features/tools/presentation/views/loan_eligibility_view.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/pump_app.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 void main() {
-  late LoanEligibilityController controller;
-
-  setUp(() {
-    GetxTestBinding.init();
-    controller = LoanEligibilityController();
-    Get.put<LoanEligibilityController>(controller);
-  });
-
-  tearDown(() {
-    GetxTestBinding.reset();
-  });
+  late ProviderContainer container;
+  LoanEligibilityState readState() => container.read(loanEligibilityProvider);
 
   Future<void> pumpView(WidgetTester tester) async {
-    await tester.pumpApp(const LoanEligibilityView());
+    await tester.pumpProviderApp(const LoanEligibilityView());
+    container = ProviderScope.containerOf(tester.element(find.byType(LoanEligibilityView)));
     await tester.pump();
   }
 
@@ -38,17 +31,24 @@ void main() {
 
   group('LoanEligibilityView', () {
     testWidgets('renders scaffold with correct key and app bar title', (tester) async {
-      await pumpView(tester);
+      final semantics = tester.ensureSemantics();
+      try {
+        await pumpView(tester);
 
-      expect(find.byKey(const ValueKey('qa.tools.loan_eligibility.screen')), findsOneWidget);
-      expect(find.text('Loan Eligibility'), findsOneWidget);
+        expect(find.byKey(const ValueKey('qa.tools.loan_eligibility.screen')), findsOneWidget);
+        expect(find.bySemanticsIdentifier('qa.tools.loan_eligibility.screen'), findsOneWidget);
+        expect(find.bySemanticsLabel(RegExp(r'qa\.tools')), findsNothing);
+        expect(find.text('Loan Eligibility'), findsOneWidget);
+      } finally {
+        semantics.dispose();
+      }
     });
 
     testWidgets('renders back and refresh icons in app bar', (tester) async {
       await pumpView(tester);
 
       expect(find.byTooltip('Back'), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      expect(findKnife(KnifeIcon.retry), findsOneWidget);
     });
 
     testWidgets('renders monthly income, age and existing EMI labels', (tester) async {
@@ -99,22 +99,22 @@ void main() {
 
       await tapCalculate(tester);
 
-      expect(controller.validationError.value, isNotEmpty);
-      expect(controller.hasCalculated.value, isFalse);
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      expect((readState().validationKey ?? ''), isNotEmpty);
+      expect(readState().hasCalculated, isFalse);
+      expect(findKnife(KnifeIcon.alert), findsOneWidget);
     });
 
     testWidgets('calculates eligibility and shows results', (tester) async {
       await pumpView(tester);
 
-      controller.incomeController.text = '100000';
-      controller.ageController.text = '30';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '100000';
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text = '30';
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.hasCalculated.value, isTrue);
-      expect(controller.maxLoanAmount.value, greaterThan(0));
+      expect(readState().hasCalculated, isTrue);
+      expect(readState().maxLoanAmount, greaterThan(0));
       expect(find.text('Eligibility Result'), findsOneWidget);
       expect(find.text('Maximum Loan Amount'), findsOneWidget);
       expect(find.text('Eligible EMI'), findsOneWidget);
@@ -124,20 +124,20 @@ void main() {
     testWidgets('shows info note in results', (tester) async {
       await pumpView(tester);
 
-      controller.incomeController.text = '100000';
-      controller.ageController.text = '30';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '100000';
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text = '30';
       await tester.pump();
 
       await tapCalculate(tester);
 
       // The info note with blue icon
-      expect(find.byIcon(Icons.info_outline), findsOneWidget);
+      expect(findKnife(KnifeIcon.info), findsOneWidget);
     });
 
     testWidgets('credit score slider updates controller value', (tester) async {
       await pumpView(tester);
 
-      final initialValue = controller.creditScore.value;
+      final initialValue = readState().creditScore;
       final slider = find.byType(Slider).first;
       await tester.ensureVisible(slider);
       await tester.pumpAndSettle();
@@ -146,13 +146,13 @@ void main() {
       await tester.drag(slider, const Offset(200, 0));
       await tester.pumpAndSettle();
 
-      expect(controller.creditScore.value, isNot(equals(initialValue)));
+      expect(readState().creditScore, isNot(equals(initialValue)));
     });
 
     testWidgets('interest rate slider updates controller value', (tester) async {
       await pumpView(tester);
 
-      final initialValue = controller.interestRate.value;
+      final initialValue = readState().interestRate;
       final slider = find.byType(Slider).last;
       await tester.ensureVisible(slider);
       await tester.pumpAndSettle();
@@ -161,31 +161,31 @@ void main() {
       await tester.drag(slider, const Offset(200, 0));
       await tester.pumpAndSettle();
 
-      expect(controller.interestRate.value, isNot(equals(initialValue)));
+      expect(readState().interestRate, isNot(equals(initialValue)));
     });
 
     testWidgets('refresh button clears all fields and results', (tester) async {
       await pumpView(tester);
 
-      controller.incomeController.text = '100000';
-      controller.ageController.text = '30';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '100000';
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text = '30';
       await tester.pump();
 
       await tapCalculate(tester);
-      expect(controller.hasCalculated.value, isTrue);
+      expect(readState().hasCalculated, isTrue);
 
-      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.tap(findKnife(KnifeIcon.retry));
       await tester.pumpAndSettle();
 
-      expect(controller.hasCalculated.value, isFalse);
-      expect(controller.incomeController.text, isEmpty);
-      expect(controller.ageController.text, isEmpty);
-      expect(controller.existingEmiController.text, isEmpty);
-      expect(controller.creditScore.value, 750.0);
-      expect(controller.interestRate.value, 8.5);
+      expect(readState().hasCalculated, isFalse);
+      expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text, isEmpty);
+      expect(tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text, isEmpty);
+      expect(tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text, isEmpty);
+      expect(readState().creditScore, 750.0);
+      expect(readState().interestRate, 8.5);
     });
 
-    testWidgets('back button is wired to Get.back', (tester) async {
+    testWidgets('back button is wired to Navigator.maybePop', (tester) async {
       await pumpView(tester);
 
       final backButton = find.byTooltip('Back');
@@ -214,46 +214,46 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(emiField, '5000');
 
-      expect(controller.incomeController.text, '100000');
-      expect(controller.ageController.text, '30');
-      expect(controller.existingEmiController.text, '5000');
+      expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text, '100000');
+      expect(tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text, '30');
+      expect(tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text, '5000');
     });
 
     testWidgets('calculates with existing EMI', (tester) async {
       await pumpView(tester);
 
-      controller.incomeController.text = '100000';
-      controller.ageController.text = '30';
-      controller.existingEmiController.text = '20000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '100000';
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text = '30';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '20000';
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.hasCalculated.value, isTrue);
+      expect(readState().hasCalculated, isTrue);
       // Eligible EMI should be reduced by existing EMI
-      expect(controller.eligibleEmi.value, lessThan(50000));
+      expect(readState().eligibleEmi, lessThan(50000));
     });
 
     testWidgets('returns zero eligibility when existing EMI exceeds FOIR limit', (tester) async {
       await pumpView(tester);
 
-      controller.incomeController.text = '100000';
-      controller.ageController.text = '30';
-      controller.existingEmiController.text = '60000';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '100000';
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text = '30';
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text = '60000';
       await tester.pump();
 
       await tapCalculate(tester);
 
-      expect(controller.hasCalculated.value, isTrue);
-      expect(controller.eligibleEmi.value, 0);
-      expect(controller.maxLoanAmount.value, 0);
+      expect(readState().hasCalculated, isTrue);
+      expect(readState().eligibleEmi, 0);
+      expect(readState().maxLoanAmount, 0);
     });
 
     testWidgets('formats currency in L for lakh range loan amounts', (tester) async {
       await pumpView(tester);
 
-      controller.incomeController.text = '100000';
-      controller.ageController.text = '30';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '100000';
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text = '30';
       await tester.pump();
 
       await tapCalculate(tester);
@@ -264,8 +264,8 @@ void main() {
     testWidgets('formats currency in Cr for large loan amounts', (tester) async {
       await pumpView(tester);
 
-      controller.incomeController.text = '1000000';
-      controller.ageController.text = '25';
+      tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text = '1000000';
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text = '25';
       await tester.pump();
 
       await tapCalculate(tester);

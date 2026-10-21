@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/agent_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/features/visits/presentation/widgets/agent_card.dart';
-import '../../../../helpers/getx_test_binding.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 AgentModel _testAgent({
   String name = 'Jane Smith',
   String? avatarUrl,
-  ExperienceLevel experienceLevel = ExperienceLevel.expert,
+  ExperienceLevel? experienceLevel = ExperienceLevel.expert,
   double rating = 4.8,
 }) {
   return AgentModel(
@@ -26,21 +26,11 @@ AgentModel _testAgent({
 }
 
 void main() {
-  setUp(() => GetxTestBinding.init());
-  tearDown(() => GetxTestBinding.reset());
-
-  Future<void> pumpCard(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(
-          body: Center(child: SizedBox(width: 400, child: child)),
-        ),
-      ),
-    );
-  }
+  Future<void> pumpCard(WidgetTester tester, Widget child) => tester.pumpProviderApp(
+    Scaffold(
+      body: Center(child: SizedBox(width: 400, child: child)),
+    ),
+  );
 
   testWidgets('renders agent name', (tester) async {
     await pumpCard(tester, AgentCard(agent: _testAgent()));
@@ -51,30 +41,29 @@ void main() {
   testWidgets('renders relationship manager label', (tester) async {
     await pumpCard(tester, AgentCard(agent: _testAgent()));
 
-    // 'Your Relationship Manager'.tr returns the key itself when no
-    // translation is registered for that exact string.
-    expect(find.text('Your Relationship Manager'), findsOneWidget);
+    // The English catalog provides the relationship-manager label.
+    expect(find.text('Your relationship manager'), findsOneWidget);
   });
 
   testWidgets('renders satisfaction rating with star icon', (tester) async {
     await pumpCard(tester, AgentCard(agent: _testAgent(rating: 4.8)));
 
-    expect(find.byIcon(Icons.star), findsOneWidget);
-    expect(find.text('4.8'), findsOneWidget);
+    expect(findKnife(KnifeIcon.star), findsOneWidget);
+    expect(find.textContaining('4.8', findRichText: true), findsOneWidget);
   });
 
   testWidgets('renders experience level string', (tester) async {
     await pumpCard(tester, AgentCard(agent: _testAgent()));
 
-    expect(find.byIcon(Icons.work_outline), findsOneWidget);
-    expect(find.text('Expert'), findsOneWidget);
+    expect(findKnife(KnifeIcon.briefcase), findsNothing);
+    expect(find.textContaining('Expert', findRichText: true), findsOneWidget);
   });
 
   testWidgets('renders call and whatsapp buttons with tooltips', (tester) async {
     await pumpCard(tester, AgentCard(agent: _testAgent()));
 
-    expect(find.byIcon(Icons.phone), findsOneWidget);
-    expect(find.byIcon(Icons.message), findsOneWidget);
+    expect(findKnife(KnifeIcon.phone), findsOneWidget);
+    expect(findKnife(KnifeIcon.chat), findsOneWidget);
     expect(find.byTooltip('Call'), findsOneWidget);
     expect(find.byTooltip('WhatsApp'), findsOneWidget);
   });
@@ -83,7 +72,7 @@ void main() {
     var callCount = 0;
     await pumpCard(tester, AgentCard(agent: _testAgent(), onCall: () => callCount++));
 
-    await tester.tap(find.byIcon(Icons.phone));
+    await tester.tap(findKnife(KnifeIcon.phone));
     await tester.pump();
 
     expect(callCount, 1);
@@ -93,7 +82,7 @@ void main() {
     var waCount = 0;
     await pumpCard(tester, AgentCard(agent: _testAgent(), onWhatsApp: () => waCount++));
 
-    await tester.tap(find.byIcon(Icons.message));
+    await tester.tap(findKnife(KnifeIcon.chat));
     await tester.pump();
 
     expect(waCount, 1);
@@ -103,9 +92,9 @@ void main() {
     await pumpCard(tester, AgentCard(agent: _testAgent()));
 
     // Tapping should not throw even with null callbacks (defaults to no-op).
-    await tester.tap(find.byIcon(Icons.phone));
+    await tester.tap(findKnife(KnifeIcon.phone));
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.message));
+    await tester.tap(findKnife(KnifeIcon.chat));
     await tester.pump();
 
     // No exception thrown means the test passes.
@@ -114,13 +103,13 @@ void main() {
   testWidgets('shows person icon placeholder when avatarUrl is null', (tester) async {
     await pumpCard(tester, AgentCard(agent: _testAgent(avatarUrl: null)));
 
-    expect(find.byIcon(Icons.person), findsOneWidget);
+    expect(findKnife(KnifeIcon.user), findsOneWidget);
   });
 
   testWidgets('renders beginner experience level', (tester) async {
     await pumpCard(tester, AgentCard(agent: _testAgent(experienceLevel: ExperienceLevel.beginner)));
 
-    expect(find.text('Beginner'), findsOneWidget);
+    expect(find.textContaining('Beginner', findRichText: true), findsOneWidget);
   });
 
   testWidgets('renders intermediate experience level', (tester) async {
@@ -129,12 +118,13 @@ void main() {
       AgentCard(agent: _testAgent(experienceLevel: ExperienceLevel.intermediate)),
     );
 
-    expect(find.text('Intermediate'), findsOneWidget);
+    expect(find.textContaining('Intermediate', findRichText: true), findsOneWidget);
   });
 
-  testWidgets('renders unknown experience level', (tester) async {
-    await pumpCard(tester, AgentCard(agent: _testAgent(experienceLevel: ExperienceLevel.unknown)));
+  testWidgets('shows no experience level for a value the app does not know', (tester) async {
+    await pumpCard(tester, AgentCard(agent: _testAgent(experienceLevel: null)));
 
-    expect(find.text('Unknown'), findsOneWidget);
+    expect(find.textContaining('Unknown', findRichText: true), findsNothing);
+    expect(find.textContaining('Beginner', findRichText: true), findsNothing);
   });
 }

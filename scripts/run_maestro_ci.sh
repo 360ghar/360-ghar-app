@@ -46,9 +46,27 @@ if ! command -v flutter >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v maestro >/dev/null 2>&1; then
-  echo "maestro not found. Install via: curl -Ls \"https://get.maestro.mobile.dev\" | bash" >&2
+MAESTRO_BIN="${MAESTRO_BIN:-maestro}"
+if ! command -v "${MAESTRO_BIN}" >/dev/null 2>&1; then
+  echo "Maestro executable not found: ${MAESTRO_BIN}. Set MAESTRO_BIN to its path." >&2
   exit 1
+fi
+
+# An explicit driver port prevents concurrent iOS runs from sharing a driver.
+# Older CLIs remain supported when this optional flag is not supplied.
+if [[ -n "${MAESTRO_DRIVER_HOST_PORT:-}" ]]; then
+  if [[ ! "${MAESTRO_DRIVER_HOST_PORT}" =~ ^[0-9]{1,5}$ ]] ||
+      (( 10#${MAESTRO_DRIVER_HOST_PORT} < 1 || 10#${MAESTRO_DRIVER_HOST_PORT} > 65535 )); then
+    echo "MAESTRO_DRIVER_HOST_PORT must be an integer from 1 to 65535." >&2
+    exit 1
+  fi
+  maestro_version="$("${MAESTRO_BIN}" --version | awk '/^[0-9]+\.[0-9]+\.[0-9]+([+-].*)?$/ {print; exit}')"
+  IFS=. read -r maestro_major maestro_minor _ <<< "${maestro_version}"
+  if [[ -z "${maestro_version}" ]] ||
+      (( maestro_major < 2 || (maestro_major == 2 && maestro_minor < 6) )); then
+    echo "MAESTRO_DRIVER_HOST_PORT requires Maestro 2.6.0 or newer. Check MAESTRO_BIN." >&2
+    exit 1
+  fi
 fi
 
 OUTPUT_DIR="${MAESTRO_OUTPUT_DIR:-${APP_DIR}/build/maestro/${SUITE}-${PLATFORM}}"
@@ -57,6 +75,33 @@ JUNIT_OUT="${OUTPUT_DIR}/junit.xml"
 
 # Maestro 1.39+: --device is a global flag (before subcommand), not a `test` option.
 DEVICE_ID=""
+
+select_device() {
+  local candidates="$1"
+  local device_kind="$2"
+  local candidate
+  local available=()
+  while IFS= read -r candidate; do
+    [[ -z "${candidate}" ]] || available+=("${candidate}")
+  done <<< "${candidates}"
+
+  if [[ -n "${MAESTRO_DEVICE_ID:-}" ]]; then
+    for candidate in "${available[@]}"; do
+      if [[ "${candidate}" == "${MAESTRO_DEVICE_ID}" ]]; then
+        DEVICE_ID="${candidate}"
+        return 0
+      fi
+    done
+    echo "MAESTRO_DEVICE_ID is not an available ${device_kind}: ${MAESTRO_DEVICE_ID}" >&2
+    return 1
+  fi
+
+  if [[ "${#available[@]}" -ne 1 ]]; then
+    echo "Expected exactly one ${device_kind}; found ${#available[@]}. Set MAESTRO_DEVICE_ID to an available target." >&2
+    return 1
+  fi
+  DEVICE_ID="${available[0]}"
+}
 
 ensure_ios_google_service_plist() {
   local plist="${APP_DIR}/ios/Runner/GoogleService-Info.plist"
@@ -73,13 +118,15 @@ ensure_ios_google_service_plist() {
 
   # Minimal stub so CI can compile when secrets are unavailable (Firebase features
   # won't work, but the app binary still builds for Maestro UI flows).
+  # Firebase validates API-key shape during native plugin registration, even
+  # when Dart disables Firebase. Keep this non-secret placeholder 39 characters.
   cat > "${plist}" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>ci-dummy-api-key</string>
+	<string>A00000000000000000000000000000000000000</string>
 	<key>GCM_SENDER_ID</key>
 	<string>000000000000</string>
 	<key>PLIST_VERSION</key>
@@ -114,19 +161,20 @@ build_and_install_ios() {
     exit 1
   fi
 
-  local device_id
-  device_id="$(xcrun simctl list devices booted | grep -m1 -Eo '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' || true)"
-  if [[ -z "${device_id}" ]]; then
-    echo "No booted iOS simulator found. Boot one and re-run." >&2
-    exit 1
-  fi
+  local candidates
+  candidates="$(xcrun simctl list devices booted --json | python3 -c '
+import json, sys
+for devices in json.load(sys.stdin)["devices"].values():
+    for device in devices:
+        if device.get("state") == "Booted" and device.get("isAvailable", False):
+            print(device["udid"])
+')"
+  select_device "${candidates}" "booted iOS simulator"
 
-  echo "Using iOS simulator: ${device_id}"
+  echo "Using iOS simulator: ${DEVICE_ID}"
   ensure_ios_google_service_plist
   (cd "${APP_DIR}" && flutter build ios --debug --simulator --no-codesign --dart-define-from-file="${DART_DEFINES_FILE}")
-  xcrun simctl install "${device_id}" "${APP_DIR}/build/ios/iphonesimulator/Runner.app"
-
-  DEVICE_ID="${device_id}"
+  xcrun simctl install "${DEVICE_ID}" "${APP_DIR}/build/ios/iphonesimulator/Runner.app"
 }
 
 build_and_install_android() {
@@ -135,19 +183,14 @@ build_and_install_android() {
     exit 1
   fi
 
-  local serial
-  serial="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
-  if [[ -z "${serial}" ]]; then
-    echo "No connected Android emulator/device found." >&2
-    exit 1
-  fi
+  local candidates
+  candidates="$(adb devices | awk 'NR>1 && $2=="device" {print $1}')"
+  select_device "${candidates}" "connected Android device"
 
-  echo "Using Android device: ${serial}"
-  export ANDROID_SERIAL="${serial}"
+  echo "Using Android device: ${DEVICE_ID}"
+  export ANDROID_SERIAL="${DEVICE_ID}"
   (cd "${APP_DIR}" && flutter build apk --debug --dart-define-from-file="${DART_DEFINES_FILE}")
-  adb -s "${serial}" install -r "${APP_DIR}/build/app/outputs/flutter-apk/app-debug.apk"
-
-  DEVICE_ID="${serial}"
+  adb -s "${DEVICE_ID}" install -r "${APP_DIR}/build/app/outputs/flutter-apk/app-debug.apk"
 }
 
 case "${PLATFORM}" in
@@ -167,9 +210,20 @@ cd "${APP_DIR}"
 
 echo "Running Maestro suite: ${FLOW_FILE}"
 # Global options must precede the subcommand (Maestro 1.39+ rejects `test --device`).
-maestro --device "${DEVICE_ID}" test "${FLOW_FILE}" \
+# Forward only explicitly supplied test fixtures; do not print their values.
+fixture_args=()
+for fixture_name in TEST_PHONE TEST_PASSWORD TEST_NEW_IDENTIFIER; do
+  if [[ -n "${!fixture_name:-}" ]]; then
+    fixture_args+=(-e "${fixture_name}=${!fixture_name}")
+  fi
+done
+maestro_global_args=(--device "${DEVICE_ID}")
+if [[ -n "${MAESTRO_DRIVER_HOST_PORT:-}" ]]; then
+  maestro_global_args+=(--driver-host-port "${MAESTRO_DRIVER_HOST_PORT}")
+fi
+"${MAESTRO_BIN}" "${maestro_global_args[@]}" test "${FLOW_FILE}" \
   --format junit \
   --output "${JUNIT_OUT}" \
-  -e API_BASE_URL="${API_BASE_URL}"
+  -e API_BASE_URL="${API_BASE_URL}" "${fixture_args[@]}"
 
 echo "Maestro run complete. JUnit: ${JUNIT_OUT}"

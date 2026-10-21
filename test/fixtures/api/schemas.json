@@ -1,0 +1,931 @@
+{
+  "AIConversationSummary": {
+    "enums": [],
+    "nullable": [
+      "title"
+    ],
+    "properties": [
+      "created_at",
+      "id",
+      "message_count",
+      "title",
+      "updated_at"
+    ],
+    "required": [
+      "created_at",
+      "id",
+      "updated_at"
+    ]
+  },
+  "Agent": {
+    "enums": [
+      "agent_type",
+      "experience_level"
+    ],
+    "nullable": [
+      "avatar_url",
+      "contact_number",
+      "description",
+      "languages",
+      "updated_at",
+      "working_hours"
+    ],
+    "properties": [
+      "agent_type",
+      "avatar_url",
+      "contact_number",
+      "created_at",
+      "description",
+      "experience_level",
+      "id",
+      "is_active",
+      "is_available",
+      "languages",
+      "name",
+      "total_users_assigned",
+      "updated_at",
+      "user_satisfaction_rating",
+      "working_hours"
+    ],
+    "required": [
+      "agent_type",
+      "created_at",
+      "experience_level",
+      "id",
+      "is_active",
+      "is_available",
+      "name",
+      "total_users_assigned",
+      "user_satisfaction_rating"
+    ]
+  },
+  "Amenity": {
+    "enums": [],
+    "nullable": [
+      "category",
+      "icon"
+    ],
+    "properties": [
+      "category",
+      "created_at",
+      "icon",
+      "id",
+      "is_active",
+      "title",
+      "updated_at"
+    ],
+    "required": [
+      "created_at",
+      "id",
+      "title",
+      "updated_at"
+    ]
+  },
+  "AppVersionCheckResponse": {
+    "enums": [],
+    "nullable": [
+      "download_url",
+      "latest_version",
+      "min_supported_version",
+      "release_notes"
+    ],
+    "properties": [
+      "download_url",
+      "is_mandatory",
+      "latest_version",
+      "min_supported_version",
+      "release_notes",
+      "update_available"
+    ],
+    "required": [
+      "update_available"
+    ]
+  },
+  "BugReportResponse": {
+    "enums": [
+      "bug_type",
+      "severity",
+      "status"
+    ],
+    "nullable": [
+      "actual_behavior",
+      "app_version",
+      "assigned_to",
+      "device_info",
+      "expected_behavior",
+      "media_urls",
+      "resolution",
+      "resolved_at",
+      "steps_to_reproduce",
+      "tags",
+      "updated_at",
+      "user_id"
+    ],
+    "properties": [
+      "actual_behavior",
+      "app_version",
+      "assigned_to",
+      "bug_type",
+      "created_at",
+      "description",
+      "device_info",
+      "expected_behavior",
+      "id",
+      "media_urls",
+      "resolution",
+      "resolved_at",
+      "severity",
+      "source",
+      "status",
+      "steps_to_reproduce",
+      "tags",
+      "title",
+      "updated_at",
+      "user_id"
+    ],
+    "required": [
+      "actual_behavior",
+      "app_version",
+      "assigned_to",
+      "bug_type",
+      "created_at",
+      "description",
+      "device_info",
+      "expected_behavior",
+      "id",
+      "media_urls",
+      "resolution",
+      "resolved_at",
+      "severity",
+      "source",
+      "status",
+      "steps_to_reproduce",
+      "tags",
+      "title",
+      "updated_at",
+      "user_id"
+    ]
+  },
+  "ConversationMessageOut": {
+    "enums": [],
+    "nullable": [
+      "content",
+      "tool_args",
+      "tool_name",
+      "tool_result",
+      "widget_data",
+      "widget_name"
+    ],
+    "properties": [
+      "content",
+      "created_at",
+      "id",
+      "role",
+      "tool_args",
+      "tool_name",
+      "tool_result",
+      "widget_data",
+      "widget_name"
+    ],
+    "required": [
+      "created_at",
+      "id",
+      "role"
+    ]
+  },
+  "DeviceRegistration": {
+    "enums": [
+      "app_key",
+      "platform"
+    ],
+    "nullable": [
+      "app_version",
+      "locale"
+    ],
+    "properties": [
+      "app_key",
+      "app_version",
+      "last_seen",
+      "locale",
+      "platform"
+    ],
+    "required": [
+      "app_key",
+      "last_seen",
+      "platform"
+    ]
+  },
+  "IdentifierStatusResponse": {
+    "enums": [
+      "channel",
+      "next_step"
+    ],
+    "nullable": [],
+    "properties": [
+      "channel",
+      "exists",
+      "has_password",
+      "next_step",
+      "verified"
+    ],
+    "required": [
+      "channel",
+      "exists",
+      "has_password",
+      "next_step",
+      "verified"
+    ]
+  },
+  "ListingPreferences": {
+    "enums": [
+      "gender_preference",
+      "sharing_type"
+    ],
+    "nullable": [
+      "cleanliness",
+      "expires_at",
+      "food_habits",
+      "gender_preference",
+      "guests_policy",
+      "moderation_status",
+      "parties_at_home",
+      "pets",
+      "sharing_type",
+      "smoking_drinking"
+    ],
+    "properties": [
+      "cleanliness",
+      "expires_at",
+      "food_habits",
+      "gender_preference",
+      "guests_policy",
+      "moderation_status",
+      "parties_at_home",
+      "pets",
+      "sharing_type",
+      "smoking_drinking"
+    ],
+    "required": []
+  },
+  "NotificationSettings": {
+    "enums": [],
+    "nullable": [],
+    "properties": [
+      "email_notifications",
+      "promotional_emails",
+      "push_notifications",
+      "sms_notifications"
+    ],
+    "required": []
+  },
+  "PagePublicResponse": {
+    "enums": [
+      "format"
+    ],
+    "nullable": [
+      "custom_config",
+      "updated_at"
+    ],
+    "properties": [
+      "content",
+      "custom_config",
+      "format",
+      "title",
+      "unique_name",
+      "updated_at",
+      "view_count"
+    ],
+    "required": [
+      "content",
+      "custom_config",
+      "format",
+      "title",
+      "unique_name",
+      "updated_at",
+      "view_count"
+    ]
+  },
+  "PrivacySettings": {
+    "enums": [
+      "profile_visibility"
+    ],
+    "nullable": [],
+    "properties": [
+      "allow_location_tracking",
+      "contact_sharing",
+      "data_sharing_consent",
+      "hide_last_name",
+      "location_sharing",
+      "profile_visibility",
+      "search_history_tracking",
+      "show_email",
+      "show_phone"
+    ],
+    "required": []
+  },
+  "Property": {
+    "enums": [
+      "furnishing_level",
+      "kitchen_type",
+      "management_status",
+      "property_type",
+      "purpose",
+      "status",
+      "ventilation_type"
+    ],
+    "nullable": [
+      "age_of_property",
+      "amenities",
+      "area_sqft",
+      "area_type",
+      "available_from",
+      "balconies",
+      "bathrooms",
+      "bedrooms",
+      "builder_name",
+      "calendar_data",
+      "city",
+      "compatibility_score",
+      "current_lease_id",
+      "current_tenant_id",
+      "daily_rate",
+      "description",
+      "distance_km",
+      "features",
+      "floor_number",
+      "floor_plan_url",
+      "floor_plans",
+      "full_address",
+      "furnishing_level",
+      "google_street_view_url",
+      "grace_period_days",
+      "images",
+      "kitchen_type",
+      "landmark",
+      "late_fee_policy",
+      "latitude",
+      "liked",
+      "listing_preferences",
+      "locality",
+      "longitude",
+      "main_image_url",
+      "maintenance_charges",
+      "management_status",
+      "max_occupancy",
+      "minimum_stay_days",
+      "monthly_rent",
+      "nightly_rate",
+      "other_charges",
+      "other_charges_description",
+      "owner_contact",
+      "owner_name",
+      "parking_spaces",
+      "payment_due_day",
+      "pincode",
+      "price_per_sqft",
+      "search_keywords",
+      "security_deposit",
+      "setup_cost",
+      "state",
+      "sub_locality",
+      "tags",
+      "total_floors",
+      "ventilation_shafts",
+      "ventilation_type",
+      "video_tour_url",
+      "video_urls",
+      "virtual_tour_url",
+      "windows_count"
+    ],
+    "properties": [
+      "age_of_property",
+      "amenities",
+      "area_sqft",
+      "area_type",
+      "available_from",
+      "balconies",
+      "base_price",
+      "bathrooms",
+      "bedrooms",
+      "builder_name",
+      "calendar_data",
+      "city",
+      "compatibility_score",
+      "country",
+      "created_at",
+      "current_lease_id",
+      "current_tenant_id",
+      "daily_rate",
+      "description",
+      "distance_km",
+      "features",
+      "floor_number",
+      "floor_plan_url",
+      "floor_plans",
+      "full_address",
+      "furnishing_level",
+      "google_street_view_url",
+      "grace_period_days",
+      "id",
+      "images",
+      "interest_count",
+      "is_available",
+      "is_managed",
+      "kitchen_type",
+      "landmark",
+      "late_fee_policy",
+      "latitude",
+      "like_count",
+      "liked",
+      "listing_preferences",
+      "locality",
+      "longitude",
+      "main_image_url",
+      "maintenance_charges",
+      "management_status",
+      "max_occupancy",
+      "minimum_stay_days",
+      "monthly_rent",
+      "nightly_rate",
+      "other_charges",
+      "other_charges_description",
+      "owner_contact",
+      "owner_id",
+      "owner_name",
+      "parking_spaces",
+      "payment_due_day",
+      "pincode",
+      "price_per_sqft",
+      "property_type",
+      "purpose",
+      "search_keywords",
+      "security_deposit",
+      "setup_cost",
+      "state",
+      "status",
+      "sub_locality",
+      "tags",
+      "title",
+      "total_floors",
+      "updated_at",
+      "ventilation_shafts",
+      "ventilation_type",
+      "video_tour_url",
+      "video_urls",
+      "view_count",
+      "virtual_tour_url",
+      "windows_count"
+    ],
+    "required": [
+      "base_price",
+      "created_at",
+      "id",
+      "interest_count",
+      "is_available",
+      "like_count",
+      "owner_id",
+      "property_type",
+      "purpose",
+      "status",
+      "title",
+      "updated_at",
+      "view_count"
+    ]
+  },
+  "PropertyAgent": {
+    "enums": [],
+    "nullable": [
+      "avatar_url",
+      "contact_number"
+    ],
+    "properties": [
+      "avatar_url",
+      "contact_number",
+      "id",
+      "name"
+    ],
+    "required": [
+      "id",
+      "name"
+    ]
+  },
+  "PropertyAmenityResponse": {
+    "enums": [],
+    "nullable": [
+      "category",
+      "icon"
+    ],
+    "properties": [
+      "category",
+      "icon",
+      "id",
+      "title"
+    ],
+    "required": [
+      "id",
+      "title"
+    ]
+  },
+  "PropertyDetail": {
+    "enums": [
+      "furnishing_level",
+      "kitchen_type",
+      "management_status",
+      "property_type",
+      "purpose",
+      "status",
+      "ventilation_type"
+    ],
+    "nullable": [
+      "age_of_property",
+      "agent",
+      "amenities",
+      "area_sqft",
+      "area_type",
+      "available_from",
+      "balconies",
+      "bathrooms",
+      "bedrooms",
+      "builder_name",
+      "calendar_data",
+      "city",
+      "compatibility_score",
+      "current_lease_id",
+      "current_tenant_id",
+      "daily_rate",
+      "description",
+      "distance_km",
+      "features",
+      "floor_number",
+      "floor_plan_url",
+      "floor_plans",
+      "full_address",
+      "furnishing_level",
+      "google_street_view_url",
+      "grace_period_days",
+      "images",
+      "kitchen_type",
+      "landmark",
+      "late_fee_policy",
+      "latitude",
+      "liked",
+      "listing_preferences",
+      "locality",
+      "longitude",
+      "main_image_url",
+      "maintenance_charges",
+      "management_status",
+      "max_occupancy",
+      "minimum_stay_days",
+      "monthly_rent",
+      "nightly_rate",
+      "other_charges",
+      "other_charges_description",
+      "owner_contact",
+      "owner_name",
+      "parking_spaces",
+      "payment_due_day",
+      "pincode",
+      "price_per_sqft",
+      "search_keywords",
+      "security_deposit",
+      "setup_cost",
+      "state",
+      "sub_locality",
+      "tags",
+      "total_floors",
+      "user_has_scheduled_visit",
+      "user_next_visit_date",
+      "user_scheduled_visit_count",
+      "ventilation_shafts",
+      "ventilation_type",
+      "video_tour_url",
+      "video_urls",
+      "virtual_tour_url",
+      "windows_count"
+    ],
+    "properties": [
+      "age_of_property",
+      "agent",
+      "amenities",
+      "area_sqft",
+      "area_type",
+      "available_from",
+      "balconies",
+      "base_price",
+      "bathrooms",
+      "bedrooms",
+      "builder_name",
+      "calendar_data",
+      "city",
+      "compatibility_score",
+      "country",
+      "created_at",
+      "current_lease_id",
+      "current_tenant_id",
+      "daily_rate",
+      "description",
+      "distance_km",
+      "features",
+      "floor_number",
+      "floor_plan_url",
+      "floor_plans",
+      "full_address",
+      "furnishing_level",
+      "google_street_view_url",
+      "grace_period_days",
+      "id",
+      "images",
+      "interest_count",
+      "is_available",
+      "is_managed",
+      "kitchen_type",
+      "landmark",
+      "late_fee_policy",
+      "latitude",
+      "like_count",
+      "liked",
+      "listing_preferences",
+      "locality",
+      "longitude",
+      "main_image_url",
+      "maintenance_charges",
+      "management_status",
+      "max_occupancy",
+      "minimum_stay_days",
+      "monthly_rent",
+      "nightly_rate",
+      "other_charges",
+      "other_charges_description",
+      "owner_contact",
+      "owner_id",
+      "owner_name",
+      "parking_spaces",
+      "payment_due_day",
+      "pincode",
+      "price_per_sqft",
+      "property_type",
+      "purpose",
+      "search_keywords",
+      "security_deposit",
+      "setup_cost",
+      "state",
+      "status",
+      "sub_locality",
+      "tags",
+      "title",
+      "total_floors",
+      "updated_at",
+      "user_has_scheduled_visit",
+      "user_next_visit_date",
+      "user_scheduled_visit_count",
+      "ventilation_shafts",
+      "ventilation_type",
+      "video_tour_url",
+      "video_urls",
+      "view_count",
+      "virtual_tour_url",
+      "windows_count"
+    ],
+    "required": [
+      "base_price",
+      "created_at",
+      "id",
+      "interest_count",
+      "is_available",
+      "like_count",
+      "owner_id",
+      "property_type",
+      "purpose",
+      "status",
+      "title",
+      "updated_at",
+      "view_count"
+    ]
+  },
+  "PropertyImage": {
+    "enums": [
+      "image_category"
+    ],
+    "nullable": [
+      "caption"
+    ],
+    "properties": [
+      "caption",
+      "display_order",
+      "id",
+      "image_category",
+      "image_url",
+      "is_main_image",
+      "property_id"
+    ],
+    "required": [
+      "id",
+      "image_url",
+      "property_id"
+    ]
+  },
+  "PublicUserRef": {
+    "enums": [],
+    "nullable": [
+      "avatar_url",
+      "display_name"
+    ],
+    "properties": [
+      "avatar_url",
+      "display_name",
+      "id"
+    ],
+    "required": [
+      "id"
+    ]
+  },
+  "SelfUser": {
+    "enums": [
+      "last_auth_method",
+      "role"
+    ],
+    "nullable": [
+      "agent_id",
+      "current_latitude",
+      "current_longitude",
+      "date_of_birth",
+      "email",
+      "full_name",
+      "last_auth_method",
+      "last_auth_method_at",
+      "phone",
+      "profile_image_url",
+      "updated_at"
+    ],
+    "properties": [
+      "agent_id",
+      "created_at",
+      "current_latitude",
+      "current_longitude",
+      "date_of_birth",
+      "email",
+      "email_verified",
+      "full_name",
+      "id",
+      "is_active",
+      "is_verified",
+      "last_auth_method",
+      "last_auth_method_at",
+      "notification_settings",
+      "phone",
+      "phone_verified",
+      "preferences",
+      "privacy_settings",
+      "profile_image_url",
+      "role",
+      "supabase_user_id",
+      "updated_at"
+    ],
+    "required": [
+      "created_at",
+      "id",
+      "is_active",
+      "is_verified",
+      "supabase_user_id"
+    ]
+  },
+  "SwipeOut": {
+    "enums": [],
+    "nullable": [],
+    "properties": [
+      "id",
+      "is_liked",
+      "property_id"
+    ],
+    "required": [
+      "id",
+      "is_liked",
+      "property_id"
+    ]
+  },
+  "UserLocation": {
+    "enums": [],
+    "nullable": [
+      "current_latitude",
+      "current_longitude"
+    ],
+    "properties": [
+      "current_latitude",
+      "current_longitude"
+    ],
+    "required": [
+      "current_latitude",
+      "current_longitude"
+    ]
+  },
+  "UserPreferences": {
+    "enums": [
+      "purpose"
+    ],
+    "nullable": [
+      "area_max",
+      "area_min",
+      "bedrooms_max",
+      "bedrooms_min",
+      "budget_max",
+      "budget_min",
+      "location_preference",
+      "max_distance_km",
+      "property_type",
+      "purpose"
+    ],
+    "properties": [
+      "area_max",
+      "area_min",
+      "bedrooms_max",
+      "bedrooms_min",
+      "budget_max",
+      "budget_min",
+      "location_preference",
+      "max_distance_km",
+      "property_type",
+      "purpose"
+    ],
+    "required": []
+  },
+  "Visit": {
+    "enums": [
+      "status",
+      "visit_context"
+    ],
+    "nullable": [
+      "actual_date",
+      "agent_id",
+      "agents",
+      "cancellation_reason",
+      "conversation_id",
+      "counterparty_user",
+      "counterparty_user_id",
+      "follow_up_date",
+      "interest_level",
+      "match_id",
+      "property",
+      "rescheduled_from",
+      "special_requirements",
+      "time_slot_label",
+      "updated_at",
+      "user",
+      "visit_notes",
+      "visitor_feedback"
+    ],
+    "properties": [
+      "actual_date",
+      "agent_id",
+      "agents",
+      "cancellation_reason",
+      "conversation_id",
+      "counterparty_user",
+      "counterparty_user_id",
+      "created_at",
+      "follow_up_date",
+      "follow_up_required",
+      "id",
+      "interest_level",
+      "match_id",
+      "property",
+      "property_id",
+      "rescheduled_from",
+      "scheduled_date",
+      "special_requirements",
+      "status",
+      "time_slot_label",
+      "updated_at",
+      "user",
+      "user_id",
+      "visit_context",
+      "visit_notes",
+      "visitor_feedback"
+    ],
+    "required": [
+      "created_at",
+      "id",
+      "property_id",
+      "scheduled_date",
+      "status",
+      "user_id"
+    ]
+  },
+  "VisitAgentInfo": {
+    "enums": [],
+    "nullable": [
+      "avatar_url",
+      "phone"
+    ],
+    "properties": [
+      "avatar_url",
+      "id",
+      "name",
+      "phone"
+    ],
+    "required": [
+      "id",
+      "name"
+    ]
+  }
+}

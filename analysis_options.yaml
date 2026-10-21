@@ -17,6 +17,9 @@ analyzer:
     - "**/*.gen.dart"
     - "**/*.gr.dart"
     - "**/*.mocks.dart"
+    - android/**
+    - ios/**
+    - web/**
 
 # Formatter configuration (picked up by `dart format` and modern IDEs)
 formatter:

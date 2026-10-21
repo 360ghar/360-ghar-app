@@ -1,25 +1,44 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-
+import 'package:ghar360/core/controllers/auth_controller.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_pages.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../helpers/profile_test_harness.dart';
+import '../../helpers/visits_test_support.dart';
 
 void main() {
-  test('AppPages registers every route declared in AppRoutes', () {
+  test('router registers every declared destination including public property aliases', () async {
+    final database = await visitTestDatabase();
+    final container = ProviderContainer(
+      overrides: [
+        appDatabaseProvider.overrideWithValue(database),
+        authProvider.overrideWith(ProfileTestSession.new),
+        storageScopeProvider.overrideWith(() => TestVisitScope(database)),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await database.close();
+    });
+    final router = container.read(appRouterProvider);
     final registered = <String>{};
-
-    void collectRouteNames(GetPage<dynamic> route) {
-      registered.add(route.name);
-      for (final child in route.children) {
-        collectRouteNames(child);
+    void collect(RouteBase route) {
+      if (route is GoRoute) registered.add(route.path);
+      for (final child in route.routes) {
+        collect(child);
       }
     }
 
-    for (final route in AppPages.routes) {
-      collectRouteNames(route);
+    for (final route in router.configuration.routes) {
+      collect(route);
     }
-
-    const expected = <String>{
+    expect(registered, {
+      '/',
+      '/policy/:slug',
       AppRoutes.splash,
       AppRoutes.phoneEntry,
       AppRoutes.login,
@@ -43,7 +62,6 @@ void main() {
       AppRoutes.help,
       AppRoutes.feedback,
       AppRoutes.about,
-      AppRoutes.locationSearch,
       AppRoutes.tools,
       AppRoutes.areaConverter,
       AppRoutes.loanEligibility,
@@ -52,8 +70,7 @@ void main() {
       AppRoutes.documentChecklist,
       AppRoutes.capitalGains,
       AppRoutes.assistant,
-    };
-
-    expect(registered, equals(expected));
+    });
+    expect(container.read(appRouterProvider), same(router));
   });
 }

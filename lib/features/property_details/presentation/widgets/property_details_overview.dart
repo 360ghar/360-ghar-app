@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
-
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/presentation/property_labels.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/core/widgets/property/property_details_features.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/core/widgets/property/property_facts.dart';
+import 'package:ghar360/features/discover/presentation/widgets/swipe_card_details_section.dart';
 
-/// Price, title, location line, type chips, and key stats — the scannable top block.
+/// Type, price, title, place and the key numbers: the scannable top block.
 class PropertyDetailsOverview extends StatelessWidget {
   const PropertyDetailsOverview({super.key, required this.property, this.onLocationTap});
 
@@ -16,115 +19,95 @@ class PropertyDetailsOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final text = Theme.of(context).textTheme;
+    final design = context.design;
+    final l10n = context.l10n;
+    final suffix = property.effectivePrice == null
+        ? null
+        : switch (property.purpose) {
+            PropertyPurpose.rent => l10n.text('per_month_short'),
+            PropertyPurpose.shortStay => l10n.text('per_day_short'),
+            _ => null,
+          };
+    final address = property.shortAddressDisplay.trim();
+    // Centre of the address's first line (its glyphs sit a little below the
+    // middle of the line box).
+    final size = MediaQuery.textScalerOf(context).scale(14);
+    final firstLine = ((size * 1.5 - 18) / 2 + size * 0.08).clamp(0.0, 24.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _chip(context, property.propertyTypeTranslationKey.tr),
-            _chip(context, property.listingTranslationKey.tr),
-          ],
+        Text(
+          '${l10n.text(property.propertyTypeLabelKey)} · '
+          '${l10n.text(property.listingTranslationKey)}',
+          style: text.labelLarge?.copyWith(color: design.textSecondary),
         ),
-        const SizedBox(height: AppSpacing.md),
-        RichText(
-          text: TextSpan(
+        const SizedBox(height: AppSpacing.sm),
+        Text.rich(
+          TextSpan(
+            text: property.localizedPrice(context),
+            style: text.displayMedium,
             children: [
-              TextSpan(
-                text: property.formattedPrice,
-                style: theme.textTheme.displaySmall?.copyWith(
-                  color: AppDesign.textPrimary,
-                  fontWeight: FontWeight.w700,
-                  height: 1.1,
-                ),
-              ),
-              if (property.purpose == PropertyPurpose.rent)
+              if (suffix != null)
                 TextSpan(
-                  text: 'per_month_short'.tr,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: AppDesign.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              if (property.purpose == PropertyPurpose.shortStay)
-                TextSpan(
-                  text: 'per_day_short'.tr,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: AppDesign.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  text: suffix,
+                  style: text.titleSmall?.copyWith(color: design.textSecondary),
                 ),
             ],
           ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          property.title,
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: AppDesign.textPrimary,
-            fontWeight: FontWeight.w700,
-            height: 1.25,
-          ),
-        ),
-        if (property.shortAddressDisplay.trim().isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.sm),
+        const SizedBox(height: AppSpacing.xs),
+        Text(property.title, style: text.titleLarge),
+        if (address.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
           Material(
-            color: AppDesign.transparent,
+            // Own ink layer: the white sheet below would hide the press colour.
+            type: MaterialType.transparency,
             child: InkWell(
+              key: const ValueKey('qa.property_details.address'),
               onTap: onLocationTap,
               borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.location_on_rounded, size: 18, color: AppDesign.primaryYellow),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        property.shortAddressDisplay,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: AppDesign.textSecondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  // The marks sit on the first line of the address when it wraps.
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: firstLine),
+                        child: PaperIcon(KnifeIcon.pin, size: 18, color: design.accent),
                       ),
-                    ),
-                    if (onLocationTap != null)
-                      Icon(Icons.chevron_right_rounded, size: 20, color: AppDesign.textTertiary),
-                  ],
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          address,
+                          style: text.bodyMedium?.copyWith(color: design.textSecondary),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (onLocationTap != null)
+                        Padding(
+                          padding: EdgeInsets.only(top: (firstLine - 1).clamp(0.0, 20.0)),
+                          child: PaperIcon(
+                            KnifeIcon.chevronRight,
+                            size: 20,
+                            color: design.textTertiary,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ],
         const SizedBox(height: AppSpacing.lg),
-        PropertyDetailsFeatures(property: property),
+        FactGrid(facts: keyFacts(context, property)),
       ],
-    );
-  }
-
-  Widget _chip(BuildContext context, String text) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? AppDesign.inputBackground : AppDesign.warmCream,
-        borderRadius: BorderRadius.circular(AppBorderRadius.round),
-        border: Border.all(color: AppDesign.primaryYellow.withValues(alpha: 0.35)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: isDark ? AppDesign.textPrimary : AppDesign.editorialInk,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
     );
   }
 }

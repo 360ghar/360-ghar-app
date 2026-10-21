@@ -1,0 +1,144 @@
+{
+  "history_page": {
+    "has_more": false,
+    "items": [
+      {
+        "age_of_property": null,
+        "amenities": [
+          {
+            "category": "recreation",
+            "icon": "pool",
+            "id": 11,
+            "title": "Swimming Pool"
+          },
+          {
+            "category": "utilities",
+            "icon": "battery",
+            "id": 12,
+            "title": "Power Backup"
+          }
+        ],
+        "area_sqft": 1450.0,
+        "area_type": null,
+        "available_from": "2026-11-01",
+        "balconies": null,
+        "base_price": 8500000.0,
+        "bathrooms": 2,
+        "bedrooms": 3,
+        "builder_name": null,
+        "calendar_data": null,
+        "city": "Gurugram",
+        "compatibility_score": null,
+        "country": "India",
+        "created_at": "2026-09-30T10:15:02Z",
+        "current_lease_id": null,
+        "current_tenant_id": null,
+        "daily_rate": null,
+        "description": "Corner flat with two balconies and morning light.",
+        "distance_km": null,
+        "features": [
+          "Corner unit",
+          "Vastu compliant"
+        ],
+        "floor_number": null,
+        "floor_plan_url": null,
+        "floor_plans": [
+          {
+            "caption": null,
+            "display_order": 3,
+            "id": 33,
+            "image_category": "floor_plan",
+            "image_url": "https://cdn.example.com/p3/floor_plan-3.jpg",
+            "is_main_image": false,
+            "property_id": 3
+          }
+        ],
+        "full_address": null,
+        "furnishing_level": null,
+        "google_street_view_url": null,
+        "grace_period_days": null,
+        "id": 3,
+        "images": [
+          {
+            "caption": null,
+            "display_order": 1,
+            "id": 31,
+            "image_category": "hall",
+            "image_url": "https://cdn.example.com/p3/hall-1.jpg",
+            "is_main_image": true,
+            "property_id": 3
+          },
+          {
+            "caption": null,
+            "display_order": 2,
+            "id": 32,
+            "image_category": "kitchen",
+            "image_url": "https://cdn.example.com/p3/kitchen-2.jpg",
+            "is_main_image": false,
+            "property_id": 3
+          }
+        ],
+        "interest_count": 1,
+        "is_available": true,
+        "is_managed": false,
+        "kitchen_type": null,
+        "landmark": null,
+        "late_fee_policy": null,
+        "latitude": 28.4231,
+        "like_count": 3,
+        "liked": true,
+        "listing_preferences": null,
+        "locality": "Sector 53",
+        "longitude": 77.0851,
+        "main_image_url": "https://cdn.example.com/p3/main.jpg",
+        "maintenance_charges": null,
+        "management_status": null,
+        "max_occupancy": null,
+        "minimum_stay_days": null,
+        "monthly_rent": null,
+        "nightly_rate": null,
+        "other_charges": null,
+        "other_charges_description": null,
+        "owner_contact": "+911800000360",
+        "owner_id": 7,
+        "owner_name": "Meera Shah",
+        "parking_spaces": null,
+        "payment_due_day": null,
+        "pincode": null,
+        "price_per_sqft": 5862.07,
+        "property_type": "apartment",
+        "purpose": "buy",
+        "search_keywords": null,
+        "security_deposit": null,
+        "setup_cost": null,
+        "state": null,
+        "status": "available",
+        "sub_locality": null,
+        "tags": null,
+        "title": "3 BHK in Sector 53",
+        "total_floors": null,
+        "updated_at": "2026-09-30T10:15:02Z",
+        "ventilation_shafts": null,
+        "ventilation_type": null,
+        "video_tour_url": null,
+        "video_urls": null,
+        "view_count": 12,
+        "virtual_tour_url": null,
+        "windows_count": null
+      }
+    ],
+    "limit": 50,
+    "next_cursor": null,
+    "total": null
+  },
+  "recorded": {
+    "id": 301,
+    "is_liked": true,
+    "property_id": 3
+  },
+  "updated": {
+    "id": 301,
+    "is_liked": false,
+    "property_id": 3
+  }
+}

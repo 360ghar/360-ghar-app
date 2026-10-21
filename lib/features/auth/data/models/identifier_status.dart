@@ -1,19 +1,21 @@
 // lib/features/auth/data/models/identifier_status.dart
 
-/// The channel an identifier resolves to.
-enum IdentifierChannel { email, phone }
+import 'package:ghar360/core/data/models/wire_enums.dart';
 
-/// The next step the login state-machine should take for an identifier.
-enum IdentifierNextStep { password, otp }
+export 'package:ghar360/core/data/models/wire_enums.dart'
+    show IdentifierChannel, IdentifierNextStep;
 
-/// Response of `POST /api/v1/auth/identifier-status`.
+/// Response of `POST /api/v1/auth/identifier-status` (`IdentifierStatusResponse`).
 ///
-/// Backend contract (frozen):
+/// Backend contract:
 ///   req  {identifier: string}
 ///   res  {exists, verified, has_password, channel: "email"|"phone",
 ///         next_step: "password"|"otp"}
 /// where next_step == "password" iff exists && verified && has_password,
 /// else "otp".
+///
+/// A channel or next step this app does not know is a contract break: the sign-in flow cannot
+/// pick a path for it, so parsing throws a [FormatException] instead of choosing one.
 class IdentifierStatus {
   final bool exists;
   final bool verified;
@@ -29,6 +31,18 @@ class IdentifierStatus {
     required this.nextStep,
   });
 
+  @override
+  bool operator ==(Object other) =>
+      other is IdentifierStatus &&
+      other.exists == exists &&
+      other.verified == verified &&
+      other.hasPassword == hasPassword &&
+      other.channel == channel &&
+      other.nextStep == nextStep;
+
+  @override
+  int get hashCode => Object.hash(exists, verified, hasPassword, channel, nextStep);
+
   bool get isPasswordStep => nextStep == IdentifierNextStep.password;
   bool get isOtpStep => nextStep == IdentifierNextStep.otp;
   bool get isEmail => channel == IdentifierChannel.email;
@@ -38,14 +52,23 @@ class IdentifierStatus {
   bool get isNewUser => !exists;
 
   factory IdentifierStatus.fromJson(Map<String, dynamic> json) {
-    final channelRaw = (json['channel'] as String?)?.toLowerCase().trim();
-    final nextStepRaw = (json['next_step'] as String?)?.toLowerCase().trim();
+    final exists = json['exists'];
+    final verified = json['verified'];
+    final hasPassword = json['has_password'];
+    if (exists is! bool || verified is! bool || hasPassword is! bool) {
+      throw const FormatException('identifier-status: exists, verified and has_password are bools');
+    }
+    final channel = IdentifierChannel.fromJson(json['channel']);
+    final nextStep = IdentifierNextStep.fromJson(json['next_step']);
+    if (channel == null || nextStep == null) {
+      throw const FormatException('identifier-status: unknown channel or next_step');
+    }
     return IdentifierStatus(
-      exists: json['exists'] == true,
-      verified: json['verified'] == true,
-      hasPassword: json['has_password'] == true,
-      channel: channelRaw == 'email' ? IdentifierChannel.email : IdentifierChannel.phone,
-      nextStep: nextStepRaw == 'password' ? IdentifierNextStep.password : IdentifierNextStep.otp,
+      exists: exists,
+      verified: verified,
+      hasPassword: hasPassword,
+      channel: channel,
+      nextStep: nextStep,
     );
   }
 

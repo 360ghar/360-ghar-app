@@ -1,174 +1,119 @@
-import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
-import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 
 import 'package:ghar360/core/data/models/agent_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/widgets/common/robust_network_image.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 
+/// The relationship manager as a visiting card laid on the sheet: mint stock
+/// with a hand-cut edge, a short shadow and a slight turn. The name is in
+/// the display face; role, rating and level are text; call and WhatsApp
+/// are bare icons.
 class AgentCard extends StatelessWidget {
+  const AgentCard({super.key, required this.agent, this.onCall, this.onWhatsApp});
   final AgentModel agent;
   final VoidCallback? onCall;
   final VoidCallback? onWhatsApp;
 
-  const AgentCard({super.key, required this.agent, this.onCall, this.onWhatsApp});
+  /// The card's turn on the sheet: under one degree.
+  static const turn = -0.6 * math.pi / 180;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppDesign.editorialWarm.withValues(alpha: 0.08),
-            AppDesign.editorialWarm.withValues(alpha: 0.03),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    final palette = context.design;
+    final text = Theme.of(context).textTheme;
+    final placeholder = SizedBox.square(
+      dimension: 48,
+      child: Center(child: PaperIcon(KnifeIcon.user, color: palette.textSecondary)),
+    );
+    final rating = agent.userSatisfactionRating;
+    final contact = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          onPressed: onCall,
+          tooltip: context.l10n.text('call'),
+          icon: PaperIcon(KnifeIcon.phone, color: palette.accent),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
         ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppDesign.editorialWarm.withValues(alpha: 0.15), width: 1),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Gold ring avatar
-          Container(
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppDesign.primaryYellow, width: 2),
-            ),
-            child: RobustNetworkImageExtension.avatar(
-              imageUrl: agent.avatarUrl ?? '',
-              size: 44,
-              placeholder: Container(
-                width: 44,
-                height: 44,
-                decoration: const BoxDecoration(shape: BoxShape.circle),
-                child: Icon(Icons.person, size: 22, color: AppDesign.iconColor),
-              ),
-              errorWidget: Container(
-                width: 44,
-                height: 44,
-                decoration: const BoxDecoration(shape: BoxShape.circle),
-                child: Icon(Icons.person, size: 22, color: AppDesign.iconColor),
-              ),
+        IconButton(
+          onPressed: onWhatsApp,
+          tooltip: context.l10n.text('whatsapp'),
+          icon: PaperIcon(KnifeIcon.chat, color: palette.accent),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+        ),
+      ],
+    );
+    // Large text gives the words the full width; the icons move under them.
+    final beside = MediaQuery.textScalerOf(context).scale(14) <= 21;
+    final words = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(agent.name, style: text.headlineSmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 2),
+        Text(
+          context.l10n.text('relationship_manager_card'),
+          style: text.bodySmall?.copyWith(color: palette.textSecondary),
+        ),
+        Text.rich(
+          TextSpan(
+            children: [
+              // No ratings yet reads as nothing, not as "0.0".
+              if (rating > 0) ...[
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: PaperIcon(KnifeIcon.star, size: 16, color: palette.accent),
+                ),
+                TextSpan(
+                  text:
+                      ' ${rating.toStringAsFixed(1)}${agent.experienceLevelString == null ? '' : ' · '}',
+                ),
+              ],
+              if (agent.experienceLevelString case final level?)
+                TextSpan(text: context.l10n.text(level)),
+            ],
+          ),
+          style: text.bodySmall?.copyWith(color: palette.textSecondary),
+        ),
+        if (!beside) ...[const SizedBox(height: 4), contact],
+      ],
+    );
+    return Padding(
+      // Room for the turned corners and the shadow.
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+      child: Transform.rotate(
+        angle: turn,
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            color: palette.slip,
+            shape: CutBorder(
+              seed: 'agent-${agent.id}',
+              amp: 1.5,
+              shadows: paperShadows(PaperElevation.low, palette.shadowOn(palette.surface)),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 6, 14),
+            child: Row(
+              crossAxisAlignment: beside ? CrossAxisAlignment.center : CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Your Relationship Manager'.tr,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppDesign.primaryYellowDark,
-                    letterSpacing: 0.5,
-                  ),
+                RobustNetworkImageExtension.avatar(
+                  imageUrl: agent.avatarUrl ?? '',
+                  size: 48,
+                  placeholder: placeholder,
+                  errorWidget: placeholder,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  agent.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppDesign.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    const Icon(Icons.star, size: 14, color: AppDesign.primaryYellow),
-                    const SizedBox(width: 3),
-                    Text(
-                      agent.userSatisfactionRating.toStringAsFixed(1),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppDesign.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.work_outline, size: 14, color: AppDesign.iconColor),
-                    const SizedBox(width: 3),
-                    Flexible(
-                      child: Text(
-                        agent.experienceLevelString,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: AppDesign.textSecondary),
-                      ),
-                    ),
-                  ],
-                ),
+                const SizedBox(width: 14),
+                Expanded(child: words),
+                if (beside) contact,
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          _CompactIconButton(
-            icon: Icons.phone,
-            tooltip: 'call'.tr,
-            foreground: AppDesign.primaryYellow,
-            background: AppDesign.primaryYellow.withValues(alpha: 0.08),
-            borderColor: AppDesign.primaryYellow.withValues(alpha: 0.4),
-            onTap: onCall ?? () {},
-          ),
-          const SizedBox(width: 8),
-          _CompactIconButton(
-            icon: Icons.message,
-            tooltip: 'whatsapp'.tr,
-            foreground: AppDesign.buttonText,
-            background: AppDesign.accentGreen,
-            borderColor: AppDesign.accentGreen,
-            onTap: onWhatsApp ?? () {},
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CompactIconButton extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final Color foreground;
-  final Color background;
-  final Color borderColor;
-  final VoidCallback onTap;
-
-  const _CompactIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.foreground,
-    required this.background,
-    required this.borderColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: borderColor, width: 1),
-          ),
-          alignment: Alignment.center,
-          child: Icon(icon, size: 20, color: foreground),
         ),
       ),
     );

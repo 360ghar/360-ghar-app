@@ -1,491 +1,228 @@
-// test/core/controllers/app_update_controller_test.dart
-//
-// Unit tests for [AppUpdateController]. Covers:
-// - Initial reactive state (isChecking=false, version/build null)
-// - didChangeAppLifecycleState no-op for non-resumed states
-// - getVersionInfo resolves via mocked PackageInfo platform channel
-// - scheduleCheckAfterFirstFrame does not throw without a frame pump
-// - _resolvePlatform indirectly via getVersionInfo flow
+import 'dart:async';
 
-import 'dart:io';
-
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
+
 import 'package:ghar360/core/controllers/app_update_controller.dart';
 import 'package:ghar360/core/data/models/app_update_models.dart';
-import 'package:ghar360/features/splash/data/app_update_repository.dart';
-import 'package:mocktail/mocktail.dart';
-
-import '../../helpers/getx_test_binding.dart';
-import '../../helpers/mocks.dart';
-
-// ---------------------------------------------------------------------------
-// Mocks local to this test file
-// ---------------------------------------------------------------------------
-
-/// Mock for [AppUpdateRepository] (a [GetxService]).
-class MockAppUpdateRepository extends GetxServiceMock implements AppUpdateRepository {}
+import 'package:ghar360/core/data/models/wire_enums.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/features/splash/data/app_update_platform.dart';
+import '../../helpers/app_update_test_harness.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  // Mock path_provider so GetStorage can initialise in tests.
-  const pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
-  // Mock package_info_plus so PackageInfo.fromPlatform() resolves.
-  const packageInfoChannel = MethodChannel('dev.fluttercommunity.plus/package_info');
-  // Mock url_launcher so _openDownloadUrl can complete without a real browser.
-  const urlLauncherChannel = MethodChannel('plugins.flutter.io/url_launcher');
-
-  late Directory tempDir;
-
-  setUpAll(() async {
-    Get.testMode = true;
-    // Isolate GetStorage files so parallel test suites do not lock ./GetStorage.gs.
-    tempDir = await Directory.systemTemp.createTemp('app_update_gs_');
-    registerFallbackValue(
-      const AppVersionCheckRequest(app: 'user', platform: 'android', currentVersion: '0.0.0'),
-    );
-
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      pathProviderChannel,
-      (MethodCall call) async {
-        if (call.method == 'getApplicationDocumentsDirectory') {
-          return tempDir.path;
-        }
-        return null;
-      },
-    );
-
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      packageInfoChannel,
-      (MethodCall call) async {
-        if (call.method == 'getAll') {
-          return <String, dynamic>{
-            'appName': 'ghar360',
-            'packageName': 'com.ghar360.app',
-            'version': '1.2.3',
-            'buildNumber': '42',
-            'buildSignature': '',
-            'installerStore': null,
-          };
-        }
-        return null;
-      },
-    );
-
-    // url_launcher: return true for canLaunchUrl/launchUrl so the download URL
-    // opens "successfully" in tests.
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      urlLauncherChannel,
-      (MethodCall call) async {
-        if (call.method == 'canLaunchUrl') return true;
-        if (call.method == 'launchUrl') return true;
-        return null;
-      },
-    );
-
-    await GetStorage.init();
+  late UpdateTestHarness harness;
+  setUp(() => harness = UpdateTestHarness());
+  tearDown(() => harness.dispose());
+  test('initial state is idle with no cached version or prompt', () {
+    expect(harness.state.check.isLoading, isFalse);
+    expect(harness.state.action.isLoading, isFalse);
+    expect(harness.state.prompt, isNull);
+    expect(harness.controller.currentVersion, isNull);
+    expect(harness.controller.currentBuildNumber, isNull);
   });
-
-  tearDownAll(() async {
-    if (tempDir.existsSync()) {
-      await tempDir.delete(recursive: true);
+  test('getVersionInfo loads version/build, caches, coalesces, and force refreshes', () async {
+    final results = await Future.wait([
+      harness.controller.getVersionInfo(),
+      harness.controller.getVersionInfo(),
+    ]);
+    expect(results.first?.version, '1.2.3');
+    expect(results.last?.buildNumber, 42);
+    expect(harness.controller.currentVersion, '1.2.3');
+    expect(harness.controller.currentBuildNumber, 42);
+    await harness.controller.getVersionInfo();
+    expect(harness.platform.versionCalls, 1);
+    harness.platform.version = () async => const AppVersionInfo(version: '1.2.4', buildNumber: 43);
+    expect((await harness.controller.getVersionInfo(forceRefresh: true))?.buildNumber, 43);
+    expect(harness.platform.versionCalls, 2);
+  });
+  test('version failure is recoverable and retains previous cached version', () async {
+    harness.platform.version = () async => throw StateError('package failure');
+    await harness.controller.checkForUpdates();
+    expect(harness.state.check.hasError, isTrue);
+    expect(harness.state.check.isLoading, isFalse);
+    expect(harness.repository.requests, isEmpty);
+    harness.platform.version = () async => const AppVersionInfo(version: '1');
+    await harness.controller.checkForUpdates(force: true);
+    harness.platform.version = () async => throw StateError('package failure');
+    expect((await harness.controller.getVersionInfo(forceRefresh: true))?.version, '1');
+  });
+  test('checks carry package version and build with iOS/Android platform', () async {
+    for (final platform in ['ios', 'android']) {
+      harness.platform.platform = platform;
+      await harness.controller.checkForUpdates(force: true);
+      final request = harness.repository.requests.last;
+      expect(request.platform.wire, platform);
+      expect(request.currentVersion, '1.2.3');
+      expect(request.buildNumber, 42);
+      expect(request.app, AppKey.ghar);
     }
   });
-
-  late MockAppUpdateRepository mockRepository;
-  late AppUpdateController controller;
-
-  setUp(() async {
-    GetxTestBinding.init();
-    // Clear only the key used by AppUpdateController; await flush to avoid
-    // "failed after completed" races with GetStorage microtasks.
-    await GetStorage().remove('skipped_app_version');
-
-    mockRepository = MockAppUpdateRepository();
-    // Default stub: no update available.
-    when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-      (_) async => const AppVersionCheckResponse(updateAvailable: false, isMandatory: false),
-    );
-
-    GetxTestBinding.bind().register<AppUpdateRepository>(mockRepository);
-
-    controller = AppUpdateController();
-    // onInit registers the WidgetsBindingObserver; skip onReady so the
-    // automatic post-frame update check does not run during unit tests.
-    controller.onInit();
+  test('web and unsupported desktop skip native update checks', () async {
+    for (final platform in ['web', 'unsupported']) {
+      harness.platform.platform = platform;
+      await harness.controller.checkForUpdates();
+      expect(harness.repository.requests, isEmpty);
+      expect(harness.platform.versionCalls, 0);
+    }
   });
-
-  tearDown(() async {
-    controller.onClose();
-    await GetStorage().remove('skipped_app_version');
-    GetxTestBinding.reset();
+  test('first check runs, five-minute throttle expires, force bypasses throttle', () async {
+    await harness.controller.checkForUpdates();
+    await harness.controller.checkForUpdates();
+    expect(harness.repository.requests, hasLength(1));
+    harness.now = harness.now.add(const Duration(minutes: 5));
+    await harness.controller.checkForUpdates();
+    expect(harness.repository.requests, hasLength(2));
+    await harness.controller.checkForUpdates(force: true);
+    expect(harness.repository.requests, hasLength(3));
   });
-
-  group('AppUpdateController', () {
-    // ── Initial state ─────────────────────────────────────────────────
-
-    test('isChecking is false initially', () {
-      expect(controller.isChecking.value, false);
-    });
-
-    test('currentVersion is null before getVersionInfo is called', () {
-      expect(controller.currentVersion, isNull);
-    });
-
-    test('currentBuildNumber is null before getVersionInfo is called', () {
-      expect(controller.currentBuildNumber, isNull);
-    });
-
-    // ── didChangeAppLifecycleState ────────────────────────────────────
-
-    test('didChangeAppLifecycleState with paused state is a no-op', () async {
-      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
-
-      // No repository call should have been made for a non-resumed state.
-      verifyNever(() => mockRepository.checkForUpdates(any()));
-      expect(controller.isChecking.value, false);
-    });
-
-    test('didChangeAppLifecycleState with inactive state is a no-op', () async {
-      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
-
-      verifyNever(() => mockRepository.checkForUpdates(any()));
-      expect(controller.isChecking.value, false);
-    });
-
-    test('didChangeAppLifecycleState with detached state is a no-op', () async {
-      controller.didChangeAppLifecycleState(AppLifecycleState.detached);
-
-      verifyNever(() => mockRepository.checkForUpdates(any()));
-      expect(controller.isChecking.value, false);
-    });
-
-    // ── getVersionInfo ────────────────────────────────────────────────
-
-    test('getVersionInfo resolves package info from platform channel', () async {
-      final info = await controller.getVersionInfo();
-
-      expect(info, isNotNull);
-      expect(info!.version, '1.2.3');
-      expect(info.buildNumber, 42);
-    });
-
-    test('getVersionInfo caches result (currentVersion populated after call)', () async {
-      await controller.getVersionInfo();
-
-      expect(controller.currentVersion, '1.2.3');
-      expect(controller.currentBuildNumber, 42);
-    });
-
-    test('getVersionInfo without force returns cached value', () async {
-      final first = await controller.getVersionInfo();
-      final second = await controller.getVersionInfo();
-
-      expect(second, same(first));
-    });
-
-    test('getVersionInfo with forceRefresh re-reads platform', () async {
-      final first = await controller.getVersionInfo();
-      final second = await controller.getVersionInfo(forceRefresh: true);
-
-      // A new AppVersionInfo instance is created on force refresh.
-      expect(second, isNot(same(first)));
-      expect(second?.version, '1.2.3');
-    });
-
-    // ── scheduleCheckAfterFirstFrame ──────────────────────────────────
-
-    test('scheduleCheckAfterFirstFrame does not throw without a frame', () {
-      // addPostFrameCallback is available in the test binding; the callback
-      // is queued but never pumped in a pure unit test, so this should not
-      // throw and should not synchronously trigger a repository call.
-      expect(() => controller.scheduleCheckAfterFirstFrame(), returnsNormally);
-
-      // Allow any pending microtasks to settle.
-      verifyNever(() => mockRepository.checkForUpdates(any()));
-    });
+  test('concurrent checks are suppressed even during package loading', () async {
+    final package = Completer<AppVersionInfo>();
+    harness.platform.version = () => package.future;
+    final check = harness.controller.checkForUpdates();
+    await harness.controller.checkForUpdates(force: true);
+    expect(harness.platform.versionCalls, 1);
+    expect(harness.state.check.isLoading, isTrue);
+    package.complete(const AppVersionInfo(version: '1'));
+    await check;
+    expect(harness.repository.requests, hasLength(1));
+    expect(harness.state.check.isLoading, isFalse);
   });
-
-  // ── didChangeAppLifecycleState (resumed) ───────────────────────────
-
-  group('AppUpdateController didChangeAppLifecycleState resumed', () {
-    test('triggers update check on first resume', () async {
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-
-      // Wait for the unawaited _checkForUpdates to complete.
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      verify(() => mockRepository.checkForUpdates(any())).called(1);
-    });
-
-    test('throttles subsequent resume within 5 minutes', () async {
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      // Second resume should be throttled (within 5 minutes).
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      verify(() => mockRepository.checkForUpdates(any())).called(1);
-    });
-
-    test('does not check when isChecking is already true', () async {
-      // Manually set isChecking to true to simulate an in-flight check.
-      controller.isChecking.value = true;
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      verifyNever(() => mockRepository.checkForUpdates(any()));
-    });
+  test(
+    'repository error remains distinct from no update and is throttled until explicit retry',
+    () async {
+      harness.repository.response = () async => throw NetworkException('offline');
+      await harness.controller.checkForUpdates();
+      expect(harness.state.check.error, isA<NetworkException>());
+      expect(harness.state.prompt, isNull);
+      await harness.controller.checkForUpdates();
+      expect(harness.repository.requests, hasLength(1));
+      harness.repository.response = () async => updateAvailable;
+      await harness.controller.checkForUpdates(force: true);
+      expect(harness.state.check.hasError, isFalse);
+      expect(harness.state.prompt, updateAvailable);
+      await harness.controller.checkForUpdates(force: true);
+      expect(harness.repository.requests, hasLength(2));
+    },
+  );
+  test('skipped optional version suppresses same version but not a newer one', () async {
+    harness.database.values[AppUpdateController.skippedVersionKey] = '2.0.0';
+    harness.repository.response = () async => updateAvailable;
+    await harness.controller.checkForUpdates();
+    expect(harness.state.prompt, isNull);
+    harness.repository.response = () async => updateAvailable.copyWith(latestVersion: '2.1.0');
+    await harness.controller.checkForUpdates(force: true);
+    expect(harness.state.prompt?.latestVersion, '2.1.0');
   });
-
-  // ── _resolvePlatform (indirect) ────────────────────────────────────
-
-  group('AppUpdateController platform resolution', () {
-    test('checkForUpdates request includes correct platform string', () async {
-      AppVersionCheckRequest? capturedRequest;
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer((invocation) async {
-        capturedRequest = invocation.positionalArguments[0] as AppVersionCheckRequest;
-        return const AppVersionCheckResponse(updateAvailable: false, isMandatory: false);
-      });
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      expect(capturedRequest, isNotNull);
-      // In the test environment, the platform should be resolved without
-      // throwing. It will be 'android' (default fallback) or the actual
-      // test host platform.
-      expect(capturedRequest!.platform, anyOf('android', 'ios', 'web'));
-      expect(capturedRequest!.app, 'user');
-      expect(capturedRequest!.currentVersion, '1.2.3');
-      expect(capturedRequest!.buildNumber, 42);
-    });
+  test('mandatory update clears skipped version and cannot be dismissed', () async {
+    harness.database.values[AppUpdateController.skippedVersionKey] = '2.0.0';
+    harness.repository.response = () async => updateAvailable.copyWith(isMandatory: true);
+    await harness.controller.checkForUpdates();
+    expect(harness.database.values[AppUpdateController.skippedVersionKey], isNull);
+    expect(harness.state.prompt?.isMandatory, isTrue);
+    expect(await harness.controller.act(AppUpdateAction.remindLater), isFalse);
+    expect(harness.state.prompt, isNotNull);
   });
-
-  // ── Update available (no update) ───────────────────────────────────
-
-  group('AppUpdateController no update available', () {
-    test('does not show dialog when updateAvailable is false', () async {
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(updateAvailable: false, isMandatory: false),
-      );
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      verify(() => mockRepository.checkForUpdates(any())).called(1);
-      expect(controller.isChecking.value, false);
-    });
+  test('mandatory update still prompts if clearing skipped preference fails', () async {
+    harness.database.writeError = StorageFailure('full');
+    harness.repository.response = () async => updateAvailable.copyWith(isMandatory: true);
+    await harness.controller.checkForUpdates();
+    expect(harness.state.prompt?.isMandatory, isTrue);
+    expect(harness.state.actionErrorKey, 'app_update_save_failed');
   });
-
-  // ── Error handling ─────────────────────────────────────────────────
-
-  group('AppUpdateController error handling', () {
-    test('catches repository exception and resets isChecking', () async {
-      when(() => mockRepository.checkForUpdates(any())).thenThrow(Exception('Network error'));
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      // The exception should be caught, not propagated.
-      expect(controller.isChecking.value, false);
-      verify(() => mockRepository.checkForUpdates(any())).called(1);
-    });
+  test('optional skip commits before prompt clears and duplicate actions are blocked', () async {
+    harness.repository.response = () async => updateAvailable;
+    await harness.controller.checkForUpdates();
+    final write = Completer<void>();
+    harness.database.beforeWrite = () => write.future;
+    final action = harness.controller.act(AppUpdateAction.remindLater);
+    expect(harness.state.action.isLoading, isTrue);
+    expect(harness.state.prompt, isNotNull);
+    expect(await harness.controller.act(AppUpdateAction.remindLater), isFalse);
+    write.complete();
+    expect(await action, isTrue);
+    expect(harness.database.values[AppUpdateController.skippedVersionKey], '2.0.0');
+    expect(harness.database.writes, 1);
+    expect(harness.state.prompt, isNull);
   });
-
-  // ── getVersionInfo caching ─────────────────────────────────────────
-
-  group('AppUpdateController getVersionInfo edge cases', () {
-    test('forceRefresh re-reads and returns new instance', () async {
-      final first = await controller.getVersionInfo();
-      final second = await controller.getVersionInfo(forceRefresh: true);
-
-      expect(second, isNot(same(first)));
-      expect(second?.version, '1.2.3');
-      expect(second?.buildNumber, 42);
-    });
-
-    test('currentVersion and currentBuildNumber populated after getVersionInfo', () async {
-      await controller.getVersionInfo();
-
-      expect(controller.currentVersion, '1.2.3');
-      expect(controller.currentBuildNumber, 42);
-    });
+  test('skip write failure retains prompt with retry', () async {
+    harness.repository.response = () async => updateAvailable;
+    await harness.controller.checkForUpdates();
+    harness.database.writeError = StorageFailure('full');
+    expect(await harness.controller.act(AppUpdateAction.remindLater), isFalse);
+    expect(harness.state.action.error, isA<StorageFailure>());
+    expect(harness.state.prompt, isNotNull);
+    harness.database.writeError = null;
+    expect(await harness.controller.act(AppUpdateAction.remindLater), isTrue);
+    expect(harness.state.action.hasError, isFalse);
   });
-
-  // ── Update available: mandatory ──────────────────────────────────────
-
-  group('AppUpdateController mandatory update', () {
-    test('clears skipped version from storage when mandatory update detected', () async {
-      // Seed a skipped version; mandatory update should clear it.
-      GetStorage().write('skipped_app_version', '1.5.0');
-
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: true,
-          latestVersion: '2.0.0',
-          downloadUrl: 'https://example.com/update',
-        ),
-      );
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      // Allow the unawaited _checkForUpdates (and any dialog attempt) to
-      // settle. The dialog will fail without a navigator but the exception
-      // is caught by _checkForUpdates' catch block.
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-
-      // The skipped version must have been cleared before the dialog attempt.
-      expect(GetStorage().read<String>('skipped_app_version'), isNull);
-      expect(controller.isChecking.value, false);
+  test(
+    'store failure retains prompt, successful retry opens URL and imposes 30-minute cooldown',
+    () async {
+      harness.repository.response = () async => updateAvailable;
+      await harness.controller.checkForUpdates();
+      harness.platform.launch = () async => false;
+      expect(await harness.controller.act(AppUpdateAction.update), isFalse);
+      expect(harness.state.actionErrorKey, 'app_update_open_failed');
+      expect(harness.state.prompt, isNotNull);
+      harness.platform.launch = () async => true;
+      expect(await harness.controller.act(AppUpdateAction.update), isTrue);
+      expect(harness.platform.opened.last.toString(), 'https://store.test/update');
+      harness.now = harness.now.add(const Duration(minutes: 6));
+      await harness.controller.checkForUpdates();
+      expect(harness.repository.requests, hasLength(1));
+      harness.now = harness.now.add(const Duration(minutes: 24));
+      await harness.controller.checkForUpdates();
+      expect(harness.repository.requests, hasLength(2));
+    },
+  );
+  for (final url in ['', 'not a URL', 'javascript:alert(1)']) {
+    test('invalid store URL $url stays recoverable without launching', () async {
+      harness.repository.response = () async => updateAvailable.copyWith(downloadUrl: url);
+      await harness.controller.checkForUpdates();
+      expect(await harness.controller.act(AppUpdateAction.update), isFalse);
+      expect(harness.platform.opened, isEmpty);
+      expect(harness.state.prompt, isNotNull);
     });
-
-    test('resets isChecking after mandatory update flow', () async {
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: true,
-          latestVersion: '2.0.0',
-        ),
-      );
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-
-      expect(controller.isChecking.value, false);
+  }
+  for (final result in NativeUpdateResult.values) {
+    test('native Android result $result controls custom prompt fallback', () async {
+      harness.platform.platform = 'android';
+      harness.platform.native = () async => result;
+      harness.repository.response = () async => updateAvailable.copyWith(isMandatory: true);
+      await harness.controller.checkForUpdates();
+      expect(harness.platform.nativeCalls, 1);
+      expect(harness.platform.lastMandatory, isTrue);
+      expect(harness.state.check.isLoading, isFalse);
+      expect(harness.state.prompt != null, result == NativeUpdateResult.unsupported);
     });
+  }
+  test('disposed provider rejects old check and never publishes a prompt', () async {
+    final pending = Completer<AppVersionCheckResponse>();
+    harness.repository.response = () => pending.future;
+    final work = harness.controller.checkForUpdates();
+    await Future<void>.delayed(Duration.zero);
+    harness.dispose();
+    pending.complete(updateAvailable);
+    await work;
+    expect(harness.platform.opened, isEmpty);
+    expect(harness.database.writes, 0);
   });
-
-  // ── Update available: optional + skipped ─────────────────────────────
-
-  group('AppUpdateController optional update skip logic', () {
-    test('skips dialog when latestVersion matches previously skipped version', () async {
-      GetStorage().write('skipped_app_version', '1.9.0');
-
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: false,
-          latestVersion: '1.9.0',
-        ),
-      );
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-
-      // Skipped version remains (not cleared for optional updates).
-      expect(GetStorage().read<String>('skipped_app_version'), '1.9.0');
-      expect(controller.isChecking.value, false);
-      // Repository was consulted exactly once.
-      verify(() => mockRepository.checkForUpdates(any())).called(1);
-    });
-
-    test('does not skip when skipped version differs from latest', () async {
-      GetStorage().write('skipped_app_version', '1.8.0');
-
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: false,
-          latestVersion: '1.9.0',
-        ),
-      );
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-
-      // The mismatch means the dialog path is attempted (and fails without a
-      // navigator), but the check completes without throwing.
-      expect(controller.isChecking.value, false);
-    });
-
-    test('proceeds to dialog when no skipped version stored', () async {
-      expect(GetStorage().read<String>('skipped_app_version'), isNull);
-
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: false,
-          latestVersion: '1.9.0',
-        ),
-      );
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-
-      expect(controller.isChecking.value, false);
-    });
-  });
-
-  // ── Throttling & cooldown ────────────────────────────────────────────
-
-  group('AppUpdateController throttling', () {
-    test('resumed triggers check after throttle window conceptually', () async {
-      // First check.
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-      // Second resume within 5 minutes is throttled.
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-
-      verify(() => mockRepository.checkForUpdates(any())).called(1);
-    });
-  });
-
-  // ── _resolvePlatform variants ────────────────────────────────────────
-
-  group('AppUpdateController request construction', () {
-    test('check request carries current version and build number', () async {
-      AppVersionCheckRequest? captured;
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer((inv) async {
-        captured = inv.positionalArguments[0] as AppVersionCheckRequest;
-        return const AppVersionCheckResponse(updateAvailable: false, isMandatory: false);
-      });
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-
-      expect(captured, isNotNull);
-      expect(captured!.app, 'user');
-      expect(captured!.currentVersion, '1.2.3');
-      expect(captured!.buildNumber, 42);
-      expect(captured!.platform, anyOf('android', 'ios', 'web'));
-    });
-  });
-
-  // ── isDialogVisible guard ────────────────────────────────────────────
-
-  group('AppUpdateController dialog guard', () {
-    test('does not start a check while isChecking is true', () async {
-      controller.isChecking.value = true;
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-
-      verifyNever(() => mockRepository.checkForUpdates(any()));
-      expect(controller.isChecking.value, true);
-    });
-  });
-
-  // ── onReady / scheduleCheckAfterFirstFrame ───────────────────────────
-
-  group('AppUpdateController lifecycle hooks', () {
-    test('onReady schedules a check without throwing', () {
-      // onReady calls scheduleCheckAfterFirstFrame which queues a post-frame
-      // callback. In a pure unit test the callback is never pumped, so this
-      // should not throw and should not synchronously hit the repository.
-      expect(() => controller.onReady(), returnsNormally);
-    });
-
-    test('scheduleCheckAfterFirstFrame does not throw', () {
-      expect(() => controller.scheduleCheckAfterFirstFrame(), returnsNormally);
-    });
+  testWidgets('package and store plugin hangs expose bounded recovery', (tester) async {
+    harness.platform.version = () => Completer<AppVersionInfo>().future;
+    final check = harness.controller.checkForUpdates();
+    await tester.pump(const Duration(seconds: 10));
+    await check;
+    expect(harness.state.check.error, isA<TimeoutException>());
+    harness.platform.version = () async => const AppVersionInfo(version: '1');
+    harness.repository.response = () async => updateAvailable;
+    await harness.controller.checkForUpdates(force: true);
+    harness.platform.launch = () => Completer<bool>().future;
+    final action = harness.controller.act(AppUpdateAction.update);
+    await tester.pump(const Duration(seconds: 10));
+    expect(await action, isFalse);
+    expect(harness.state.action.error, isA<TimeoutException>());
+    expect(harness.state.prompt, isNotNull);
   });
 }

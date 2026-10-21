@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/widgets/common/animated_tap_wrapper.dart';
-import '../../../helpers/getx_test_binding.dart';
+import '../../../helpers/knife_finders.dart';
 
 void main() {
-  setUp(() => GetxTestBinding.init());
-  tearDown(() => GetxTestBinding.reset());
-
   Future<void> pumpWidget(WidgetTester tester, Widget child) async {
     await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
+      MaterialApp(
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(body: Center(child: child)),
       ),
     );
@@ -42,54 +45,30 @@ void main() {
     expect(tapCalled, isTrue);
   });
 
-  testWidgets('applies a scale transform via AnimatedBuilder', (tester) async {
-    await pumpWidget(tester, AnimatedTapWrapper(onTap: () {}, child: const Text('Tap Me')));
-
-    // The wrapper uses an AnimatedBuilder + Transform.scale.
-    expect(
-      find.descendant(of: find.byType(AnimatedTapWrapper), matching: find.byType(AnimatedBuilder)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: find.byType(AnimatedTapWrapper), matching: find.byType(Transform)),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('animates scale on tap down/up', (tester) async {
+  testWidgets('dims while pressed and never scales', (tester) async {
     await pumpWidget(
       tester,
-      AnimatedTapWrapper(
-        onTap: () {},
-        scaleDown: 0.9,
-        child: const SizedBox(width: 100, height: 100),
-      ),
+      AnimatedTapWrapper(onTap: () {}, child: const SizedBox(width: 100, height: 100)),
     );
-
-    final transformBefore = tester.widget<Transform>(
+    double opacity() => tester
+        .widget<AnimatedOpacity>(
+          find.descendant(
+            of: find.byType(AnimatedTapWrapper),
+            matching: find.byType(AnimatedOpacity),
+          ),
+        )
+        .opacity;
+    expect(opacity(), 1);
+    expect(
       find.descendant(of: find.byType(AnimatedTapWrapper), matching: find.byType(Transform)),
+      findsNothing,
     );
-    // At rest the scale is 1.0.
-    expect(transformBefore.transform.getMaxScaleOnAxis(), closeTo(1.0, 0.01));
-
-    // Simulate tap down to trigger the forward animation.
     final gesture = await tester.startGesture(tester.getCenter(find.byType(AnimatedTapWrapper)));
     await tester.pump(const Duration(milliseconds: 100));
-
-    final transformDuring = tester.widget<Transform>(
-      find.descendant(of: find.byType(AnimatedTapWrapper), matching: find.byType(Transform)),
-    );
-    // While pressed the scale moves toward scaleDown (0.9).
-    expect(transformDuring.transform.getMaxScaleOnAxis(), lessThanOrEqualTo(1.0));
-
-    // Release to reverse the animation.
+    expect(opacity(), lessThan(1));
     await gesture.up();
     await tester.pumpAndSettle();
-
-    final transformAfter = tester.widget<Transform>(
-      find.descendant(of: find.byType(AnimatedTapWrapper), matching: find.byType(Transform)),
-    );
-    expect(transformAfter.transform.getMaxScaleOnAxis(), closeTo(1.0, 0.01));
+    expect(opacity(), 1);
   });
 
   testWidgets('does not attach tap handlers when onTap is null', (tester) async {
@@ -102,34 +81,35 @@ void main() {
     expect(find.text('No Tap'), findsOneWidget);
   });
 
-  group('AnimatedIconButton', () {
-    testWidgets('renders the icon and responds to tap', (tester) async {
-      var pressed = false;
-      await pumpWidget(
-        tester,
-        AnimatedIconButton(icon: Icons.favorite, onPressed: () => pressed = true),
-      );
-
-      expect(find.byIcon(Icons.favorite), findsOneWidget);
-
-      await tester.tap(find.byType(AnimatedIconButton));
-      await tester.pumpAndSettle();
-
-      expect(pressed, isTrue);
-    });
-  });
-
   group('AnimatedFavoriteIcon', () {
     testWidgets('renders favorite icon when isFavorite is true', (tester) async {
       await pumpWidget(tester, AnimatedFavoriteIcon(isFavorite: true, onToggle: () {}));
 
-      expect(find.byIcon(Icons.favorite), findsOneWidget);
+      expect(findKnife(KnifeIcon.heartSolid), findsOneWidget);
     });
 
     testWidgets('renders border icon when isFavorite is false', (tester) async {
       await pumpWidget(tester, AnimatedFavoriteIcon(isFavorite: false, onToggle: () {}));
 
-      expect(find.byIcon(Icons.favorite_border), findsOneWidget);
+      expect(findKnife(KnifeIcon.heart), findsOneWidget);
+    });
+
+    testWidgets('changes the mark only: no bounce or burst animation', (tester) async {
+      var favourite = false;
+      await pumpWidget(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) => AnimatedFavoriteIcon(
+            isFavorite: favourite,
+            onToggle: () => setState(() => favourite = !favourite),
+          ),
+        ),
+      );
+      await tester.tap(find.byType(AnimatedFavoriteIcon));
+      await tester.pump();
+      expect(findKnife(KnifeIcon.heartSolid), findsOneWidget);
+      expect(tester.hasRunningAnimations, isFalse);
+      expect(tester.getSize(find.byType(AnimatedFavoriteIcon)).height, greaterThanOrEqualTo(48));
     });
 
     testWidgets('calls onToggle when tapped', (tester) async {

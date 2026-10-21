@@ -1,8 +1,9 @@
+/// `AIConversationSummary`: one conversation in the history list.
 class ConversationModel {
-  final int? id;
+  final int id;
   final String? title;
-  final DateTime? createdAt;
-  final DateTime? updatedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
   final int messageCount;
 
   const ConversationModel({
@@ -10,36 +11,40 @@ class ConversationModel {
     this.title,
     required this.createdAt,
     required this.updatedAt,
-    required this.messageCount,
+    this.messageCount = 0,
   });
 
+  /// `id`, `created_at` and `updated_at` always come, `title` can be null and `message_count`
+  /// defaults to 0. Anything else is a contract break and throws a [FormatException]: a
+  /// conversation with no id or no date has no place in a list sorted by latest.
   factory ConversationModel.fromJson(Map<String, dynamic> json) {
-    // Don't substitute 0 for a missing/garbled id — that puts a phantom
-    // "conversation 0" into lists and breaks any client-side routing keyed
-    // on the id. Surface null; callers that need an id must validate first.
-    final int? id;
-    final rawId = json['id'];
-    if (rawId is int) {
-      id = rawId;
-    } else if (rawId is String) {
-      id = int.tryParse(rawId);
-    } else {
-      id = null;
+    final id = json['id'];
+    final createdAt = json['created_at'];
+    final updatedAt = json['updated_at'];
+    final title = json['title'];
+    final count = json['message_count'];
+    if (id is! int ||
+        createdAt is! String ||
+        updatedAt is! String ||
+        (title != null && title is! String) ||
+        (count != null && count is! int)) {
+      throw const FormatException('Conversation summary does not match the contract');
     }
-
-    // Don't silently substitute DateTime(1970) for missing/malformed
-    // timestamps — that put genuinely recent conversations at the bottom
-    // of a "sort by latest" list and rendered "Jan 1, 1970" in the UI.
-    // Surface null and let the UI handle it (greyed-out / "Unknown" date).
-    final createdAtStr = json['created_at'] as String?;
-    final updatedAtStr = json['updated_at'] as String?;
-
     return ConversationModel(
       id: id,
-      title: json['title'] as String?,
-      createdAt: createdAtStr != null ? DateTime.tryParse(createdAtStr) : null,
-      updatedAt: updatedAtStr != null ? DateTime.tryParse(updatedAtStr) : null,
-      messageCount: json['message_count'] as int? ?? 0,
+      title: title as String?,
+      createdAt: DateTime.parse(createdAt),
+      updatedAt: DateTime.parse(updatedAt),
+      messageCount: count as int? ?? 0,
     );
   }
+
+  /// The server shape, for the SQLite first-page cache.
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+    'message_count': messageCount,
+  };
 }

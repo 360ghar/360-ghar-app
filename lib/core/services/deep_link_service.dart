@@ -1,116 +1,121 @@
 import 'dart:async';
+import 'dart:convert';
 
-import 'package:app_links/app_links.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
-import 'package:get/get.dart';
+import 'package:crypto/crypto.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/routes/route_policy.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/core/utils/error_handler.dart';
-import 'package:ghar360/features/auth/data/auth_repository.dart';
 
-class DeepLinkService extends GetxService {
-  StreamSubscription? _sub;
-  final AppLinks _appLinks = AppLinks();
+/// Owns one native link subscription. Navigation does not depend on an elapsed
+/// delay; go_router accepts destinations even while the session is resolving.
+class DeepLinkService {
+  DeepLinkService({
+    required this.initialLink,
+    required this.links,
+    required this.completeOAuth,
+    required this.navigate,
+    required this.oauthState,
+  });
+  final Future<Uri?> Function() initialLink;
+  final Stream<Uri> links;
+  final Future<void> Function(Uri) completeOAuth;
+  final void Function(String) navigate;
+  final void Function(AsyncValue<void>) oauthState;
+  final Set<String> _callbacks = {};
+  StreamSubscription<Uri>? _subscription;
+  Future<void> _oauthTail = Future.value();
+  bool _started = false;
+  bool _closed = false;
+  int _receivedLinks = 0;
 
-  @override
-  void onInit() {
-    super.onInit();
-    _initDeepLinks();
-  }
-
-  @override
-  void onClose() {
-    _sub?.cancel();
-    super.onClose();
-  }
-
-  Future<void> _initDeepLinks() async {
-    if (kIsWeb) return;
-
-    try {
-      final initialUri = await _appLinks.getInitialLink();
-      if (initialUri != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _handleDeepLink(initialUri);
-        });
-      }
-    } on PlatformException catch (e) {
-      DebugLogger.warning('Failed to get initial deep link: $e');
-    }
-
-    _sub = _appLinks.uriLinkStream.listen(
-      _handleDeepLink,
-      onError: (Object err) {
-        DebugLogger.error('Deep link stream error: $err');
+  Future<void> start() async {
+    if (_started || _closed) return;
+    _started = true;
+    _subscription = links.listen(
+      (uri) {
+        if (isOAuthCallback(uri) || propertyPathForUri(uri) != null) _receivedLinks++;
+        unawaited(handle(uri));
+      },
+      onError: (Object error, StackTrace stack) {
+        DebugLogger.warning('Native link stream failed', error.runtimeType, stack);
       },
     );
-  }
-
-  void _handleDeepLink(Uri uri) {
-    DebugLogger.info('🔗 Received Deep Link: $uri');
-
-    // OAuth redirect (Supabase Google redirect flow): exchange for a session.
-    // Supabase is initialized with detectSessionInUri: false, so we do this
-    // explicitly here. The onAuthStateChange listener then drives routing.
-    if (Get.isRegistered<AuthRepository>()) {
-      final authRepository = Get.find<AuthRepository>();
-      if (authRepository.isOAuthRedirectUri(uri)) {
-        _handleOAuthRedirect(authRepository, uri);
-        return;
-      }
-    }
-
-    // Parse path segments to find property ID
-    // Supports:
-    // 1. https://the360ghar.com/p/123 (short link from _redirects)
-    // 2. https://the360ghar.com/property/123
-
-    String? propertyId;
-
-    if (uri.pathSegments.length >= 2) {
-      final firstSegment = uri.pathSegments[0];
-      if (firstSegment == 'p' || firstSegment == 'property') {
-        propertyId = uri.pathSegments[1];
-      }
-    }
-
-    if (propertyId != null && propertyId.isNotEmpty) {
-      DebugLogger.info('🔗 Navigating to Property ID: $propertyId');
-      _navigateToProperty(propertyId);
-    } else {
-      DebugLogger.warning('🔗 Could not parse Property ID from: $uri');
-    }
-  }
-
-  Future<void> _handleOAuthRedirect(AuthRepository authRepository, Uri uri) async {
-    DebugLogger.info('🔗 Handling OAuth redirect callback');
     try {
-      await authRepository.completeOAuthFromUri(uri);
-      // Session established; AuthController.onAuthStateChange drives routing.
-    } catch (e, st) {
-      DebugLogger.error('Failed to complete OAuth redirect', e, st);
-      ErrorHandler.handleAuthError(e);
+      final initialGeneration = _receivedLinks;
+      final uri = await initialLink();
+      if (uri != null &&
+          !_closed &&
+          (initialGeneration == _receivedLinks || isOAuthCallback(uri))) {
+        await handle(uri);
+      }
+    } catch (error, stack) {
+      DebugLogger.warning('Initial native link failed', error.runtimeType, stack);
     }
   }
 
-  void _navigateToProperty(String propertyId) {
-    // Small delay to ensure UI is ready/transition has settled if coming from cold start
-    Future.delayed(const Duration(milliseconds: 500), () {
-      // Shared property URLs are deliberately public routes. Navigating to the
-      // authenticated details route here caused a cold-start link for a signed
-      // out user to be redirected to phone entry, even though
-      // `propertyDeepLink` is explicitly available without AuthMiddleware.
-      Get.toNamed(propertyDeepLinkPath(propertyId));
-    });
+  Future<void> handle(Uri uri) async {
+    if (_closed) return;
+    if (isOAuthCallback(uri)) {
+      // Store only a bounded digest, never callback tokens or query parameters.
+      final digest = sha256.convert(utf8.encode(uri.toString())).toString();
+      if (!_callbacks.add(digest)) return;
+      if (_callbacks.length > 32) _callbacks.remove(_callbacks.first);
+      _oauthTail = _oauthTail.then((_) async {
+        if (_closed) return;
+        oauthState(const AsyncLoading());
+        try {
+          await completeOAuth(uri);
+          if (!_closed) oauthState(const AsyncData(null));
+        } catch (error, stack) {
+          DebugLogger.warning('OAuth callback failed', error.runtimeType, stack);
+          if (!_closed) oauthState(AsyncError(error, stack));
+        }
+      });
+      await _oauthTail;
+      return;
+    }
+    final path = propertyPathForUri(uri);
+    if (path != null) navigate(path);
   }
 
-  @visibleForTesting
-  static String propertyDeepLinkPath(String propertyId) =>
-      AppRoutes.propertyDeepLink.replaceFirst(':id', propertyId);
+  static bool isOAuthCallback(Uri uri) =>
+      uri.scheme.toLowerCase() == AppRoutes.oauthRedirectScheme &&
+      (uri.host == AppRoutes.oauthRedirectHost ||
+          (uri.host.isEmpty && uri.path == '/${AppRoutes.oauthRedirectHost}'));
 
-  /// Test-only entry point for URI routing without app_links streams.
-  @visibleForTesting
-  void handleDeepLinkForTest(Uri uri) => _handleDeepLink(uri);
+  /// The in-app property route of a public property link, or null for any other link. A
+  /// `ghar360` link reads like an https link: `ghar360://property/42` and `ghar360://p/42`
+  /// (the first path segment is the host of a custom scheme), or the https form with the scheme
+  /// swapped (`ghar360://360ghar.com/p/42`). `ghar360` is also the OAuth callback scheme; the
+  /// callback host (`login-callback`) is never a property path.
+  static String? propertyPathForUri(Uri uri) {
+    final scheme = uri.scheme.toLowerCase();
+    final host = uri.host.toLowerCase();
+    if (uri.userInfo.isNotEmpty) return null;
+    final String path;
+    if (scheme == AppRoutes.oauthRedirectScheme) {
+      if (uri.hasPort) return null;
+      path = switch (host) {
+        '360ghar.com' || 'www.360ghar.com' || '' => uri.path,
+        _ => '/$host${uri.path}',
+      };
+    } else if (scheme == 'https' || scheme == 'http') {
+      if (host != '360ghar.com' && host != 'www.360ghar.com') return null;
+      if (uri.hasPort && uri.port != 443 && uri.port != 80) return null;
+      path = uri.path;
+    } else {
+      return null;
+    }
+    final id = propertyIdFromPath(path);
+    return id == null ? null : '/property/$id';
+  }
+
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    unawaited(_subscription?.cancel());
+    _callbacks.clear();
+  }
 }

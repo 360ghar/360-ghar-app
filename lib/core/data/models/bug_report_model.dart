@@ -1,73 +1,23 @@
+import 'package:ghar360/core/data/models/wire_enums.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:meta/meta.dart';
 
+export 'package:ghar360/core/data/models/wire_enums.dart' show BugSeverity, BugStatus, BugType;
+
 part 'bug_report_model.g.dart';
 
-class BugTypeConverter implements JsonConverter<BugType, String> {
-  const BugTypeConverter();
-
-  @override
-  BugType fromJson(String json) => BugType.fromValue(json);
-
-  @override
-  String toJson(BugType object) => object.value;
+/// Length limits of `BugReportCreate`. The backend stays the authority; these keep the form from
+/// sending a value it will refuse.
+class BugReportLimits {
+  const BugReportLimits._();
+  static const source = 50;
+  static const title = 200;
+  static const appVersion = 50;
 }
 
-class BugSeverityConverter implements JsonConverter<BugSeverity, String> {
-  const BugSeverityConverter();
-
-  @override
-  BugSeverity fromJson(String json) => BugSeverity.fromValue(json);
-
-  @override
-  String toJson(BugSeverity object) => object.value;
-}
-
-/// Represents allowed bug categories for feedback submissions.
-enum BugType {
-  uiBug('ui_bug'),
-  functionalityBug('functionality_bug'),
-  performanceIssue('performance_issue'),
-  crash('crash'),
-  featureRequest('feature_request'),
-  other('other');
-
-  const BugType(this.value);
-
-  final String value;
-
-  static BugType fromValue(String? value) {
-    if (value == null) return BugType.other;
-    return BugType.values.firstWhere(
-      (type) => type.value.toLowerCase() == value.toLowerCase(),
-      orElse: () => BugType.other,
-    );
-  }
-}
-
-/// Represents bug severity reported by the user.
-enum BugSeverity {
-  low('low'),
-  medium('medium'),
-  high('high'),
-  critical('critical');
-
-  const BugSeverity(this.value);
-
-  final String value;
-
-  static BugSeverity fromValue(String? value) {
-    if (value == null) return BugSeverity.medium;
-    return BugSeverity.values.firstWhere(
-      (severity) => severity.value.toLowerCase() == value.toLowerCase(),
-      orElse: () => BugSeverity.medium,
-    );
-  }
-}
-
-/// Request payload for creating a new bug report.
+/// Request payload for creating a new bug report (`BugReportCreate`). The body is strict:
+/// every key sent is a key the backend declares.
 @immutable
-@JsonSerializable(fieldRename: FieldRename.snake)
 class BugReportRequest {
   const BugReportRequest({
     required this.source,
@@ -83,32 +33,36 @@ class BugReportRequest {
     this.tags,
   });
 
-  factory BugReportRequest.fromJson(Map<String, dynamic> json) => _$BugReportRequestFromJson(json);
-
   final String source;
-  @BugTypeConverter()
   final BugType bugType;
-  @BugSeverityConverter()
   final BugSeverity severity;
   final String title;
   final String description;
-  @JsonKey(includeIfNull: false)
   final String? stepsToReproduce;
-  @JsonKey(includeIfNull: false)
   final String? expectedBehavior;
-  @JsonKey(includeIfNull: false)
   final String? actualBehavior;
-  @JsonKey(includeIfNull: false)
   final Map<String, dynamic>? deviceInfo;
-  @JsonKey(includeIfNull: false)
   final String? appVersion;
-  @JsonKey(includeIfNull: false)
   final List<String>? tags;
 
-  Map<String, dynamic> toJson() => _$BugReportRequestToJson(this);
+  Map<String, dynamic> toJson() => {
+    'source': source,
+    'bug_type': bugType.wire,
+    'severity': severity.wire,
+    'title': title,
+    'description': description,
+    'steps_to_reproduce': ?stepsToReproduce,
+    'expected_behavior': ?expectedBehavior,
+    'actual_behavior': ?actualBehavior,
+    'device_info': ?deviceInfo,
+    'app_version': ?appVersion,
+    'tags': ?tags,
+  };
 }
 
-/// Response returned after successfully submitting a bug report.
+/// `BugReportResponse`: returned with 201 after a report is stored. The backend sends every key;
+/// a key that can be empty is null, and an empty list is `[]` or null. A missing key is a
+/// contract break.
 @JsonSerializable(fieldRename: FieldRename.snake)
 class BugReportResponse {
   const BugReportResponse({
@@ -119,52 +73,68 @@ class BugReportResponse {
     required this.status,
     required this.title,
     required this.description,
+    this.userId,
     this.stepsToReproduce,
     this.expectedBehavior,
     this.actualBehavior,
     this.deviceInfo,
     this.appVersion,
-    this.mediaUrls = const [],
-    this.tags = const [],
-    this.userId,
+    this.mediaUrls,
+    this.tags,
     this.assignedTo,
     this.resolution,
     this.resolvedAt,
-    this.createdAt,
+    required this.createdAt,
     this.updatedAt,
   });
 
-  factory BugReportResponse.fromJson(Map<String, dynamic> json) {
-    // Validate required id field to fail fast instead of defaulting to 0
-    final idValue = json['id'];
-    if (idValue is! num) {
-      throw const FormatException('BugReportResponse.id is required and must be numeric');
-    }
+  factory BugReportResponse.fromJson(Map<String, dynamic> json) =>
+      _$BugReportResponseFromJson(json);
 
-    return _$BugReportResponseFromJson(json);
-  }
-
+  @JsonKey(required: true)
   final int id;
+  @JsonKey(required: true)
   final int? userId;
+  @JsonKey(required: true)
   final String source;
+
+  /// Null for a value this app does not know.
+  @JsonKey(required: true)
   @BugTypeConverter()
-  final BugType bugType;
+  final BugType? bugType;
+  @JsonKey(required: true)
   @BugSeverityConverter()
-  final BugSeverity severity;
-  final String status;
+  final BugSeverity? severity;
+  @JsonKey(required: true)
+  @BugStatusConverter()
+  final BugStatus? status;
+  @JsonKey(required: true)
   final String title;
+  @JsonKey(required: true)
   final String description;
+  @JsonKey(required: true)
   final String? stepsToReproduce;
+  @JsonKey(required: true)
   final String? expectedBehavior;
+  @JsonKey(required: true)
   final String? actualBehavior;
+  @JsonKey(required: true)
   final Map<String, dynamic>? deviceInfo;
+  @JsonKey(required: true)
   final String? appVersion;
-  final List<String> mediaUrls;
-  final List<String> tags;
+  @JsonKey(required: true)
+  final List<String>? mediaUrls;
+  @JsonKey(required: true)
+  final List<String>? tags;
+  @JsonKey(required: true)
   final int? assignedTo;
+  @JsonKey(required: true)
   final String? resolution;
+  @JsonKey(required: true)
   final DateTime? resolvedAt;
-  final DateTime? createdAt;
+  @JsonKey(required: true)
+  final DateTime createdAt;
+  @JsonKey(required: true)
   final DateTime? updatedAt;
 
   Map<String, dynamic> toJson() => _$BugReportResponseToJson(this);

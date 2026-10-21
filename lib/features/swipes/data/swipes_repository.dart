@@ -1,64 +1,164 @@
-import 'package:get/get.dart';
+import 'dart:async';
 
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
-import 'package:ghar360/core/data/models/property_model.dart';
+import 'package:ghar360/core/data/models/swipe_models.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/data/models/unified_property_response.dart';
 import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
+import 'package:ghar360/core/network/cache_policy.dart';
 import 'package:ghar360/core/network/response_parser.dart';
+import 'package:ghar360/core/storage/storage_failure.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 
-class SwipesRepository extends GetxService implements SwipesPort {
-  SwipesRepository({ApiClient? apiClient, this.offlineQueue})
-    : _apiClient = apiClient ?? Get.find<ApiClient>();
-
+class SwipesRepository implements SwipesPort {
+  SwipesRepository({required this._apiClient, required this.offlineQueue});
   final ApiClient _apiClient;
-  final OfflineQueueService? offlineQueue;
+  final OfflineQueueService offlineQueue;
 
-  OfflineQueueService? get _queue {
-    if (offlineQueue != null) return offlineQueue;
-    if (Get.isRegistered<OfflineQueueService>()) {
-      return Get.find<OfflineQueueService>();
+  final Map<String, Future<SwipeOutcome>> _pendingRequests = {};
+
+  @override
+  Future<SwipeOutcome> recordSwipe({required int propertyId, required bool isLiked}) async {
+    if (propertyId <= 0) {
+      throw ValidationException('Invalid property.', code: 'INVALID_SWIPE');
     }
-    return null;
+    final scope = offlineQueue.scope;
+    // Durable latest intent precedes the network. A crash cannot leave an older
+    // action eligible for replay after this newer intent was sent.
+    final action = await offlineQueue.enqueueSwipe(
+      propertyId: propertyId,
+      isLiked: isLiked,
+      scope: scope,
+    );
+    return _submit(action, scope);
   }
 
-  // Record a swipe action
   @override
-  Future<void> recordSwipe({required int propertyId, required bool isLiked}) async {
-    try {
-      DebugLogger.api('👆 RECORDING SWIPE: ${isLiked ? 'LIKE' : 'DISLIKE'} property $propertyId');
-      DebugLogger.api('🔄 Swipe will update liked status to: $isLiked');
-
-      await _apiClient.post(
-        ApiPaths.swipes,
-        body: {'property_id': propertyId, 'is_liked': isLiked},
-      );
-
-      DebugLogger.success('✅ Swipe recorded successfully');
-    } on AppException catch (e) {
-      // If it's a network error, enqueue for retry instead of failing hard
-      if (e is NetworkException) {
-        DebugLogger.warning('🌐 Network error, queuing swipe for retry: ${e.message}');
-        try {
-          final queue = _queue;
-          if (queue == null) {
-            DebugLogger.error('💥 OfflineQueueService not registered; cannot enqueue swipe');
-            rethrow;
+  Future<SwipeOutcome> retryPendingSwipe(PendingAction action) {
+    final existing = _pendingRequests[action.operationId];
+    if (existing != null) return existing;
+    final scope = offlineQueue.scope;
+    final result = _submit(action, scope);
+    _pendingRequests[action.operationId] = result;
+    unawaited(
+      result.then<void>(
+        (_) {
+          if (identical(_pendingRequests[action.operationId], result)) {
+            _pendingRequests.remove(action.operationId);
           }
-          await queue.enqueueSwipe(propertyId: propertyId, isLiked: isLiked);
-        } catch (qErr) {
-          DebugLogger.error('💥 Failed to enqueue swipe: $qErr');
-          rethrow;
-        }
-        return; // swallow network errors after enqueueing
-      }
-      DebugLogger.error('❌ Failed to record swipe: ${e.message}');
-      rethrow;
+        },
+        onError: (Object _, StackTrace _) {
+          if (identical(_pendingRequests[action.operationId], result)) {
+            _pendingRequests.remove(action.operationId);
+          }
+        },
+      ),
+    );
+    return result;
+  }
+
+  Future<PendingAction> _latest(PendingAction expected, StorageScope scope) async {
+    if (!identical(scope, offlineQueue.scope) ||
+        expected.scopeKey != scope.key ||
+        expected.kind != 'swipe') {
+      throw NetworkException('Account changed.', code: 'CANCELLED');
     }
+    final propertyId = expected.payload['property_id'];
+    if (propertyId is! int || propertyId <= 0 || expected.payload['is_liked'] is! bool) {
+      throw ValidationException('Invalid saved swipe.', code: 'INVALID_SWIPE');
+    }
+    final matches = (await offlineQueue.list(scope: scope))
+        .where((action) => action.kind == 'swipe' && action.payload['property_id'] == propertyId)
+        .toList();
+    if (matches.isEmpty ||
+        matches.last.operationId != expected.operationId ||
+        matches.last.failureCode == 'SUPERSEDED') {
+      throw ValidationException('A newer swipe replaced this request.', code: 'SWIPE_SUPERSEDED');
+    }
+    final current = matches.last;
+    if (current.payload['is_liked'] != expected.payload['is_liked']) {
+      throw ValidationException('Saved swipe changed.', code: 'INVALID_SWIPE');
+    }
+    return current;
+  }
+
+  Future<SwipeOutcome> _submit(PendingAction expected, StorageScope scope) async {
+    final action = await _latest(expected, scope);
+    if (action.status == PendingActionStatus.confirmed) {
+      return ConfirmedSwipe(operationId: action.operationId);
+    }
+    await offlineQueue.update(
+      action,
+      scope: scope,
+      status: PendingActionStatus.pending,
+      attempted: true,
+    );
+    // Check again after asynchronous storage work, before sending an old intent.
+    await _latest(action, scope);
+    if (!identical(scope, offlineQueue.scope)) {
+      throw NetworkException('Cancelled.', code: 'CANCELLED');
+    }
+    SwipeOut? receipt;
+    try {
+      final response = await _apiClient.post(
+        ApiPaths.swipes,
+        body: action.payload,
+        idempotent: false,
+      );
+      try {
+        receipt = SwipeOut.fromJson(ResponseParser.object(response.body));
+      } on Object catch (error, stack) {
+        // The server answered 2xx, so the swipe is stored. An unreadable receipt does not undo it.
+        DebugLogger.warning('Swipe receipt unreadable', error.runtimeType, stack);
+      }
+    } catch (error) {
+      if (!identical(scope, offlineQueue.scope)) {
+        throw NetworkException('Cancelled.', code: 'CANCELLED');
+      }
+      final failure = error is AppException
+          ? error
+          : ServerException('Swipe outcome is unknown.', code: 'UNKNOWN');
+      final unresolved =
+          failure.isRetryableOffline ||
+          failure is ServerException ||
+          (failure is ApiException && (failure.statusCode == null || failure.statusCode! >= 500));
+      final latest = await _latest(action, scope);
+      try {
+        await offlineQueue.update(
+          latest,
+          scope: scope,
+          status: unresolved ? PendingActionStatus.pending : PendingActionStatus.failed,
+          failureCode: failure.code ?? (unresolved ? 'UNRESOLVED' : 'REJECTED'),
+        );
+      } on StorageFailure {
+        if (!identical(scope, offlineQueue.scope)) {
+          throw NetworkException('Cancelled.', code: 'CANCELLED');
+        }
+        if (unresolved) return PendingSwipe(latest);
+        rethrow;
+      }
+      if (!unresolved) throw failure;
+      return PendingSwipe(await _latest(action, scope));
+    }
+    if (!identical(scope, offlineQueue.scope)) {
+      throw NetworkException('Cancelled.', code: 'CANCELLED');
+    }
+    final latest = await _latest(action, scope);
+    try {
+      await offlineQueue.update(latest, scope: scope, status: PendingActionStatus.confirmed);
+    } on StorageFailure {
+      if (!identical(scope, offlineQueue.scope)) {
+        throw NetworkException('Cancelled.', code: 'CANCELLED');
+      }
+      // The server reply is known, but its durable receipt is not. Keep the
+      // existing operation visible for explicit review instead of inventing a
+      // replacement operation or claiming its local confirmation was saved.
+      return PendingSwipe(latest);
+    }
+    return ConfirmedSwipe(operationId: action.operationId, swipe: receipt);
   }
 
   // Get swipe history properties with comprehensive filtering
@@ -77,7 +177,7 @@ class SwipesRepository extends GetxService implements SwipesPort {
         'limit=$limit, liked=$isLiked, filters=${filters.activeFilterCount} active',
       );
 
-      final queryParams = <String, dynamic>{'limit': limit.toString()};
+      final queryParams = <String, dynamic>{'limit': limit.clamp(1, 100).toString()};
       // Omit `cursor` on the first page; backend treats absence/null as page 1.
       if (cursor != null && cursor.isNotEmpty) {
         queryParams['cursor'] = cursor;
@@ -85,7 +185,10 @@ class SwipesRepository extends GetxService implements SwipesPort {
 
       if (latitude != null) queryParams['lat'] = latitude.toString();
       if (longitude != null) queryParams['lng'] = longitude.toString();
-      if (filters.radiusKm != null) queryParams['radius'] = filters.radiusKm!.toInt().toString();
+      if (filters.radiusKm != null) {
+        queryParams['radius'] = UnifiedFilterModel.apiRadiusKm(filters.radiusKm!).toString();
+      }
+      // GET /swipes takes the same filter keys as GET /properties, so every filter applies.
       final canonicalFilterParams = filters.toApiQueryParams();
       canonicalFilterParams.forEach((key, value) {
         if (value == null) return;
@@ -112,71 +215,16 @@ class SwipesRepository extends GetxService implements SwipesPort {
         queryParams: queryParams,
         useCache: false,
       );
-      final rawBody = apiResponse.body;
-      final responseJson = rawBody is Map<String, dynamic>
-          ? rawBody
-          : <String, dynamic>{'items': const <dynamic>[]};
-      final payload = ResponseParser.unwrapObject(responseJson);
-
-      // Log raw API response for debugging
-      DebugLogger.api('📊 [SWIPES_REPO] RAW API RESPONSE: $responseJson');
-
-      // Parse properties from the uniform cursor envelope (`items`).
-      final List<dynamic> propertiesJson = payload['items'] as List<dynamic>? ?? const <dynamic>[];
-      DebugLogger.api(
-        '📦 [SWIPES_REPO] Cursor envelope: Found ${propertiesJson.length} properties in response',
-      );
-
-      final properties = <PropertyModel>[];
-      for (int i = 0; i < propertiesJson.length; i++) {
-        try {
-          final item = propertiesJson[i];
-          if (item is Map<String, dynamic>) {
-            final property = PropertyModel.fromJson(item);
-            properties.add(property);
-          } else if (item is Map) {
-            final property = PropertyModel.fromJson(Map<String, dynamic>.from(item));
-            properties.add(property);
-          }
-        } catch (e) {
-          DebugLogger.error('❌ [SWIPES_REPO] Error parsing property ${i + 1}: $e');
-          DebugLogger.error('❌ [SWIPES_REPO] Property data: ${propertiesJson[i]}');
-          // Continue with other properties instead of failing entirely
-        }
+      // A row that cannot be read fails the page, so a partial page never looks complete.
+      final UnifiedPropertyResponse unifiedResponse;
+      try {
+        unifiedResponse = markCachePolicy(
+          UnifiedPropertyResponse.fromJson(ResponseParser.object(apiResponse.body)),
+          apiResponse.headers,
+        );
+      } on Object {
+        throw ServerException('Invalid swipe history response', code: 'MALFORMED_RESPONSE');
       }
-
-      // Build the uniform cursor-paginated response from backend signals.
-      final hasMore = ResponseParser.extractHasMore(payload);
-      final nextCursor = ResponseParser.extractNextCursor(payload);
-      final searchCenter = () {
-        try {
-          final searchCenterData = payload['search_center'];
-          if (searchCenterData != null) {
-            final lat = searchCenterData['latitude'] ?? searchCenterData['lat'];
-            final lng = searchCenterData['longitude'] ?? searchCenterData['lng'];
-            num? toNum(dynamic v) => v is num ? v : (v is String ? num.tryParse(v) : null);
-            final nLat = toNum(lat), nLng = toNum(lng);
-            if (nLat != null && nLng != null) {
-              return SearchCenter(latitude: nLat.toDouble(), longitude: nLng.toDouble());
-            }
-          }
-          return null;
-        } catch (e) {
-          DebugLogger.error('❌ [SWIPES_REPO] Error creating SearchCenter: $e');
-          return null;
-        }
-      }();
-
-      final unifiedResponse = UnifiedPropertyResponse(
-        items: properties,
-        limit: (payload['limit'] is num ? (payload['limit'] as num).toInt() : limit),
-        nextCursor: nextCursor,
-        hasMore: hasMore,
-        filtersApplied: payload['filters_applied'] is Map
-            ? Map<String, dynamic>.from(payload['filters_applied'] as Map)
-            : filters.toJson(),
-        searchCenter: searchCenter,
-      );
 
       DebugLogger.success(
         '✅ Loaded ${unifiedResponse.items.length} properties from swipe history '
@@ -184,100 +232,8 @@ class SwipesRepository extends GetxService implements SwipesPort {
       );
       return unifiedResponse;
     } on AppException catch (e) {
-      DebugLogger.error('❌ Failed to fetch swipe history properties: ${e.message}');
+      DebugLogger.warning('Swipe history failed', e.runtimeType);
       rethrow;
     }
-  }
-
-  // Get liked properties via server-side history endpoint
-  Future<List<PropertyModel>> getLikedProperties({
-    required UnifiedFilterModel filters,
-    double? latitude,
-    double? longitude,
-    String? cursor,
-    int limit = 50,
-  }) async {
-    try {
-      DebugLogger.api('❤️ Fetching liked properties (server-side): cursor=$cursor, limit=$limit');
-      final response = await getSwipeHistoryProperties(
-        filters: filters,
-        latitude: latitude,
-        longitude: longitude,
-        cursor: cursor,
-        limit: limit,
-        isLiked: true,
-      );
-      return response.items;
-    } on AppException catch (e) {
-      DebugLogger.error('❌ Failed to fetch liked properties: ${e.message}');
-      rethrow;
-    }
-  }
-
-  // Get passed properties via server-side history endpoint
-  Future<List<PropertyModel>> getPassedProperties({
-    required UnifiedFilterModel filters,
-    double? latitude,
-    double? longitude,
-    String? cursor,
-    int limit = 50,
-  }) async {
-    try {
-      DebugLogger.api('👎 Fetching passed properties (server-side): cursor=$cursor, limit=$limit');
-      final response = await getSwipeHistoryProperties(
-        filters: filters,
-        latitude: latitude,
-        longitude: longitude,
-        cursor: cursor,
-        limit: limit,
-        isLiked: false,
-      );
-      return response.items;
-    } on AppException catch (e) {
-      DebugLogger.error('❌ Failed to fetch passed properties: ${e.message}');
-      rethrow;
-    }
-  }
-
-  // Get liked properties (new format - no swipe IDs needed)
-  Future<List<PropertyModel>> getLikedPropertiesWithSwipeIds({
-    required UnifiedFilterModel filters,
-    double? latitude,
-    double? longitude,
-    String? cursor,
-    int limit = 50,
-  }) async {
-    try {
-      DebugLogger.api('❤️ Fetching liked properties: cursor=$cursor, limit=$limit');
-
-      final response = await getSwipeHistoryProperties(
-        filters: filters,
-        latitude: latitude,
-        longitude: longitude,
-        cursor: cursor,
-        limit: limit,
-        isLiked: true,
-      );
-
-      DebugLogger.success('✅ Loaded ${response.items.length} liked properties');
-      return response.items;
-    } on AppException catch (e) {
-      DebugLogger.error('❌ Failed to fetch liked properties: ${e.message}');
-      rethrow;
-    }
-  }
-
-  // Get all swiped properties (both liked and disliked) with comprehensive filtering
-  Future<UnifiedPropertyResponse> getAllSwipedProperties({
-    required UnifiedFilterModel filters,
-    String? cursor,
-    int limit = 50,
-  }) async {
-    return await getSwipeHistoryProperties(
-      filters: filters,
-      cursor: cursor,
-      limit: limit,
-      isLiked: null, // Get both liked and disliked
-    );
   }
 }

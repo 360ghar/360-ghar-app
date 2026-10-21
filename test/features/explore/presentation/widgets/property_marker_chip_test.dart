@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/app_design_tokens.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/features/explore/presentation/widgets/property_marker_chip.dart';
-import '../../../../helpers/getx_test_binding.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 PropertyModel _property({int id = 100, String title = 'Test Property'}) {
   return PropertyModel(
@@ -21,18 +21,8 @@ PropertyModel _property({int id = 100, String title = 'Test Property'}) {
 }
 
 void main() {
-  setUp(() => GetxTestBinding.init());
-  tearDown(() => GetxTestBinding.reset());
-
   Future<void> pumpWidget(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: Center(child: child)),
-      ),
-    );
+    await tester.pumpProviderApp(Scaffold(body: Center(child: child)));
   }
 
   testWidgets('renders the provided label text', (tester) async {
@@ -92,31 +82,51 @@ void main() {
     expect(semantics.label, contains('Property price marker'));
   });
 
-  testWidgets('selected chip animates the pulse circle', (tester) async {
+  testWidgets('selected marker is a gold slip with ink text; nothing pulses', (tester) async {
     await pumpWidget(
       tester,
       PropertyMarkerChip(property: _property(), isSelected: true, onTap: () {}, label: '₹50L'),
     );
-
-    // The pulse animation runs via an AnimatedBuilder; advance the clock so the
-    // controller produces a non-zero progress.
-    await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-
-    // The pulse CustomPaint only exists when selected.
-    expect(find.byType(CustomPaint), findsWidgets);
+    final slip = tester.widget<DecoratedBox>(
+      find.descendant(of: find.byType(PropertyMarkerChip), matching: find.byType(DecoratedBox)),
+    );
+    final decoration = slip.decoration as ShapeDecoration;
+    expect(decoration.color, AppDesignTokens.gold500);
+    expect(decoration.shape, isA<CutBorder>());
+    expect(tester.widget<Text>(find.text('₹50L')).style?.color, AppDesignTokens.ink900);
+    expect(tester.hasRunningAnimations, isFalse);
+    expect(
+      find.descendant(of: find.byType(PropertyMarkerChip), matching: find.byType(AnimatedBuilder)),
+      findsNothing,
+    );
   });
 
-  testWidgets('unselected chip does not render the pulse painter', (tester) async {
+  testWidgets('unselected marker is a paper slip', (tester) async {
     await pumpWidget(
       tester,
       PropertyMarkerChip(property: _property(), isSelected: false, onTap: () {}, label: '₹50L'),
     );
-
-    // No AnimatedBuilder-driven pulse circle for unselected chips.
-    final animatedBuilders = tester.widgetList<AnimatedBuilder>(
-      find.descendant(of: find.byType(PropertyMarkerChip), matching: find.byType(AnimatedBuilder)),
+    final slip = tester.widget<DecoratedBox>(
+      find.descendant(of: find.byType(PropertyMarkerChip), matching: find.byType(DecoratedBox)),
     );
-    expect(animatedBuilders, isEmpty);
+    expect((slip.decoration as ShapeDecoration).color, AppDesignTokens.paper);
+  });
+  testWidgets('reduced motion stops selected-marker animation with a 48px target', (tester) async {
+    await pumpWidget(
+      tester,
+      MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: PropertyMarkerChip(
+          property: _property(),
+          isSelected: true,
+          onTap: () {},
+          label: '₹50 लाख',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.hasRunningAnimations, isFalse);
+    expect(tester.getSize(find.byType(GestureDetector).first).height, greaterThanOrEqualTo(48));
   });
 }

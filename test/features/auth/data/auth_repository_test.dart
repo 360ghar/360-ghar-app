@@ -1,14 +1,8 @@
-// test/features/auth/data/auth_repository_test.dart
-//
-// Unit tests for the auth module's utility surfaces: static nonce helpers,
-// identifier masking/normalization, identifier-status parsing, auth-method
-// wire mapping, Supabase-backed auth wrappers, platform config gates, token
-// readiness polling, and session lifecycle.
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
@@ -21,10 +15,23 @@ import 'package:google_sign_in_platform_interface/google_sign_in_platform_interf
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../helpers/mocks.dart';
+import '../../../helpers/settings_test_database.dart';
+
+// test/features/auth/data/auth_repository_test.dart
+//
+// Unit tests for the auth module's utility surfaces: static nonce helpers,
+// identifier masking/normalization, identifier-status parsing, auth-method
+// wire mapping, Supabase-backed auth wrappers, platform config gates, token
+// readiness polling, and session lifecycle.
+
+class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  late SettingsTestDatabase database;
+  setUp(() {
+    database = SettingsTestDatabase();
+  });
   const pathChannel = MethodChannel('plugins.flutter.io/path_provider');
   const prefsChannel = MethodChannel('plugins.flutter.io/shared_preferences');
 
@@ -55,7 +62,6 @@ void main() {
       },
     );
     await Supabase.initialize(url: 'https://example.supabase.co', publishableKey: 'anon-key');
-    await GetStorage.init();
   });
 
   group('AuthRepository.generateRawNonce', () {
@@ -172,20 +178,20 @@ void main() {
 
   group('AuthMethod.fromWire', () {
     test('maps known wire values to enum members', () {
-      expect(AuthMethod.fromWire('google'), AuthMethod.google);
-      expect(AuthMethod.fromWire('apple'), AuthMethod.apple);
-      expect(AuthMethod.fromWire('email_password'), AuthMethod.emailPassword);
-      expect(AuthMethod.fromWire('phone_password'), AuthMethod.phonePassword);
-      expect(AuthMethod.fromWire('phone_otp'), AuthMethod.phoneOtp);
-      expect(AuthMethod.fromWire('email_otp'), AuthMethod.emailOtp);
+      expect(AuthMethod.fromJson('google'), AuthMethod.google);
+      expect(AuthMethod.fromJson('apple'), AuthMethod.apple);
+      expect(AuthMethod.fromJson('email_password'), AuthMethod.emailPassword);
+      expect(AuthMethod.fromJson('phone_password'), AuthMethod.phonePassword);
+      expect(AuthMethod.fromJson('phone_otp'), AuthMethod.phoneOtp);
+      expect(AuthMethod.fromJson('email_otp'), AuthMethod.emailOtp);
     });
 
     test('returns null for unknown wire value', () {
-      expect(AuthMethod.fromWire('magic_link'), isNull);
+      expect(AuthMethod.fromJson('magic_link'), isNull);
     });
 
     test('returns null for null input', () {
-      expect(AuthMethod.fromWire(null), isNull);
+      expect(AuthMethod.fromJson(null), isNull);
     });
   });
 
@@ -201,11 +207,15 @@ void main() {
 
     setUp(() {
       mockApiClient = MockApiClient();
-      repository = AuthRepository(apiClient: mockApiClient);
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: mockApiClient,
+      );
     });
 
     tearDown(() {
-      GetStorage().erase();
+      database.values.clear();
     });
 
     test('returns parsed IdentifierStatus on a valid response body', () async {
@@ -218,7 +228,7 @@ void main() {
           idempotent: any(named: 'idempotent'),
         ),
       ).thenAnswer(
-        (_) async => ApiResponse(
+        (_) async => const ApiResponse(
           statusCode: 200,
           body: {
             'exists': true,
@@ -259,7 +269,7 @@ void main() {
           idempotent: any(named: 'idempotent'),
         ),
       ).thenAnswer(
-        (_) async => ApiResponse(
+        (_) async => const ApiResponse(
           statusCode: 200,
           body: {
             'exists': false,
@@ -297,7 +307,7 @@ void main() {
           notifyUnauthorized: any(named: 'notifyUnauthorized'),
           idempotent: any(named: 'idempotent'),
         ),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 'not-a-map', headers: {}));
+      ).thenAnswer((_) async => const ApiResponse(statusCode: 200, body: 'not-a-map', headers: {}));
 
       expect(
         () => repository.checkIdentifierStatus('john@gmail.com'),
@@ -330,8 +340,13 @@ void main() {
 
     setUp(() {
       mockApiClient = MockApiClient();
-      store = LastAuthMethodStore();
-      repository = AuthRepository(apiClient: mockApiClient, lastAuthMethodStore: store);
+      store = LastAuthMethodStore(database: database);
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: mockApiClient,
+        lastAuthMethodStore: store,
+      );
     });
 
     tearDown(() {
@@ -341,7 +356,7 @@ void main() {
     test('persists method locally and mirrors it to the backend', () async {
       when(
         () => mockApiClient.post('/auth/last-method', body: any(named: 'body')),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: {}, headers: {}));
+      ).thenAnswer((_) async => const ApiResponse(statusCode: 200, body: {}, headers: {}));
 
       await repository.recordLastMethod(AuthMethod.google, identifier: 'john@gmail.com');
 
@@ -356,7 +371,7 @@ void main() {
     test('does not persist hint when identifier is null', () async {
       when(
         () => mockApiClient.post('/auth/last-method', body: any(named: 'body')),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: {}, headers: {}));
+      ).thenAnswer((_) async => const ApiResponse(statusCode: 200, body: {}, headers: {}));
 
       await repository.recordLastMethod(AuthMethod.emailOtp);
 
@@ -386,22 +401,27 @@ void main() {
 
     setUp(() {
       mockApiClient = MockApiClient();
-      repository = AuthRepository(apiClient: mockApiClient);
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: mockApiClient,
+      );
     });
 
-    test('posts confirm payload to delete-account endpoint', () async {
+    test('deletes the account with DELETE /users/me and sends no body', () async {
       when(
-        () => mockApiClient.post('/auth/delete-account', body: any(named: 'body')),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: {}, headers: {}));
+        () => mockApiClient.delete('/users/me'),
+      ).thenAnswer((_) async => const ApiResponse(statusCode: 204));
 
       await repository.deleteAccount();
 
-      verify(() => mockApiClient.post('/auth/delete-account', body: {'confirm': true})).called(1);
+      verify(() => mockApiClient.delete('/users/me')).called(1);
+      verifyNever(() => mockApiClient.post('/auth/delete-account', body: any(named: 'body')));
     });
 
     test('propagates AppException from ApiClient', () async {
       when(
-        () => mockApiClient.post('/auth/delete-account', body: any(named: 'body')),
+        () => mockApiClient.delete('/users/me'),
       ).thenThrow(AuthenticationException('Unauthorized'));
 
       expect(() => repository.deleteAccount(), throwsA(isA<AuthenticationException>()));
@@ -412,7 +432,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('returns true for the canonical redirect URI', () {
@@ -443,7 +467,11 @@ void main() {
     TargetPlatform? savedPlatform;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
       savedPlatform = debugDefaultTargetPlatformOverride;
     });
 
@@ -505,7 +533,11 @@ void main() {
     TargetPlatform? savedPlatform;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
       savedPlatform = debugDefaultTargetPlatformOverride;
     });
 
@@ -538,7 +570,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('currentUser returns null when no session', () {
@@ -563,20 +599,24 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
-    test('throws AuthException when no session is available within timeout', () async {
+    test('throws a typed timeout when no session is available', () async {
       expect(
         () => repository.waitForAccessToken(
           timeout: const Duration(milliseconds: 300),
           minTtlSeconds: 0,
         ),
-        throwsA(isA<AuthException>()),
+        throwsA(isA<TimeoutException>()),
       );
     });
 
-    test('throws with message "Access token not available in time"', () async {
+    test('returns a sanitized session-readiness error', () async {
       Object? caught;
       try {
         await repository.waitForAccessToken(
@@ -586,8 +626,8 @@ void main() {
       } catch (e) {
         caught = e;
       }
-      expect(caught, isA<AuthException>());
-      expect((caught as AuthException).message, 'Access token not available in time');
+      expect(caught, isA<TimeoutException>());
+      expect((caught as TimeoutException).message, 'The session is not ready.');
     });
 
     test('clamps negative minTtlSeconds to 0', () async {
@@ -597,7 +637,7 @@ void main() {
           timeout: const Duration(milliseconds: 300),
           minTtlSeconds: -10,
         ),
-        throwsA(isA<AuthException>()),
+        throwsA(isA<TimeoutException>()),
       );
     });
   });
@@ -611,7 +651,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('completes without error when no session is active', () async {
@@ -629,7 +673,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('throws when no session is active (Supabase rejects)', () async {
@@ -646,7 +694,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('throws when no session is active', () async {
@@ -658,7 +710,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('throws when no session is active', () async {
@@ -679,7 +735,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('signUpWithPhonePassword propagates Supabase failure', () async {
@@ -716,7 +776,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('signUpWithEmailOtp propagates Supabase failure', () async {
@@ -748,14 +812,23 @@ void main() {
 
   group('AuthRepository.lastAuthMethodStore', () {
     test('returns the injected store instance', () {
-      final store = LastAuthMethodStore();
-      final repository = AuthRepository(apiClient: MockApiClient(), lastAuthMethodStore: store);
+      final store = LastAuthMethodStore(database: database);
+      final repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+        lastAuthMethodStore: store,
+      );
 
       expect(repository.lastAuthMethodStore, same(store));
     });
 
     test('returns a default store when none is injected', () {
-      final repository = AuthRepository(apiClient: MockApiClient());
+      final repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
 
       expect(repository.lastAuthMethodStore, isA<LastAuthMethodStore>());
     });
@@ -770,7 +843,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('throws when Supabase rejects the URI', () async {
@@ -792,7 +869,11 @@ void main() {
     TargetPlatform? savedPlatform;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
       savedPlatform = debugDefaultTargetPlatformOverride;
       AppConfig.initialize(overrides: const {});
     });
@@ -817,7 +898,11 @@ void main() {
     TargetPlatform? savedPlatform;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
       savedPlatform = debugDefaultTargetPlatformOverride;
     });
 
@@ -853,7 +938,11 @@ void main() {
       savedPlatform = debugDefaultTargetPlatformOverride;
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       AppConfig.initialize(overrides: {'GOOGLE_WEB_CLIENT_ID': 'web-client-id'});
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     tearDown(() {
@@ -970,7 +1059,11 @@ void main() {
     const appleChannel = MethodChannel('com.aboutyou.dart_packages.sign_in_with_apple');
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
       savedPlatform = debugDefaultTargetPlatformOverride;
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     });
@@ -1080,7 +1173,11 @@ void main() {
     late AuthRepository repository;
 
     setUp(() {
-      repository = AuthRepository(apiClient: MockApiClient());
+      repository = AuthRepository(
+        supabaseClient: Supabase.instance.client,
+        database: database,
+        apiClient: MockApiClient(),
+      );
     });
 
     test('returns true when path is /login-callback', () {

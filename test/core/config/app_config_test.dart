@@ -50,6 +50,17 @@ void main() {
       expect(() => AppConfig.instance, throwsStateError);
     });
 
+    test('API_TIMEOUT_SECONDS is read and bounded', () {
+      AppConfig.initialize(overrides: const {});
+      expect(AppConfig.instance.apiTimeoutSeconds, 15);
+      AppConfig.initialize(overrides: const {'API_TIMEOUT_SECONDS': '30'});
+      expect(AppConfig.instance.apiTimeoutSeconds, 30);
+      AppConfig.initialize(overrides: const {'API_TIMEOUT_SECONDS': '600'});
+      expect(AppConfig.instance.apiTimeoutSeconds, 60);
+      AppConfig.initialize(overrides: const {'API_TIMEOUT_SECONDS': 'soon'});
+      expect(AppConfig.instance.apiTimeoutSeconds, 15);
+    });
+
     test('analytics and performance default to privacy-off', () {
       AppConfig.initialize(overrides: const {});
       final config = AppConfig.instance;

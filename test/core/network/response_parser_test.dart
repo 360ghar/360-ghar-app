@@ -2,323 +2,135 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/core/network/response_parser.dart';
 
+Map<String, dynamic> _row(Map<String, dynamic> json) => json;
+
+Map<String, dynamic> _page({
+  Object? items = const <Object?>[],
+  Object? nextCursor,
+  Object? hasMore = false,
+  Object? limit = 20,
+  Object? total,
+  bool dropNextCursor = false,
+  bool dropTotal = false,
+}) => {
+  'items': items,
+  if (!dropNextCursor) 'next_cursor': nextCursor,
+  'has_more': hasMore,
+  'limit': limit,
+  if (!dropTotal) 'total': total,
+};
+
 void main() {
-  group('ResponseParser.unwrapObject', () {
-    test('unwraps the data wrapper when present', () {
-      const body = <String, dynamic>{
-        'data': <String, dynamic>{'id': 1, 'name': 'Test'},
-      };
-
-      final result = ResponseParser.unwrapObject(body);
-
-      expect(result, <String, dynamic>{'id': 1, 'name': 'Test'});
-    });
-
-    test('returns the body itself when no data wrapper', () {
+  group('ResponseParser.object', () {
+    test('returns a copy of a JSON object', () {
       const body = <String, dynamic>{'id': 2, 'name': 'No Wrapper'};
 
-      final result = ResponseParser.unwrapObject(body);
+      final result = ResponseParser.object(body);
 
-      expect(result, same(body));
+      expect(result, body);
+      expect(identical(result, body), isFalse);
     });
 
-    test('returns the body when data is not a Map (e.g. a List)', () {
+    test('does not unwrap a data key: the contract has no data envelope', () {
       const body = <String, dynamic>{
-        'data': <dynamic>[1, 2, 3],
-        'meta': <String, dynamic>{'page': 1},
+        'data': {'id': 1},
       };
 
-      final result = ResponseParser.unwrapObject(body);
-
-      // data is a List, so the wrapper is ignored and the body returned.
-      expect(result, same(body));
+      expect(ResponseParser.object(body), body);
     });
 
-    test('returns the body when data is null', () {
-      const body = <String, dynamic>{'data': null, 'other': 'value'};
-
-      final result = ResponseParser.unwrapObject(body);
-
-      expect(result, same(body));
+    test('throws FormatException for a body that is not an object', () {
+      expect(() => ResponseParser.object(null), throwsFormatException);
+      expect(() => ResponseParser.object(<dynamic>[1, 2, 3]), throwsFormatException);
+      expect(() => ResponseParser.object('hello'), throwsFormatException);
+      expect(() => ResponseParser.object(42), throwsFormatException);
     });
 
-    test('throws FormatException when body is null', () {
-      expect(() => ResponseParser.unwrapObject(null), throwsFormatException);
-    });
-
-    test('throws FormatException when body is a List', () {
-      expect(() => ResponseParser.unwrapObject(<dynamic>[1, 2, 3]), throwsFormatException);
-    });
-
-    test('throws FormatException when body is a String', () {
-      expect(() => ResponseParser.unwrapObject('hello'), throwsFormatException);
-    });
-
-    test('throws FormatException when body is an int', () {
-      expect(() => ResponseParser.unwrapObject(42), throwsFormatException);
-    });
-
-    test('handles empty Map without data wrapper', () {
-      final result = ResponseParser.unwrapObject(<String, dynamic>{});
-      expect(result, <String, dynamic>{});
+    test('reads an empty object', () {
+      expect(ResponseParser.object(<String, dynamic>{}), isEmpty);
     });
   });
 
-  group('ResponseParser.unwrapList', () {
-    test('returns the body directly when it is a List', () {
-      final body = <dynamic>[1, 2, 3];
-
-      final result = ResponseParser.unwrapList(body);
-
-      expect(result, <dynamic>[1, 2, 3]);
-    });
-
-    test('unwraps via items key (cursor envelope)', () {
-      const body = <String, dynamic>{
-        'items': <dynamic>[
-          {'id': 1},
-        ],
-        'has_more': false,
-      };
-
-      final result = ResponseParser.unwrapList(body);
-
-      expect(result, <dynamic>[
-        {'id': 1},
-      ]);
-    });
-
-    test('unwraps via data key when items absent', () {
-      const body = <String, dynamic>{
-        'data': <dynamic>[
-          {'id': 2},
-        ],
-      };
-
-      final result = ResponseParser.unwrapList(body);
-
-      expect(result, <dynamic>[
-        {'id': 2},
-      ]);
-    });
-
-    test('prefers items over data when both present', () {
-      const body = <String, dynamic>{
-        'items': <dynamic>[
-          {'id': 1},
-        ],
-        'data': <dynamic>[
-          {'id': 2},
-        ],
-      };
-
-      final result = ResponseParser.unwrapList(body);
-
-      expect(result, <dynamic>[
-        {'id': 1},
-      ]);
-    });
-
-    test('falls back to provided fallbackKeys', () {
-      const body = <String, dynamic>{
-        'results': <dynamic>[
-          {'id': 3},
-        ],
-      };
-
-      final result = ResponseParser.unwrapList(body, fallbackKeys: const ['results']);
-
-      expect(result, <dynamic>[
-        {'id': 3},
-      ]);
-    });
-
-    test('tries fallbackKeys in order and uses the first List found', () {
-      const body = <String, dynamic>{
-        'second': <dynamic>[
-          {'id': 9},
-        ],
-      };
-
-      final result = ResponseParser.unwrapList(
-        body,
-        fallbackKeys: const ['first', 'second', 'third'],
+  group('ResponseParser.cursorPage', () {
+    test('reads the five keys of a CursorPage', () {
+      final page = ResponseParser.cursorPage(
+        _page(
+          items: [
+            {'id': 1},
+            {'id': 2},
+          ],
+          nextCursor: 'abc',
+          hasMore: true,
+          limit: 2,
+          total: 9,
+        ),
+        (json) => json['id'] as int,
       );
 
-      expect(result, <dynamic>[
-        {'id': 9},
-      ]);
+      expect(page.items, [1, 2]);
+      expect(page.nextCursor, 'abc');
+      expect(page.hasMore, isTrue);
+      expect(page.limit, 2);
+      expect(page.total, 9);
+      expect(page.hasMorePages, isTrue);
     });
 
-    test('skips non-List fallback keys', () {
-      const body = <String, dynamic>{
-        'first': 'not a list',
-        'second': <dynamic>[
-          {'id': 7},
-        ],
-      };
+    test('total is null unless the request asked for include_total', () {
+      final page = ResponseParser.cursorPage(_page(), _row);
 
-      final result = ResponseParser.unwrapList(body, fallbackKeys: const ['first', 'second']);
-
-      expect(result, <dynamic>[
-        {'id': 7},
-      ]);
+      expect(page.total, isNull);
+      expect(page.items, isEmpty);
     });
 
-    test('throws FormatException when Map has no list under any key', () {
-      const body = <String, dynamic>{
-        'meta': <String, dynamic>{'page': 1},
-      };
+    test('a last page has no cursor and no more pages', () {
+      final page = ResponseParser.cursorPage(_page(), _row);
 
+      expect(page.nextCursor, isNull);
+      expect(page.hasMorePages, isFalse);
+    });
+
+    test('an empty cursor reads as no cursor, so paging cannot loop on it', () {
+      final page = ResponseParser.cursorPage(_page(nextCursor: '', hasMore: true), _row);
+
+      expect(page.nextCursor, isNull);
+      expect(page.hasMorePages, isFalse);
+    });
+
+    test('has_more without a cursor is not another page', () {
+      final page = ResponseParser.cursorPage(_page(hasMore: true), _row);
+
+      expect(page.hasMore, isTrue);
+      expect(page.hasMorePages, isFalse);
+    });
+
+    test('the item list is unmodifiable', () {
+      final page = ResponseParser.cursorPage(_page(items: [<String, dynamic>{}]), _row);
+
+      expect(() => page.items.add({}), throwsUnsupportedError);
+    });
+
+    test('a bare list is not a CursorPage', () {
+      expect(() => ResponseParser.cursorPage(<dynamic>[], _row), throwsFormatException);
+    });
+
+    test('a missing next_cursor or total key is a contract break', () {
       expect(
-        () => ResponseParser.unwrapList(body, fallbackKeys: const ['results']),
+        () => ResponseParser.cursorPage(_page(dropNextCursor: true), _row),
         throwsFormatException,
       );
+      expect(() => ResponseParser.cursorPage(_page(dropTotal: true), _row), throwsFormatException);
     });
 
-    test('throws FormatException when body is null', () {
-      expect(() => ResponseParser.unwrapList(null), throwsFormatException);
+    test('a key of the wrong type is a contract break', () {
+      expect(() => ResponseParser.cursorPage(_page(items: 'x'), _row), throwsFormatException);
+      expect(() => ResponseParser.cursorPage(_page(hasMore: 'yes'), _row), throwsFormatException);
+      expect(() => ResponseParser.cursorPage(_page(limit: '20'), _row), throwsFormatException);
+      expect(() => ResponseParser.cursorPage(_page(total: '9'), _row), throwsFormatException);
+      expect(() => ResponseParser.cursorPage(_page(nextCursor: 5), _row), throwsFormatException);
     });
 
-    test('throws FormatException when body is a String', () {
-      expect(() => ResponseParser.unwrapList('hello'), throwsFormatException);
-    });
-
-    test('throws FormatException when body is an int', () {
-      expect(() => ResponseParser.unwrapList(42), throwsFormatException);
-    });
-
-    test('returns empty list when items is an empty list', () {
-      const body = <String, dynamic>{'items': <dynamic>[]};
-
-      final result = ResponseParser.unwrapList(body);
-
-      expect(result, <dynamic>[]);
-    });
-  });
-
-  group('ResponseParser.extractHasMore', () {
-    test('returns true when has_more is true', () {
-      const body = <String, dynamic>{'has_more': true};
-      expect(ResponseParser.extractHasMore(body), isTrue);
-    });
-
-    test('returns false when has_more is false', () {
-      const body = <String, dynamic>{'has_more': false};
-      expect(ResponseParser.extractHasMore(body), isFalse);
-    });
-
-    test('returns false when has_more is missing', () {
-      const body = <String, dynamic>{'items': <dynamic>[]};
-      expect(ResponseParser.extractHasMore(body), isFalse);
-    });
-
-    test('returns false when has_more is null', () {
-      const body = <String, dynamic>{'has_more': null};
-      expect(ResponseParser.extractHasMore(body), isFalse);
-    });
-
-    test('returns false when has_more is a non-bool value (string)', () {
-      const body = <String, dynamic>{'has_more': 'true'};
-      expect(ResponseParser.extractHasMore(body), isFalse);
-    });
-
-    test('returns false when has_more is a non-bool value (int)', () {
-      const body = <String, dynamic>{'has_more': 1};
-      expect(ResponseParser.extractHasMore(body), isFalse);
-    });
-
-    test('returns false when body is null', () {
-      expect(ResponseParser.extractHasMore(null), isFalse);
-    });
-
-    test('returns false when body is a List', () {
-      expect(ResponseParser.extractHasMore(<dynamic>[1, 2]), isFalse);
-    });
-  });
-
-  group('ResponseParser.extractNextCursor', () {
-    test('returns the cursor when present and non-empty', () {
-      const body = <String, dynamic>{'next_cursor': 'abc123'};
-      expect(ResponseParser.extractNextCursor(body), 'abc123');
-    });
-
-    test('returns null when next_cursor is empty string', () {
-      const body = <String, dynamic>{'next_cursor': ''};
-      expect(ResponseParser.extractNextCursor(body), isNull);
-    });
-
-    test('returns null when next_cursor is missing', () {
-      const body = <String, dynamic>{'items': <dynamic>[]};
-      expect(ResponseParser.extractNextCursor(body), isNull);
-    });
-
-    test('returns null when next_cursor is null', () {
-      const body = <String, dynamic>{'next_cursor': null};
-      expect(ResponseParser.extractNextCursor(body), isNull);
-    });
-
-    test('returns null when next_cursor is a non-string value (int)', () {
-      const body = <String, dynamic>{'next_cursor': 123};
-      expect(ResponseParser.extractNextCursor(body), isNull);
-    });
-
-    test('returns null when body is null', () {
-      expect(ResponseParser.extractNextCursor(null), isNull);
-    });
-
-    test('returns null when body is a List', () {
-      expect(ResponseParser.extractNextCursor(<dynamic>[1, 2]), isNull);
-    });
-  });
-
-  group('ResponseParser.extractTotal', () {
-    test('returns the total when present as int', () {
-      const body = <String, dynamic>{'total': 42};
-      expect(ResponseParser.extractTotal(body), 42);
-    });
-
-    test('returns the total when present as double', () {
-      const body = <String, dynamic>{'total': 42.0};
-      expect(ResponseParser.extractTotal(body), 42);
-    });
-
-    test('falls back to count when total is absent', () {
-      const body = <String, dynamic>{'count': 7};
-      expect(ResponseParser.extractTotal(body), 7);
-    });
-
-    test('prefers total over count when both present', () {
-      const body = <String, dynamic>{'total': 10, 'count': 20};
-      expect(ResponseParser.extractTotal(body), 10);
-    });
-
-    test('falls back to listLength when both total and count are missing', () {
-      const body = <String, dynamic>{'items': <dynamic>[]};
-      expect(ResponseParser.extractTotal(body, listLength: 5), 5);
-    });
-
-    test('falls back to default listLength (0) when missing', () {
-      const body = <String, dynamic>{'items': <dynamic>[]};
-      expect(ResponseParser.extractTotal(body), 0);
-    });
-
-    test('falls back to listLength when total is null', () {
-      const body = <String, dynamic>{'total': null};
-      expect(ResponseParser.extractTotal(body, listLength: 3), 3);
-    });
-
-    test('falls back to listLength when total is a non-num value', () {
-      const body = <String, dynamic>{'total': 'many'};
-      expect(ResponseParser.extractTotal(body, listLength: 9), 9);
-    });
-
-    test('falls back to listLength when body is null', () {
-      expect(ResponseParser.extractTotal(null, listLength: 4), 4);
-    });
-
-    test('falls back to listLength when body is a List', () {
-      expect(ResponseParser.extractTotal(<dynamic>[1, 2, 3], listLength: 6), 6);
+    test('an item that is not an object fails the whole page', () {
+      expect(() => ResponseParser.cursorPage(_page(items: [1]), _row), throwsFormatException);
     });
   });
 }

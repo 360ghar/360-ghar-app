@@ -82,6 +82,64 @@ void main() {
       );
       expect(TourUrl.isAllowedNavigation('https://random.site/tour'), isFalse);
     });
+
+    test('requires matching scheme and port for an allowed origin', () {
+      const origin = 'https://tours.example.com:8443/room/1';
+      expect(
+        TourUrl.isAllowedNavigation(
+          'http://tours.example.com:8443/room/2',
+          allowedOriginUrl: origin,
+        ),
+        isFalse,
+      );
+      expect(
+        TourUrl.isAllowedNavigation(
+          'https://tours.example.com:9443/room/2',
+          allowedOriginUrl: origin,
+        ),
+        isFalse,
+      );
+      expect(
+        TourUrl.isAllowedNavigation(
+          'https://tours.example.com:8443/room/2',
+          allowedOriginUrl: origin,
+        ),
+        isTrue,
+      );
+    });
+    test('allows http-to-https upgrade on the same host with default ports', () {
+      expect(
+        TourUrl.isAllowedNavigation(
+          'https://tours.example.com/room/2',
+          allowedOriginUrl: 'http://tours.example.com/room/1',
+        ),
+        isTrue,
+      );
+      // Explicit default ports are equivalent to implicit ones.
+      expect(
+        TourUrl.isAllowedNavigation(
+          'https://tours.example.com:443/room/2',
+          allowedOriginUrl: 'http://tours.example.com:80/room/1',
+        ),
+        isTrue,
+      );
+    });
+    test('blocks https-to-http downgrades and non-default-port upgrades', () {
+      expect(
+        TourUrl.isAllowedNavigation(
+          'http://tours.example.com/room/2',
+          allowedOriginUrl: 'https://tours.example.com/room/1',
+        ),
+        isFalse,
+      );
+      expect(
+        TourUrl.isAllowedNavigation(
+          'https://tours.example.com:8443/room/2',
+          allowedOriginUrl: 'http://tours.example.com/room/1',
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('TourUrl.sanitizeCssColor', () {

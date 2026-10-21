@@ -23,6 +23,7 @@ import 'package:ghar360/core/config/dev_env.g.dart';
 class AppConfig {
   AppConfig._({
     required this.apiBaseUrl,
+    required this.apiTimeoutSeconds,
     required this.supabaseUrl,
     required this.supabasePublishableKey,
     required this.googlePlacesApiKey,
@@ -63,6 +64,9 @@ class AppConfig {
   }
 
   final String apiBaseUrl;
+
+  /// Per-attempt HTTP timeout, `API_TIMEOUT_SECONDS` (5 to 60, default 15).
+  final int apiTimeoutSeconds;
   final String supabaseUrl;
   final String supabasePublishableKey;
   final String googlePlacesApiKey;
@@ -124,6 +128,7 @@ class AppConfig {
 
     _instance = AppConfig._(
       apiBaseUrl: read('API_BASE_URL', defaultValue: 'https://api.360ghar.com'),
+      apiTimeoutSeconds: (int.tryParse(read('API_TIMEOUT_SECONDS')) ?? 15).clamp(5, 60),
       supabaseUrl: read('SUPABASE_URL'),
       supabasePublishableKey: read('SUPABASE_PUBLISHABLE_KEY'),
       googlePlacesApiKey: read('GOOGLE_PLACES_API_KEY'),
@@ -158,6 +163,8 @@ class AppConfig {
     switch (key) {
       case 'API_BASE_URL':
         return const String.fromEnvironment('API_BASE_URL');
+      case 'API_TIMEOUT_SECONDS':
+        return const String.fromEnvironment('API_TIMEOUT_SECONDS');
       case 'SUPABASE_URL':
         return const String.fromEnvironment('SUPABASE_URL');
       case 'SUPABASE_PUBLISHABLE_KEY':

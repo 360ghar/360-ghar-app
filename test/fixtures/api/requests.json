@@ -1,0 +1,490 @@
+{
+  "AgentChatRequest": {
+    "extra_forbidden": true,
+    "properties": {
+      "conversation_id": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "message": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ]
+  },
+  "AppVersionCheckRequest": {
+    "extra_forbidden": true,
+    "properties": {
+      "app": {
+        "enum": [
+          "ghar",
+          "estate",
+          "flatmates",
+          "stays"
+        ],
+        "nullable": false,
+        "type": "string"
+      },
+      "build_number": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "current_version": {
+        "maxLength": 20,
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      },
+      "platform": {
+        "enum": [
+          "android",
+          "ios",
+          "web"
+        ],
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "app",
+      "current_version",
+      "platform"
+    ]
+  },
+  "BugReportCreate": {
+    "extra_forbidden": true,
+    "properties": {
+      "actual_behavior": {
+        "nullable": true,
+        "type": "string"
+      },
+      "app_version": {
+        "maxLength": 50,
+        "nullable": true,
+        "type": "string"
+      },
+      "bug_type": {
+        "enum": [
+          "ui_bug",
+          "functionality_bug",
+          "performance_issue",
+          "crash",
+          "feature_request",
+          "other"
+        ],
+        "nullable": false,
+        "type": "string"
+      },
+      "description": {
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      },
+      "device_info": {
+        "nullable": true,
+        "type": "object"
+      },
+      "expected_behavior": {
+        "nullable": true,
+        "type": "string"
+      },
+      "media_urls": {
+        "nullable": true,
+        "type": "array"
+      },
+      "severity": {
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "nullable": false,
+        "type": "string"
+      },
+      "source": {
+        "maxLength": 50,
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      },
+      "steps_to_reproduce": {
+        "nullable": true,
+        "type": "string"
+      },
+      "tags": {
+        "nullable": true,
+        "type": "array"
+      },
+      "title": {
+        "maxLength": 200,
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "bug_type",
+      "description",
+      "severity",
+      "source",
+      "title"
+    ]
+  },
+  "DeleteAccountRequest": {
+    "extra_forbidden": true,
+    "properties": {
+      "confirm": {
+        "nullable": false,
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "confirm"
+    ]
+  },
+  "DeviceRegisterIn": {
+    "extra_forbidden": true,
+    "properties": {
+      "app_key": {
+        "enum": [
+          "ghar",
+          "estate",
+          "flatmates",
+          "stays"
+        ],
+        "nullable": false,
+        "type": "string"
+      },
+      "app_version": {
+        "maxLength": 64,
+        "nullable": true,
+        "type": "string"
+      },
+      "locale": {
+        "maxLength": 32,
+        "nullable": true,
+        "type": "string"
+      },
+      "platform": {
+        "enum": [
+          "android",
+          "ios",
+          "web"
+        ],
+        "nullable": false,
+        "type": "string"
+      },
+      "token": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "app_key",
+      "platform",
+      "token"
+    ]
+  },
+  "DeviceUnregisterIn": {
+    "extra_forbidden": true,
+    "properties": {
+      "token": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "token"
+    ]
+  },
+  "IdentifierStatusRequest": {
+    "extra_forbidden": false,
+    "properties": {
+      "identifier": {
+        "maxLength": 320,
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "identifier"
+    ]
+  },
+  "LastMethodRequest": {
+    "extra_forbidden": true,
+    "properties": {
+      "method": {
+        "enum": [
+          "google",
+          "apple",
+          "email_password",
+          "phone_password",
+          "phone_otp",
+          "email_otp"
+        ],
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "method"
+    ]
+  },
+  "LocationUpdate": {
+    "extra_forbidden": true,
+    "properties": {
+      "latitude": {
+        "maximum": 90,
+        "minimum": -90,
+        "nullable": false,
+        "type": "number"
+      },
+      "longitude": {
+        "maximum": 180,
+        "minimum": -180,
+        "nullable": false,
+        "type": "number"
+      }
+    },
+    "required": [
+      "latitude",
+      "longitude"
+    ]
+  },
+  "NotificationSettingsWrite": {
+    "extra_forbidden": true,
+    "properties": {
+      "email_notifications": {
+        "nullable": false,
+        "type": "boolean"
+      },
+      "promotional_emails": {
+        "nullable": false,
+        "type": "boolean"
+      },
+      "push_notifications": {
+        "nullable": false,
+        "type": "boolean"
+      },
+      "sms_notifications": {
+        "nullable": false,
+        "type": "boolean"
+      }
+    },
+    "required": []
+  },
+  "SwipeCreate": {
+    "extra_forbidden": true,
+    "properties": {
+      "is_liked": {
+        "nullable": false,
+        "type": "boolean"
+      },
+      "property_id": {
+        "nullable": false,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "is_liked",
+      "property_id"
+    ]
+  },
+  "UserPreferencesPatch": {
+    "extra_forbidden": true,
+    "properties": {
+      "area_max": {
+        "nullable": true,
+        "type": "number"
+      },
+      "area_min": {
+        "nullable": true,
+        "type": "number"
+      },
+      "bedrooms_max": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "bedrooms_min": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "budget_max": {
+        "nullable": true,
+        "type": "number"
+      },
+      "budget_min": {
+        "nullable": true,
+        "type": "number"
+      },
+      "location_preference": {
+        "nullable": true,
+        "type": "array"
+      },
+      "max_distance_km": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "property_type": {
+        "nullable": true,
+        "type": "array"
+      },
+      "purpose": {
+        "enum": [
+          "buy",
+          "rent",
+          "short_stay"
+        ],
+        "nullable": true,
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  "UserUpdate": {
+    "extra_forbidden": true,
+    "properties": {
+      "current_latitude": {
+        "maximum": 90,
+        "minimum": -90,
+        "nullable": true,
+        "type": "number"
+      },
+      "current_longitude": {
+        "maximum": 180,
+        "minimum": -180,
+        "nullable": true,
+        "type": "number"
+      },
+      "date_of_birth": {
+        "nullable": true,
+        "type": "string"
+      },
+      "full_name": {
+        "nullable": true,
+        "type": "string"
+      },
+      "notification_settings": {
+        "nullable": true,
+        "properties": [
+          "email_notifications",
+          "promotional_emails",
+          "push_notifications",
+          "sms_notifications"
+        ],
+        "type": "object"
+      },
+      "phone": {
+        "nullable": true,
+        "type": "string"
+      },
+      "privacy_settings": {
+        "nullable": true,
+        "properties": [
+          "allow_location_tracking",
+          "contact_sharing",
+          "data_sharing_consent",
+          "hide_last_name",
+          "location_sharing",
+          "profile_visibility",
+          "search_history_tracking",
+          "show_email",
+          "show_phone"
+        ],
+        "type": "object"
+      }
+    },
+    "required": []
+  },
+  "VisitCancel": {
+    "extra_forbidden": true,
+    "properties": {
+      "reason": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "reason"
+    ]
+  },
+  "VisitCreate": {
+    "extra_forbidden": true,
+    "properties": {
+      "conversation_id": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "counterparty_user_id": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "match_id": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "property_id": {
+        "nullable": false,
+        "type": "integer"
+      },
+      "scheduled_date": {
+        "nullable": false,
+        "type": "string"
+      },
+      "special_requirements": {
+        "nullable": true,
+        "type": "string"
+      },
+      "time_slot_label": {
+        "maxLength": 64,
+        "nullable": true,
+        "type": "string"
+      },
+      "user_id": {
+        "nullable": true,
+        "type": "integer"
+      },
+      "visit_context": {
+        "enum": [
+          "property_tour",
+          "flatmate_meet"
+        ],
+        "nullable": false,
+        "type": "string"
+      }
+    },
+    "required": [
+      "property_id",
+      "scheduled_date"
+    ]
+  },
+  "VisitReschedule": {
+    "extra_forbidden": true,
+    "properties": {
+      "new_date": {
+        "nullable": false,
+        "type": "string"
+      },
+      "reason": {
+        "nullable": true,
+        "type": "string"
+      }
+    },
+    "required": [
+      "new_date"
+    ]
+  }
+}

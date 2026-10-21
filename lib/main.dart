@@ -1,102 +1,60 @@
 import 'dart:async';
 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
-import 'package:ghar360/core/bindings/initial_binding.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghar360/core/bootstrap/app_bootstrap.dart';
-import 'package:ghar360/core/config/app_config.dart';
+import 'package:ghar360/core/bootstrap/app_effects.dart';
+import 'package:ghar360/core/bootstrap/provider_policy.dart';
 import 'package:ghar360/core/controllers/localization_controller.dart';
 import 'package:ghar360/core/controllers/theme_controller.dart';
+import 'package:ghar360/core/data/models/page_state_model.dart';
+import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_theme.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/firebase/analytics_service.dart';
 import 'package:ghar360/core/firebase/firebase_initializer.dart';
-import 'package:ghar360/core/firebase/push_notifications_service.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/core/routes/app_pages.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/utils/null_check_trap.dart';
-import 'package:ghar360/core/utils/storage_keys.dart';
 import 'package:ghar360/core/utils/webview_helper.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
-import 'package:ghar360/features/notifications/data/datasources/notifications_remote_datasource.dart';
-import 'package:ghar360/root.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:ghar360/core/widgets/common/error_states.dart';
+import 'package:ghar360/core/widgets/common/offline_banner.dart';
+import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
+import 'package:ghar360/features/auth/presentation/controllers/profile_completion_controller.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
 
 void main() async {
   runZonedGuarded(
     () async {
-      // CRITICAL PATH ONLY - Do absolute minimum before first frame
+      final launchTimer = Stopwatch()..start();
       WidgetsFlutterBinding.ensureInitialized();
 
       final bootstrap = await bootstrapAppCore();
       if (!bootstrap.ok) {
         // Always paint a Flutter frame so the native splash is dismissed and
         // the user sees a recoverable error instead of a frozen logo screen.
-        runApp(BootstrapErrorApp(error: bootstrap.errorMessage ?? 'Unknown startup error'));
+        runApp(
+          BootstrapErrorApp(
+            error: bootstrap.errorMessage ?? 'Unknown startup error',
+            failure: bootstrap.failure ?? BootstrapFailure.connection,
+          ),
+        );
         return;
       }
 
-      // Setup global error handlers (lightweight, no I/O)
-      FlutterError.onError = (FlutterErrorDetails details) {
-        NullCheckTrap.captureFlutterError(details);
-        if (FirebaseInitializer.isFirebaseReady) {
-          try {
-            FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-          } catch (_) {
-            // Crashlytics may not be initialized yet
-          }
-        }
-        FlutterError.presentError(details);
-      };
-
-      // START THE APP NOW - Everything else can wait
-      runApp(const MyApp());
-
-      // === DEFER NON-CRITICAL INIT TO POST-FRAME ===
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        final launchStart = DateTime.now();
-
-        // Initialize DebugLogger (deferred)
-        DebugLogger.initialize();
-
-        // System UI setup (deferred)
-        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-        WebViewHelper.ensureInitialized();
-
-        // Log environment status (deferred) — never log secret material
-        try {
-          DebugLogger.success('AppConfig ready: ${AppConfig.instance}');
-          DebugLogger.info('API Base URL: ${AppConfig.instance.apiBaseUrl}');
-          DebugLogger.success('Supabase initialized successfully');
-        } catch (e) {
-          DebugLogger.warning('Failed to log AppConfig status', e);
-        }
-
-        // Initialize Firebase (deferred - not critical for startup)
-        try {
-          await FirebaseInitializer.init();
-          DebugLogger.success('Firebase initialized');
-        } catch (e, st) {
-          DebugLogger.warning('Failed to initialize Firebase', e, st);
-        }
-
-        // Track app launch duration (deferred)
-        final launchDuration = DateTime.now().difference(launchStart);
-        AnalyticsService.appLaunchComplete(durationMs: launchDuration.inMilliseconds);
-
-        // Setup notifications (already deferred, keep as-is)
-        _setupNotifications();
-      });
+      _runReadyApp(bootstrap.database!, launchTimer);
     },
     (error, stack) {
       // Always surface uncaught startup/runtime errors — DebugLogger may not be ready.
-      debugPrint('Uncaught zone error: $error\n$stack');
+      debugPrint('Uncaught zone error: ${error.runtimeType}\n$stack');
 
       // One-time first null-check trap capture for unhandled async errors
       if (error.toString().contains('Null check operator used on a null value')) {
@@ -105,7 +63,11 @@ void main() async {
       // Report to Crashlytics if available
       if (FirebaseInitializer.isFirebaseReady) {
         try {
-          FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+          unawaited(
+            FirebaseCrashlytics.instance
+                .recordError(error.runtimeType.toString(), stack, fatal: true)
+                .catchError((Object _) {}),
+          );
         } catch (_) {
           // Crashlytics may not be initialized yet
         }
@@ -114,102 +76,150 @@ void main() async {
   );
 }
 
-/// Minimal error shell with no GetX / Supabase dependencies so startup failures
+/// The first successful launch and a recovered launch install the same owners.
+void _runReadyApp(AppDatabase database, Stopwatch launchTimer) {
+  FlutterError.onError = (details) {
+    NullCheckTrap.captureFlutterError(details);
+    if (FirebaseInitializer.isFirebaseReady) {
+      try {
+        unawaited(
+          FirebaseCrashlytics.instance
+              .recordError(
+                details.exception.runtimeType.toString(),
+                details.stack ?? StackTrace.current,
+                fatal: true,
+              )
+              .catchError((Object _) {}),
+        );
+      } catch (_) {
+        // Monitoring must not interrupt rendering.
+      }
+    }
+    FlutterError.presentError(
+      FlutterErrorDetails(
+        exception: details.exception.runtimeType.toString(),
+        stack: details.stack,
+        library: details.library,
+      ),
+    );
+  };
+  runApp(MyApp(database: database));
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    launchTimer.stop();
+    DebugLogger.initialize();
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge).catchError((
+        Object error,
+        StackTrace stack,
+      ) {
+        DebugLogger.warning('System UI setup failed', error.runtimeType, stack);
+      }),
+    );
+    WebViewHelper.ensureInitialized();
+    AnalyticsService.appLaunchComplete(durationMs: launchTimer.elapsedMilliseconds);
+  });
+}
+
+/// Minimal error shell with no session dependencies so startup failures
 /// always replace the native splash with a recoverable UI.
-class BootstrapErrorApp extends StatelessWidget {
-  const BootstrapErrorApp({super.key, required this.error});
+class BootstrapErrorApp extends StatefulWidget {
+  const BootstrapErrorApp({
+    super.key,
+    required this.error,
+    this.failure = BootstrapFailure.connection,
+    this.locale,
+    this.showDevHelp = kDebugMode,
+    this.retryBootstrap,
+  });
 
   final String error;
+  final BootstrapFailure failure;
+  final Locale? locale;
+
+  /// Shows build-tool instructions and the raw error dump. Defaults to
+  /// [kDebugMode]; overridable only so the release rendering stays testable
+  /// (the test process always runs with `kDebugMode == true`).
+  final bool showDevHelp;
+  final Future<void> Function()? retryBootstrap;
+
+  @override
+  State<BootstrapErrorApp> createState() => _BootstrapErrorAppState();
+}
+
+class _BootstrapErrorAppState extends State<BootstrapErrorApp> {
+  bool _retrying = false;
+
+  Future<void> _retry() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+    try {
+      await (widget.retryBootstrap ?? _retryBootstrapFromError)();
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations(
+      widget.locale ?? WidgetsBinding.instance.platformDispatcher.locale,
+    );
+    final messageKey = switch (widget.failure) {
+      BootstrapFailure.storage => 'startup_storage_error',
+      BootstrapFailure.configuration => 'startup_configuration_error',
+      BootstrapFailure.connection => 'startup_connection_error',
+    };
     return MaterialApp(
+      locale: widget.locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFF5B400),
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF9FAFB),
-      ),
-      home: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(
-                      'assets/icons/splash_logo.png',
-                      width: 96,
-                      height: 96,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) =>
-                          const Icon(Icons.home_work_outlined, size: 64, color: Color(0xFFF5B400)),
-                    ),
-                    const SizedBox(height: 28),
-                    const Text(
-                      'Unable to start',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF121417),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'The app could not finish startup.\n\n'
-                      'Local dev:\n'
-                      '1) Fill .env.development\n'
-                      '2) dart run tool/sync_dev_env.dart\n'
-                      '3) flutter run\n\n'
-                      'Or: ./tool/run_with_env.sh',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, height: 1.45, color: Color(0xFF6C757D)),
-                    ),
-                    if (kDebugMode) ...[
-                      const SizedBox(height: 20),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F3F5),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          error,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            height: 1.4,
-                            color: Color(0xFF2B2F36),
-                            fontFamily: 'monospace',
+      theme: AppDesignTheme.light(),
+      darkTheme: AppDesignTheme.dark(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: SafeArea(
+            child: StateBlock(
+              scene: widget.failure == BootstrapFailure.connection
+                  ? PaperScene.offline
+                  : PaperScene.error,
+              seed: 'page',
+              title: l10n.text('startup_failed'),
+              message: widget.showDevHelp
+                  ? 'The app could not finish startup.\n\n'
+                        'Local dev:\n'
+                        '1) Fill .env.development\n'
+                        '2) dart run tool/sync_dev_env.dart\n'
+                        '3) flutter run\n\n'
+                        'Or: ./tool/run_with_env.sh'
+                  : l10n.text(messageKey),
+              detail: widget.showDevHelp
+                  ? SizedBox(
+                      width: double.infinity,
+                      child: ColoredBox(
+                        color: context.design.raised,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: SelectableText(
+                            widget.error,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontFamily: 'monospace',
+                              color: context.design.textPrimary,
+                            ),
                           ),
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 28),
-                    FilledButton.icon(
-                      onPressed: () {
-                        // Hot-restart is not available in-app; re-run bootstrap
-                        // and swap the root widget if services come up.
-                        unawaited(_retryBootstrapFromError());
-                      },
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Retry'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFF5B400),
-                        foregroundColor: const Color(0xFF121417),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                    )
+                  : null,
+              actionLabel: l10n.text('retry'),
+              actionIcon: KnifeIcon.retry,
+              onAction: _retrying ? null : _retry,
+              identifier: 'qa.bootstrap.error',
             ),
           ),
         ),
@@ -219,182 +229,71 @@ class BootstrapErrorApp extends StatelessWidget {
 }
 
 Future<void> _retryBootstrapFromError() async {
+  final launchTimer = Stopwatch()..start();
   final result = await bootstrapAppCore();
   if (result.ok) {
-    runApp(const MyApp());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      DebugLogger.initialize();
-      unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
-      WebViewHelper.ensureInitialized();
-      unawaited(
-        FirebaseInitializer.init().then((_) {
-          _setupNotifications();
-        }),
-      );
-    });
+    _runReadyApp(result.database!, launchTimer);
   } else {
-    runApp(BootstrapErrorApp(error: result.errorMessage ?? 'Unknown startup error'));
+    runApp(
+      BootstrapErrorApp(
+        error: result.errorMessage ?? 'Unknown startup error',
+        failure: result.failure ?? BootstrapFailure.connection,
+      ),
+    );
   }
 }
 
-/// Deferred notifications setup - runs after first frame
-void _setupNotifications() {
-  try {
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        if (!FirebaseInitializer.isFirebaseReady) {
-          DebugLogger.info('🔔 Skipping deferred notifications setup (Firebase disabled)');
-          return;
-        }
-
-        DebugLogger.info('🔔 Starting deferred notifications setup...');
-
-        // Configure token registration callback to send token to backend
-        PushNotificationsService.onTokenRegistration = (token) async {
-          try {
-            final auth = Supabase.instance.client.auth;
-            final session = auth.currentSession;
-
-            if (session == null || session.accessToken.isEmpty) {
-              DebugLogger.info('🔔 Skipping token registration until authenticated session exists');
-              return;
-            }
-
-            final userId = auth.currentUser?.id;
-            if (userId == null || userId.isEmpty) {
-              DebugLogger.info('🔔 Skipping token registration until authenticated user exists');
-              return;
-            }
-
-            if (Get.isRegistered<NotificationsRemoteDatasource>()) {
-              final datasource = Get.find<NotificationsRemoteDatasource>();
-              await datasource.registerDeviceToken(token: token, userId: userId);
-            } else {
-              DebugLogger.warning('🔔 NotificationsRemoteDatasource not registered yet');
-            }
-          } catch (e, st) {
-            DebugLogger.warning('🔔 Failed to register token with backend', e, st);
-          }
-        };
-
-        // Initialize FCM handling (foreground, background, terminated states)
-        await PushNotificationsService.initializeForegroundHandling();
-
-        // Request notification permissions
-        final settings = await PushNotificationsService.requestUserPermission(provisional: false);
-        if (settings == null) {
-          DebugLogger.info('🔔 Notification permission flow skipped');
-          return;
-        }
-        final authorizationStatus = settings.authorizationStatus;
-        DebugLogger.info('🔔 Permission status: $authorizationStatus');
-
-        final canRequestToken =
-            authorizationStatus == AuthorizationStatus.authorized ||
-            authorizationStatus == AuthorizationStatus.provisional;
-        if (!canRequestToken) {
-          DebugLogger.warning(
-            '🔔 Notifications permission not granted yet; skipping token retrieval.',
-          );
-          return;
-        }
-
-        final isApplePlatform =
-            !kIsWeb &&
-            (defaultTargetPlatform == TargetPlatform.iOS ||
-                defaultTargetPlatform == TargetPlatform.macOS);
-
-        // Get and log FCM token (this will also trigger registration with backend)
-        String? token = await PushNotificationsService.getToken();
-        if (token == null && !isApplePlatform) {
-          DebugLogger.info('🔔 FCM token not available yet; retrying once shortly...');
-          await Future<void>.delayed(const Duration(seconds: 2));
-          token = await PushNotificationsService.getToken();
-        }
-
-        if (token != null) {
-          DebugLogger.success('🔔 Notifications setup complete. Token available.');
-          // Check if notifications are actually enabled on the device
-          final enabled = await PushNotificationsService.areNotificationsEnabled();
-          DebugLogger.info('🔔 Notifications enabled on device: $enabled');
-        } else if (isApplePlatform) {
-          DebugLogger.warning(
-            '🔔 Notifications setup incomplete - no FCM token. On iOS simulator this can be expected; on a real device verify APNS entitlements/provisioning.',
-          );
-        } else {
-          DebugLogger.warning('🔔 Notifications setup incomplete - no FCM token!');
-        }
-      } catch (e, st) {
-        DebugLogger.error('🔔 Deferred notifications setup failed', e, st);
-      }
-    });
-  } catch (e) {
-    // Fallback if DebugLogger not ready
-    // Ignore silently - notifications will be setup on next launch
-  }
-}
-
-/// Reads the persisted theme mode from GetStorage synchronously.
-/// GetStorage.init() is already awaited in main() before runApp().
-///
-/// Accepts both canonical string names and legacy int indexes so a bad
-/// PreferencesController write cannot crash MyApp on rebuild.
-ThemeMode _readInitialThemeMode() {
-  final stored = GetStorage().read(StorageKeys.themeMode);
-  final mode = ThemeController.parseStoredThemeMode(stored);
-  // Heal legacy int storage so later typed readers stay safe.
-  if (stored is int || (stored is String && stored != mode.name)) {
-    GetStorage().write(StorageKeys.themeMode, mode.name);
-  }
-  return ThemeController.toFlutterThemeMode(mode);
-}
-
-/// Reads the persisted locale from GetStorage synchronously.
-/// After init, LocalizationController manages via Get.updateLocale().
-Locale _readInitialLocale() {
-  final storage = GetStorage();
-  final langCode = storage.read<String>('language_code');
-  final countryCode = storage.read<String>('country_code');
-  if (langCode != null && countryCode != null) {
-    return Locale(langCode, countryCode);
-  }
-  return const Locale('en', 'US');
-}
-
+/// Owns the database opened by bootstrap. Settings have one provider owner.
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.database});
+  final AppDatabase database;
 
   @override
-  Widget build(BuildContext context) {
-    return GetMaterialApp(
+  Widget build(BuildContext context) => ProviderScope(
+    retry: noProviderRetry,
+    overrides: [
+      ownedAppDatabaseOverride(database),
+      profilePurposeChangedProvider.overrideWith(
+        (ref) => (purpose) {
+          final filters = ref.read(propertyFiltersProvider).forPage(PageType.discover);
+          unawaited(
+            ref
+                .read(propertyFiltersProvider.notifier)
+                .update(PageType.discover, filters.copyWith(purpose: purpose)),
+          );
+        },
+      ),
+    ],
+    child: const _Application(),
+  );
+}
+
+class _Application extends ConsumerWidget {
+  const _Application();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = ref.watch(themeProvider.select((settings) => settings.flutterMode));
+    final locale = ref.watch(localizationProvider.select((settings) => settings.locale));
+    final router = ref.watch(appRouterProvider);
+    return MaterialApp.router(
       title: '360 Ghar',
+      routerConfig: router,
+      builder: (context, child) => AppToastHost(
+        child: OfflineBanner(child: AppEffects(child: child ?? const SizedBox.shrink())),
+      ),
       theme: AppDesignTheme.light(),
       darkTheme: AppDesignTheme.dark(),
-      themeMode: _readInitialThemeMode(),
-      locale: _readInitialLocale(),
-      defaultTransition: Transition.native,
-      transitionDuration: AppDesignTheme.defaultTransitionDuration,
-      popGesture: true,
-      supportedLocales: LocalizationController.supportedLocales,
-      translations: AppTranslations(),
-      fallbackLocale: const Locale('en', 'US'),
+      themeMode: theme,
+      locale: locale,
+      supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
+        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const Root(),
-      getPages: AppPages.routes,
-      initialBinding: InitialBinding(),
       debugShowCheckedModeBanner: false,
-      routingCallback: (routing) {
-        DebugLogger.debug('Routing to: ${routing?.current}');
-
-        if (Get.isRegistered<DashboardController>()) {
-          final currentRoute = routing?.current ?? '';
-          Get.find<DashboardController>().syncTabWithRoute(currentRoute);
-        }
-      },
     );
   }
 }

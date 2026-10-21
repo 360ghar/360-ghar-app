@@ -59,51 +59,6 @@ void main() {
     test('perfTraceSampling defaults to 0.0', () {
       expect(RemoteConfigService.perfTraceSampling, 0.0);
     });
-
-    // Android version management
-    test('androidLatestVersion defaults to 1.0.0', () {
-      expect(RemoteConfigService.androidLatestVersion, '1.0.0');
-    });
-
-    test('androidMinVersion defaults to 1.0.0', () {
-      expect(RemoteConfigService.androidMinVersion, '1.0.0');
-    });
-
-    test('androidForceUpdate defaults to false', () {
-      expect(RemoteConfigService.androidForceUpdate, isFalse);
-    });
-
-    test('androidUpdateUrl defaults to Play Store URL', () {
-      expect(
-        RemoteConfigService.androidUpdateUrl,
-        'https://play.google.com/store/apps/details?id=com.ghar360.app',
-      );
-    });
-
-    test('androidReleaseNotes defaults to empty string', () {
-      expect(RemoteConfigService.androidReleaseNotes, '');
-    });
-
-    // iOS version management
-    test('iosLatestVersion defaults to 1.0.0', () {
-      expect(RemoteConfigService.iosLatestVersion, '1.0.0');
-    });
-
-    test('iosMinVersion defaults to 1.0.0', () {
-      expect(RemoteConfigService.iosMinVersion, '1.0.0');
-    });
-
-    test('iosForceUpdate defaults to false', () {
-      expect(RemoteConfigService.iosForceUpdate, isFalse);
-    });
-
-    test('iosUpdateUrl defaults to App Store URL', () {
-      expect(RemoteConfigService.iosUpdateUrl, 'https://apps.apple.com/app/id123456789');
-    });
-
-    test('iosReleaseNotes defaults to empty string', () {
-      expect(RemoteConfigService.iosReleaseNotes, '');
-    });
   });
 
   group('RemoteConfigService getters are stable across calls', () {
@@ -113,10 +68,10 @@ void main() {
     });
 
     test('repeated reads return the same default value', () {
-      final first = RemoteConfigService.androidLatestVersion;
-      final second = RemoteConfigService.androidLatestVersion;
+      final first = RemoteConfigService.perfHttpSampling;
+      final second = RemoteConfigService.perfHttpSampling;
       expect(first, second);
-      expect(first, '1.0.0');
+      expect(first, 0.0);
     });
 
     test('all bool getters return consistent defaults', () {
@@ -125,17 +80,6 @@ void main() {
       expect(RemoteConfigService.crashlyticsEnabled, isTrue);
       expect(RemoteConfigService.iamEnabled, isFalse);
       expect(RemoteConfigService.pushEnabled, isTrue);
-      expect(RemoteConfigService.androidForceUpdate, isFalse);
-      expect(RemoteConfigService.iosForceUpdate, isFalse);
-    });
-
-    test('all string getters return non-null defaults', () {
-      expect(RemoteConfigService.androidLatestVersion, isNotEmpty);
-      expect(RemoteConfigService.androidMinVersion, isNotEmpty);
-      expect(RemoteConfigService.androidUpdateUrl, isNotEmpty);
-      expect(RemoteConfigService.iosLatestVersion, isNotEmpty);
-      expect(RemoteConfigService.iosMinVersion, isNotEmpty);
-      expect(RemoteConfigService.iosUpdateUrl, isNotEmpty);
     });
   });
 }

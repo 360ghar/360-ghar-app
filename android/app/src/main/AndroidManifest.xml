@@ -45,6 +45,9 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
+            <!-- app_links owns native links and OAuth callbacks. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues
@@ -67,32 +70,22 @@
 
                 <data
                     android:scheme="https"
-                    android:host="the360ghar.com"
+                    android:host="360ghar.com"
                     android:pathPrefix="/p/" />
 
                 <data
                     android:scheme="https"
-                    android:host="the360ghar.com"
+                    android:host="360ghar.com"
                     android:pathPrefix="/property/" />
 
                 <data
                     android:scheme="https"
-                    android:host="www.the360ghar.com"
+                    android:host="www.360ghar.com"
                     android:pathPrefix="/p/" />
 
                 <data
                     android:scheme="https"
-                    android:host="www.the360ghar.com"
-                    android:pathPrefix="/property/" />
-
-                <data
-                    android:scheme="https"
-                    android:host="app.the360ghar.com"
-                    android:pathPrefix="/p/" />
-
-                <data
-                    android:scheme="https"
-                    android:host="app.the360ghar.com"
+                    android:host="www.360ghar.com"
                     android:pathPrefix="/property/" />
             </intent-filter>
 

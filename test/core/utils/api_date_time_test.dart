@@ -20,14 +20,6 @@ void main() {
       expect(parsed.toIso8601String(), '2026-03-12T10:15:30.000Z');
     });
 
-    test('combines visit date and time as a UTC instant', () {
-      final parsed = combineUtcDateAndTime('2026-03-12', '10:15:30');
-
-      expect(parsed, isNotNull);
-      expect(parsed!.isUtc, isTrue);
-      expect(parsed.toIso8601String(), '2026-03-12T10:15:30.000Z');
-    });
-
     test('formats date-only values without shifting calendar day', () {
       expect(formatDateOnlyForApi(DateTime(2026, 3, 12, 23, 59)), '2026-03-12');
     });

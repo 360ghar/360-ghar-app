@@ -1,187 +1,94 @@
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter/foundation.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/utils/app_toast.dart';
-import 'package:ghar360/features/profile/data/profile_repository.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/features/auth/data/auth_failure.dart';
 
-class EditProfileController extends GetxController {
-  final AuthController _authController = Get.find<AuthController>();
-  final ProfileRepository _profileRepository = Get.find<ProfileRepository>();
+@immutable
+class EditProfileState {
+  const EditProfileState({this.saving = false, this.uploading = false, this.error});
+  final bool saving;
+  final bool uploading;
+  final AppException? error;
+  bool get busy => saving || uploading;
+}
 
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+final editProfileProvider = NotifierProvider.autoDispose<EditProfileController, EditProfileState>(
+  EditProfileController.new,
+);
 
-  // Form controllers
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController locationController = TextEditingController();
-
-  // Observable fields
-  final RxString profileImageUrl = ''.obs;
-  final Rx<DateTime?> dateOfBirth = Rx<DateTime?>(null);
-
-  /// True while saving profile form fields.
-  final RxBool isSaving = false.obs;
-
-  /// True while uploading a new profile image (form stays interactive).
-  final RxBool isUploadingImage = false.obs;
-
-  /// True when any profile mutation is in progress.
-  bool get isBusy => isSaving.value || isUploadingImage.value;
-
+class EditProfileController extends Notifier<EditProfileState> {
+  int _generation = 0;
   @override
-  void onInit() {
-    super.onInit();
-    _loadUserData();
+  EditProfileState build() {
+    ref.watch(authProvider.select((value) => value.user?.supabaseUserId));
+    _generation++;
+    ref.onDispose(() {
+      _generation++;
+    });
+    return const EditProfileState();
   }
 
-  @override
-  void onClose() {
-    nameController.dispose();
-    emailController.dispose();
-    locationController.dispose();
-    super.onClose();
-  }
-
-  void _loadUserData() {
-    final user = _authController.currentUser.value;
-    if (user != null) {
-      nameController.text = user.name;
-      emailController.text = user.email;
-      profileImageUrl.value = user.profileImage ?? '';
-
-      // Load date of birth from top-level field if present
-      dateOfBirth.value = user.dateOfBirthAsDate;
-
-      // Load additional fields from preferences if available
-      final prefs = user.preferences;
-      if (prefs?.containsKey('location') == true) {
-        final location = prefs!['location'];
-        locationController.text = location is String ? location : '';
-      }
-    }
-  }
-
-  Future<void> pickProfileImage() async {
+  Future<bool> saveProfile({
+    required String name,
+    required String location,
+    DateTime? dateOfBirth,
+  }) async {
+    final user = ref.read(authProvider).user;
+    if (state.busy || user == null) return false;
+    final session = ref.read(authProvider.notifier);
+    final generation = _generation;
+    state = const EditProfileState(saving: true);
     try {
-      final picker = ImagePicker();
-      final source = await Get.bottomSheet<ImageSource>(
-        SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: Text('take_photo'.tr),
-                onTap: () => Get.back(result: ImageSource.camera),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: Text('choose_from_gallery'.tr),
-                onTap: () => Get.back(result: ImageSource.gallery),
-              ),
-            ],
-          ),
-        ),
+      // The place lives in preferences, which have their own writer: a key sent as null is
+      // removed. The profile save carries only the keys of `UserUpdate`.
+      final place = location.trim();
+      if (place != (user.preferences.location ?? '')) {
+        final placeSaved = await session.updateUserPreferences({
+          'location_preference': place.isEmpty ? null : [place],
+        });
+        if (!ref.mounted || generation != _generation) return false;
+        if (!placeSaved) {
+          state = EditProfileState(error: ref.read(authProvider).mutation.error as AppException?);
+          return false;
+        }
+      }
+      final saved = await session.updateUserProfile({
+        'full_name': name.trim(),
+        'date_of_birth': dateOfBirth?.toIso8601String().split('T').first,
+      });
+      if (!ref.mounted || generation != _generation) return false;
+      state = EditProfileState(
+        error: saved ? null : ref.read(authProvider).mutation.error as AppException?,
       );
-
-      if (source == null) return;
-
-      final pickedFile = await picker.pickImage(
-        source: source,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
-      if (pickedFile == null) return;
-
-      // Upload immediately so the profile persists a real URL, not a local
-      // device file path. The backend returns the updated user.
-      isUploadingImage.value = true;
-      final updatedUser = await _profileRepository.updateProfileImage(pickedFile.path);
-      profileImageUrl.value = updatedUser.profileImage ?? '';
-      _authController.currentUser.value = updatedUser;
-      AppToast.success('success'.tr, 'profile_image_selected'.tr);
-    } catch (e) {
-      AppToast.error('error'.tr, 'failed_to_pick_image'.tr);
-    } finally {
-      isUploadingImage.value = false;
+      return saved;
+    } catch (error) {
+      if (ref.mounted && generation == _generation) {
+        state = EditProfileState(error: authFailure(error));
+      }
+      return false;
     }
   }
 
-  Future<void> selectDateOfBirth(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: dateOfBirth.value ?? DateTime.now().subtract(const Duration(days: 365 * 25)),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now().subtract(const Duration(days: 365 * 13)), // Minimum 13 years old
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: const Color(0xFFFFBC05), // AppDesign.primaryYellow
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null) {
-      dateOfBirth.value = picked;
-    }
-  }
-
-  void clearDateOfBirth() {
-    dateOfBirth.value = null;
-  }
-
-  String formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
-  Future<void> saveProfile() async {
-    if (!formKey.currentState!.validate()) {
-      return;
-    }
-
+  Future<bool> uploadImage(String path) async {
+    if (state.busy) return false;
+    final session = ref.read(authProvider.notifier);
+    final generation = _generation;
+    state = const EditProfileState(uploading: true);
     try {
-      isSaving.value = true;
-
-      final currentUser = _authController.currentUser.value;
-      if (currentUser == null) {
-        AppToast.error('error'.tr, 'user_data_not_found'.tr);
-        return;
+      final saved = await session.updateProfileImage(path);
+      if (!ref.mounted || generation != _generation) return false;
+      state = EditProfileState(
+        error: saved ? null : ref.read(authProvider).mutation.error as AppException?,
+      );
+      return saved;
+    } catch (error) {
+      if (ref.mounted && generation == _generation) {
+        state = EditProfileState(error: authFailure(error));
       }
-
-      // Prepare updated preferences (keep app-specific data like location)
-      final updatedPreferences = Map<String, dynamic>.from(currentUser.preferences ?? {});
-      updatedPreferences['location'] = locationController.text.trim();
-
-      // Prepare profile data for update (align with backend fields)
-      final profileData = <String, dynamic>{
-        'full_name': nameController.text.trim(),
-        'profile_image_url': profileImageUrl.value.isEmpty ? null : profileImageUrl.value,
-        'preferences': updatedPreferences,
-      };
-
-      // Save date of birth to top-level user field
-      if (dateOfBirth.value != null) {
-        final dob = dateOfBirth.value!;
-        profileData['date_of_birth'] =
-            '${dob.year.toString().padLeft(4, '0')}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
-      } else {
-        profileData['date_of_birth'] = null;
-      }
-
-      // Update user profile
-      // Note: _authController.updateUserProfile() already shows a success toast
-      await _authController.updateUserProfile(profileData);
-
-      Get.back();
-    } catch (e) {
-      AppToast.error('error'.tr, 'profile_update_failed'.trParams({'error': e.toString()}));
-    } finally {
-      isSaving.value = false;
+      return false;
     }
   }
 }

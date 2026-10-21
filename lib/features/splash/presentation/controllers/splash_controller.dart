@@ -1,128 +1,76 @@
-// lib/features/splash/presentation/controllers/splash_controller.dart
+import 'package:flutter/foundation.dart';
 
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
 
-import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/data/models/auth_status.dart';
-import 'package:ghar360/core/routes/app_routes.dart';
+@immutable
+class OnboardingState {
+  const OnboardingState({
+    required this.completed,
+    this.locationExplained = false,
+    this.save = const AsyncData(null),
+  });
+  final bool completed;
 
-class SplashController extends GetxController with GetTickerProviderStateMixin {
-  // The splash controller is now only responsible for splash screen animations,
-  // not navigation. All navigation logic is handled by the Root widget.
+  /// Whether this device has shown the location explainer before the OS
+  /// permission prompt.
+  final bool locationExplained;
+  final AsyncValue<void> save;
+}
 
-  PageController? pageController;
-  AnimationController? animationController;
-  Animation<double>? fadeAnimation;
-  Animation<Offset>? slideAnimation;
-  Animation<double>? scaleAnimation;
-  Animation<double>? rotationAnimation;
+final onboardingProvider = NotifierProvider<OnboardingController, OnboardingState>(
+  OnboardingController.new,
+);
 
-  final RxInt currentStep = 0.obs;
-  final GetStorage _storage = GetStorage();
+/// The widget owns its page and animation controllers. This provider owns only
+/// the durable onboarding preferences; failed writes keep onboarding available.
+class OnboardingController extends Notifier<OnboardingState> {
+  static const _explainedKey = 'location_explainer_seen';
 
   @override
-  void onInit() {
-    super.onInit();
-    _initializeAnimations();
-    pageController = PageController();
+  OnboardingState build() {
+    final database = ref.watch(appDatabaseProvider);
+    return OnboardingState(
+      completed: database.readPreference<bool>('has_seen_onboarding') ?? false,
+      locationExplained: database.readPreference<bool>(_explainedKey) ?? false,
+    );
   }
 
-  void _initializeAnimations() {
-    final ac = AnimationController(duration: const Duration(milliseconds: 1000), vsync: this);
-    animationController = ac;
-
-    fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: ac, curve: Curves.easeInOut));
-
-    slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: ac, curve: Curves.easeOutCubic));
-
-    scaleAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: ac, curve: Curves.easeOutBack));
-
-    rotationAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: ac, curve: Curves.easeInOut));
-
-    ac.forward();
-  }
-
-  void nextStep() {
-    if (currentStep.value < 2) {
-      currentStep.value++;
-      pageController?.animateToPage(
-        currentStep.value,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    } else {
-      _completeOnboardingAndNavigate();
-    }
-  }
-
-  void previousStep() {
-    if (currentStep.value > 0) {
-      currentStep.value--;
-      pageController?.animateToPage(
-        currentStep.value,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  void skipToHome() {
-    _completeOnboardingAndNavigate();
-  }
-
-  void _completeOnboardingAndNavigate() {
+  Future<bool> complete() async {
+    if (state.save.isLoading) return false;
+    if (state.completed) return true;
+    state = OnboardingState(
+      completed: false,
+      locationExplained: state.locationExplained,
+      save: const AsyncLoading(),
+    );
     try {
-      _storage.write('has_seen_onboarding', true);
-    } catch (_) {}
-
-    // AuthNavigationService is the single source of truth for navigation
-    // based on authStatus. Manually calling Get.offAllNamed here would race
-    // with AuthNavigationService's ever() worker (which also reacts to
-    // authStatus changes), causing double navigation. Persist the onboarding
-    // flag (done above) and trigger a re-evaluation of the current auth
-    // status so AuthNavigationService routes the user to the right screen.
-    try {
-      final auth = Get.find<AuthController>();
-      if (auth.authStatus.value == AuthStatus.initial) {
-        // Auth hasn't resolved yet; wait for it to settle, then navigate.
-        Worker? worker;
-        worker = ever(auth.authStatus, (AuthStatus status) {
-          if (status != AuthStatus.initial) {
-            worker?.dispose();
-            auth.authStatus.refresh();
-          }
-        });
-      } else {
-        // Re-fire the navigation worker for the current status. This is safe
-        // because AuthNavigationService's _handleAuthNavigation no-ops when
-        // already on the target route.
-        auth.authStatus.refresh();
+      await ref.read(appDatabaseProvider).writePreference('has_seen_onboarding', true);
+      if (!ref.mounted) return false;
+      state = OnboardingState(completed: true, locationExplained: state.locationExplained);
+      return true;
+    } catch (error, stack) {
+      if (ref.mounted) {
+        state = OnboardingState(
+          completed: false,
+          locationExplained: state.locationExplained,
+          save: AsyncError(error, stack),
+        );
       }
-    } catch (_) {
-      // If AuthController isn't registered, fall back to phone entry.
-      Get.offAllNamed(AppRoutes.phoneEntry);
+      return false;
     }
   }
 
-  @override
-  void onClose() {
-    animationController?.dispose();
-    pageController?.dispose();
-    super.onClose();
+  /// Records that the explainer was shown, whatever the user chose. A failed
+  /// write only means the explainer may show once more.
+  Future<void> markLocationExplained() async {
+    if (state.locationExplained) return;
+    state = OnboardingState(completed: state.completed, locationExplained: true, save: state.save);
+    try {
+      await ref.read(appDatabaseProvider).writePreference(_explainedKey, true);
+    } on Object {
+      // The in-memory flag still stops a repeat in this session.
+    }
   }
 }

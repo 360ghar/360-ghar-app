@@ -120,7 +120,7 @@ Your dream home is one swipe away. Download 360Ghar today.
 
 — — —
 
-Questions or feedback? We'd love to hear from you at support@the360ghar.com.
+Questions or feedback? We'd love to hear from you at support@360ghar.com.
 ```
 
 > Tip: the first 2–3 lines show above the "more" fold on the product page — keep the strongest
@@ -142,7 +142,7 @@ Welcome to 360Ghar! 🏡
 • Book property visits with agents in a tap
 • English & Hindi, with light and dark themes
 
-Thanks for downloading — we'd love your feedback at support@the360ghar.com.
+Thanks for downloading — we'd love your feedback at support@360ghar.com.
 ```
 
 For future updates, lead with user-facing changes; avoid "bug fixes and performance
@@ -175,9 +175,9 @@ Result: **4+**.
 
 | Field | Value | Notes |
 |---|---|---|
-| Privacy Policy URL *(required)* | `https://the360ghar.com/privacy-policy` | Must be live & public. The in-app policy is fetched dynamically from the backend, so verify a public web page exists at this URL before submitting. |
-| Support URL *(required)* | `https://the360ghar.com/support` | A real page with a contact method (email/form). |
-| Marketing URL *(optional)* | `https://the360ghar.com` | Brand landing page. |
+| Privacy Policy URL *(required)* | `https://360ghar.com/privacy-policy` | Must be live & public. The in-app policy is fetched dynamically from the backend, so verify a public web page exists at this URL before submitting. |
+| Support URL *(required)* | `https://360ghar.com/support` | A real page with a contact method (email/form). |
+| Marketing URL *(optional)* | `https://360ghar.com` | Brand landing page. |
 
 ---
 

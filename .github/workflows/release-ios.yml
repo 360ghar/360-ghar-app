@@ -1,0 +1,191 @@
+name: Shorebird iOS Release
+
+on:
+  # Manual Shorebird release. Requires SHOREBIRD_TOKEN and iOS signing
+  # secrets, and a bumped version in pubspec.yaml (Shorebird rejects versions
+  # that already exist).
+  workflow_dispatch:
+
+# Grant the minimal permissions needed. The default GITHUB_TOKEN is read-only.
+permissions:
+  contents: read
+
+env:
+  SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+
+jobs:
+  release-ios:
+    # Dispatch guard only: it stops accidental runs from other branches. It does not protect the
+    # secrets from someone who can edit this workflow on a branch. Move the signing secrets into a
+    # GitHub Environment with a deployment rule for main to restrict them.
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Fail if SHOREBIRD_TOKEN is not configured
+      if: env.SHOREBIRD_TOKEN == ''
+      run: |
+        echo "::error::SHOREBIRD_TOKEN secret is not configured. Add it (see docs/shorebird.md) before dispatching this workflow."
+        exit 1
+
+    - name: Create dart-define config (not packaged as assets)
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+        GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+        GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+        DEFAULT_COUNTRY: ${{ secrets.DEFAULT_COUNTRY }}
+        DEBUG_MODE: ${{ secrets.DEBUG_MODE }}
+        LOG_API_CALLS: ${{ secrets.LOG_API_CALLS }}
+        FIREBASE_ENABLED: ${{ secrets.FIREBASE_ENABLED }}
+        FIREBASE_CRASHLYTICS: ${{ secrets.FIREBASE_CRASHLYTICS }}
+        FIREBASE_ANALYTICS: ${{ secrets.FIREBASE_ANALYTICS }}
+        FIREBASE_PERFORMANCE: ${{ secrets.FIREBASE_PERFORMANCE }}
+        FIREBASE_IAM: ${{ secrets.FIREBASE_IAM }}
+      run: |
+        set -euo pipefail
+        # Secrets are injected at compile time via --dart-define-from-file.
+        # Do NOT write them into Flutter assets (extractable from APK/IPA).
+        python3 - <<'PY'
+        import json, os
+        def env(key, default=""):
+            v = os.environ.get(key)
+            return default if v is None or v == "" else v
+        payload = {
+            "API_BASE_URL": env("API_BASE_URL", "https://api.360ghar.com"),
+            "SUPABASE_URL": env("SUPABASE_URL"),
+            "SUPABASE_PUBLISHABLE_KEY": env("SUPABASE_PUBLISHABLE_KEY"),
+            "GOOGLE_PLACES_API_KEY": env("GOOGLE_PLACES_API_KEY"),
+            "GOOGLE_WEB_CLIENT_ID": env("GOOGLE_WEB_CLIENT_ID"),
+            "GOOGLE_IOS_CLIENT_ID": env("GOOGLE_IOS_CLIENT_ID"),
+            "DEFAULT_COUNTRY": env("DEFAULT_COUNTRY", "in"),
+            "DEBUG_MODE": env("DEBUG_MODE", "false"),
+            "LOG_API_CALLS": env("LOG_API_CALLS", "false"),
+            "FIREBASE_ENABLED": env("FIREBASE_ENABLED", "true"),
+            "FIREBASE_CRASHLYTICS": env("FIREBASE_CRASHLYTICS", "true"),
+            # Privacy-by-default unless secrets explicitly enable.
+            "FIREBASE_ANALYTICS": env("FIREBASE_ANALYTICS", "false"),
+            "FIREBASE_PERFORMANCE": env("FIREBASE_PERFORMANCE", "false"),
+            "FIREBASE_IAM": env("FIREBASE_IAM", "false"),
+        }
+        required = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "GOOGLE_PLACES_API_KEY",
+                    "GOOGLE_WEB_CLIENT_ID", "GOOGLE_IOS_CLIENT_ID"]
+        missing = [k for k in required if not payload[k]]
+        if missing:
+            raise SystemExit("::error::Missing required secrets: " + ", ".join(missing))
+        with open("dart_defines.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        print("dart_defines.json written (values not printed)")
+        PY
+
+    - name: Configure Firebase (iOS plist)
+      env:
+        IOS_GOOGLE_SERVICES_PLIST_BASE64: ${{ secrets.IOS_GOOGLE_SERVICES_PLIST_BASE64 }}
+      run: |
+        set -euo pipefail
+        if [ -z "${IOS_GOOGLE_SERVICES_PLIST_BASE64}" ]; then
+          echo "::error::IOS_GOOGLE_SERVICES_PLIST_BASE64 secret is missing. The Xcode target bundles ios/Runner/GoogleService-Info.plist, which is not committed."
+          exit 1
+        fi
+        printf '%s' "${IOS_GOOGLE_SERVICES_PLIST_BASE64}" | base64 --decode > ios/Runner/GoogleService-Info.plist
+        echo "GoogleService-Info.plist written (values not printed)"
+
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Configure iOS signing (distribution cert + App Store profile)
+      env:
+        IOS_CERT_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERT_P12_BASE64 }}
+        IOS_CERT_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERT_PASSWORD }}
+        IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+        KEYCHAIN_PASSWORD: shorebird-ios-ci-ghar360
+      run: |
+        # No -x: this step expands signing material and a password.
+        set -euo pipefail
+        if [ -z "${IOS_CERT_P12_BASE64}" ] || [ -z "${IOS_CERT_PASSWORD}" ] || [ -z "${IOS_PROVISION_PROFILE_BASE64}" ]; then
+          echo "::error::iOS signing secrets missing. Set IOS_DISTRIBUTION_CERT_P12_BASE64, IOS_DISTRIBUTION_CERT_PASSWORD, and IOS_PROVISION_PROFILE_BASE64 (see docs/shorebird.md)."
+          exit 1
+        fi
+        CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+        KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+        PP_PATH=$RUNNER_TEMP/temp.mobileprovision
+
+        printf '%s' "${IOS_CERT_P12_BASE64}" | base64 --decode > "$CERTIFICATE_PATH"
+        printf '%s' "${IOS_PROVISION_PROFILE_BASE64}" | base64 --decode > "$PP_PATH"
+
+        # Temporary keychain (keeps the runner's own keychains untouched).
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security import "$CERTIFICATE_PATH" -P "$IOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        security list-keychain -d user -s "$KEYCHAIN_PATH"
+        security find-identity -v
+
+        # Install the profile using its UUID as the filename so Xcode can find it.
+        UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< "$(/usr/bin/security cms -D -i "$PP_PATH")")
+        mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+        cp "$PP_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+        echo "PROFILE_UUID=$UUID" >> "$GITHUB_ENV"
+
+    - name: Generate CI ExportOptions.plist (manual signing)
+      run: |
+        set -euo pipefail
+        cat > /tmp/ExportOptionsCI.plist <<'PLIST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>HMWGCVU4SV</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+                <key>com.the360ghar.ghar360</key>
+                <string>PLACEHOLDER_UUID</string>
+            </dict>
+            <key>destination</key>
+            <string>export</string>
+        </dict>
+        </plist>
+        PLIST
+        sed -i '' "s/PLACEHOLDER_UUID/${PROFILE_UUID}/" /tmp/ExportOptionsCI.plist
+        plutil -lint /tmp/ExportOptionsCI.plist
+        echo "export_options=/tmp/ExportOptionsCI.plist" >> "$GITHUB_ENV"
+
+    - name: Setup Shorebird
+      uses: shorebirdtech/setup-shorebird@v1
+      with:
+        cache: true
+
+    - name: Shorebird iOS release
+      run: >
+        echo y | shorebird release ios
+        --flutter-version 3.44.8
+        --dart-define-from-file=dart_defines.json
+        --export-options-plist=/tmp/ExportOptionsCI.plist
+
+    - name: Clean up signing assets
+      if: always()
+      run: |
+        security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+        rm -f "$RUNNER_TEMP/build_certificate.p12" "$RUNNER_TEMP/temp.mobileprovision"
+
+    - name: Upload IPA artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ghar360-ios-ipa
+        path: build/ios/ipa/
+        if-no-files-found: warn

@@ -38,11 +38,16 @@ void uninstallFakeWebViewPlatform() {
 
 /// A no-op [WebViewPlatform] that creates fake platform objects for tests.
 class FakeWebViewPlatform extends WebViewPlatform {
+  FakeWebViewPlatform({this.configurationError});
+  final Object? configurationError;
   @override
   PlatformWebViewController createPlatformWebViewController(
     PlatformWebViewControllerCreationParams params,
   ) {
-    final controller = FakePlatformWebViewController(params);
+    final controller = FakePlatformWebViewController(
+      params,
+      configurationError: configurationError,
+    );
     lastWebViewController = controller;
     return controller;
   }
@@ -64,7 +69,8 @@ class FakeWebViewPlatform extends WebViewPlatform {
 
 /// Fake [PlatformWebViewController] that records load/run calls.
 class FakePlatformWebViewController extends PlatformWebViewController {
-  FakePlatformWebViewController(super.params) : super.implementation();
+  FakePlatformWebViewController(super.params, {this.configurationError}) : super.implementation();
+  final Object? configurationError;
 
   int loadHtmlStringCalls = 0;
   int loadRequestCalls = 0;
@@ -88,7 +94,9 @@ class FakePlatformWebViewController extends PlatformWebViewController {
   }
 
   @override
-  Future<void> setJavaScriptMode(JavaScriptMode javaScriptMode) async {}
+  Future<void> setJavaScriptMode(JavaScriptMode javaScriptMode) async {
+    if (configurationError != null) throw configurationError!;
+  }
 
   @override
   Future<void> setBackgroundColor(Color color) async {}

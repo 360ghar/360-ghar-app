@@ -1,29 +1,21 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/translations/app_messages.dart';
 
 void main() {
   test('contains required translation keys in supported locales', () {
-    final keys = AppTranslations().keys;
+    final keys = appMessages;
     const required = <String>[
       'Call',
       'WhatsApp',
-      'profile_picture',
       'unavailable',
       'agent_contact_unavailable',
       'could_not_open_phone_dialer',
       'could_not_open_whatsapp',
-      'auth_phone_title',
-      'auth_phone_subtitle',
       'auth_login_subtitle',
-      'auth_signup_personal_subtitle',
       'auth_signup_security_title',
-      'auth_signup_security_subtitle',
-      'auth_chip_verified',
-      'auth_chip_transparent',
-      'auth_chip_support',
-      'auth_chip_private',
-      'auth_chip_secure',
       'onboarding_slide_1_title',
       'onboarding_slide_1_desc',
       'onboarding_slide_2_title',
@@ -43,7 +35,7 @@ void main() {
   });
 
   test('new translation keys exist in both en_US and hi_IN', () {
-    final keys = AppTranslations().keys;
+    final keys = appMessages;
     const newKeys = <String>[
       'take_photo',
       'choose_from_gallery',
@@ -67,5 +59,59 @@ void main() {
         );
       }
     }
+  });
+
+  // The two tests below are structural rather than a hand-maintained key list.
+  // A hand-maintained list only catches keys someone remembered to add to it,
+  // which is why 24 auth/onboarding keys silently existed in en_US only, and
+  // why 'property_purpose' and 'complete' were rendered to users as raw keys.
+  test('en_US and hi_IN define exactly the same keys', () {
+    final keys = appMessages;
+    final en = keys['en_US']!.keys.toSet();
+    final hi = keys['hi_IN']!.keys.toSet();
+
+    expect(
+      en.difference(hi).toList()..sort(),
+      isEmpty,
+      reason: 'Defined in en_US but missing from hi_IN, so Hindi falls back to English',
+    );
+    expect(
+      hi.difference(en).toList()..sort(),
+      isEmpty,
+      reason: 'Defined in hi_IN but missing from en_US, so English users see the raw key',
+    );
+  });
+
+  test('every translation key referenced in lib/ is defined in both locales', () {
+    final keys = appMessages;
+    final en = keys['en_US']!;
+    final hi = keys['hi_IN']!;
+
+    // Matches literal Flutter localization lookups. Keys composed
+    // at runtime (e.g. 'doc_$id') are not literals and are correctly skipped.
+    final pattern = RegExp(r"(?:\.text|authFailureMessageKey)\(\s*'([a-z0-9_]+)'");
+    final referenced = <String, String>{};
+
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      for (final match in pattern.allMatches(entity.readAsStringSync())) {
+        referenced.putIfAbsent(match.group(1)!, () => entity.path);
+      }
+    }
+
+    expect(referenced, isNotEmpty, reason: 'Scanner found no keys; the regex is broken');
+
+    final undefined = <String>[];
+    referenced.forEach((key, path) {
+      if (!en.containsKey(key)) undefined.add('$key (en_US) used in $path');
+      if (!hi.containsKey(key)) undefined.add('$key (hi_IN) used in $path');
+    });
+
+    expect(
+      undefined..sort(),
+      isEmpty,
+      reason:
+          'The localization fallback renders the key itself when a lookup misses, so these show as raw text',
+    );
   });
 }

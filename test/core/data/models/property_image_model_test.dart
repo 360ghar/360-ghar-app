@@ -12,8 +12,7 @@ void main() {
         'caption': 'Front view',
         'display_order': 3,
         'is_main_image': true,
-        'is_main': false,
-        'category': 'floor_plan',
+        'image_category': 'floor_plan',
       };
 
       final model = PropertyImageModel.fromJson(json);
@@ -24,21 +23,42 @@ void main() {
       expect(model.caption, 'Front view');
       expect(model.displayOrder, 3);
       expect(model.isMainImage, true);
-      expect(model.isMain, false);
-      expect(model.category, 'floor_plan');
+      expect(model.category, ImageCategory.floorPlan);
     });
 
-    test('applies defaults for missing optional fields', () {
-      final json = <String, dynamic>{'id': 2, 'property_id': 10};
+    test('the keys the backend defaults read as its defaults', () {
+      final json = <String, dynamic>{
+        'id': 2,
+        'property_id': 10,
+        'image_url': 'https://example.com/2.jpg',
+      };
 
       final model = PropertyImageModel.fromJson(json);
 
-      expect(model.imageUrl, '', reason: 'image_url defaults to empty string');
       expect(model.caption, isNull);
       expect(model.displayOrder, 0, reason: 'display_order defaults to 0');
       expect(model.isMainImage, false, reason: 'is_main_image defaults to false');
-      expect(model.isMain, false, reason: 'is_main defaults to false');
-      expect(model.category, 'gallery', reason: 'category defaults to gallery');
+      expect(model.category, ImageCategory.others, reason: 'image_category defaults to others');
+    });
+
+    test('id, property_id and image_url are required', () {
+      for (final key in ['id', 'property_id', 'image_url']) {
+        final body = <String, dynamic>{'id': 2, 'property_id': 10, 'image_url': 'u'}..remove(key);
+        expect(() => PropertyImageModel.fromJson(body), throwsA(anything), reason: key);
+      }
+    });
+
+    test('an unknown category reads as null, so the photo is not a floor plan', () {
+      final model = PropertyImageModel.fromJson({
+        'id': 2,
+        'property_id': 10,
+        'image_url': 'u',
+        'image_category': 'drone',
+      });
+
+      expect(model.category, isNull);
+      expect(model.isFloorPlan, isFalse);
+      expect(model.isGallery, isTrue);
     });
   });
 
@@ -65,15 +85,13 @@ void main() {
     PropertyImageModel make({
       String imageUrl = 'https://example.com/image.jpg',
       bool isMainImage = false,
-      bool isMain = false,
-      String category = 'gallery',
+      ImageCategory? category = ImageCategory.others,
     }) {
       return PropertyImageModel(
         id: 1,
         propertyId: 1,
         imageUrl: imageUrl,
         isMainImage: isMainImage,
-        isMain: isMain,
         category: category,
       );
     }
@@ -83,30 +101,24 @@ void main() {
       expect(make(imageUrl: '').isValid, false);
     });
 
-    test('isPrimary is true when isMain or isMainImage is true', () {
-      expect(make(isMain: false, isMainImage: false).isPrimary, false);
-      expect(make(isMain: true, isMainImage: false).isPrimary, true);
-      expect(make(isMain: false, isMainImage: true).isPrimary, true);
-      expect(make(isMain: true, isMainImage: true).isPrimary, true);
+    test('isPrimary follows is_main_image', () {
+      expect(make().isPrimary, false);
+      expect(make(isMainImage: true).isPrimary, true);
     });
 
-    test('resolvedCategory falls back to gallery when empty', () {
-      expect(make(category: 'floor_plan').resolvedCategory, 'floor_plan');
-      expect(make(category: 'gallery').resolvedCategory, 'gallery');
-      expect(make(category: '').resolvedCategory, 'gallery');
-    });
-
-    test('isGallery is true for gallery or photo categories', () {
-      expect(make(category: 'gallery').isGallery, true);
-      expect(make(category: 'photo').isGallery, true);
-      expect(make(category: 'floor_plan').isGallery, false);
-      expect(make(category: '').isGallery, true, reason: 'empty resolves to gallery');
-    });
-
-    test('isFloorPlan is true only for floor_plan category', () {
-      expect(make(category: 'floor_plan').isFloorPlan, true);
-      expect(make(category: 'gallery').isFloorPlan, false);
-      expect(make(category: '').isFloorPlan, false);
+    test('only floor_plan leaves the gallery', () {
+      for (final room in [
+        ImageCategory.room,
+        ImageCategory.hall,
+        ImageCategory.kitchen,
+        ImageCategory.bathroom,
+        ImageCategory.others,
+      ]) {
+        expect(make(category: room).isGallery, true, reason: room.wire);
+        expect(make(category: room).isFloorPlan, false, reason: room.wire);
+      }
+      expect(make(category: ImageCategory.floorPlan).isFloorPlan, true);
+      expect(make(category: ImageCategory.floorPlan).isGallery, false);
     });
 
     test('thumbnailUrl appends params for cloudinary URLs', () {
@@ -164,55 +176,8 @@ void main() {
     });
   });
 
-  group('PropertyImageModel.toApiJson', () {
-    test('syncs is_main and is_main_image flags', () {
-      final model = const PropertyImageModel(
-        id: 1,
-        propertyId: 1,
-        imageUrl: 'https://example.com/i.jpg',
-        isMainImage: true,
-        isMain: false,
-        category: 'floor_plan',
-      );
-
-      final api = model.toApiJson();
-
-      expect(api['is_main'], true, reason: 'is_main synced to isMain || isMainImage');
-      expect(api['is_main_image'], true, reason: 'is_main_image synced to isMainImage || isMain');
-      expect(api['category'], 'floor_plan');
-    });
-
-    test('syncs both flags true when only isMain is true', () {
-      final model = const PropertyImageModel(
-        id: 1,
-        propertyId: 1,
-        imageUrl: 'https://example.com/i.jpg',
-        isMainImage: false,
-        isMain: true,
-      );
-
-      final api = model.toApiJson();
-
-      expect(api['is_main'], true);
-      expect(api['is_main_image'], true);
-    });
-
-    test('defaults empty category to gallery', () {
-      final model = const PropertyImageModel(
-        id: 1,
-        propertyId: 1,
-        imageUrl: 'https://example.com/i.jpg',
-        category: '',
-      );
-
-      final api = model.toApiJson();
-
-      expect(api['category'], 'gallery');
-    });
-  });
-
   group('PropertyImageModel.toJson roundtrip', () {
-    test('roundtrip preserves all fields', () {
+    test('roundtrip preserves all fields and writes image_category', () {
       final original = const PropertyImageModel(
         id: 5,
         propertyId: 50,
@@ -220,11 +185,11 @@ void main() {
         caption: 'Roundtrip caption',
         displayOrder: 7,
         isMainImage: true,
-        isMain: true,
-        category: 'photo',
+        category: ImageCategory.kitchen,
       );
 
       final json = original.toJson();
+      expect(json['image_category'], 'kitchen');
       final restored = PropertyImageModel.fromJson(json);
 
       expect(restored.id, original.id);
@@ -233,7 +198,6 @@ void main() {
       expect(restored.caption, original.caption);
       expect(restored.displayOrder, original.displayOrder);
       expect(restored.isMainImage, original.isMainImage);
-      expect(restored.isMain, original.isMain);
       expect(restored.category, original.category);
     });
 

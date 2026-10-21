@@ -1,203 +1,178 @@
-// test/core/controllers/app_update_controller_dialog_test.dart
-//
-// Widget tests for [AppUpdateController]'s update-dialog action flows. These
-// exercise the private `_showUpdateDialog` → `_openDownloadUrl` and
-// skipped-version persistence paths by pumping a real [GetMaterialApp] so
-// `Get.dialog` can present the [AppUpdateDialog] and the test can tap its
-// action buttons.
-//
-// Kept in a separate file from the unit tests so each widget test gets a
-// pristine GetX container + navigator (no observer/route leakage from the
-// unit-test controller).
+import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
+
 import 'package:ghar360/core/controllers/app_update_controller.dart';
-import 'package:ghar360/core/data/models/app_update_models.dart';
-import 'package:ghar360/features/splash/data/app_update_repository.dart';
-import 'package:mocktail/mocktail.dart';
-
-import '../../helpers/getx_test_binding.dart';
-import '../../helpers/mocks.dart';
-
-class MockAppUpdateRepository extends GetxServiceMock implements AppUpdateRepository {}
+import 'package:ghar360/core/storage/app_database.dart';
+import 'package:ghar360/core/widgets/common/app_update_dialog.dart';
+import 'package:ghar360/core/widgets/common/app_update_host.dart';
+import '../../helpers/app_update_test_harness.dart';
+import '../../helpers/provider_test_app.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  const pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
-  const packageInfoChannel = MethodChannel('dev.fluttercommunity.plus/package_info');
-  const urlLauncherChannel = MethodChannel('plugins.flutter.io/url_launcher');
-
-  setUpAll(() {
-    Get.testMode = true;
-    registerFallbackValue(
-      const AppVersionCheckRequest(app: 'user', platform: 'android', currentVersion: '0.0.0'),
-    );
-
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      pathProviderChannel,
-      (MethodCall call) async {
-        if (call.method == 'getApplicationDocumentsDirectory') return '.';
-        return null;
-      },
-    );
-
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      packageInfoChannel,
-      (MethodCall call) async {
-        if (call.method == 'getAll') {
-          return <String, dynamic>{
-            'appName': 'ghar360',
-            'packageName': 'com.ghar360.app',
-            'version': '1.2.3',
-            'buildNumber': '42',
-            'buildSignature': '',
-            'installerStore': null,
-          };
-        }
-        return null;
-      },
-    );
-
-    // url_launcher: return true so _openDownloadUrl completes "successfully".
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      urlLauncherChannel,
-      (MethodCall call) async {
-        if (call.method == 'canLaunchUrl') return true;
-        if (call.method == 'launchUrl') return true;
-        return null;
-      },
-    );
+  late UpdateTestHarness harness;
+  late GlobalKey<NavigatorState> navigatorKey;
+  setUp(() {
+    harness = UpdateTestHarness();
+    navigatorKey = GlobalKey<NavigatorState>();
   });
-
-  late MockAppUpdateRepository mockRepository;
-  late AppUpdateController controller;
-
-  setUp(() async {
-    GetxTestBinding.init();
-    await GetStorage.init();
-    GetStorage().erase();
-
-    mockRepository = MockAppUpdateRepository();
-    when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-      (_) async => const AppVersionCheckResponse(updateAvailable: false, isMandatory: false),
+  tearDown(() => harness.dispose());
+  Future<void> pump(WidgetTester tester, {bool enabled = true, double scale = 1}) async {
+    await tester.pumpProviderApp(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: AppUpdateHost(
+          enabled: enabled,
+          navigatorKey: navigatorKey,
+          child: Navigator(
+            key: navigatorKey,
+            onGenerateRoute: (_) =>
+                MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('App content'))),
+          ),
+        ),
+      ),
+      textScale: scale,
     );
-    GetxTestBinding.bind().register<AppUpdateRepository>(mockRepository);
-
-    controller = AppUpdateController();
-    controller.onInit();
-  });
-
-  tearDown(() {
-    controller.onClose();
-    GetxTestBinding.reset();
-  });
-
-  Future<void> pumpApp(WidgetTester tester) async {
-    await tester.pumpWidget(const GetMaterialApp(home: Scaffold(body: SizedBox.shrink())));
+    await tester.pumpAndSettle();
   }
 
-  group('AppUpdateController dialog actions', () {
-    testWidgets('mandatory update: tapping Update opens download URL', (tester) async {
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: true,
-          latestVersion: '2.0.0',
-          downloadUrl: 'https://example.com/update',
-        ),
-      );
+  Future<void> dispose(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  }
 
-      await pumpApp(tester);
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
-      final updateButton = find.text('update_now'.tr);
-      expect(updateButton, findsOneWidget);
-      await tester.tap(updateButton);
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
-      expect(controller.isChecking.value, false);
-    });
-
-    testWidgets('optional update: tapping Not now stores skipped version', (tester) async {
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: false,
-          latestVersion: '1.9.0',
-          downloadUrl: 'https://example.com/update',
-        ),
-      );
-
-      await pumpApp(tester);
-      expect(GetStorage().read<String>('skipped_app_version'), isNull);
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
-      final notNowButton = find.text('not_now'.tr);
-      expect(notNowButton, findsOneWidget);
-      await tester.tap(notNowButton);
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
-      expect(GetStorage().read<String>('skipped_app_version'), '1.9.0');
-      expect(controller.isChecking.value, false);
-    });
-
-    testWidgets('optional update: tapping Update opens download URL', (tester) async {
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: false,
-          latestVersion: '1.9.0',
-          downloadUrl: 'https://example.com/update',
-        ),
-      );
-
-      await pumpApp(tester);
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
-      final updateButton = find.text('update'.tr);
-      expect(updateButton, findsOneWidget);
-      await tester.tap(updateButton);
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
-      expect(controller.isChecking.value, false);
-    });
-
-    testWidgets('optional update: dismissing dialog (null action) stores skipped version', (
-      tester,
-    ) async {
-      when(() => mockRepository.checkForUpdates(any())).thenAnswer(
-        (_) async => const AppVersionCheckResponse(
-          updateAvailable: true,
-          isMandatory: false,
-          latestVersion: '1.9.0',
-        ),
-      );
-
-      await pumpApp(tester);
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
-      // Dismiss via the barrier (optional dialog is dismissible).
-      await tester.tapAt(const Offset(10, 10));
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
-      expect(GetStorage().read<String>('skipped_app_version'), '1.9.0');
-    });
+  testWidgets('mandatory Update launches store; back and barrier cannot dismiss', (tester) async {
+    harness.repository.response = () async => updateAvailable.copyWith(isMandatory: true);
+    await pump(tester);
+    expect(find.text('Update Now'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppUpdateDialog), findsOneWidget);
+    await Navigator.of(tester.element(find.byType(AppUpdateDialog))).maybePop();
+    await tester.pumpAndSettle();
+    expect(find.byType(AppUpdateDialog), findsOneWidget);
+    await tester.tap(find.text('Update Now'));
+    await tester.pumpAndSettle();
+    expect(harness.platform.opened.single.toString(), 'https://store.test/update');
+    expect(harness.state.check.isLoading, isFalse);
+    expect(find.byType(AppUpdateDialog), findsNothing);
+    await dispose(tester);
+  });
+  testWidgets('optional Not Now stores skipped version', (tester) async {
+    harness.repository.response = () async => updateAvailable;
+    await pump(tester);
+    expect(harness.database.values[AppUpdateController.skippedVersionKey], isNull);
+    await tester.tap(find.text('Not Now'));
+    await tester.pumpAndSettle();
+    expect(harness.database.values[AppUpdateController.skippedVersionKey], '2.0.0');
+    expect(find.byType(AppUpdateDialog), findsNothing);
+    await dispose(tester);
+  });
+  testWidgets('optional Update launches store', (tester) async {
+    harness.repository.response = () async => updateAvailable;
+    await pump(tester);
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+    expect(harness.platform.opened, hasLength(1));
+    expect(find.byType(AppUpdateDialog), findsNothing);
+    await dispose(tester);
+  });
+  testWidgets('optional barrier dismissal stores skipped version', (tester) async {
+    harness.repository.response = () async => updateAvailable;
+    await pump(tester);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(harness.database.values[AppUpdateController.skippedVersionKey], '2.0.0');
+    expect(find.byType(AppUpdateDialog), findsNothing);
+    await dispose(tester);
+  });
+  testWidgets('store failure keeps dialog and allows explicit retry', (tester) async {
+    harness.repository.response = () async => updateAvailable;
+    harness.platform.launch = () async => false;
+    await pump(tester);
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not open the store. Try again.'), findsOneWidget);
+    expect(find.byType(AppUpdateDialog), findsOneWidget);
+    harness.platform.launch = () async => true;
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppUpdateDialog), findsNothing);
+    await dispose(tester);
+  });
+  testWidgets('skip write failure keeps dialog and retry commits', (tester) async {
+    harness.repository.response = () async => updateAvailable;
+    harness.database.writeError = StorageFailure('disk full');
+    await pump(tester);
+    await tester.tap(find.text('Not Now'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not save your choice. Try again.'), findsOneWidget);
+    expect(find.byType(AppUpdateDialog), findsOneWidget);
+    harness.database.writeError = null;
+    await tester.tap(find.text('Not Now'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppUpdateDialog), findsNothing);
+    await dispose(tester);
+  });
+  testWidgets('pending store launch disables actions and blocks optional back', (tester) async {
+    final launch = Completer<bool>();
+    harness.repository.response = () async => updateAvailable;
+    harness.platform.launch = () => launch.future;
+    await pump(tester);
+    await tester.tap(find.text('Update'));
+    await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed, isNull);
+    expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Not Now')).onPressed, isNull);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump();
+    expect(find.byType(AppUpdateDialog), findsOneWidget);
+    launch.complete(true);
+    await tester.pumpAndSettle();
+    expect(harness.platform.opened, hasLength(1));
+    await dispose(tester);
+  });
+  testWidgets('disabled host waits for Firebase readiness and ignores background events', (
+    tester,
+  ) async {
+    await pump(tester, enabled: false);
+    final state = tester.state(find.byType(AppUpdateHost)) as WidgetsBindingObserver;
+    state.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(harness.repository.requests, isEmpty);
+    await pump(tester);
+    expect(harness.repository.requests, hasLength(1));
+    harness.now = harness.now.add(const Duration(minutes: 6));
+    for (final lifecycle in [
+      AppLifecycleState.paused,
+      AppLifecycleState.inactive,
+      AppLifecycleState.detached,
+    ]) {
+      state.didChangeAppLifecycleState(lifecycle);
+    }
+    await tester.pumpAndSettle();
+    expect(harness.repository.requests, hasLength(1));
+    state.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(harness.repository.requests, hasLength(2));
+    await dispose(tester);
+  });
+  testWidgets('narrow large-text update dialog scrolls without overflow', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    harness.repository.response = () async => updateAvailable.copyWith(
+      releaseNotes: List.filled(10, 'Update with improvements.').join(' '),
+    );
+    await pump(tester, scale: 2);
+    expect(find.byType(AppUpdateDialog), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Not Now'));
+    await tester.pumpAndSettle();
+    await dispose(tester);
   });
 }

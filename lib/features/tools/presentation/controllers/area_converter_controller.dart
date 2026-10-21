@@ -1,74 +1,71 @@
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:get/get.dart';
+import 'package:ghar360/core/bootstrap/provider_policy.dart';
 
-enum AreaUnit { sqFt, sqM, sqYards, acres, gaj, bigha }
+enum AreaUnit {
+  sqFt('sq_ft', 1),
+  sqM('sq_m', 10.7639),
+  sqYards('sq_yards', 9),
+  acres('acres', 43560),
+  gaj('gaj', 9),
+  bigha('bigha', 27000);
 
-class AreaConverterController extends GetxController {
-  final TextEditingController inputController = TextEditingController();
-  final Rx<AreaUnit> selectedUnit = AreaUnit.sqFt.obs;
-  final RxMap<AreaUnit, double> conversions = <AreaUnit, double>{}.obs;
+  const AreaUnit(this.labelKey, this.squareFeet);
+  final String labelKey;
+  // Bigha varies by region. The screen states this existing convention.
+  final double squareFeet;
+}
 
-  // Conversion factors to square feet (base unit)
-  static const Map<AreaUnit, double> _toSqFt = {
-    AreaUnit.sqFt: 1.0,
-    AreaUnit.sqM: 10.7639,
-    AreaUnit.sqYards: 9.0,
-    AreaUnit.gaj: 9.0, // 1 gaj = 1 sq yard = 9 sq ft
-    AreaUnit.acres: 43560.0,
-    AreaUnit.bigha: 27000.0, // Standard bigha (varies by region, using common value)
-  };
+class AreaConverterState {
+  const AreaConverterState({
+    this.input = '',
+    this.selectedUnit = AreaUnit.sqFt,
+    this.conversions = const {},
+    this.validationKey,
+  });
 
-  String getUnitLabel(AreaUnit unit) {
-    switch (unit) {
-      case AreaUnit.sqFt:
-        return 'sq_ft'.tr;
-      case AreaUnit.sqM:
-        return 'sq_m'.tr;
-      case AreaUnit.sqYards:
-        return 'sq_yards'.tr;
-      case AreaUnit.acres:
-        return 'acres'.tr;
-      case AreaUnit.gaj:
-        return 'gaj'.tr;
-      case AreaUnit.bigha:
-        return 'bigha'.tr;
-    }
-  }
+  final String input;
+  final AreaUnit selectedUnit;
+  final Map<AreaUnit, double> conversions;
+  final String? validationKey;
+}
+
+final areaConverterProvider =
+    NotifierProvider.autoDispose<AreaConverterController, AreaConverterState>(
+      AreaConverterController.new,
+      retry: noProviderRetry,
+    );
+
+/// Calculation state only. The view owns and disposes its text controller.
+class AreaConverterController extends Notifier<AreaConverterState> {
+  @override
+  AreaConverterState build() => const AreaConverterState();
 
   void onUnitChanged(AreaUnit? unit) {
-    if (unit != null) {
-      selectedUnit.value = unit;
-      convert();
-    }
+    if (unit != null) _convert(state.input, unit);
   }
 
-  void convert() {
-    final input = double.tryParse(inputController.text) ?? 0;
-    if (input <= 0) {
-      conversions.clear();
+  void convert(String input) => _convert(input, state.selectedUnit);
+
+  void _convert(String input, AreaUnit unit) {
+    final value = double.tryParse(input.trim());
+    final squareFeet = value == null ? null : value * unit.squareFeet;
+    if (squareFeet == null || !squareFeet.isFinite || squareFeet <= 0) {
+      state = AreaConverterState(
+        input: input,
+        selectedUnit: unit,
+        validationKey: input.isEmpty ? null : 'please_enter_valid_area',
+      );
       return;
     }
-
-    // Convert input to square feet first
-    final sqFt = input * _toSqFt[selectedUnit.value]!;
-
-    // Convert to all units
-    final Map<AreaUnit, double> results = {};
-    for (final unit in AreaUnit.values) {
-      results[unit] = sqFt / _toSqFt[unit]!;
-    }
-    conversions.value = results;
+    state = AreaConverterState(
+      input: input,
+      selectedUnit: unit,
+      conversions: Map.unmodifiable({
+        for (final target in AreaUnit.values) target: squareFeet / target.squareFeet,
+      }),
+    );
   }
 
-  void clear() {
-    inputController.clear();
-    conversions.clear();
-  }
-
-  @override
-  void onClose() {
-    inputController.dispose();
-    super.onClose();
-  }
+  void clear() => state = const AreaConverterState();
 }

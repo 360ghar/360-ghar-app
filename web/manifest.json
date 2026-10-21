@@ -3,9 +3,9 @@
     "short_name": "360 Ghar",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#DDEFE9",
+    "theme_color": "#DDEFE9",
+    "description": "Verified homes in Gurugram: swipe, take a 360° tour, book a visit.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

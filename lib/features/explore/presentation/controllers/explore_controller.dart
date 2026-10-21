@@ -1,894 +1,274 @@
 import 'dart:async';
 
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/controllers/location_controller.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ghar360/core/bootstrap/provider_policy.dart';
+import 'package:ghar360/core/controllers/localization_controller.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/map/map_controller.dart';
-import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/core/utils/app_toast.dart';
-import 'package:ghar360/core/utils/debug_logger.dart';
-import 'package:ghar360/core/utils/error_mapper.dart';
-import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
-import 'package:ghar360/features/explore/presentation/controllers/explore_map_session.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_property_markers.dart';
+import 'package:ghar360/features/location/application/location_source.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import 'package:ghar360/features/properties/application/swipe_history.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 export 'package:ghar360/features/explore/presentation/controllers/explore_property_markers.dart'
     show PropertyMarker;
 
-// TODO(explore): loadingMore is referenced in the view for a future "load more
-// properties on scroll" feature but is never set by the controller yet.
 enum ExploreState { initial, loading, loaded, empty, error, loadingMore }
 
-class ExploreController extends GetxController {
-  static const LatLng _defaultCenter = LatLng(28.6139, 77.2090);
-  static const String _defaultCenterName = 'Delhi';
-  static const double _defaultZoom = 12.0;
+class ExploreMapState {
+  const ExploreMapState({
+    this.center = const LatLng(28.6139, 77.2090),
+    this.zoom = 12,
+    this.selectedId,
+    this.collapsed = false,
+    this.cameraRevision = 0,
+    this.fitBounds = false,
+    this.cameraUpdate = const AsyncData(null),
+  });
+  final LatLng center;
+  final double zoom;
+  final int? selectedId;
+  final bool collapsed;
+  final int cameraRevision;
+  final bool fitBounds;
+  final AsyncValue<void> cameraUpdate;
+  ExploreMapState copyWith({
+    LatLng? center,
+    double? zoom,
+    Object? selectedId = _unset,
+    bool? collapsed,
+    int? cameraRevision,
+    bool? fitBounds,
+    AsyncValue<void>? cameraUpdate,
+  }) => ExploreMapState(
+    center: center ?? this.center,
+    zoom: zoom ?? this.zoom,
+    selectedId: identical(selectedId, _unset) ? this.selectedId : selectedId as int?,
+    collapsed: collapsed ?? this.collapsed,
+    cameraRevision: cameraRevision ?? this.cameraRevision,
+    fitBounds: fitBounds ?? this.fitBounds,
+    cameraUpdate: cameraUpdate ?? this.cameraUpdate,
+  );
+}
 
-  final LocationController _locationController = Get.find<LocationController>();
-  final PageStateService _pageStateService = Get.find<PageStateService>();
+const _unset = Object();
+final exploreProvider = NotifierProvider<ExploreController, ExploreMapState>(
+  ExploreController.new,
+  retry: noProviderRetry,
+);
+final exploreMarkersProvider = Provider<List<PropertyMarker>>((ref) {
+  final items = ref.watch(
+    propertyQueryProvider(PropertyFeed.explore).select((state) => state.items),
+  );
+  final selected = ref.watch(exploreProvider.select((state) => state.selectedId));
+  final languageCode = ref.watch(localizationProvider.select((state) => state.locale.languageCode));
+  return const ExplorePropertyMarkers().build(
+    properties: items,
+    selectedPropertyId: selected,
+    languageCode: languageCode,
+  );
+}, retry: noProviderRetry);
 
-  final ExploreMapSession _mapSession = ExploreMapSession();
-  final ExplorePropertyMarkers _markers = ExplorePropertyMarkers();
-
-  /// Map controller wrapper (MapLibre). Attached in [onMapCreated] from the view.
-  GharMapController get mapController => _mapSession.mapController;
-
-  // Map readiness flag to prevent premature controller calls
-  final RxBool isMapReady = false.obs;
-
-  // Reactive state
-  final Rx<ExploreState> state = ExploreState.initial.obs;
-  final RxList<PropertyModel> properties = <PropertyModel>[].obs;
-  final Rxn<AppException> error = Rxn<AppException>();
-
-  // Local liked overrides to reflect immediate UI without mutating model
-  final RxMap<int, bool> likedOverrides = <int, bool>{}.obs;
-
-  // Map state
-  final Rx<LatLng> currentCenter = _defaultCenter.obs;
-  final RxDouble currentZoom = _defaultZoom.obs;
-  final RxDouble currentRadius = 5.0.obs;
-
-  // Search
-  final RxString searchQuery = ''.obs;
-  Timer? _searchDebouncer;
+/// Map position and selection only. The MapLibre resource belongs to ExploreMap;
+/// property pages, filters, location, and likes each have their own provider.
+class ExploreController extends Notifier<ExploreMapState> {
   Timer? _mapMoveDebouncer;
-
-  // Selected property for bottom sheet
-  final Rx<PropertyModel?> selectedProperty = Rx<PropertyModel?>(null);
-
-  // Whether the bottom property list is collapsed
-  final RxBool isListCollapsed = false.obs;
-
-  final List<Worker> _workers = <Worker>[];
-  StreamSubscription<dynamic>? _locationSubscription;
-
-  // Revision to ensure Obx always consumes a reactive when markers change
-  final RxInt markersRevision = 0.obs;
-
+  int _generation = 0;
+  bool _visible = true;
   @override
-  void onInit() {
-    super.onInit();
-    DebugLogger.info('🚀 ExploreController onInit() started.');
-
-    // Don't set current page here - let navigation handle it
-
-    // Add state listener for debugging
-    _trackWorker(
-      ever(state, (ExploreState currentState) {
-        DebugLogger.debug('📊 ExploreState changed: $currentState (props: ${properties.length})');
-      }),
-    );
-
-    // Add properties listener for debugging and cache invalidation
-    _trackWorker(
-      ever(properties, (List<PropertyModel> props) {
-        DebugLogger.debug('🏠 Properties updated: ${props.length}');
-        _invalidateMarkers('properties changed');
-      }),
-    );
-
-    // Invalidate markers cache when selection or zoom changes
-    _trackWorker(
-      ever<PropertyModel?>(selectedProperty, (_) => _invalidateMarkers('selection changed')),
-    );
-    _trackWorker(ever<double>(currentZoom, (_) => _invalidateMarkers('zoom changed')));
-
-    _setupFilterListener();
-    _setupLocationListener();
-    // LAZY LOADING: Remove initial data loading from onInit
-  }
-
-  @override
-  void onReady() {
-    super.onReady();
-    DebugLogger.debug('✅ ExploreController ready: ${state.value}');
-
-    // Set up listener for page activation
-    _trackWorker(
-      ever(_pageStateService.currentPageType, (pageType) {
-        if (pageType == PageType.explore) {
-          activatePage();
+  ExploreMapState build() {
+    ref.watch(storageScopeProvider);
+    final location = ref.read(propertyLocationProvider(PageType.explore)).location;
+    ref.listen(propertyLocationProvider(PageType.explore).select((state) => state.location), (
+      _,
+      next,
+    ) {
+      if (next == null) return;
+      _cancelCameraSearch();
+      final center = LatLng(next.latitude, next.longitude);
+      if (distanceMeters(state.center, center) < 10) {
+        if (state.cameraUpdate.isLoading) {
+          state = state.copyWith(cameraUpdate: const AsyncData(null));
         }
-      }),
-    );
-
-    // Initial activation if already on this page (with delay to ensure full initialization)
-    final currentPageType = _pageStateService.currentPageType.value;
-    if (currentPageType == PageType.explore) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        activatePage();
-      });
-    }
-  }
-
-  @override
-  void onClose() {
-    _searchDebouncer?.cancel();
-    _mapMoveDebouncer?.cancel();
-    _locationSubscription?.cancel();
-    for (final worker in _workers) {
-      worker.dispose();
-    }
-    _workers.clear();
-    _mapSession.dispose();
-    super.onClose();
-    // Note: the underlying MapLibreMapController is owned/disposed by the
-    // MapLibreMap widget; [GharMapController.dispose] only drops our reference.
-  }
-
-  Worker _trackWorker(Worker worker) {
-    _workers.add(worker);
-    return worker;
-  }
-
-  void activatePage() {
-    DebugLogger.debug('🎯 ExploreController.activatePage()');
-    final pageState = _pageStateService.exploreState.value;
-    final hasNoPageData = pageState.properties.isEmpty;
-    final hasStaleLoadingWithoutData =
-        hasNoPageData && pageState.isLoading && !pageState.isRefreshing;
-    final shouldRequestWhenEmpty =
-        hasNoPageData &&
-        (state.value == ExploreState.initial ||
-            pageState.isDataStale ||
-            pageState.error != null ||
-            hasStaleLoadingWithoutData);
-
-    // If initial or empty, initialize map center and trigger page data load
-    if (hasStaleLoadingWithoutData) {
-      DebugLogger.warning(
-        '🩹 [EXPLORE] Detected stale loading flag with empty data. Re-initializing load.',
-      );
-    }
-
-    if ((!pageState.hasLocation && state.value == ExploreState.initial) || shouldRequestWhenEmpty) {
-      _initializeMapAndLoadProperties();
-      return;
-    }
-
-    // Data present or being loaded: sync properties and state
-    properties.assignAll(pageState.properties);
-    if (pageState.isLoading) {
-      state.value = ExploreState.loading;
-    } else if (pageState.error != null) {
-      state.value = ExploreState.error;
-      error.value = pageState.error;
-    } else {
-      state.value = properties.isEmpty ? ExploreState.empty : ExploreState.loaded;
-    }
-  }
-
-  /// Binds the live MapLibre controller. Called from the view's
-  /// `onMapCreated` callback.
-  void attachMap(MapLibreMapController controller) {
-    _mapSession.attach(controller);
-  }
-
-  // Called by the view when the MapLibre style has finished loading.
-  void onMapReady() {
-    if (isMapReady.value) return;
-    isMapReady.value = true;
-    _mapSession.isMapReady = true;
-    DebugLogger.success('✅ Explore map is ready.');
-
-    // Immediately move camera to the location from PageStateService
-    final pageState = _pageStateService.exploreState.value;
-    if (pageState.hasLocation) {
-      final center = LatLng(
-        pageState.selectedLocation!.latitude,
-        pageState.selectedLocation!.longitude,
-      );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _moveCameraProgrammatic(center, currentZoom.value);
-        DebugLogger.info('🎯 Synced camera on map ready to $center');
-        // Update reactive values to match the camera position
-        currentCenter.value = center;
-      });
-    } else {
-      // No location set yet, use current reactive values but ensure they're
-      // not the default placeholder.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (currentCenter.value == _defaultCenter) {
-          DebugLogger.info(
-            '📍 Map ready but still showing default location - waiting for user location',
-          );
-        }
-        _moveCameraProgrammatic(currentCenter.value, currentZoom.value);
-        DebugLogger.info(
-          '🎯 Synced camera on map ready to ${currentCenter.value} @ ${currentZoom.value}',
-        );
-      });
-    }
-  }
-
-  void _moveCameraProgrammatic(LatLng center, double zoom) {
-    unawaited(_mapSession.moveProgrammatic(center, zoom));
-  }
-
-  void _setupFilterListener() {
-    DebugLogger.info('🔧 Setting up filter listener');
-    // React to page state changes by syncing local list/state
-    _trackWorker(
-      debounce(_pageStateService.exploreState, (pageState) {
-        try {
-          DebugLogger.info(
-            '🔍 [EXPLORE_CONTROLLER] Explore page state updated; syncing properties and UI',
-          );
-
-          final isCurrentPage = _pageStateService.currentPageType.value == PageType.explore;
-          if (!isCurrentPage) {
-            // Still sync properties even when not current page, so data is
-            // ready when the user navigates to explore. Only skip state/UI
-            // updates that don't matter while the tab is hidden.
-            properties.assignAll(pageState.properties);
-            return;
-          }
-
-          // Filter out properties with broken getters to avoid null check errors in UI
-          final safeProperties = <PropertyModel>[];
-          var brokenCount = 0;
-          for (int i = 0; i < pageState.properties.length; i++) {
-            try {
-              final property = pageState.properties[i];
-
-              // Validate common getters that might cause null check errors
-              property.mainImage; // This accesses images?.first.imageUrl
-              property.formattedPrice; // This accesses pricing fields
-              property.addressDisplay; // This accesses location fields
-
-              safeProperties.add(property);
-            } catch (e, stackTrace) {
-              brokenCount++;
-              DebugLogger.error(
-                '🚨 [EXPLORE_CONTROLLER] FOUND THE PROBLEMATIC PROPERTY at index $i: $e',
-              );
-              DebugLogger.debug('🚨 Stack trace: $stackTrace');
-              // Record to Crashlytics so backend data issues are observable
-              // rather than silently swallowed.
-              try {
-                FirebaseCrashlytics.instance.recordError(
-                  e,
-                  stackTrace,
-                  reason: 'Malformed property at index $i in explore debounce worker',
-                  fatal: false,
-                );
-              } catch (_) {}
-            }
-          }
-
-          if (brokenCount > 0) {
-            // Surface to the user (once per batch) so broken data is visible
-            // instead of silently skipped.
-            AppToast.warning(
-              'partial_data_warning'.tr,
-              'partial_data_warning_message'.trParams({'count': '$brokenCount'}),
-            );
-          }
-
-          DebugLogger.debug(
-            '📊 [EXPLORE] Assigning ${safeProperties.length}/${pageState.properties.length} properties',
-          );
-          properties.assignAll(safeProperties);
-        } catch (e, stackTrace) {
-          DebugLogger.error('🚨 [EXPLORE_CONTROLLER] ERROR in debounce worker: $e');
-          DebugLogger.error('🚨 [EXPLORE_CONTROLLER] Stack trace: $stackTrace');
-
-          if (e.toString().contains('Null check operator used on a null value')) {
-            DebugLogger.error(
-              '🚨 [EXPLORE_CONTROLLER] NULL CHECK OPERATOR ERROR in debounce worker!',
-            );
-          }
-
-          // Don't rethrow to prevent UI crashes, but log the error
-          return;
-        }
-
-        // Preserve selection if still present, otherwise clear
-        final sel = selectedProperty.value;
-        if (sel != null && !properties.any((p) => p.id == sel.id)) {
-          selectedProperty.value = null;
-        }
-
-        // Sync state
-        // Keep radius in sync with filters from state
-        final radiusFromState = (pageState.filters.radiusKm ?? 10.0).clamp(5.0, 50.0);
-        if ((currentRadius.value - radiusFromState).abs() > 0.01) {
-          currentRadius.value = radiusFromState;
-          DebugLogger.info('📏 Synced map radius from state: ${currentRadius.value}km');
-        }
-
-        if (pageState.isLoading) {
-          state.value = ExploreState.loading;
-        } else if (pageState.error != null) {
-          state.value = ExploreState.error;
-          error.value = pageState.error;
-        } else if (pageState.isLoadingMore) {
-          state.value = ExploreState.loadingMore;
-        } else {
-          // Clear any stale controller error when page state is healthy
-          if (error.value != null) {
-            error.value = null;
-          }
-          state.value = properties.isEmpty ? ExploreState.empty : ExploreState.loaded;
-        }
-      }, time: const Duration(milliseconds: 200)),
-    );
-  }
-
-  void _setupLocationListener() {
-    // Listen to location updates
-    _locationSubscription?.cancel();
-    _locationSubscription = _locationController.currentPosition.listen((position) {
-      if (position != null) {
-        final newCenter = LatLng(position.latitude, position.longitude);
-        if (distanceMeters(currentCenter.value, newCenter) > 1000) {
-          // Only update if >1km difference
-          _updateMapCenter(newCenter, 14.0);
-        }
-      }
-    });
-  }
-
-  bool _isInitializing = false;
-
-  // New combined initialization method
-  Future<void> _initializeMapAndLoadProperties() async {
-    if (_isInitializing) {
-      DebugLogger.debug('⏳ _initializeMapAndLoadProperties already in progress; skipping');
-      return;
-    }
-    _isInitializing = true;
-    try {
-      DebugLogger.info('🗺️ Initializing map and loading properties...');
-      LatLng initialCenter = _defaultCenter;
-      double initialZoom = _defaultZoom;
-
-      // Prioritize location from PageStateService if available
-      if (_pageStateService.exploreState.value.hasLocation) {
-        final location = _pageStateService.exploreState.value.selectedLocation;
-        if (location != null) {
-          initialCenter = LatLng(location.latitude, location.longitude);
-          DebugLogger.info(
-            '🗺️ Using location from PageStateService: $initialCenter (lat: ${location.latitude}, lng: ${location.longitude})',
-          );
-        }
-      } else {
-        // Try to get current device location, but don't block if it fails
-        DebugLogger.info('🗺️ Attempting to get current device location...');
-        try {
-          await _locationController.getCurrentLocation();
-          if (_locationController.hasLocation) {
-            final pos = _locationController.currentPosition.value;
-            if (pos != null) {
-              initialCenter = LatLng(pos.latitude, pos.longitude);
-              initialZoom = 14.0; // Zoom in closer for current location
-              DebugLogger.info(
-                '🗺️ Using current device location: $initialCenter (lat: ${pos.latitude}, lng: ${pos.longitude})',
-              );
-            }
-          } else {
-            DebugLogger.warning(
-              '⚠️ LocationController.hasLocation is false after getCurrentLocation call',
-            );
-          }
-        } catch (locationError) {
-          DebugLogger.warning(
-            '⚠️ Device location failed: $locationError. Trying IP-based location...',
-          );
-        }
-
-        // Try IP-based location if device location failed
-        if (!_locationController.hasLocation) {
-          try {
-            final ipLoc = await _locationController.getIpLocation();
-            if (ipLoc != null) {
-              initialCenter = LatLng(ipLoc.latitude, ipLoc.longitude);
-              initialZoom = _defaultZoom;
-              DebugLogger.info(
-                '🗺️ Using IP-based location: $initialCenter (lat: ${ipLoc.latitude}, lng: ${ipLoc.longitude})',
-              );
-            } else {
-              DebugLogger.warning('⚠️ IP-based location returned null. Using default.');
-            }
-          } catch (ipError) {
-            DebugLogger.warning('⚠️ IP-based location failed: $ipError. Using default.');
-          }
-        }
-      }
-
-      DebugLogger.info(
-        '🎯 Final initialization parameters: center=$initialCenter, zoom=$initialZoom',
-      );
-
-      // Update map and filters with the determined location
-      _updateMapCenter(initialCenter, initialZoom);
-
-      // Ensure Explore page state's location is set for repository queries
-      await _pageStateService.updateLocationForPage(
-        PageType.explore,
-        LocationData(
-          name: 'Current Area', // Will be reverse geocoded in PageStateService
-          latitude: initialCenter.latitude,
-          longitude: initialCenter.longitude,
-        ),
-        source: 'initial',
-      );
-
-      DebugLogger.info('🚀 Triggering page data load through PageStateService');
-      state.value = ExploreState.loading;
-      await _pageStateService.loadPageData(PageType.explore, forceRefresh: true);
-      // Sync properties from page state
-      properties.assignAll(_pageStateService.exploreState.value.properties);
-      state.value = properties.isEmpty ? ExploreState.empty : ExploreState.loaded;
-    } catch (e, stackTrace) {
-      DebugLogger.error('❌ CRITICAL: Failed during initialization', e, stackTrace);
-      state.value = ExploreState.error;
-      error.value = ErrorMapper.mapApiError(
-        'Failed to initialize the map. Please check location services and try again.',
-      );
-    } finally {
-      _isInitializing = false;
-    }
-  }
-
-  Future<void> _useCurrentLocation() async {
-    try {
-      DebugLogger.info('📍 Getting current location...');
-      await _locationController.getCurrentLocation();
-      final position = _locationController.currentPosition.value;
-      if (position != null) {
-        DebugLogger.success(
-          '✅ Current location obtained: lat=${position.latitude}, lng=${position.longitude}',
-        );
-        _updateMapCenter(LatLng(position.latitude, position.longitude), 14.0);
-
-        // Update radius if needed
-        final currentFilters = _pageStateService.getCurrentPageState().filters;
-        final updatedFilters = currentFilters.copyWith(radiusKm: currentRadius.value);
-        _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-
-        // Sync Explore page state location for subsequent loads
-        await _pageStateService.updateLocationForPage(
-          PageType.explore,
-          LocationData(
-            name: 'Current Location', // Will be reverse geocoded in PageStateService
-            latitude: position.latitude,
-            longitude: position.longitude,
-          ),
-          source: 'gps',
-        );
-      } else {
-        DebugLogger.warning(
-          '⚠️ LocationController returned null position, '
-          'using default location',
-        );
-        // Use default location if location is not available
-        _updateMapCenter(_defaultCenter, _defaultZoom);
-        // Update radius if needed
-        final currentFilters = _pageStateService.getCurrentPageState().filters;
-        final updatedFilters = currentFilters.copyWith(radiusKm: currentRadius.value);
-        _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-
-        await _pageStateService.updateLocationForPage(
-          PageType.explore,
-          LocationData(
-            name: _defaultCenterName,
-            latitude: _defaultCenter.latitude,
-            longitude: _defaultCenter.longitude,
-          ),
-          source: 'fallback',
-        );
-      }
-    } catch (e) {
-      DebugLogger.warning('⚠️ Could not get current location: $e');
-      // Always fallback to default location
-      DebugLogger.info(
-        '🗺️ Falling back to default location '
-        '($_defaultCenterName)',
-      );
-      _updateMapCenter(_defaultCenter, _defaultZoom);
-      // Update radius if needed
-      final currentFilters = _pageStateService.getCurrentPageState().filters;
-      final updatedFilters = currentFilters.copyWith(radiusKm: currentRadius.value);
-      _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-
-      await _pageStateService.updateLocationForPage(
-        PageType.explore,
-        LocationData(
-          name: _defaultCenterName,
-          latitude: _defaultCenter.latitude,
-          longitude: _defaultCenter.longitude,
-        ),
-        source: 'fallback',
-      );
-    }
-  }
-
-  void _updateMapCenter(LatLng center, double zoom) {
-    // Always update reactive state first
-    currentCenter.value = center;
-    currentZoom.value = zoom;
-    DebugLogger.info('🗺️ Updated reactive map center to $center with zoom $zoom');
-
-    // Only move the controller once the map is ready/rendered
-    if (isMapReady.value) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _moveCameraProgrammatic(center, zoom);
-      });
-    } else {
-      DebugLogger.debug('⏳ Map not ready; deferred camera move');
-    }
-  }
-
-  // Map camera-idle handler. Wired to MapLibre's `onCameraIdle` from the view,
-  // which fires once the camera settles after any pan/zoom. MapLibre exposes no
-  // `hasGesture` flag, so we approximate it: programmatic moves set
-  // [_mapSession.programmaticMove] (cleared here), and we additionally gate on
-  // the same 100m / 0.1-zoom threshold the old flutter_map handler used to avoid
-  // re-fetching on negligible drift.
-  void onCameraIdle(LatLng center, double zoom) {
-    if (!isMapReady.value) {
-      return;
-    }
-
-    // Programmatic move (recenter / zoom button / fit-bounds / ready-sync):
-    // sync reactive state but never trigger a viewport re-fetch.
-    if (_mapSession.programmaticMove) {
-      _mapSession.programmaticMove = false;
-      currentCenter.value = center;
-      currentZoom.value = zoom;
-      return;
-    }
-
-    // Compute deltas before mutating reactive values.
-    final prevCenter = currentCenter.value;
-    final prevZoom = currentZoom.value;
-    final movedMeters = distanceMeters(prevCenter, center);
-    final zoomDelta = (zoom - prevZoom).abs();
-
-    currentCenter.value = center;
-    currentZoom.value = zoom;
-
-    // Only proceed if the gesture moved the viewport meaningfully, matching the
-    // previous flutter_map threshold to reduce API churn.
-    if (zoomDelta > 0.1 || movedMeters > 100) {
-      _mapMoveDebouncer?.cancel();
-      _mapMoveDebouncer = Timer(const Duration(milliseconds: 600), () {
-        _onMapMoveCompleted();
-      });
-    }
-  }
-
-  Future<void> _onMapMoveCompleted() async {
-    // Update filters with new location
-    try {
-      // Update radius if needed
-      final currentFilters = _pageStateService.getCurrentPageState().filters;
-      final updatedFilters = currentFilters.copyWith(radiusKm: currentRadius.value);
-      _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-      DebugLogger.success('✅ Filter location updated successfully');
-
-      // Keep PageStateService in sync so map queries use correct location
-      await _pageStateService.updateLocationForPage(
-        PageType.explore,
-        LocationData(
-          name: 'Selected Area', // Will be reverse geocoded in PageStateService
-          latitude: currentCenter.value.latitude,
-          longitude: currentCenter.value.longitude,
-        ),
-        source: 'manual',
-      );
-    } catch (e) {
-      DebugLogger.error('❌ Failed to update filter location: $e');
-    }
-  }
-
-  // Search functionality
-  void updateSearchQuery(String query) {
-    searchQuery.value = query;
-
-    _searchDebouncer?.cancel();
-
-    if (query.isEmpty) {
-      _pageStateService.updatePageSearch(PageType.explore, '');
-      return;
-    }
-
-    _searchDebouncer = Timer(const Duration(milliseconds: 300), () {
-      // Guard against stale queries: if the user has cleared or changed the
-      // search text since this debounce was scheduled, skip the callback.
-      if (query != searchQuery.value) return;
-      DebugLogger.api('🔍 Searching properties: "$query"');
-      _pageStateService.updatePageSearch(PageType.explore, query);
-      // Record search activity for locally-aggregated dashboard stats
-      try {
-        if (Get.isRegistered<DashboardController>()) {
-          Get.find<DashboardController>().incrementStat(kDashSearchesMadeKey);
-          Get.find<DashboardController>().recordActivity(
-            type: 'search',
-            title: 'dashboard_activity_search'.trParams({'query': query}),
-            icon: 'search',
-          );
-        }
-      } catch (_) {}
-    });
-  }
-
-  void clearSearch() {
-    searchQuery.value = '';
-    _pageStateService.updatePageSearch(PageType.explore, '');
-  }
-
-  // Likes handling
-  bool isPropertyLiked(PropertyModel property) {
-    try {
-      if (likedOverrides.containsKey(property.id)) {
-        return likedOverrides[property.id] ?? property.liked;
-      }
-      return property.liked;
-    } catch (_) {
-      return property.liked;
-    }
-  }
-
-  Future<void> toggleLike(PropertyModel property) async {
-    final current = isPropertyLiked(property);
-    final next = !current;
-
-    // Optimistic update
-    likedOverrides[property.id] = next;
-
-    try {
-      await _pageStateService.recordSwipe(propertyId: property.id, isLiked: next);
-      DebugLogger.success('✅ Updated like: ${property.title} -> $next');
-    } catch (e) {
-      DebugLogger.error('❌ Failed to toggle like: $e');
-      // Revert on failure
-      likedOverrides[property.id] = current;
-      AppToast.error('action_failed'.tr, 'like_update_failed'.tr);
-    }
-  }
-
-  // Property selection
-  void selectProperty(PropertyModel property) {
-    // Auto-expand list when a marker is tapped while collapsed
-    if (isListCollapsed.value) {
-      isListCollapsed.value = false;
-    }
-    selectedProperty.value = property;
-    DebugLogger.api('🏠 Selected property (highlight only): ${property.title}');
-  }
-
-  // Explicit highlight from card scroll (no camera changes)
-  void highlightPropertyFromCard(PropertyModel property) {
-    if (selectedProperty.value?.id == property.id) return;
-    selectedProperty.value = property;
-  }
-
-  void clearSelection() {
-    selectedProperty.value = null;
-  }
-
-  // List collapse/expand
-  void toggleListCollapsed() {
-    isListCollapsed.value = !isListCollapsed.value;
-  }
-
-  void expandList() {
-    isListCollapsed.value = false;
-  }
-
-  void collapseList() {
-    isListCollapsed.value = true;
-  }
-
-  // Navigation to property details
-  void viewPropertyDetails(PropertyModel property) {
-    Get.toNamed(AppRoutes.propertyDetails, arguments: property);
-  }
-
-  // Filter shortcuts
-  void showFilters() {
-    try {
-      showPropertyFilterBottomSheet(Get.context!, pageType: 'explore');
-    } catch (_) {
-      // Fallback: no context available; ignore
-    }
-  }
-
-  void quickFilterByType(PropertyType type) {
-    final currentFilters = _pageStateService.getCurrentPageState().filters;
-    final typeValue = type.wireValue;
-    final updatedFilters = currentFilters.copyWith(propertyType: [typeValue]);
-    _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-  }
-
-  void quickFilterByPurpose(PropertyPurpose purpose) {
-    final currentFilters = _pageStateService.getCurrentPageState().filters;
-    final purposeValue = purpose.wireValue;
-    final updatedFilters = currentFilters.copyWith(purpose: purposeValue);
-    _pageStateService.updatePageFilters(PageType.explore, updatedFilters);
-  }
-
-  // Map controls
-  void zoomIn() {
-    final newZoom = (currentZoom.value + 1).clamp(kDefaultMinZoom, kDefaultMaxZoom);
-    currentZoom.value = newZoom;
-    if (isMapReady.value) {
-      _mapSession.programmaticMove = true;
-      mapController.animateZoom(newZoom).catchError((Object e) {
-        DebugLogger.warning('⚠️ zoomIn failed: $e');
-        _mapSession.programmaticMove = false;
-      });
-    }
-  }
-
-  void zoomOut() {
-    final newZoom = (currentZoom.value - 1).clamp(kDefaultMinZoom, kDefaultMaxZoom);
-    currentZoom.value = newZoom;
-    if (isMapReady.value) {
-      _mapSession.programmaticMove = true;
-      mapController.animateZoom(newZoom).catchError((Object e) {
-        DebugLogger.warning('⚠️ zoomOut failed: $e');
-        _mapSession.programmaticMove = false;
-      });
-    }
-  }
-
-  void recenterToCurrentLocation() {
-    _useCurrentLocation();
-  }
-
-  void fitBoundsToProperties() {
-    if (properties.isEmpty) return;
-
-    final withLocation = properties.where((p) => p.hasLocation).toList();
-    if (withLocation.isEmpty) return;
-
-    if (!isMapReady.value) {
-      DebugLogger.info('⏳ Map not ready; skipping fitBounds for now');
-      return;
-    }
-
-    try {
-      final lats = withLocation
-          .map((p) => p.latitude)
-          .where((lat) => lat != null)
-          .cast<double>()
-          .toList();
-      final lngs = withLocation
-          .map((p) => p.longitude)
-          .where((lng) => lng != null)
-          .cast<double>()
-          .toList();
-
-      if (lats.isEmpty || lngs.isEmpty) {
-        DebugLogger.warning('No valid coordinates found in propertiesWithLocation');
         return;
       }
+      state = state.copyWith(
+        center: center,
+        cameraRevision: state.cameraRevision + 1,
+        fitBounds: false,
+        cameraUpdate: const AsyncData(null),
+      );
+    });
+    ref.listen(propertyQueryProvider(PropertyFeed.explore), (_, next) {
+      if (next.phase != PropertyLoadPhase.content && next.phase != PropertyLoadPhase.empty) return;
+      if (state.selectedId != null &&
+          !next.items.any((property) => property.id == state.selectedId)) {
+        clearSelection();
+      }
+    });
+    ref.onDispose(_cancelCameraSearch);
+    return ExploreMapState(
+      center: location == null
+          ? const LatLng(28.6139, 77.2090)
+          : LatLng(location.latitude, location.longitude),
+    );
+  }
 
-      final points = <LatLng>[for (var i = 0; i < lats.length; i++) LatLng(lats[i], lngs[i])];
+  List<PropertyModel> get properties => ref.read(propertyQueryProvider(PropertyFeed.explore)).items;
+  LatLng get currentCenter => state.center;
+  double get currentZoom => state.zoom;
+  double get currentRadius =>
+      (ref.read(propertyFiltersProvider).forPage(PageType.explore).radiusKm ?? 10)
+          .clamp(5, 50)
+          .toDouble();
+  PropertyModel? get selectedProperty {
+    for (final property in properties) {
+      if (property.id == state.selectedId) return property;
+    }
+    return null;
+  }
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _mapSession.programmaticMove = true;
-        mapController.fitBounds(points).catchError((Object e) {
-          DebugLogger.warning('⚠️ fitBounds failed post-frame: $e');
-          _mapSession.programmaticMove = false;
-        });
+  bool get isListCollapsed => state.collapsed;
+  PropertyPageState get _page => ref.read(propertyQueryProvider(PropertyFeed.explore));
+  ExploreState get viewState {
+    if (_page.isLoading && properties.isEmpty) return ExploreState.loading;
+    if (_page.showFullError) return ExploreState.error;
+    if (_page.isLoadingMore) return ExploreState.loadingMore;
+    if (_page.phase == PropertyLoadPhase.idle) return ExploreState.initial;
+    return properties.isEmpty ? ExploreState.empty : ExploreState.loaded;
+  }
+
+  AppException? get error => _page.error;
+  bool get isLoading => _page.isLoading;
+  bool get isLoadingMore => _page.isLoadingMore;
+  bool get hasMore => _page.hasMore;
+  bool get hasProperties => properties.isNotEmpty;
+  List<PropertyModel> get propertiesWithLocation => properties
+      .where(
+        (p) =>
+            p.latitude != null &&
+            p.longitude != null &&
+            p.latitude!.isFinite &&
+            p.longitude!.isFinite &&
+            p.latitude!.abs() <= 90 &&
+            p.longitude!.abs() <= 180,
+      )
+      .toList();
+
+  void _cancelCameraSearch() {
+    ++_generation;
+    _mapMoveDebouncer?.cancel();
+  }
+
+  void setVisible(bool visible) {
+    _visible = visible;
+    if (!visible) {
+      _cancelCameraSearch();
+      final generation = _generation;
+      Future.microtask(() {
+        if (ref.mounted && generation == _generation && state.cameraUpdate.isLoading) {
+          state = state.copyWith(cameraUpdate: const AsyncData(null));
+        }
       });
-    } catch (e) {
-      DebugLogger.warning('⚠️ Could not fit bounds: $e');
     }
   }
 
-  // Refresh
-  Future<void> refreshProperties() async {
-    DebugLogger.info('🔄 Manual refresh requested');
-    await _pageStateService.loadPageData(PageType.explore, forceRefresh: true);
-  }
-
-  // Error handling
-  void retryLoading() {
-    DebugLogger.info('🔄 Manual retry loading requested');
-    error.value = null;
-    state.value = ExploreState.loading;
-    _pageStateService.loadPageData(PageType.explore, forceRefresh: true);
-  }
-
-  void clearError() {
-    DebugLogger.info('🧹 Clearing error state');
-    error.value = null;
-    if (state.value == ExploreState.error) {
-      final newState = properties.isEmpty ? ExploreState.empty : ExploreState.loaded;
-      DebugLogger.info('📊 Changing state from error to: $newState');
-      state.value = newState;
-    }
-  }
-
-  // Statistics and info
-  String get locationDisplayText => _pageStateService.getCurrentPageState().locationDisplayText;
-
-  String get propertiesCountText {
-    if (properties.isEmpty) return 'no_properties_found'.tr;
-    if (properties.length == 1) return 'one_property'.tr;
-    return 'n_properties'.trParams({'count': '${properties.length}'});
-  }
-
-  String get currentAreaText {
-    if (currentRadius.value < 1) {
-      return 'radius_meters'.trParams({'meters': '${(currentRadius.value * 1000).round()}'});
-    }
-    return 'radius_km'.trParams({'km': currentRadius.value.toStringAsFixed(1)});
-  }
-
-  /// True when the explore page has more properties to fetch.
-  bool get hasMore => _pageStateService.exploreState.value.hasMore;
-
-  /// Loads the next page of properties for the explore map.
-  Future<void> loadMoreProperties() async {
-    final currentState = _pageStateService.exploreState.value;
-    if (currentState.isLoading || currentState.isLoadingMore || !currentState.hasMore) {
+  void onCameraIdle(LatLng center, double zoom, {bool programmatic = false}) {
+    if (!_visible ||
+        !center.latitude.isFinite ||
+        !center.longitude.isFinite ||
+        !zoom.isFinite ||
+        center.latitude.abs() > 90 ||
+        center.longitude.abs() > 180) {
       return;
     }
-    await _pageStateService.loadMorePageData(PageType.explore);
+    final changed = distanceMeters(state.center, center) > 100 || (state.zoom - zoom).abs() > 0.1;
+    state = state.copyWith(center: center, zoom: zoom.clamp(kDefaultMinZoom, kDefaultMaxZoom));
+    if (!changed || programmatic) return;
+    _cancelCameraSearch();
+    final generation = _generation;
+    _mapMoveDebouncer = Timer(
+      const Duration(milliseconds: 600),
+      () => unawaited(_searchCamera(center, generation)),
+    );
   }
 
-  // Get properties for clustering (if implemented)
-  List<PropertyModel> get propertiesWithLocation {
+  Future<void> retryCameraSearch() => _searchCamera(state.center, ++_generation);
+  Future<void> _searchCamera(LatLng center, int generation) async {
+    if (!ref.mounted || !_visible || generation != _generation) return;
+    state = state.copyWith(cameraUpdate: const AsyncLoading());
     try {
-      final result = properties
-          .where((p) => p.hasLocation && p.latitude != null && p.longitude != null)
-          .toList();
-      DebugLogger.info('🗺️ propertiesWithLocation: ${result.length}/${properties.length}');
-      return result;
-    } catch (e) {
-      DebugLogger.error('❌ Error in propertiesWithLocation: $e');
-      return [];
+      final name = await ref
+          .read(deviceLocationSourceProvider)
+          .address(center.latitude, center.longitude);
+      if (!ref.mounted || !_visible || generation != _generation) return;
+      await ref
+          .read(propertyLocationProvider(PageType.explore).notifier)
+          .select(LocationData(name: name, latitude: center.latitude, longitude: center.longitude));
+      if (ref.mounted && generation == _generation) {
+        state = state.copyWith(cameraUpdate: const AsyncData(null));
+      }
+    } catch (error, stack) {
+      if (ref.mounted && generation == _generation) {
+        state = state.copyWith(cameraUpdate: AsyncError(error, stack));
+      }
     }
   }
 
-  List<PropertyMarker> get propertyMarkers =>
-      _markers.build(properties: properties, selectedPropertyId: selectedProperty.value?.id);
-
-  void _invalidateMarkers(String reason) {
-    _markers.invalidate(reason, onRevision: (rev) => markersRevision.value = rev);
+  bool isPropertyLiked(PropertyModel property) =>
+      ref.read(swipeHistoryProvider).entries[property.id]?.isLiked ?? property.liked;
+  Future<bool> toggleLike(PropertyModel property) =>
+      ref.read(swipeHistoryProvider.notifier).record(property, !isPropertyLiked(property));
+  void selectProperty(PropertyModel property) =>
+      state = state.copyWith(selectedId: property.id, collapsed: false);
+  void highlightPropertyFromCard(PropertyModel property) =>
+      state = state.copyWith(selectedId: property.id);
+  void clearSelection() => state = state.copyWith(selectedId: null);
+  void toggleListCollapsed() => state = state.copyWith(collapsed: !state.collapsed);
+  void expandList() => state = state.copyWith(collapsed: false);
+  void collapseList() => state = state.copyWith(collapsed: true);
+  void zoomIn() => _zoom(1);
+  void zoomOut() => _zoom(-1);
+  void _zoom(double delta) => state = state.copyWith(
+    zoom: (state.zoom + delta).clamp(kDefaultMinZoom, kDefaultMaxZoom),
+    cameraRevision: state.cameraRevision + 1,
+    fitBounds: false,
+  );
+  Future<void> recenterToCurrentLocation() =>
+      ref.read(propertyLocationProvider(PageType.explore).notifier).useCurrent();
+  void fitBoundsToProperties() {
+    if (propertiesWithLocation.isEmpty) return;
+    state = state.copyWith(cameraRevision: state.cameraRevision + 1, fitBounds: true);
   }
 
-  // Helper getters
-  bool get isLoading => state.value == ExploreState.loading;
-  bool get isEmpty => state.value == ExploreState.empty;
-  bool get hasError => state.value == ExploreState.error;
-  bool get isLoaded => state.value == ExploreState.loaded;
-  bool get hasProperties => properties.isNotEmpty;
-  bool get hasSelection => selectedProperty.value != null;
-  bool get isLoadingMore => state.value == ExploreState.loadingMore;
+  Future<void> refreshProperties() =>
+      ref.read(propertyQueryProvider(PropertyFeed.explore).notifier).load(refresh: true);
+  Future<void> retryLoading() => refreshProperties();
+  Future<void> loadMoreProperties() =>
+      ref.read(propertyQueryProvider(PropertyFeed.explore).notifier).loadMore();
+  Future<bool> quickFilterByType(PropertyType type) => ref
+      .read(propertyFiltersProvider.notifier)
+      .update(
+        PageType.explore,
+        ref
+            .read(propertyFiltersProvider)
+            .forPage(PageType.explore)
+            .copyWith(propertyType: [type.wire]),
+      );
+  Future<bool> quickFilterByPurpose(PropertyPurpose purpose) => ref
+      .read(propertyFiltersProvider.notifier)
+      .update(
+        PageType.explore,
+        ref.read(propertyFiltersProvider).forPage(PageType.explore).copyWith(purpose: purpose.wire),
+      );
+  Future<bool> updateSearchQuery(String query) =>
+      ref.read(propertyFiltersProvider.notifier).search(PageType.explore, query);
+  Future<bool> clearSearch() => updateSearchQuery('');
 }

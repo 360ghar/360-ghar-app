@@ -1,60 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 
 void main() {
   group('VisitModel.fromJson', () {
-    Map<String, dynamic> baseJson({String? visitDate, String? visitTime, String? scheduledDate}) {
+    Map<String, dynamic> baseJson({String? scheduledDate, Map<String, dynamic>? overrides}) {
       return {
         'id': 1,
         'property_id': 100,
         'user_id': 50,
         'status': 'requested',
-        'created_at': '2025-01-15T10:00:00.000Z',
-        ...{'visit_date': visitDate, 'visit_time': visitTime, 'scheduled_date': scheduledDate}
-          ..removeWhere((k, v) => v == null),
+        'visit_context': 'property_tour',
+        'follow_up_required': false,
+        'created_at': '2025-01-15T10:00:00Z',
+        'scheduled_date': ?scheduledDate,
+        ...?overrides,
       };
     }
 
-    test('parses date from visit_date + visit_time', () {
-      final model = VisitModel.fromJson(baseJson(visitDate: '2025-03-20', visitTime: '14:30:00'));
+    test('parses scheduled_date as a UTC instant', () {
+      final model = VisitModel.fromJson(baseJson(scheduledDate: '2025-04-10T09:00:00Z'));
 
-      expect(model.scheduledDate.year, 2025);
-      expect(model.scheduledDate.month, 3);
-      expect(model.scheduledDate.day, 20);
-      expect(model.scheduledDate.hour, 14);
-      expect(model.scheduledDate.minute, 30);
-    });
-
-    test('parses from scheduled_date when visit_date/time missing', () {
-      final model = VisitModel.fromJson(baseJson(scheduledDate: '2025-04-10T09:00:00.000Z'));
-
-      expect(model.scheduledDate.year, 2025);
-      expect(model.scheduledDate.month, 4);
-      expect(model.scheduledDate.day, 10);
       expect(model.scheduledDate.isUtc, true);
-    });
-
-    test('prefers scheduled_date when both scheduled_date and visit_date/time exist', () {
-      final model = VisitModel.fromJson(
-        baseJson(
-          visitDate: '2025-03-20',
-          visitTime: '14:30:00',
-          scheduledDate: '2025-04-10T09:00:00+00:00',
-        ),
-      );
-
       expect(model.scheduledDate.toIso8601String(), '2025-04-10T09:00:00.000Z');
-    });
-
-    test('falls back to just visit_date when time parse fails', () {
-      final model = VisitModel.fromJson(baseJson(visitDate: '2025-05-15', visitTime: 'not-a-time'));
-
-      // Should fall back to parsing just the date
-      expect(model.scheduledDate.year, 2025);
-      expect(model.scheduledDate.month, 5);
-      expect(model.scheduledDate.day, 15);
-      expect(model.scheduledDate.isUtc, true);
     });
 
     test('parses aware scheduled_date values with +00:00 offsets', () {
@@ -64,13 +33,25 @@ void main() {
       expect(model.scheduledDate.toIso8601String(), '2025-04-10T09:00:00.000Z');
     });
 
-    test('falls back to DateTime.now when no date fields present', () {
-      final before = DateTime.now();
-      final model = VisitModel.fromJson(baseJson());
-      final after = DateTime.now();
+    test('rejects a visit without a usable scheduled_date', () {
+      expect(() => VisitModel.fromJson(baseJson()), throwsA(anything));
+      expect(() => VisitModel.fromJson(baseJson(scheduledDate: 'private-date')), throwsA(anything));
+    });
 
-      expect(model.scheduledDate.isAfter(before.subtract(const Duration(seconds: 1))), true);
-      expect(model.scheduledDate.isBefore(after.add(const Duration(seconds: 1))), true);
+    test('a key the backend always sends is required', () {
+      for (final key in [
+        'id',
+        'property_id',
+        'user_id',
+        'scheduled_date',
+        'status',
+        'visit_context',
+        'follow_up_required',
+        'created_at',
+      ]) {
+        final body = baseJson(scheduledDate: '2025-04-10T09:00:00Z')..remove(key);
+        expect(() => VisitModel.fromJson(body), throwsA(anything), reason: 'missing $key');
+      }
     });
 
     test('parses all backend status wire values', () {
@@ -82,42 +63,91 @@ void main() {
         'reschedule_suggested': VisitStatus.rescheduled,
       };
       wireToStatus.forEach((wire, expected) {
-        final json = baseJson(scheduledDate: '2025-06-01T10:00:00.000Z');
+        final json = baseJson(scheduledDate: '2025-06-01T10:00:00Z');
         json['status'] = wire;
         final model = VisitModel.fromJson(json);
         expect(model.status, expected, reason: 'wire value: $wire');
       });
     });
 
-    test('falls back to scheduled on unknown status values', () {
-      final json = baseJson(scheduledDate: '2025-06-01T10:00:00.000Z');
+    test('an unknown status reads as null, not as scheduled', () {
+      final json = baseJson(scheduledDate: '2025-06-01T10:00:00Z');
       json['status'] = 'some_future_status';
       final model = VisitModel.fromJson(json);
-      expect(model.status, VisitStatus.scheduled);
+      expect(model.status, isNull);
+      expect(model.canCancel, isFalse);
+      expect(model.statusStringKey, 'visit_status_unknown');
+    });
+
+    test('an unknown visit_context reads as null', () {
+      final model = VisitModel.fromJson(
+        baseJson(scheduledDate: '2025-06-01T10:00:00Z', overrides: {'visit_context': 'meetup'}),
+      );
+
+      expect(model.visitContext, isNull);
+      expect(model.isFlatmateMeet, isFalse);
     });
 
     test('parses nested agents object with nullable phone', () {
-      final json = baseJson(scheduledDate: '2025-06-01T10:00:00.000Z');
+      final json = baseJson(scheduledDate: '2025-06-01T10:00:00Z');
       json['agents'] = {'id': 7, 'name': 'Ravi', 'phone': null, 'avatar_url': null};
       final model = VisitModel.fromJson(json);
       expect(model.agents?.name, 'Ravi');
-      expect(model.agentName, 'Ravi');
       expect(model.agentPhone, '');
     });
 
+    test('reads the visitor and the counterparty as name and avatar only', () {
+      final model = VisitModel.fromJson(
+        baseJson(
+          scheduledDate: '2025-06-01T10:00:00Z',
+          overrides: {
+            'visit_context': 'flatmate_meet',
+            'user': {'id': 50, 'display_name': 'Asha', 'avatar_url': null},
+            'counterparty_user': {
+              'id': 61,
+              'display_name': 'Karan Mehta',
+              'avatar_url': 'https://cdn.example.com/u/61.jpg',
+            },
+            'counterparty_user_id': 61,
+            'conversation_id': 8,
+            'match_id': 9,
+          },
+        ),
+      );
+
+      expect(model.isFlatmateMeet, isTrue);
+      expect(model.user?.displayName, 'Asha');
+      expect(model.counterpartyUser?.id, 61);
+      expect(model.counterpartyUser?.displayName, 'Karan Mehta');
+      expect(model.counterpartyUser?.avatarUrl, 'https://cdn.example.com/u/61.jpg');
+      expect(model.conversationId, 8);
+      expect(model.matchId, 9);
+      expect(model.counterpartyUser?.toJson().keys, {'id', 'display_name', 'avatar_url'});
+    });
+
+    test('reads time_slot_label and rescheduled_from', () {
+      final model = VisitModel.fromJson(
+        baseJson(
+          scheduledDate: '2025-06-01T10:00:00Z',
+          overrides: {'time_slot_label': 'morning', 'rescheduled_from': '2025-05-30T10:00:00Z'},
+        ),
+      );
+
+      expect(model.timeSlotLabel, 'morning');
+      expect(model.rescheduledFrom, DateTime.utc(2025, 5, 30, 10));
+    });
+
     test('parses optional fields correctly', () {
-      final json = baseJson(scheduledDate: '2025-06-01T10:00:00.000Z');
+      final json = baseJson(scheduledDate: '2025-06-01T10:00:00Z');
       json['agent_id'] = 5;
       json['special_requirements'] = 'Need parking';
       json['visit_notes'] = 'Checked 2nd floor';
-      json['property_title'] = 'My Flat';
 
       final model = VisitModel.fromJson(json);
 
       expect(model.agentId, 5);
       expect(model.specialRequirements, 'Need parking');
       expect(model.visitNotes, 'Checked 2nd floor');
-      expect(model.propertyTitleApi, 'My Flat');
     });
   });
 
@@ -126,8 +156,7 @@ void main() {
       VisitStatus status = VisitStatus.scheduled,
       DateTime? scheduledDate,
       String? visitNotes,
-      String? propertyTitleApi,
-      String? agentNameApi,
+      PropertyModel? property,
     }) {
       return VisitModel(
         id: 1,
@@ -137,19 +166,29 @@ void main() {
         status: status,
         createdAt: DateTime(2025, 1, 1),
         visitNotes: visitNotes,
-        propertyTitleApi: propertyTitleApi,
-        agentNameApi: agentNameApi,
+        property: property,
       );
     }
 
-    test('propertyTitle falls back through options', () {
-      expect(make(propertyTitleApi: 'API Title').propertyTitle, 'API Title');
-      expect(make().propertyTitle, 'Property #100');
-    });
-
-    test('agentName falls back to Unknown Agent', () {
-      expect(make(agentNameApi: 'John').agentName, 'John');
-      expect(make().agentName, 'Unknown Agent');
+    test('propertyTitle comes from the nested property, else empty', () {
+      final property = PropertyModel.fromJson({
+        'id': 100,
+        'owner_id': 7,
+        'title': 'Sector 57 flat',
+        'property_type': 'apartment',
+        'purpose': 'buy',
+        'status': 'available',
+        'base_price': 1,
+        'country': 'India',
+        'is_available': true,
+        'view_count': 0,
+        'like_count': 0,
+        'interest_count': 0,
+        'created_at': '2025-01-01T00:00:00Z',
+        'updated_at': '2025-01-01T00:00:00Z',
+      });
+      expect(make(property: property).propertyTitle, 'Sector 57 flat');
+      expect(make().propertyTitle, '');
     });
 
     test('notes returns visitNotes or empty string', () {
@@ -299,8 +338,6 @@ void main() {
         rescheduledFrom: DateTime.utc(2025, 5, 28),
         createdAt: DateTime.utc(2025, 1, 1),
         updatedAt: DateTime.utc(2025, 1, 2),
-        propertyTitleApi: 'My Flat',
-        agentNameApi: 'Agent Smith',
       );
 
       final json = model.toJson();
@@ -322,8 +359,6 @@ void main() {
       expect(json['rescheduled_from'], '2025-05-28T00:00:00.000Z');
       expect(json['created_at'], '2025-01-01T00:00:00.000Z');
       expect(json['updated_at'], '2025-01-02T00:00:00.000Z');
-      expect(json['property_title'], 'My Flat');
-      expect(json['agent_name'], 'Agent Smith');
     });
 
     test('serializes null optional fields as null', () {
@@ -351,8 +386,6 @@ void main() {
       expect(json['updated_at'], isNull);
       expect(json['property'], isNull);
       expect(json['agents'], isNull);
-      expect(json['property_title'], isNull);
-      expect(json['agent_name'], isNull);
     });
 
     test('serializes all status enum values to wire format', () {
@@ -390,8 +423,6 @@ void main() {
         followUpRequired: true,
         createdAt: DateTime.utc(2025, 1, 10),
         updatedAt: DateTime.utc(2025, 1, 12),
-        propertyTitleApi: 'Test Property',
-        agentNameApi: 'Test Agent',
       );
 
       final json = original.toJson();
@@ -406,8 +437,6 @@ void main() {
       expect(restored.specialRequirements, 'Parking');
       expect(restored.visitNotes, 'Went well');
       expect(restored.followUpRequired, isTrue);
-      expect(restored.propertyTitleApi, 'Test Property');
-      expect(restored.agentNameApi, 'Test Agent');
     });
   });
 

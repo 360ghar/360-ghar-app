@@ -1,85 +1,72 @@
-# Repository Guidelines
+# Repository guidelines
 
-> **Canonical guide: [CLAUDE.md](./CLAUDE.md).** Read it first for stack, structure, commands, and conventions.
+Read [CLAUDE.md](./CLAUDE.md) first for the architecture, commands, native build
+requirements, and release rules. Read the workspace guide for the personal GitHub
+account requirement. Preserve unrelated uncommitted native/release changes.
 
-## Project Structure & Module Organization
-- `lib/`: Flutter source using feature-first GetX layers with clean architecture.
-  - Features: `lib/features/<feature>/{views,controllers,bindings}` (e.g., `discover`, `profile`).
-  - Shared: `lib/core/` (`core/data/models`, providers, routing, `core/widgets`).
-- `assets/`: images and static files (declare in `pubspec.yaml`).
-- Platforms: `android/`, `ios/`, `web/` for configs and builds.
-- Config: local `.env.*` (gitignored). For bare `flutter run`, run `dart run tool/sync_dev_env.dart` after env edits. Or use `./tool/run_with_env.sh` / `--dart-define-from-file=.env.development`. Never package env as Flutter assets.
-- Lint: `analysis_options.yaml` defines rules used by CI/local.
+## Structure and ownership
 
-## Build, Test, and Development Commands
-- Install deps: `flutter pub get` — fetches packages.
-- Run app: `flutter run -d <device_id>` — launches on simulator/device.
-- Analyze: `flutter analyze` — static checks; fix all warnings.
-- Format: `dart format .` — apply standard Dart formatting.
-- Codegen: `flutter pub run build_runner build --delete-conflicting-outputs` — generates `*.g.dart`.
-- Tests: `flutter test` — run unit/widget tests locally.
-- Releases: `flutter build apk` / `flutter build ios` — production builds.
+`lib/features/<feature>/` contains focused `application`, `data`, and
+`presentation` code. Shared models, providers, transport, storage, routing,
+localization, design, and widgets live under `lib/core/`. Follow existing paths;
+do not create empty layers to match a template.
 
-## Coding Style & Naming Conventions
-- Indentation: 2 spaces; follow `analysis_options.yaml`.
-- Files: `snake_case.dart` (e.g., `property_details_view.dart`).
-- Classes: `UpperCamelCase` (PascalCase); variables/methods: `lowerCamelCase`.
-- Suffixes: `*_view.dart`, `*_controller.dart`, `*_binding.dart`.
-- Placement: new screens under `lib/features/<feature>/...`; shared utilities in `lib/core/`.
+Use manual Riverpod providers and immutable state. Widgets watch state and call
+notifiers. Repositories use constructor injection. Text/focus/form/scroll/animation
+controllers remain local to widgets. Register resource cleanup with the owner.
+Reject asynchronous results after account/input changes or disposal. Inactive shell
+branches can remain mounted and must stop active media and streams explicitly.
 
-## Testing Guidelines
-- Framework: Flutter/Dart tests.
-- Location: `test/` mirrors `lib/` paths; name files `*_test.dart`.
-- Types: widget tests for views; unit tests for controllers/services and business logic.
-- Run: `flutter test` (use `--plain-name` to filter when needed).
+Use `MaterialApp.router` / GoRouter and the shared route policy. Presentation code
+navigates through its `BuildContext`; state owners do not navigate. Do not add
+bindings, global service lookup, navigation timers, or duplicate authoritative state.
 
-## Commit & Pull Request Guidelines
-- Commits: imperative, scope-first (e.g., "Refactor filters: unify models"). Keep them focused.
-- Before PR: run `flutter analyze`, `dart format .`, `flutter test`, and regenerate code (`build_runner`).
-- PRs: include summary, linked issues, test plan, and screenshots for UI changes. Note any env/config or docs updates. Keep changes minimal.
+## Persistence and failures
 
-## Security & Configuration
-- Never hardcode secrets; load via `.env.*` or secure stores.
-- When adding assets, update `pubspec.yaml` and verify both dev/prod configs.
-- Mobile auth/session handling should remain Supabase-native using `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY`.
+`AppDatabase` is the application SQLite owner. It stores preferences, scoped caches,
+drafts, and durable actions. Await persistence and expose write failure with retry.
+Supabase owns credentials. The legacy GetStorage importer is read-only and is the
+only legacy storage boundary. See [persistence.md](./docs/persistence.md).
 
-## UI Guidelines - Notifications & Toasts
+Disable automatic provider retry. HTTP owns bounded safe read retries. Do not
+replay mutations without a verified server contract. Visit creation remains an
+explicit reconciliation flow after an ambiguous result. Account changes must
+invalidate scope before cleanup and preserve account ownership of pending actions.
 
-**ALWAYS use `AppToast` for all notifications/toasts** - Never use `Get.snackbar()` directly.
+## UI and localization
 
-Located in `lib/core/utils/app_toast.dart`:
-- **Position**: All toasts appear at `SnackPosition.TOP` (never bottom)
-- **Minimal styling**: Compact padding, 8px border radius, 3s duration
-- **Consistent appearance**: Unified colors via `AppDesign` tokens
+Use `context.design`, theme typography, and `context.l10n.text(...)`. Add English
+and Hindi messages together in `app_messages.dart`. Keep data failures typed and
+map them to localized safe UI text. Do not show raw exception text.
 
-### Usage Examples:
-```dart
-// Success message
-AppToast.success('Profile saved', 'Your changes have been saved');
+Use `AppToast` for brief top-of-screen feedback; `AppToastHost` owns the overlay.
+Recoverable load, save, and pending-operation errors need persistent inline state
+and retry. Preserve form input and usable content during failure or refresh. Check
+both themes, 320-pixel width, 2x text, keyboard insets, and reduced motion.
 
-// Error message
-AppToast.error('Error', 'Failed to load data');
+## Commands and checks
 
-// Warning message
-AppToast.warning('Warning', 'Please check your connection');
+1. Resolve dependencies with `flutter pub get`. After resolution or clean, run
+   `./tool/verify_ios_release.sh --fix` before Xcode build/archive (iOS uses SPM).
+2. Format changed files with `dart format <paths>` and run `flutter analyze`.
+3. Run focused `flutter test <paths>`, then the required full suite and coverage.
+   Keep the CI 85% coverage gate. Do not bypass layout or runtime assertions.
+4. Run `dart run build_runner build --delete-conflicting-outputs` when JSON models
+   change. Providers are manual and do not use code generation.
+5. Follow [shorebird.md](./docs/shorebird.md) for store release/patch builds.
+   Verification does not authorize a release, push, or production write.
 
-// Info message
-AppToast.info('Info', 'New features available');
+Use ProviderContainer/ProviderScope overrides and feature test harnesses. Native
+platform fakes complement available native checks; they do not replace them.
+Record behavior mappings when removing architecture-specific tests. See the
+[migration checklist](./docs/migration/riverpod-checklist.md) for completed verification
+and remaining device and credential checks.
 
-// Custom styling (rarely needed)
-AppToast.custom(
-  title: 'Custom',
-  message: 'Your message here',
-  backgroundColor: AppDesign.primaryYellow,
-  duration: const Duration(seconds: 2),
-);
-```
+## Style and security
 
-### Migration from Get.snackbar:
-```dart
-// ❌ DON'T use Get.snackbar directly
-Get.snackbar('Error', 'Failed to load', snackPosition: SnackPosition.BOTTOM);
-
-// ✅ DO use AppToast
-AppToast.error('Error', 'Failed to load');
-```
+Use two spaces, `snake_case.dart` files, `UpperCamelCase` types, and `lowerCamelCase`
+members. Keep edits focused. Do not preserve obsolete compatibility wrappers.
+Never log tokens, passwords, OTPs, OAuth payloads, profile data, or exact location.
+Local `.env.*` files are ignored and never packaged as assets. Use
+`dart run tool/sync_dev_env.dart`, `./tool/run_with_env.sh`, or dart defines for local
+configuration. Authentication uses the Supabase publishable key.

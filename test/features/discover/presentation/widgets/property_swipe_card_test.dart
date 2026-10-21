@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/image_cache_service.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_card.dart';
-import '../../../../helpers/getx_test_binding.dart';
+import '../../../../helpers/image_test_cache.dart';
 
 /// Builds a richer [PropertyModel] for swipe-card rendering tests.
 PropertyModel _richProperty({int id = 100, String? virtualTourUrl}) {
@@ -31,18 +32,20 @@ PropertyModel _richProperty({int id = 100, String? virtualTourUrl}) {
   );
 }
 
-void main() {
-  setUp(() => GetxTestBinding.init());
-  tearDown(() => GetxTestBinding.reset());
+final _images = ImageTestCache();
 
+void main() {
   /// Card is chrome-only (no internal scroll); production hosts it in a
   /// scroll view. Mirror that so content can exceed the viewport.
   Future<void> pumpWidget(WidgetTester tester, Widget child) async {
     await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
+      MaterialApp(
+        localizationsDelegates: const [AppLocalizations.delegate],
+        builder: (context, child) => ProviderScope(
+          overrides: [imageCacheServiceProvider.overrideWithValue(_images.service)],
+          child: child!,
+        ),
         locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
         home: Scaffold(body: SingleChildScrollView(child: child)),
       ),
     );

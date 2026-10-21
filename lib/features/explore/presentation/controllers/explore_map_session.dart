@@ -21,8 +21,8 @@ class ExploreMapSession {
     programmaticMove = true;
     try {
       await mapController.move(center, zoom);
-    } catch (e) {
-      DebugLogger.warning('⚠️ Could not move map: $e');
+    } catch (e, stack) {
+      DebugLogger.warning('Could not move map', e, stack);
       programmaticMove = false;
     }
   }

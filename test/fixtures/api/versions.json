@@ -1,0 +1,10 @@
+{
+  "check_response": {
+    "download_url": "https://example.com/app",
+    "is_mandatory": false,
+    "latest_version": "3.3.0",
+    "min_supported_version": "3.0.0",
+    "release_notes": "Fixes",
+    "update_available": true
+  }
+}

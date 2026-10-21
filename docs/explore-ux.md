@@ -1,115 +1,106 @@
-# Explore View UX Design
+# Explore and Saved UX
 
-## Overview
+This page describes the Explore map, the Saved list, the shared property row, the filter sheet, and the location picker. The visual rules come from `docs/design-system.md`.
 
-The Explore page combines an interactive map with a horizontal property card carousel. Users browse properties both spatially (via map markers) and linearly (via the card list), with bidirectional synchronization between the two views.
+## Explore
 
-## Collapsible Property List
+### Layout
 
-### Architecture
+| Window width | Layout |
+| --- | --- |
+| Below 840 px | The map fills the body. A paper sheet with a strip of homes sits over the bottom of the map. A tap on a home pushes the details route. |
+| 840 px and wider | The left pane is the map and the strip, as on a phone. The right pane (420 px) shows the open home in `PropertyDetailsView(embedded: true)`. With no home open, the pane shows `ErrorStates.emptyState(seed: 'pane')`. A tap on a home opens it in the pane and does not push a route. |
 
-The bottom property list uses `AnimatedPositioned` to toggle between expanded and collapsed states.
+The rail starts at 600 px (see `DashboardView`). A portrait tablet at 834 px has the rail and one pane.
 
-- **Expanded**: `bottom: 0` — 44px handle + 220px card list visible (264px total)
-- **Collapsed**: `bottom: -220` — only 44px handle strip visible above safe area
-- **State**: `ExploreController.isListCollapsed` (`RxBool`)
-- **Animation**: 300ms (`AppDurations.normal`), easeOutCubic (`AppCurves.standard`)
+### Chrome over the map
 
-### Handle Strip (44px)
+The controls over the map are paper chrome. Each one is a `PaperSheet` with a cut edge and a low shadow.
 
-- Rounded top corners (16px radius) — bottom-sheet visual language
-- `warmCream` bg at 95% opacity (dark: `darkSurfaceAlt`)
-- 3-side border (top/left/right) in `editorialWarm` 0.3 alpha
-- Centered 36x4px drag handle bar
-- Property count text with chevron icon (up when collapsed, down when expanded)
+| Part | Content |
+| --- | --- |
+| Map controls (top right) | Zoom in, zoom out, my location (`KnifeIcon.locate`, teal accent), show all homes (`KnifeIcon.map`). Bare icons, 48 px targets. |
+| Radius note (top left) | The search radius, for example `10 km radius`. |
+| Loading more | A small slip with `LoadingStates.buttonSpinner` and "Loading more properties...". It sits above the list sheet. |
+| Empty area | A slip in the middle of the map with the `explore` empty scene and one action, Adjust Filters. The map stays usable around it. |
 
-### Interactions
+### List sheet
+
+- The sheet uses `CutBorder(seed: 'explore-list')`. Its sides and bottom sit 4 px past the screen edges, so only the cut top edge shows.
+- The handle row shows the count (`2 properties`) and a chevron. There is no drag bar.
+- Tap the handle to fold or unfold the sheet. Swipe up to unfold. Swipe down to fold.
+- A fold or unfold takes 300 ms (`AppDurations.normal`, `AppCurves.standard`). With reduced motion it is immediate.
+- The strip scrolls sideways. Each card is 260 px wide. The card photo takes the height that the words leave, so 2x text does not overflow.
+
+### Map and list sync
 
 | Action | Result |
-|--------|--------|
-| Tap handle | Toggle collapse/expand |
-| Swipe up on handle | Expand list |
-| Swipe down on handle | Collapse list |
-| Tap map marker while collapsed | Auto-expand + scroll to selected card |
+| --- | --- |
+| Scroll the strip | After 80 ms the card nearest the start becomes the highlighted home. Its marker turns marigold. The camera does not move. |
+| Tap a marker | The marker turns marigold, the sheet unfolds, and the strip scrolls the card to the middle (300 ms, or at once with reduced motion). A selection haptic plays. |
+| Tap a card (two panes) | The card is highlighted on the map and opens in the right pane. |
 
-### Auto-Expand on Marker Tap
+The highlighted or open card has a pale `slip` fill. There is no border and no glow.
 
-When a user taps a map marker while the list is collapsed:
-1. `selectProperty()` sets `isListCollapsed = false`
-2. `AnimatedPositioned` begins sliding list up (300ms)
-3. Simultaneously, the `ever()` worker fires `_scrollToProperty()` — the card scrolls to center position AS the list animates upward
-4. Haptic feedback (`selectionClick`) confirms the interaction
+### Markers
 
-This coordinated animation creates a polished entrance effect.
+A marker is a small price slip (`PropertyMarkerChip`): `CutBorder(seed: 'marker')`, surface fill, ink text. The selected marker has the marigold fill (`buttonPrimary`) with `buttonPrimaryText` and a `mid` paper shadow. Nothing pulses. The tap target stays 48 px. Native MapLibre circles show clusters; a tap on a cluster zooms in by 2.
 
-## Map-List Bidirectional Sync
+### State and rebuilds
 
-### List Scroll → Map Highlight
+`ExploreView` watches only the window width. Each part watches the narrow value it draws with `select`:
 
-1. User scrolls the horizontal property list
-2. `_onScroll()` debounces at 80ms, calculates which card is most visible
-3. Calls `highlightPropertyFromCard()` which sets `selectedProperty`
-4. Map marker rebuilds with `isSelected: true` — gold background + pulse animation
-5. No camera movement (intentional — avoids fighting user's map focus)
+| Widget | Watches |
+| --- | --- |
+| `_ExploreBanners` | Refresh, pagination and screen error of the page; location load and save; the map-area search. |
+| `_ExploreBody` | Whether a location exists, the location failure, and the empty phase. |
+| `_RadiusNote` | The radius of the Explore filter. |
+| `_ListSheet` | The folded flag and the item count. |
+| `_ExploreCard` | Its own highlight and its own like state. |
 
-### Map Marker Tap → List Scroll
+`test/performance/rebuild_counts_test.dart` measures dirty builds:
 
-1. User taps a property marker on the map
-2. `selectProperty()` updates `selectedProperty` (and auto-expands if collapsed)
-3. `ever()` worker in `PropertyHorizontalList` fires
-4. `_scrollToProperty()` centers the card in the viewport with 300ms animation
-5. `HapticFeedback.selectionClick()` provides tactile confirmation
+| Workload | Before | After |
+| --- | ---: | ---: |
+| 5 camera moves | 1475 | 52 |
+| 5 card highlights | 2459 | 344 |
 
-### Scroll Centering
+## Saved
 
-Cards scroll to the center of the viewport (not left edge):
-```
-target = index * (itemWidth + spacing) - (viewportWidth / 2) + (itemWidth / 2)
-```
+- Liked and Passed are two tabs in `SegmentedControl`. A pale slip slides under the selected tab. The count shows as text after the label.
+- The list is flat: `PropertyListCard(row: true)` rows with the photo beside the words, 4 px apart. There is no grid.
+- Empty Liked uses the `liked` scene; empty Passed uses the `passed` scene. Each has one action, Go to Discover.
+- A search with no match shows `ErrorStates.searchEmpty` with Clear Search.
+- A failed first load shows `ErrorStates.genericError(seed: 'saved')`.
+- A failed refresh keeps the rows and shows `InlineRetryBanner` at the top (`qa.likes.content.retry`).
+- The next page loads under the rows. A failed next page shows `InlineRetryBanner` as the last row (`qa.likes.content.retry`). The rows and the scroll position stay.
+- From 840 px the list is a 380 px left pane and the open home shows in the right pane, as in Explore.
 
-## Compact Info Panel
+## Property row (`PropertyListCard`)
 
-The top-left info panel shows property count and search radius in a single-line pill format:
+- Photo, the price in `headlineSmall` (Erode) with `/mo` or `/day` for rent and short stays, the title, the facts as one line of text (`House · 3 BHK · 2 Bath · 1,200 sq ft`), and the area.
+- No chips, no border, no shadow, no hover lift. A press dims the card (`AnimatedTapWrapper`); it never scales.
+- The heart is a bare icon. On the photo it is light with a tight shadow. Beside the words it is ink (`favoriteInactive`) or brick (`favoriteActive`) when saved. A pending like shows a spinner in its place.
+- `onTap` replaces the details route push (used by the detail pane). `selected` lays a `slip` under the row.
 
-**Format**: `15 properties · 5.0 km radius`
+## Filter sheet
 
-- Count: Playfair Display 16pt bold
-- Label + separator + radius: DM Sans 11pt
-- Padding: 12px horizontal, 8px vertical
-- ~32px tall (was ~70px in the multi-line version)
+- `showPropertyFilterBottomSheet(context, pageType:)` opens a theme sheet with the cut paper edge.
+- Choices (purpose, property type, amenities) are `ChoiceChip`s with a small radius. Off: a quiet `border` edge. On: a mint `slip` fill and a check. No coloured ring, no pill.
+- Actions: Apply is the one `FilledButton`. Clear Filters is a `TextButton`.
+- Amenities come from `GET /api/v1/amenities` (public, sorted by title, cached for 24 hours on the backend). The app keeps the list in the SQLite cache (`amenities:v1`, fresh for 1 day, kept for 30 days):
+  - A cached list shows at once. A stale list refreshes in the background. A failed refresh keeps the cached list.
+  - With no cache, the section shows skeleton choices, then the list. A failed first load shows a retry banner in the amenities section only (`qa.filters.amenities.retry`); the rest of the sheet still works.
+  - Filters send titles as `amenities=`. The backend matches them without case. On Apply, a saved title that the backend does not list is dropped, because it would match no home.
 
-The location name was removed because it duplicates the `LocationSelector` in the top bar.
+## Location picker
 
-## Animation Specifications
-
-| Animation | Duration | Curve | Trigger |
-|-----------|----------|-------|---------|
-| List collapse/expand | 300ms | easeOutCubic | Handle tap, marker tap |
-| Card scroll to selection | 300ms | easeOutCubic | Marker tap, list scroll |
-| Card highlight border | 200ms | linear | Selection change |
-| Marker pulse | 1400ms | linear (repeat) | Selection |
-
-## Dark Mode
-
-All components use `AppDesignTokens` for theme-aware colors:
-
-| Element | Light | Dark |
-|---------|-------|------|
-| Handle bg | `warmCream` 95% | `darkSurfaceAlt` 95% |
-| Handle border | `editorialWarm` 30% | `darkBorder` |
-| Handle bar | `neutral300` | `darkBorder` |
-| Handle text | `editorialInk` 60% | `darkTextSecondary` |
-| Info panel bg | `warmCream` 95% | `darkSurfaceAlt` 95% |
-| Info panel border | `editorialWarm` 30% | `darkBorder` |
+- The trigger in the top bar is flat text: a teal pin, the area name, and a chevron. There is no pill.
+- The picker is a theme sheet with the cut paper edge. Icons are bare and use the teal accent.
+- Failures in the picker are flat lines with an error icon and a retry link below the message.
 
 ## Accessibility
 
-- Handle strip has `Semantics(label: 'expand/collapse_property_list', button: true)`
-- Property count announced in collapsed handle text
-- Haptic feedback on selection changes
-
-## Future Considerations
-
-- **Camera nudge**: When list-scroll highlights a property outside the visible map bounds, gently pan the camera to keep the marker visible (40% toward property, not full recenter)
-- **Edge indicator**: Show a directional arrow at the map edge when selected property is off-screen
-- **Snap-to-center**: PageView-style snapping was considered but rejected — free scrolling with 80ms debounce highlight feels more natural for browsing
+- Every control has a 48 px target and a label. The list handle has a button label that says expand or collapse.
+- Tabs and rows expose selected state.
+- Every screen is tested at 320 px with Hindi, 2x text and the dark theme.

@@ -1,420 +1,323 @@
-// test/features/swipes/data/swipes_repository_test.dart
-//
-// Unit tests for [SwipesRepository]. Covers:
-// - recordSwipe success
-// - recordSwipe network failure enqueues to offline queue
-// - recordSwipe queue failure rethrows
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
+import 'package:ghar360/core/data/ports/swipes_port.dart';
 import 'package:ghar360/core/network/api_client.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
+import 'package:ghar360/core/storage/storage_failure.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/swipes/data/swipes_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
-import '../../../helpers/getx_test_binding.dart';
-import '../../../helpers/mocks.dart';
+import '../../../helpers/property_query_test_support.dart';
 import '../../../helpers/test_data.dart';
 
-class MockOfflineQueueService extends GetxServiceMock implements OfflineQueueService {}
+class SwipeApi extends Mock implements ApiClient {}
+
+/// A `SwipeOut` receipt, as `POST /swipes` answers.
+ApiResponse receipt() => const ApiResponse(
+  statusCode: 201,
+  body: {'id': 5, 'property_id': 100, 'is_liked': true},
+  headers: {},
+);
 
 void main() {
-  late MockApiClient mockApiClient;
-  late MockOfflineQueueService mockOfflineQueue;
+  late PropertyQueryHarness h;
+  late SwipeApi api;
+  late OfflineQueueService queue;
+  late StorageScope scope;
   late SwipesRepository repository;
-
-  setUp(() {
-    GetxTestBinding.init();
-    mockApiClient = MockApiClient();
-    mockOfflineQueue = MockOfflineQueueService();
-
-    GetxTestBinding.bind()
-      ..register<ApiClient>(mockApiClient)
-      ..register<OfflineQueueService>(mockOfflineQueue);
-
-    repository = SwipesRepository();
+  setUp(() async {
+    h = await PropertyQueryHarness.create();
+    scope = h.container.read(storageScopeProvider);
+    api = SwipeApi();
+    queue = OfflineQueueService(database: h.database, scope: () => scope);
+    repository = SwipesRepository(apiClient: api, offlineQueue: queue);
+    when(
+      () => api.post(
+        '/swipes',
+        body: any(named: 'body'),
+        idempotent: any(named: 'idempotent'),
+      ),
+    ).thenAnswer((_) async => receipt());
   });
-
-  tearDown(() {
-    GetxTestBinding.reset();
+  tearDown(() async {
+    queue.close();
+    await h.close();
   });
+  void offline() {
+    when(
+      () => api.post(
+        '/swipes',
+        body: any(named: 'body'),
+        idempotent: any(named: 'idempotent'),
+      ),
+    ).thenThrow(NetworkException('Offline'));
+  }
 
-  group('SwipesRepository', () {
-    // ── recordSwipe success ────────────────────────────────────────────
-
-    test('recordSwipe completes successfully on valid API response', () async {
-      when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: {}, headers: {}));
-
-      await repository.recordSwipe(propertyId: 100, isLiked: true);
-
+  for (final liked in [true, false]) {
+    test('persist $liked intent before POST and confirm the same operation', () async {
+      String? operation;
+      when(() => api.post('/swipes', body: any(named: 'body'), idempotent: false)).thenAnswer((
+        _,
+      ) async {
+        final pending = (await queue.list()).single;
+        expect(pending.status, PendingActionStatus.pending);
+        expect(pending.attempts, 1);
+        operation = pending.operationId;
+        return receipt();
+      });
+      final outcome = await repository.recordSwipe(propertyId: 100, isLiked: liked);
+      expect(outcome, isA<ConfirmedSwipe>());
+      expect((outcome as ConfirmedSwipe).operationId, operation);
+      expect((await queue.list()).single.status, PendingActionStatus.confirmed);
       verify(
-        () => mockApiClient.post('/swipes', body: {'property_id': 100, 'is_liked': true}),
+        () => api.post('/swipes', body: {'property_id': 100, 'is_liked': liked}, idempotent: false),
       ).called(1);
     });
-
-    test('recordSwipe with isLiked=false sends correct payload', () async {
+  }
+  for (final failure in [
+    NetworkException('Offline'),
+    AuthenticationException('No header', code: 'MISSING_AUTH_HEADER'),
+    ServerException('Server failed', statusCode: 503),
+  ]) {
+    test('${failure.runtimeType} retains one unresolved durable operation', () async {
       when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: {}, headers: {}));
-
-      await repository.recordSwipe(propertyId: 200, isLiked: false);
-
-      verify(
-        () => mockApiClient.post('/swipes', body: {'property_id': 200, 'is_liked': false}),
-      ).called(1);
+        () => api.post('/swipes', body: any(named: 'body'), idempotent: false),
+      ).thenThrow(failure);
+      final outcome = await repository.recordSwipe(propertyId: 100, isLiked: true) as PendingSwipe;
+      expect((await queue.list()).single.operationId, outcome.action.operationId);
+      expect(outcome.action.attempts, 1);
+      expect(outcome.action.status, PendingActionStatus.pending);
     });
-
-    // ── recordSwipe network failure enqueues to offline queue ──────────
-
-    test('recordSwipe enqueues to offline queue on NetworkException', () async {
-      when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
-      ).thenThrow(NetworkException('No internet connection'));
-
-      when(
-        () => mockOfflineQueue.enqueueSwipe(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      ).thenAnswer((_) async {});
-
-      // Should not throw — swallows network error after enqueueing
-      await repository.recordSwipe(propertyId: 100, isLiked: true);
-
-      verify(() => mockOfflineQueue.enqueueSwipe(propertyId: 100, isLiked: true)).called(1);
+  }
+  test('an unreadable receipt after a 2xx does not undo the stored swipe', () async {
+    when(
+      () => api.post('/swipes', body: any(named: 'body'), idempotent: false),
+    ).thenAnswer((_) async => const ApiResponse(statusCode: 201, body: {'id': 'x'}, headers: {}));
+    final outcome = await repository.recordSwipe(propertyId: 100, isLiked: true);
+    expect(outcome, isA<ConfirmedSwipe>());
+    expect((outcome as ConfirmedSwipe).swipe, isNull);
+  });
+  test('the receipt of the server is kept on a confirmed swipe', () async {
+    final outcome = await repository.recordSwipe(propertyId: 100, isLiked: true);
+    expect((outcome as ConfirmedSwipe).swipe?.id, 5);
+  });
+  test('storage failure prevents POST instead of losing the user intent', () async {
+    await h.raw.execute(
+      "CREATE TRIGGER no_actions BEFORE INSERT ON actions BEGIN SELECT RAISE(ABORT,'disk full'); END",
+    );
+    await expectLater(
+      repository.recordSwipe(propertyId: 100, isLiked: true),
+      throwsA(isA<StorageFailure>()),
+    );
+    verifyNever(
+      () => api.post(
+        any(),
+        body: any(named: 'body'),
+        idempotent: any(named: 'idempotent'),
+      ),
+    );
+  });
+  test('invalid property cannot create a durable action or a POST', () async {
+    await expectLater(
+      repository.recordSwipe(propertyId: 0, isLiked: true),
+      throwsA(isA<ValidationException>()),
+    );
+    expect(await queue.list(), isEmpty);
+    verifyNever(
+      () => api.post(
+        any(),
+        body: any(named: 'body'),
+        idempotent: any(named: 'idempotent'),
+      ),
+    );
+  });
+  test('unresolved response survives a failed failure-metadata write', () async {
+    offline();
+    await h.raw.execute(
+      "CREATE TRIGGER no_failure BEFORE UPDATE ON actions WHEN NEW.failure_code IS NOT NULL BEGIN SELECT RAISE(ABORT,'disk full'); END",
+    );
+    final result = await repository.recordSwipe(propertyId: 100, isLiked: true) as PendingSwipe;
+    expect((await queue.list()).single.operationId, result.action.operationId);
+    expect(result.action.status, PendingActionStatus.pending);
+  });
+  test('definite rejection stays failed and throws a typed failure', () async {
+    when(
+      () => api.post('/swipes', body: any(named: 'body'), idempotent: false),
+    ).thenThrow(AuthenticationException('Unauthorized', code: 'UNAUTHORIZED'));
+    await expectLater(
+      repository.recordSwipe(propertyId: 100, isLiked: true),
+      throwsA(isA<AuthenticationException>()),
+    );
+    expect((await queue.list()).single.status, PendingActionStatus.failed);
+  });
+  test('manual retry uses the same operation and increases attempts', () async {
+    offline();
+    final pending = await repository.recordSwipe(propertyId: 100, isLiked: true) as PendingSwipe;
+    when(
+      () => api.post('/swipes', body: any(named: 'body'), idempotent: false),
+    ).thenAnswer((_) async => receipt());
+    expect(await repository.retryPendingSwipe(pending.action), isA<ConfirmedSwipe>());
+    final records = await queue.list();
+    expect(records.length, 1);
+    expect(records.single.operationId, pending.action.operationId);
+    expect(records.single.attempts, 2);
+    expect(records.single.status, PendingActionStatus.confirmed);
+  });
+  test('repeated offline retry does not create a replacement operation', () async {
+    offline();
+    final pending = await repository.recordSwipe(propertyId: 100, isLiked: false) as PendingSwipe;
+    final again = await repository.retryPendingSwipe(pending.action) as PendingSwipe;
+    expect(again.action.operationId, pending.action.operationId);
+    expect((await queue.list()).length, 1);
+    expect(again.action.attempts, 2);
+  });
+  test('duplicate manual retry coalesces one POST', () async {
+    offline();
+    final pending = await repository.recordSwipe(propertyId: 100, isLiked: true) as PendingSwipe;
+    final completion = Completer<ApiResponse>();
+    final started = Completer<void>();
+    when(() => api.post('/swipes', body: any(named: 'body'), idempotent: false)).thenAnswer((_) {
+      started.complete();
+      return completion.future;
     });
-
-    test('recordSwipe enqueues dislike on NetworkException', () async {
-      when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
-      ).thenThrow(NetworkException('Connection refused'));
-
-      when(
-        () => mockOfflineQueue.enqueueSwipe(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      ).thenAnswer((_) async {});
-
-      await repository.recordSwipe(propertyId: 50, isLiked: false);
-
-      verify(() => mockOfflineQueue.enqueueSwipe(propertyId: 50, isLiked: false)).called(1);
+    final one = repository.retryPendingSwipe(pending.action);
+    final two = repository.retryPendingSwipe(pending.action);
+    expect(identical(one, two), true);
+    await started.future;
+    completion.complete(receipt());
+    await Future.wait([one, two]);
+    verify(() => api.post('/swipes', body: any(named: 'body'), idempotent: false)).called(2);
+  });
+  test('new confirmed intent makes every older pending operation ineligible', () async {
+    offline();
+    final old = await repository.recordSwipe(propertyId: 100, isLiked: true) as PendingSwipe;
+    when(
+      () => api.post('/swipes', body: any(named: 'body'), idempotent: false),
+    ).thenAnswer((_) async => receipt());
+    await repository.recordSwipe(propertyId: 100, isLiked: false);
+    final records = await queue.list();
+    expect(records.first.failureCode, 'SUPERSEDED');
+    expect(records.last.status, PendingActionStatus.confirmed);
+    await expectLater(
+      repository.retryPendingSwipe(old.action),
+      throwsA(isA<ValidationException>().having((e) => e.code, 'code', 'SWIPE_SUPERSEDED')),
+    );
+    verify(() => api.post('/swipes', body: any(named: 'body'), idempotent: false)).called(2);
+  });
+  test('latest-created guard also rejects interrupted supersede work', () async {
+    final old = await queue.create(kind: 'swipe', payload: {'property_id': 100, 'is_liked': true});
+    await queue.create(kind: 'swipe', payload: {'property_id': 100, 'is_liked': false});
+    await expectLater(repository.retryPendingSwipe(old), throwsA(isA<ValidationException>()));
+    verifyNever(
+      () => api.post(
+        any(),
+        body: any(named: 'body'),
+        idempotent: any(named: 'idempotent'),
+      ),
+    );
+  });
+  test('confirmation storage failure remains explicitly unresolved', () async {
+    await h.raw.execute(
+      "CREATE TRIGGER no_confirmation BEFORE UPDATE ON actions WHEN NEW.status = 'confirmed' BEGIN SELECT RAISE(ABORT,'disk full'); END",
+    );
+    final result = await repository.recordSwipe(propertyId: 100, isLiked: true);
+    expect(result, isA<PendingSwipe>());
+    expect((await queue.list()).single.status, PendingActionStatus.pending);
+  });
+  test('account switch rejects response and never copies a request into another account', () async {
+    final completion = Completer<ApiResponse>();
+    final started = Completer<void>();
+    when(() => api.post('/swipes', body: any(named: 'body'), idempotent: false)).thenAnswer((_) {
+      started.complete();
+      return completion.future;
     });
-
-    // ── recordSwipe queue failure rethrows ─────────────────────────────
-
-    test('recordSwipe rethrows when offline queue enqueue fails', () async {
+    final request = repository.recordSwipe(propertyId: 100, isLiked: true);
+    await started.future;
+    scope = h.database.activateScope(environment: 'test', accountId: 'b');
+    completion.complete(receipt());
+    await expectLater(request, throwsA(isA<NetworkException>()));
+    expect(await queue.list(), isEmpty);
+  });
+  test('confirmed operation is a no-op if retried explicitly', () async {
+    await repository.recordSwipe(propertyId: 100, isLiked: true);
+    final action = (await queue.list()).single;
+    expect(await repository.retryPendingSwipe(action), isA<ConfirmedSwipe>());
+    verify(() => api.post('/swipes', body: any(named: 'body'), idempotent: false)).called(1);
+  });
+  test('history parses rows and pagination while passing query location and cursor', () async {
+    when(
+      () => api.get('/swipes', queryParams: any(named: 'queryParams'), useCache: false),
+    ).thenAnswer(
+      (_) async => ApiResponse(
+        statusCode: 200,
+        body: testPropertyPage(count: 3, hasMore: true, nextCursor: 'next'),
+        headers: {},
+      ),
+    );
+    final response = await repository.getSwipeHistoryProperties(
+      filters: const UnifiedFilterModel(),
+      latitude: 28.61,
+      longitude: 77.2,
+      cursor: 'page2',
+      isLiked: true,
+    );
+    expect(response.items.length, 3);
+    expect(response.nextCursor, 'next');
+    expect(response.hasMore, true);
+    final query =
+        verify(
+              () => api.get(
+                '/swipes',
+                queryParams: captureAny(named: 'queryParams'),
+                useCache: false,
+              ),
+            ).captured.single
+            as Map;
+    expect(query['lat'], '28.61');
+    expect(query['lng'], '77.2');
+    expect(query['cursor'], 'page2');
+    expect(query['is_liked'], 'true');
+  });
+  for (final body in [
+    'invalid',
+    {
+      ...testPropertyPage(),
+      'items': [testPropertyJson(id: 1), 'invalid'],
+    },
+    testPropertyJsonList(count: 1),
+    {'data': testPropertyPage()},
+    {'wrong': []},
+  ]) {
+    test('history malformed $body is a failure rather than empty success', () async {
       when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
-      ).thenThrow(NetworkException('Offline'));
-
-      when(
-        () => mockOfflineQueue.enqueueSwipe(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      ).thenThrow(Exception('Queue storage full'));
-
-      expect(
-        () => repository.recordSwipe(propertyId: 100, isLiked: true),
-        throwsA(isA<Exception>()),
-      );
-    });
-
-    // ── recordSwipe rethrows non-network AppExceptions ─────────────────
-
-    test('recordSwipe rethrows non-network AppExceptions directly', () async {
-      when(
-        () => mockApiClient.post('/swipes', body: any(named: 'body')),
-      ).thenThrow(AuthenticationException('Unauthorized'));
-
-      expect(
-        () => repository.recordSwipe(propertyId: 100, isLiked: true),
-        throwsA(isA<AuthenticationException>()),
-      );
-
-      // Offline queue should NOT be called for non-network errors
-      verifyNever(
-        () => mockOfflineQueue.enqueueSwipe(
-          propertyId: any(named: 'propertyId'),
-          isLiked: any(named: 'isLiked'),
-        ),
-      );
-    });
-
-    // ── getSwipeHistoryProperties ──────────────────────────────────────
-
-    test('getSwipeHistoryProperties parses items and pagination signals', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {
-            'items': testPropertyJsonList(count: 3),
-            'has_more': true,
-            'next_cursor': 'cursor-abc',
-            'limit': 50,
-          },
-          headers: {},
-        ),
-      );
-
-      final response = await repository.getSwipeHistoryProperties(
-        filters: const UnifiedFilterModel(),
-        limit: 50,
-      );
-
-      expect(response.items.length, 3);
-      expect(response.hasMore, isTrue);
-      expect(response.nextCursor, 'cursor-abc');
-      expect(response.items.first.id, 100);
-    });
-
-    test('getSwipeHistoryProperties returns terminal page when has_more absent', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {'items': testPropertyJsonList(count: 1)},
-          headers: {},
-        ),
-      );
-
-      final response = await repository.getSwipeHistoryProperties(
-        filters: const UnifiedFilterModel(),
-      );
-
-      expect(response.hasMore, isFalse);
-      expect(response.nextCursor, isNull);
-    });
-
-    test('getSwipeHistoryProperties handles non-Map body as empty result', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 'not-a-map', headers: {}));
-
-      final response = await repository.getSwipeHistoryProperties(
-        filters: const UnifiedFilterModel(),
-      );
-
-      expect(response.items, isEmpty);
-      expect(response.hasMore, isFalse);
-    });
-
-    test('getSwipeHistoryProperties skips unparseable items but keeps valid ones', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {
-            'items': [testPropertyJson(id: 1), 'not-a-map', testPropertyJson(id: 3)],
-          },
-          headers: {},
-        ),
-      );
-
-      final response = await repository.getSwipeHistoryProperties(
-        filters: const UnifiedFilterModel(),
-      );
-
-      expect(response.items.length, 2);
-      expect(response.items.map((p) => p.id), containsAll([1, 3]));
-    });
-
-    test('getSwipeHistoryProperties propagates AppException', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenThrow(NetworkException('Offline'));
-
-      expect(
-        () => repository.getSwipeHistoryProperties(filters: const UnifiedFilterModel()),
-        throwsA(isA<NetworkException>()),
-      );
-    });
-
-    test('getSwipeHistoryProperties passes cursor and location into query params', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: {}),
-      );
-
-      await repository.getSwipeHistoryProperties(
-        filters: const UnifiedFilterModel(),
-        latitude: 28.61,
-        longitude: 77.20,
-        cursor: 'next-page',
-        isLiked: true,
-      );
-
-      final captured = verify(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: captureAny(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).captured;
-
-      final params = captured.single as Map<String, dynamic>;
-      expect(params['cursor'], 'next-page');
-      expect(params['lat'], '28.61');
-      expect(params['lng'], '77.2');
-      expect(params['is_liked'], 'true');
-    });
-
-    // ── getLikedProperties / getPassedProperties / getAllSwipedProperties ──
-
-    test('getLikedProperties returns items from history with isLiked=true', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {'items': testPropertyJsonList(count: 2), 'has_more': false},
-          headers: {},
-        ),
-      );
-
-      final liked = await repository.getLikedProperties(filters: const UnifiedFilterModel());
-
-      expect(liked.length, 2);
-      // Verify is_liked=true was sent.
-      final captured = verify(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: captureAny(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).captured;
-      expect((captured.single as Map<String, dynamic>)['is_liked'], 'true');
-    });
-
-    test('getPassedProperties returns items from history with isLiked=false', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {'items': testPropertyJsonList(count: 1)},
-          headers: {},
-        ),
-      );
-
-      final passed = await repository.getPassedProperties(filters: const UnifiedFilterModel());
-
-      expect(passed.length, 1);
-      final captured = verify(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: captureAny(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).captured;
-      expect((captured.single as Map<String, dynamic>)['is_liked'], 'false');
-    });
-
-    test('getLikedProperties propagates AppException', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenThrow(ServerException('Down', statusCode: 500));
-
-      expect(
-        () => repository.getLikedProperties(filters: const UnifiedFilterModel()),
+        () => api.get('/swipes', queryParams: any(named: 'queryParams'), useCache: false),
+      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: body, headers: {}));
+      await expectLater(
+        repository.getSwipeHistoryProperties(filters: const UnifiedFilterModel()),
         throwsA(isA<ServerException>()),
       );
     });
-
-    test('getLikedPropertiesWithSwipeIds delegates to history with isLiked=true', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {'items': testPropertyJsonList(count: 4)},
-          headers: {},
-        ),
-      );
-
-      final result = await repository.getLikedPropertiesWithSwipeIds(
-        filters: const UnifiedFilterModel(),
-      );
-
-      expect(result.length, 4);
-    });
-
-    test('getAllSwipedProperties omits is_liked to fetch both liked and passed', () async {
-      when(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {'items': testPropertyJsonList(count: 2), 'has_more': true},
-          headers: {},
-        ),
-      );
-
-      final response = await repository.getAllSwipedProperties(filters: const UnifiedFilterModel());
-
-      expect(response.items.length, 2);
-      expect(response.hasMore, isTrue);
-      final captured = verify(
-        () => mockApiClient.get(
-          '/swipes',
-          queryParams: captureAny(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).captured;
-      expect((captured.single as Map<String, dynamic>).containsKey('is_liked'), isFalse);
-    });
+  }
+  test('history last page is terminal and request errors propagate', () async {
+    when(
+      () => api.get('/swipes', queryParams: any(named: 'queryParams'), useCache: false),
+    ).thenAnswer(
+      (_) async => ApiResponse(statusCode: 200, body: testPropertyPage(count: 1), headers: {}),
+    );
+    expect(
+      (await repository.getSwipeHistoryProperties(filters: const UnifiedFilterModel())).hasMore,
+      false,
+    );
+    when(
+      () => api.get('/swipes', queryParams: any(named: 'queryParams'), useCache: false),
+    ).thenThrow(NetworkException('offline'));
+    await expectLater(
+      repository.getSwipeHistoryProperties(filters: const UnifiedFilterModel()),
+      throwsA(isA<NetworkException>()),
+    );
   });
 }

@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ghar360/core/data/models/api_response_models.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 
 void main() {
@@ -137,7 +136,6 @@ void main() {
 
     test('toJson removes invalid numeric values', () {
       const filters = UnifiedFilterModel(
-        radiusKm: -5,
         priceMin: -100,
         bedroomsMin: -1,
         bathroomsMax: -2,
@@ -146,7 +144,6 @@ void main() {
       );
       final json = filters.toJson();
 
-      expect(json.containsKey('radius_km'), isFalse);
       expect(json.containsKey('price_min'), isFalse);
       expect(json.containsKey('bedrooms_min'), isFalse);
       expect(json.containsKey('bathrooms_max'), isFalse);
@@ -154,10 +151,13 @@ void main() {
       expect(json.containsKey('guests'), isFalse);
     });
 
-    test('toJson removes radius over 1000', () {
-      const filters = UnifiedFilterModel(radiusKm: 2000);
-      final json = filters.toJson();
-      expect(json.containsKey('radius_km'), isFalse);
+    test('toJson keeps the radius inside the 1 to 100 km the backend accepts', () {
+      expect(const UnifiedFilterModel(radiusKm: 2000).toJson()['radius_km'], 100.0);
+      expect(const UnifiedFilterModel(radiusKm: -5).toJson()['radius_km'], 1.0);
+      expect(const UnifiedFilterModel(radiusKm: 0.4).toJson()['radius_km'], 1.0);
+      expect(const UnifiedFilterModel(radiusKm: 12.6).toJson()['radius_km'], 13.0);
+      expect(UnifiedFilterModel.apiRadiusKm(2000), 100);
+      expect(UnifiedFilterModel.apiRadiusKm(0), 1);
     });
 
     test('fromJson parses all fields correctly', () {

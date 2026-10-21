@@ -27,15 +27,16 @@ Work top to bottom; every box should be checked before you hit **Submit for Revi
 | App name | **360 Ghar** |
 | Bundle ID | `com.the360ghar.ghar360` |
 | Apple Team ID | `HMWGCVU4SV` |
-| Current version | `1.0.7+12` (marketing `1.0.7`, build `12`) |
+| Current version | `1.0.9+16` (marketing `1.0.9`, build `16`) |
 | Minimum iOS | `15.0` |
 | Firebase project | `ghar-3c690` |
-| Universal Link domains | `the360ghar.com`, `www.the360ghar.com`, `app.the360ghar.com` |
+| Universal Link domains | `360ghar.com`, `www.360ghar.com` |
 | Bitcode | Disabled (`ENABLE_BITCODE = NO`) |
 
 **Tech that drives review/privacy answers:** Firebase (FCM / Crashlytics / Analytics /
 Performance / Remote Config / App Check), Supabase, geolocator (when-in-use / precise location
-only), image_picker (photo library only — no camera), MapLibre, webview_flutter.
+only), image_picker (**photo library and camera** — the profile-picture flow offers
+`ImageSource.camera`, see `edit_profile_view.dart`), MapLibre, webview_flutter.
 **No** App Tracking Transparency, **no** IDFA, **no** cross-app tracking.
 
 ---
@@ -73,20 +74,19 @@ production APNs path must exist or push will silently fail.
 
 ## 4. Universal Links
 
-Entitlements declare `applinks:the360ghar.com`, `applinks:www.the360ghar.com`, and `applinks:app.the360ghar.com`. Apple validates the
+Entitlements declare `applinks:360ghar.com`, `applinks:www.360ghar.com`, and `webcredentials:360ghar.com` (see `ios/Runner/Runner.entitlements`). Apple validates the
 `apple-app-site-association` (AASA) file hosted on those domains — it is **not** in this repo and
-must be hosted by the web/infra team.
+must be hosted by the web/infra team (template: `ios/.well-known/apple-app-site-association.template`).
 
 - [ ] Host the AASA file at **both**:
-  - `https://the360ghar.com/.well-known/apple-app-site-association`
-  - `https://www.the360ghar.com/.well-known/apple-app-site-association`
-  - `https://app.the360ghar.com/.well-known/apple-app-site-association`
+  - `https://360ghar.com/.well-known/apple-app-site-association`
+  - `https://www.360ghar.com/.well-known/apple-app-site-association`
 - [ ] Requirements for each:
   - [ ] Filename is exactly `apple-app-site-association` (**no** `.json` extension).
   - [ ] Served over **HTTPS** with `Content-Type: application/json`.
   - [ ] **No redirects** (return `200` directly, not a 301/302 to another URL).
   - [ ] Valid JSON; `appID` = `HMWGCVU4SV.com.the360ghar.ghar360` (TeamID.BundleID).
-- [ ] Validate after deploy with Apple's CDN-cached fetch (`https://app-site-association.cdn-apple.com/a/v1/the360ghar.com`) and by tapping a real `https://the360ghar.com/...` link on a device with the app installed.
+- [ ] Validate after deploy with Apple's CDN-cached fetch (`https://app-site-association.cdn-apple.com/a/v1/360ghar.com`) and by tapping a real `https://360ghar.com/...` link on a device with the app installed.
 
 **Example AASA JSON (`applinks` section):**
 
@@ -113,26 +113,44 @@ must be hosted by the web/infra team.
 ### 5a. Privacy policy URL (REQUIRED)
 
 - [ ] A **public, live privacy-policy URL** is entered in App Store Connect → App Privacy → **Privacy Policy URL** (App Store Connect requires a publicly reachable URL; it does not accept an in-app-only policy).
-- [ ] Note: the in-app policy is fetched **dynamically from the backend** (see `lib/features/profile/.../privacy_view.dart` and `policy_page_view.dart`), so confirm a corresponding **public web URL** (e.g. `https://the360ghar.com/privacy`) is live and returns the same content.
+- [ ] Note: the in-app policy is fetched **dynamically from the backend** (see `lib/features/profile/.../privacy_view.dart` and `policy_page_view.dart`), so confirm a corresponding **public web URL** (e.g. `https://360ghar.com/privacy`) is live and returns the same content.
 
 ### 5b. App Privacy "nutrition label"
 
-These answers must **exactly match** `ios/Runner/PrivacyInfo.xcprivacy` (`NSPrivacyTracking = false`).
-For every type below: **Linked to user = No**, **Used for tracking = No**.
+These answers must **exactly match** `ios/Runner/PrivacyInfo.xcprivacy` (`NSPrivacyTracking = false`),
+which declares **11** data types. Apple cross-checks the manifest against these answers, so the
+table below is transcribed from the manifest — re-derive it with
+`plutil -p ios/Runner/PrivacyInfo.xcprivacy` if the manifest ever changes.
+
+For every type below: **Linked to user = Yes**, **Used for tracking = No**.
+
+"Linked to user" is **Yes** across the board because the app identifies the signed-in user to its
+analytics and crash pipelines: `lib/core/controllers/auth_controller.dart` sets the Supabase user
+id on both Firebase Analytics (`AnalyticsService.setUserId`) and Crashlytics
+(`setUserIdentifier`). Answering "No" would contradict `NSPrivacyCollectedDataTypeLinked = true`
+in the manifest.
 
 | Data type | Collected | Linked to user | Used for tracking | Purpose(s) |
 | --- | --- | --- | --- | --- |
-| Precise Location | Yes | No | No | App Functionality |
-| Crash Data | Yes | No | No | App Functionality (diagnostics) |
-| Performance Data | Yes | No | No | App Functionality (diagnostics) |
-| Other Diagnostic Data | Yes | No | No | App Functionality (diagnostics) |
-| Product Interaction | Yes | No | No | Analytics |
-| Device ID | Yes | No | No | App Functionality, Analytics |
+| Precise Location | Yes | Yes | No | App Functionality |
+| Crash Data | Yes | Yes | No | App Functionality (diagnostics) |
+| Performance Data | Yes | Yes | No | App Functionality (diagnostics) |
+| Other Diagnostic Data | Yes | Yes | No | App Functionality (diagnostics) |
+| Product Interaction | Yes | Yes | No | Analytics |
+| Email Address | Yes | Yes | No | App Functionality |
+| Phone Number | Yes | Yes | No | App Functionality |
+| Name | Yes | Yes | No | App Functionality |
+| User ID | Yes | Yes | No | App Functionality |
+| Photos or Videos | Yes | Yes | No | App Functionality |
+| Device ID | Yes | Yes | No | App Functionality, Analytics |
 
-> In App Store Connect, "Crash Data / Performance Data / Other Diagnostic Data" map to the **Diagnostics** category with purpose **App Functionality**; "Product Interaction" maps to **Usage Data** with purpose **Analytics**; "Device ID" maps to **Identifiers** with purposes **App Functionality + Analytics**.
+> App Store Connect category mapping: "Crash Data / Performance Data / Other Diagnostic Data" →
+> **Diagnostics** (purpose App Functionality); "Product Interaction" → **Usage Data** (purpose
+> Analytics); "Device ID" and "User ID" → **Identifiers**; "Email Address / Phone Number / Name"
+> → **Contact Info**; "Photos or Videos" → **User Content**.
 
 - [ ] App Store Connect privacy answers entered and verified against the table above.
-- [ ] **App Tracking Transparency (ATT) is NOT used** — there is no `NSUserTrackingUsageDescription`, no `AppTrackingTransparency` prompt, and no IDFA collection. Do **not** answer "Yes" to any "used to track you" question.
+- [ ] **App Tracking Transparency (ATT) is NOT used** — there is no `NSUserTrackingUsageDescription`, no `AppTrackingTransparency` prompt, and no IDFA collection (the binary links none of `AdSupport` / `AppTrackingTransparency` / `AdServices`). Do **not** answer "Yes" to any "used to track you" question.
 
 ---
 
@@ -150,16 +168,26 @@ For every type below: **Linked to user = No**, **Used for tracking = No**.
 
 - [ ] `flutter clean && flutter pub get`
 - [ ] Confirm iOS uses Swift Package Manager (no `pod install`; plugins resolve via SPM)
-- [ ] Confirm `pubspec.yaml` version is `1.0.7+12` (or bumped — see policy below).
+- [ ] Confirm `pubspec.yaml` version is `1.0.9+16` (or bumped — see policy below).
 
 ### Build the IPA
 
+The binary **must be built with Shorebird** so it can receive OTA patches
+(see [`shorebird.md`](./shorebird.md)). Bump the version in `pubspec.yaml`
+first — Shorebird refuses duplicate versions.
+
 ```bash
-flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+dart run tool/env_to_dart_defines.dart .env.production > /tmp/ghar360_defines.json
+shorebird release ios \
+  --dart-define-from-file=/tmp/ghar360_defines.json \
+  --export-options-plist=ios/ExportOptions.plist
+rm -f /tmp/ghar360_defines.json
 ```
 
 - Artifact lands in **`build/ios/ipa/`** (e.g. `build/ios/ipa/ghar360.ipa`).
 - The archive is also written under `build/ios/archive/`.
+- The `--export-options-plist` flag is required: without it the export cannot
+  resolve the App Store provisioning profile for the app's entitlements.
 
 ### Upload to App Store Connect (choose one)
 
@@ -174,9 +202,9 @@ flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 
 ### Build-number policy
 
-- [ ] Current build is `+12`. **Every subsequent upload must bump the build number** (`+13`, `+14`, …)
+- [ ] Current build is `+16`. **Every subsequent upload must bump the build number** (`+17`, `+18`, …)
       in `pubspec.yaml` — App Store Connect rejects a re-upload that reuses a build number for the same marketing version.
-- [ ] Bump the marketing version (`1.0.7` → `1.0.8` / `1.1.0`) when shipping a new user-facing release.
+- [ ] Bump the marketing version (`1.0.9` → `1.0.10` / `1.1.0`) when shipping a new user-facing release.
 
 ### After upload
 
@@ -193,7 +221,7 @@ flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 - [ ] **Promotional text** (optional, editable without resubmission).
 - [ ] **Description:** full marketing copy (features: swipe discovery, 360° virtual tours, map exploration, visit scheduling).
 - [ ] **Keywords:** comma-separated, ≤ 100 chars (e.g. `real estate,property,360 tour,home,rent,buy,virtual tour,flat`).
-- [ ] **Support URL** (required) and **Marketing URL** (optional) — point to live pages on `the360ghar.com`.
+- [ ] **Support URL** (required) and **Marketing URL** (optional) — point to live pages on `360ghar.com`.
 - [ ] **Category:** Primary **Lifestyle** (Real Estate is not a top-level App Store category; choose Lifestyle, optionally secondary **Utilities**/**Travel**).
 - [ ] **Age rating:** complete the questionnaire (no objectionable content expected → likely **4+**).
 - [ ] **Screenshots:** produce per the existing spec — see [`docs/app-store-screenshots.md`](./app-store-screenshots.md). Do not duplicate that spec here.
@@ -212,10 +240,10 @@ flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 
 ## 9. Pre-Submission QA Checklist (physical device, release/TestFlight build)
 
-- [ ] **Photo upload:** triggering image picker shows the new **photo library** permission prompt string (and there is **no** camera prompt).
+- [ ] **Photo upload:** triggering the image picker shows the **photo library** permission prompt string; choosing "Take photo" in the profile-picture sheet shows the **camera** prompt string.
 - [ ] **Location:** location feature shows the **when-in-use** ("while using the app") prompt — confirm there is **no** "Always Allow" option/string.
 - [ ] **Push notifications:** receive a **production** push on a TestFlight build (validates the production aps-environment + APNs .p8).
-- [ ] **Deep link:** tapping a `https://the360ghar.com/...` link opens the app to the correct screen (Universal Link / AASA working).
+- [ ] **Deep link:** tapping a `https://360ghar.com/...` link opens the app to the correct screen (Universal Link / AASA working).
 - [ ] **360 tour:** webview tour loads over **HTTPS** and renders correctly (no ATS / mixed-content failures).
 - [ ] **Cold start:** splash screen shows correct branding; app reaches the auth/home flow without crashing.
 - [ ] **Run quality gates:** `flutter analyze` clean; `dart format .` applied; `flutter test` passing.
@@ -224,9 +252,10 @@ flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 
 ## 10. Common Rejection Risks
 
-- [ ] **Over-permissioned location** — *fixed*: the "Always" usage string was removed; only when-in-use/precise is requested. Verify no stray `NSLocationAlwaysAndWhenInUseUsageDescription` remains.
+- [ ] **Location purpose strings** — `NSLocationAlwaysAndWhenInUseUsageDescription` and `NSLocationWhenInUseUsageDescription` must BOTH be present in `ios/Runner/Info.plist` (enforced by `tool/verify_ios_release.sh`). The "always" key is required even though the app only requests when-in-use at runtime: MapLibre/geolocator_apple ship `requestAlwaysAuthorization` symbols in their binaries (verified: symbol present in `MapLibre.framework`), which Apple's ITMS-90683 scanner flags if the purpose string is missing. Adding the key does NOT change runtime behavior — the app still shows the when-in-use prompt only, with no "Always Allow" option (see §9).
+- [ ] **Stale build carrying `NSUserTrackingUsageDescription`** — this bit us once. App Store Connect blocked "Add for Review" with *"Your app contains NSUserTrackingUsageDescription… update your App Privacy response… or upload a new build."* Cause: the build attached to the version came from branch `update-jun-2026` (commit `99523d8`), which added the ATT key; mainline never had it. **The fix is always a new build, never flipping the privacy answer** — the app does not track (no `AdSupport`/`AppTrackingTransparency`/`AdServices` linkage, `NSPrivacyTracking = false`), so declaring tracking would be false *and* would then require an ATT prompt that does not exist (a later 5.1.2 rejection). After uploading, **confirm the version's attached build is the new one**; an old build stays selected until you change it. `tool/verify_ios_release.sh` fails on this key — run it against the built app, not just the source.
 - [ ] **Missing privacy manifest** — *fixed*: `ios/Runner/PrivacyInfo.xcprivacy` is present and matches the nutrition-label table in §5b.
-- [ ] **Mismatch between privacy manifest and App Store Connect answers** — keep §5b and `PrivacyInfo.xcprivacy` in sync; Apple cross-checks them.
+- [ ] **Mismatch between privacy manifest and App Store Connect answers** — keep §5b and `PrivacyInfo.xcprivacy` in sync; Apple cross-checks them. §5b must list **all 11** declared types with **Linked to user = Yes**; a shorter table, or "Linked = No", contradicts the manifest.
 - [ ] **Reviewer cannot log in** — the app uses **phone / OTP** login. Provide the App Review team, in **App Review Information → Notes**, either:
   - [ ] a **reviewer test account** (a phone number you control + the OTP, or a fixed test OTP/bypass), or
   - [ ] clear steps + a working demo number so the reviewer can complete sign-in.

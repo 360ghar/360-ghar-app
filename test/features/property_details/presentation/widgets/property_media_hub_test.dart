@@ -4,15 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/data/models/property_image_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_media_hub.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/google_fonts_test_helper.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 PropertyModel _propertyWithGalleryImages() {
   return const PropertyModel(
@@ -27,7 +26,7 @@ PropertyModel _propertyWithGalleryImages() {
         id: 1,
         propertyId: 1,
         imageUrl: 'https://example.com/main.jpg',
-        isMain: true,
+        isMainImage: true,
         displayOrder: 0,
       ),
       PropertyImageModel(
@@ -155,18 +154,12 @@ void _seedAppConfig() {
 }
 
 void main() {
-  configureGoogleFontsForTests();
+  TestWidgetsFlutterBinding.ensureInitialized();
 
   const urlLauncherChannel = MethodChannel('plugins.flutter.io/url_launcher');
   final launchedUrls = <String>[];
 
   setUp(() {
-    FlutterError.onError = (FlutterErrorDetails details) {
-      final summary = details.exception.toString();
-      if (summary.contains('RenderFlex overflowed')) return;
-      FlutterError.presentError(details);
-    };
-    GetxTestBinding.init();
     _seedAppConfig();
     launchedUrls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -193,19 +186,11 @@ void main() {
       urlLauncherChannel,
       null,
     );
-    GetxTestBinding.reset();
     AppConfig.resetForTest();
   });
 
   Future<void> pumpWidget(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: SingleChildScrollView(child: child)),
-      ),
-    );
+    await tester.pumpProviderApp(Scaffold(body: SingleChildScrollView(child: child)));
     await tester.pump();
   }
 
@@ -215,7 +200,7 @@ void main() {
 
       expect(find.text('Media'), findsOneWidget);
       expect(find.text('Photos'), findsOneWidget);
-      expect(find.byIcon(Icons.photo_library_rounded), findsOneWidget);
+      expect(findKnife(KnifeIcon.camera), findsOneWidget);
       expect(find.text('3'), findsOneWidget); // badge count
     });
 
@@ -238,14 +223,14 @@ void main() {
       await pumpWidget(tester, PropertyMediaHub(property: _propertyWithVideos()));
 
       expect(find.text('Video Tour'), findsOneWidget);
-      expect(find.byIcon(Icons.videocam_rounded), findsOneWidget);
+      expect(findKnife(KnifeIcon.video), findsOneWidget);
     });
 
     testWidgets('renders virtual tour tile without WebView', (tester) async {
       await pumpWidget(tester, PropertyMediaHub(property: _propertyWithVirtualTour()));
 
       expect(find.text('360° Virtual Tour'), findsOneWidget);
-      expect(find.byIcon(Icons.threesixty), findsOneWidget);
+      expect(findKnife(KnifeIcon.tour), findsOneWidget);
       // Lazy strip — no eager WebView.
       expect(find.byType(PageView), findsNothing);
     });
@@ -254,14 +239,58 @@ void main() {
       await pumpWidget(tester, PropertyMediaHub(property: _propertyWithStreetView()));
 
       expect(find.text('Street View'), findsOneWidget);
-      expect(find.byIcon(Icons.streetview), findsOneWidget);
+      expect(findKnife(KnifeIcon.compass), findsOneWidget);
     });
 
     testWidgets('renders floor plan tile', (tester) async {
       await pumpWidget(tester, PropertyMediaHub(property: _propertyWithFloorPlan()));
 
       expect(find.text('Floor Plan'), findsOneWidget);
-      expect(find.byIcon(Icons.apartment_rounded), findsOneWidget);
+      expect(findKnife(KnifeIcon.floorPlan), findsOneWidget);
+    });
+
+    testWidgets('floor plan images leave the photo count and open on their own', (tester) async {
+      final property = const PropertyModel(
+        id: 31,
+        title: 'Split Media',
+        basePrice: 4000000,
+        propertyType: PropertyType.apartment,
+        purpose: PropertyPurpose.buy,
+        images: [
+          PropertyImageModel(id: 1, propertyId: 31, imageUrl: 'https://example.com/a.jpg'),
+          PropertyImageModel(
+            id: 2,
+            propertyId: 31,
+            imageUrl: 'https://example.com/b.jpg',
+            displayOrder: 1,
+          ),
+        ],
+        // Floor plans come under their own key, not among the photos.
+        floorPlans: [
+          PropertyImageModel(
+            id: 3,
+            propertyId: 31,
+            imageUrl: 'https://example.com/plan.png',
+            displayOrder: 2,
+            category: ImageCategory.floorPlan,
+          ),
+        ],
+        isAvailable: true,
+        viewCount: 0,
+        likeCount: 0,
+        interestCount: 0,
+      );
+      await pumpWidget(tester, PropertyMediaHub(property: property));
+
+      expect(find.text('Photos'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+      expect(find.text('3'), findsNothing);
+      await tester.tap(find.text('Floor Plan'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      // One floor plan: the viewer shows no n/total counter.
+      expect(findKnife(KnifeIcon.close), findsOneWidget);
+      expect(find.textContaining('/'), findsNothing);
     });
 
     testWidgets('renders all media tiles for rich property', (tester) async {
@@ -277,7 +306,7 @@ void main() {
             id: 10,
             propertyId: 11,
             imageUrl: 'https://example.com/villa.jpg',
-            isMain: true,
+            isMainImage: true,
             displayOrder: 0,
           ),
         ],
@@ -310,7 +339,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       // Fullscreen route uses Scaffold, not Dialog.
-      expect(find.byIcon(Icons.close), findsOneWidget);
+      expect(findKnife(KnifeIcon.close), findsOneWidget);
       expect(find.text('1/3'), findsOneWidget);
     });
 

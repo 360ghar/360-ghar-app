@@ -1,90 +1,154 @@
-// test/features/splash/data/app_update_repository_test.dart
-//
-// Unit tests for [AppUpdateRepository]. When Firebase is not ready the
-// repository must short-circuit without throwing.
+// Unit tests for [AppUpdateRepository]: the body of `POST /versions/check`, the typed answer and
+// the failures that must never read as "no update".
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/core/data/models/app_update_models.dart';
-import 'package:ghar360/core/firebase/firebase_initializer.dart';
-import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
+import 'package:ghar360/core/data/models/wire_enums.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/splash/data/app_update_repository.dart';
+import '../../../contract/contract_support.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  Map<String, dynamic> answer({
+    bool update = true,
+    bool mandatory = false,
+    String? latest = '3.3.0',
+    String? url = 'https://example.com/app',
+  }) => {
+    'update_available': update,
+    'is_mandatory': mandatory,
+    'latest_version': latest,
+    'download_url': url,
+    'release_notes': null,
+    'min_supported_version': null,
+  };
 
-  late AppUpdateRepository repository;
+  const request = AppVersionCheckRequest(
+    app: AppKey.ghar,
+    platform: DevicePlatform.ios,
+    currentVersion: '1.2.3',
+    buildNumber: 45,
+  );
 
-  setUp(() {
-    repository = AppUpdateRepository();
+  test(
+    'POST /versions/check sends app, platform, current_version and an integer build_number',
+    () async {
+      final api = RecordingApi((_) => jsonResponse(answer()));
+
+      await AppUpdateRepository(apiClient: api.client).checkForUpdates(request);
+
+      expect(api.calls, hasLength(1));
+      expect(api.calls.single.method, 'POST');
+      expect(api.calls.single.path, '/api/v1/versions/check');
+      expect(api.calls.single.body, {
+        'app': 'ghar',
+        'platform': 'ios',
+        'current_version': '1.2.3',
+        'build_number': 45,
+      });
+      expect((api.calls.single.body as Map)['build_number'], isA<int>());
+    },
+  );
+
+  test('an unknown build number is left out, never sent as a string or zero', () async {
+    final api = RecordingApi((_) => jsonResponse(answer(update: false)));
+
+    await AppUpdateRepository(apiClient: api.client).checkForUpdates(
+      const AppVersionCheckRequest(
+        app: AppKey.ghar,
+        platform: DevicePlatform.android,
+        currentVersion: '1.2.3',
+      ),
+    );
+
+    expect(api.calls.single.body, {
+      'app': 'ghar',
+      'platform': 'android',
+      'current_version': '1.2.3',
+    });
   });
 
-  group('AppUpdateRepository.checkForUpdates', () {
-    test('returns no update when Firebase is not ready', () async {
-      // Default test process: FirebaseRuntimeState is not ready.
-      expect(FirebaseInitializer.isFirebaseReady, isFalse);
-      expect(FirebaseRuntimeState.isReady, isFalse);
+  test('the server decides: update_available, is_mandatory and the version policy', () async {
+    final api = RecordingApi((_) => jsonResponse(answer(mandatory: true)));
 
-      final response = await repository.checkForUpdates(
-        const AppVersionCheckRequest(app: 'user', platform: 'android', currentVersion: '1.0.0'),
-      );
+    final result = await AppUpdateRepository(apiClient: api.client).checkForUpdates(request);
 
-      expect(response.updateAvailable, isFalse);
-      expect(response.isMandatory, isFalse);
-      expect(response.latestVersion, isNull);
-    });
+    expect(result.updateAvailable, isTrue);
+    expect(result.isMandatory, isTrue);
+    expect(result.latestVersion, '3.3.0');
+    expect(result.downloadUrl, 'https://example.com/app');
+  });
 
-    test('returns no update for iOS platform when Firebase is not ready', () async {
-      final response = await repository.checkForUpdates(
+  test('a release row without a download_url opens the store listing of the platform', () async {
+    final api = RecordingApi((_) => jsonResponse(answer(url: null)));
+    final repository = AppUpdateRepository(apiClient: api.client);
+
+    final ios = await repository.checkForUpdates(request);
+    final android = await repository.checkForUpdates(
+      const AppVersionCheckRequest(
+        app: AppKey.ghar,
+        platform: DevicePlatform.android,
+        currentVersion: '1.2.3',
+      ),
+    );
+
+    expect(ios.downloadUrl, AppUpdateRepository.storeUrls[DevicePlatform.ios]);
+    expect(android.downloadUrl, AppUpdateRepository.storeUrls[DevicePlatform.android]);
+  });
+
+  test('no update leaves the answer as sent', () async {
+    final api = RecordingApi((_) => jsonResponse(answer(update: false, latest: null, url: null)));
+
+    final result = await AppUpdateRepository(apiClient: api.client).checkForUpdates(request);
+
+    expect(result.updateAvailable, isFalse);
+    expect(result.downloadUrl, isNull);
+  });
+
+  test('a version name over 20 characters is refused before any request', () async {
+    final api = RecordingApi((_) => jsonResponse(answer()));
+
+    await expectLater(
+      AppUpdateRepository(apiClient: api.client).checkForUpdates(
         const AppVersionCheckRequest(
-          app: 'user',
-          platform: 'ios',
-          currentVersion: '2.3.4',
-          buildNumber: 99,
+          app: AppKey.ghar,
+          platform: DevicePlatform.ios,
+          currentVersion: '1.2.3-beta.1234567890abcdef',
         ),
-      );
-
-      expect(response.updateAvailable, isFalse);
-      expect(response.isMandatory, isFalse);
-    });
-
-    test('does not throw for empty current version when Firebase disabled', () async {
-      final response = await repository.checkForUpdates(
-        const AppVersionCheckRequest(app: 'user', platform: 'android', currentVersion: ''),
-      );
-      expect(response.updateAvailable, isFalse);
-    });
+      ),
+      throwsFormatException,
+    );
+    expect(api.calls, isEmpty);
   });
 
-  group('AppUpdateRepository.isVersionNewerForTest', () {
-    test('detects newer major/minor/patch', () {
-      expect(repository.isVersionNewerForTest('2.0.0', '1.9.9'), isTrue);
-      expect(repository.isVersionNewerForTest('1.2.0', '1.1.9'), isTrue);
-      expect(repository.isVersionNewerForTest('1.0.2', '1.0.1'), isTrue);
-    });
+  test('a rejected request stays a failure instead of reading as no update', () async {
+    final api = RecordingApi(
+      (_) => jsonResponse({
+        'error': {
+          'code': 'VALIDATION_ERROR',
+          'message': 'Request validation failed',
+          'details': {
+            'fields': [
+              {'field': 'body.app', 'msg': 'bad', 'type': 'enum'},
+            ],
+          },
+        },
+      }, status: 422),
+    );
 
-    test('returns false when versions are equal', () {
-      expect(repository.isVersionNewerForTest('1.0.0', '1.0.0'), isFalse);
-    });
+    await expectLater(
+      AppUpdateRepository(apiClient: api.client).checkForUpdates(request),
+      throwsA(isA<ValidationException>()),
+    );
+  });
 
-    test('returns false when candidate is older', () {
-      expect(repository.isVersionNewerForTest('1.0.0', '1.0.1'), isFalse);
-      expect(repository.isVersionNewerForTest('1.0.0', '2.0.0'), isFalse);
-    });
+  test('a body without update_available is a malformed response', () async {
+    final api = RecordingApi((_) => jsonResponse({'latest_version': '3.3.0'}));
 
-    test('strips build metadata before comparison', () {
-      expect(repository.isVersionNewerForTest('1.0.1+20', '1.0.0+10'), isTrue);
-      expect(repository.isVersionNewerForTest('1.0.0+99', '1.0.0+1'), isFalse);
-    });
-
-    test('pads short versions to major.minor.patch', () {
-      expect(repository.isVersionNewerForTest('2', '1.9.9'), isTrue);
-      expect(repository.isVersionNewerForTest('1.1', '1.0.9'), isTrue);
-    });
-
-    test('treats non-numeric segments as zero', () {
-      expect(repository.isVersionNewerForTest('1.0.1', '1.0.beta'), isTrue);
-      expect(repository.isVersionNewerForTest('1.0.0', '1.0.0'), isFalse);
-    });
+    await expectLater(
+      AppUpdateRepository(apiClient: api.client).checkForUpdates(request),
+      throwsA(isA<ServerException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+    );
   });
 }

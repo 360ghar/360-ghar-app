@@ -1,14 +1,14 @@
-// lib/features/auth/data/auth_repository.dart
-
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/network/api_client.dart';
-import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/network/api_paths.dart';
+import 'package:ghar360/core/network/auth_header_provider.dart';
+import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
@@ -18,19 +18,32 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class AuthRepository extends GetxService {
-  AuthRepository({this._apiClient, LastAuthMethodStore? lastAuthMethodStore})
-    : _lastAuthMethodStore = lastAuthMethodStore ?? LastAuthMethodStore();
+// lib/features/auth/data/auth_repository.dart
 
-  final _supabase = Supabase.instance.client;
-  ApiClient? _apiClient;
+class AuthRepository {
+  AuthRepository({
+    required SupabaseClient supabaseClient,
+    required ApiClient apiClient,
+    required AppDatabase database,
+    AuthHeaderProvider? authHeaderProvider,
+    LastAuthMethodStore? lastAuthMethodStore,
+  }) : _supabase = supabaseClient,
+       _api = apiClient,
+       _authHeaderProvider =
+           authHeaderProvider ?? AuthHeaderProvider(supabaseClient: supabaseClient),
+       _lastAuthMethodStore = lastAuthMethodStore ?? LastAuthMethodStore(database: database);
+
+  final SupabaseClient _supabase;
+  final ApiClient _api;
+  final AuthHeaderProvider _authHeaderProvider;
+  static const oauthRedirectUrl = 'ghar360://login-callback';
+  static const oauthRedirectScheme = 'ghar360';
+  static const oauthRedirectHost = 'login-callback';
   final LastAuthMethodStore _lastAuthMethodStore;
   bool _googleInitialized = false;
 
   static const int _defaultMinTokenTtlSeconds = 45;
   static const List<String> _googleScopes = <String>['email', 'profile'];
-
-  ApiClient get _api => _apiClient ??= Get.find<ApiClient>();
 
   /// Local last-used-method persistence (read by the entry controller onInit).
   LastAuthMethodStore get lastAuthMethodStore => _lastAuthMethodStore;
@@ -54,9 +67,9 @@ class AuthRepository extends GetxService {
   /// it is normalized before being sent.
   Future<IdentifierStatus> checkIdentifierStatus(String identifier) async {
     final normalized = IdentifierUtils.normalize(identifier);
-    DebugLogger.auth('Checking identifier-status for: ${IdentifierUtils.mask(normalized)}');
+    DebugLogger.auth('Authentication request started');
     final response = await _api.post(
-      '/auth/identifier-status',
+      ApiPaths.identifierStatus,
       body: {'identifier': normalized},
       requireAuth: false,
       notifyUnauthorized: false,
@@ -72,16 +85,20 @@ class AuthRepository extends GetxService {
   }
 
   /// Records the last-used auth method on the backend via
-  /// `POST /api/v1/auth/last-method` (auth Bearer, returns MessageResponse) and mirrors it
+  /// `POST /api/v1/auth/last-method` (auth Bearer, answers 204 with no body) and mirrors it
   /// into local storage. Failures are swallowed (best-effort, non-blocking).
   Future<void> recordLastMethod(AuthMethod method, {String? identifier}) async {
-    _lastAuthMethodStore.save(method, identifier: identifier);
     try {
-      await _api.post('/auth/last-method', body: {'method': method.wireValue});
-      DebugLogger.auth('Recorded last-method=${method.wireValue} on backend');
+      await _lastAuthMethodStore.save(method, identifier: identifier);
+    } catch (error, stack) {
+      DebugLogger.warning('Login preference could not be saved', error.runtimeType, stack);
+    }
+    try {
+      await _api.post(ApiPaths.lastMethod, body: {'method': method.wire});
+      DebugLogger.auth('Recorded last-method=${method.wire} on backend');
     } catch (e, st) {
       // Non-critical: local store already updated; backend mirror is best-effort.
-      DebugLogger.warning('Failed to record last-method on backend', e, st);
+      DebugLogger.warning('Failed to record last-method on backend', e.runtimeType, st);
     }
   }
 
@@ -148,7 +165,7 @@ class AuthRepository extends GetxService {
     } catch (e, st) {
       // Any non-cancellation native failure (e.g. missing native OAuth client /
       // wrong SHA → DEVELOPER_ERROR) → fall back to the redirect flow.
-      DebugLogger.warning('Native Google sign-in failed; falling back to redirect flow', e, st);
+      DebugLogger.warning('Native Google sign-in failed; using redirect flow', e.runtimeType, st);
       await _signInWithGoogleRedirect();
     }
   }
@@ -173,7 +190,7 @@ class AuthRepository extends GetxService {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         throw const _GoogleSignInCancelled();
       }
-      DebugLogger.error('Google sign-in failed (${e.code})', e);
+      DebugLogger.error('Google sign-in failed', e.code);
       throw AuthException('Google sign-in failed: ${e.description ?? e.code.name}');
     }
 
@@ -210,7 +227,7 @@ class AuthRepository extends GetxService {
     DebugLogger.auth('Starting Google sign-in via Supabase OAuth redirect');
     final started = await _supabase.auth.signInWithOAuth(
       OAuthProvider.google,
-      redirectTo: AppRoutes.oauthRedirectUrl,
+      redirectTo: oauthRedirectUrl,
       authScreenLaunchMode: LaunchMode.externalApplication,
     );
     if (!started) {
@@ -221,10 +238,10 @@ class AuthRepository extends GetxService {
 
   /// True when [uri] is the Google OAuth redirect callback.
   bool isOAuthRedirectUri(Uri uri) {
-    return uri.scheme == AppRoutes.oauthRedirectScheme &&
-        (uri.host == AppRoutes.oauthRedirectHost ||
-            uri.path == '/${AppRoutes.oauthRedirectHost}' ||
-            uri.path == AppRoutes.oauthRedirectHost);
+    return uri.scheme == oauthRedirectScheme &&
+        (uri.host == oauthRedirectHost ||
+            uri.path == '/$oauthRedirectHost' ||
+            uri.path == oauthRedirectHost);
   }
 
   /// Exchanges the OAuth redirect [uri] for a Supabase session. Called from the
@@ -266,7 +283,7 @@ class AuthRepository extends GetxService {
       if (e.code == AuthorizationErrorCode.canceled) {
         throw const AuthException('Apple sign-in was cancelled.');
       }
-      DebugLogger.error('Apple sign-in failed (${e.code})', e);
+      DebugLogger.error('Apple sign-in failed', e.code);
       throw AuthException('Apple sign-in failed: ${e.message}');
     }
 
@@ -295,19 +312,19 @@ class AuthRepository extends GetxService {
     String password, {
     Map<String, dynamic>? data,
   }) {
-    DebugLogger.auth('Attempting to sign up with phone: ${IdentifierUtils.mask(phone)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.signUp(phone: phone, password: password, data: data);
   }
 
   /// Signs in an existing user with their phone number and password.
   Future<AuthResponse> signInWithPhonePassword(String phone, String password) {
-    DebugLogger.auth('Attempting to sign in with phone: ${IdentifierUtils.mask(phone)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.signInWithPassword(phone: phone, password: password);
   }
 
   /// Verifies the OTP sent to the user's phone to complete sign-up or sign-in.
   Future<AuthResponse> verifyPhoneOtp({required String phone, required String token}) {
-    DebugLogger.auth('Verifying OTP for phone: ${IdentifierUtils.mask(phone)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.verifyOTP(phone: phone, token: token, type: OtpType.sms);
   }
 
@@ -316,7 +333,7 @@ class AuthRepository extends GetxService {
   /// so a mistyped/unknown number can't silently register. Signup uses
   /// [signUpWithPhonePassword] instead.
   Future<void> sendPhoneOtp(String phone) {
-    DebugLogger.auth('Sending OTP to phone: ${IdentifierUtils.mask(phone)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.signInWithOtp(phone: phone, shouldCreateUser: false);
   }
 
@@ -325,18 +342,18 @@ class AuthRepository extends GetxService {
   /// Sends a 6-digit email OTP for signup (creates user with metadata).
   /// User sets their password after OTP verification via [updateUserPassword].
   Future<void> signUpWithEmailOtp(String email, {Map<String, dynamic>? data}) {
-    DebugLogger.auth('Sending signup email OTP to: ${IdentifierUtils.mask(email)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.signInWithOtp(
       email: email,
       data: data,
       shouldCreateUser: true,
-      emailRedirectTo: AppRoutes.oauthRedirectUrl,
+      emailRedirectTo: oauthRedirectUrl,
     );
   }
 
   /// Signs in an existing user with their email and password.
   Future<AuthResponse> signInWithEmailPassword(String email, String password) {
-    DebugLogger.auth('Attempting to sign in with email: ${IdentifierUtils.mask(email)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.signInWithPassword(email: email, password: password);
   }
 
@@ -345,17 +362,17 @@ class AuthRepository extends GetxService {
   /// so a mistyped/unknown email can't silently register. Signup uses
   /// [signUpWithEmailOtp] instead.
   Future<void> sendEmailOtp(String email) {
-    DebugLogger.auth('Sending email OTP to: ${IdentifierUtils.mask(email)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.signInWithOtp(
       email: email,
       shouldCreateUser: false,
-      emailRedirectTo: AppRoutes.oauthRedirectUrl,
+      emailRedirectTo: oauthRedirectUrl,
     );
   }
 
   /// Verifies the 6-digit email OTP (Supabase OtpType.email).
   Future<AuthResponse> verifyEmailOtp({required String email, required String token}) {
-    DebugLogger.auth('Verifying email OTP for: ${IdentifierUtils.mask(email)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.verifyOTP(email: email, token: token, type: OtpType.email);
   }
 
@@ -364,14 +381,27 @@ class AuthRepository extends GetxService {
   /// Starts the add-verified-phone flow for an already-authenticated user by
   /// requesting a phone change; Supabase sends an SMS OTP to [phone].
   Future<void> startAddPhone(String phone) async {
-    DebugLogger.auth('Requesting phone change to: ${IdentifierUtils.mask(phone)}');
+    DebugLogger.auth('Authentication request started');
     await _supabase.auth.updateUser(UserAttributes(phone: phone));
   }
 
   /// Completes the add-verified-phone flow by verifying the phoneChange OTP.
   Future<AuthResponse> addAndVerifyPhone({required String phone, required String token}) {
-    DebugLogger.auth('Verifying phoneChange OTP for: ${IdentifierUtils.mask(phone)}');
+    DebugLogger.auth('Authentication request started');
     return _supabase.auth.verifyOTP(phone: phone, token: token, type: OtpType.phoneChange);
+  }
+
+  /// Asks Supabase to change the sign-in email to [email]. Supabase mails a confirmation link
+  /// to the new address, and the account keeps the old one until it is opened. A no-op when
+  /// [email] is already the address or is already waiting for confirmation. The profile route
+  /// takes no email: this is the only way an email changes.
+  Future<void> requestEmailChange(String email) async {
+    final address = email.trim();
+    final user = _supabase.auth.currentUser;
+    bool same(String? other) => other != null && other.toLowerCase() == address.toLowerCase();
+    if (address.isEmpty || same(user?.email) || same(user?.newEmail)) return;
+    DebugLogger.auth('Requesting an email change.');
+    await _supabase.auth.updateUser(UserAttributes(email: address));
   }
 
   // --- PASSWORD MANAGEMENT ---
@@ -393,19 +423,18 @@ class AuthRepository extends GetxService {
       try {
         await GoogleSignIn.instance.signOut();
       } catch (e) {
-        DebugLogger.debug('Google signOut skipped/failed: $e');
+        DebugLogger.debug('Native Google sign-out unavailable');
       }
     }
     await _supabase.auth.signOut();
   }
 
-  /// Submits an account-deletion request to the backend via
-  /// `POST /api/v1/auth/delete-account` (auth Bearer). The backend schedules the
-  /// erasure of the user's profile and personal data. Call [signOut] afterwards
+  /// Deletes the account through `DELETE /api/v1/users/me` (auth Bearer, answers 204 with no
+  /// body). The backend erases the user's profile and personal data. Call [signOut] afterwards
   /// to clear the local session; the auth-state listener routes to login.
   Future<void> deleteAccount() async {
     DebugLogger.auth('Deleting user account.');
-    await _api.post('/auth/delete-account', body: {'confirm': true});
+    await _api.delete(ApiPaths.usersMe);
     DebugLogger.success('Account deletion acknowledged by backend.');
   }
 
@@ -432,61 +461,17 @@ class AuthRepository extends GetxService {
     Duration timeout = const Duration(seconds: 8),
     int minTtlSeconds = _defaultMinTokenTtlSeconds,
   }) async {
-    final effectiveMinTtlSeconds = minTtlSeconds < 0 ? 0 : minTtlSeconds;
-    final deadline = DateTime.now().add(timeout);
-
-    // Check immediately first
-    Session? session = _supabase.auth.currentSession;
-    if (_hasUsableAccessToken(session, minTtlSeconds: effectiveMinTtlSeconds)) {
-      DebugLogger.auth(
-        'Access token available immediately (length: ${session!.accessToken.length}, '
-        'expiresIn: ${_sessionExpiresInSeconds(session)}s)',
-      );
-      return session.accessToken;
+    final session = _supabase.auth.currentSession;
+    final minimum = minTtlSeconds < 0 ? 0 : minTtlSeconds;
+    if (_hasUsableAccessToken(session, minTtlSeconds: minimum)) return session!.accessToken;
+    // The shared header provider owns one coalesced refresh; do not add another
+    // retry loop here. Offline refresh preserves the typed NetworkException.
+    final header = await _authHeaderProvider.getAuthHeader().timeout(timeout);
+    final refreshed = _supabase.auth.currentSession;
+    if (header == null || !_hasUsableAccessToken(refreshed, minTtlSeconds: minimum)) {
+      throw TimeoutException('The session is not ready.', timeout);
     }
-    final immediateTtl = _sessionExpiresInSeconds(session);
-    if (session?.accessToken.isNotEmpty == true) {
-      DebugLogger.warning(
-        'Access token present but stale/near expiry '
-        '(expiresIn: ${immediateTtl ?? 'unknown'}s, '
-        'minTtlRequired: ${effectiveMinTtlSeconds}s). Refreshing...',
-      );
-    }
-
-    int refreshAttempts = 0;
-    int pollCount = 0;
-    const maxRefreshAttempts = 6;
-    while (DateTime.now().isBefore(deadline)) {
-      // Attempt periodic refreshes (throttled) to ensure token is ready
-      if (refreshAttempts < maxRefreshAttempts) {
-        try {
-          DebugLogger.auth(
-            'Attempting session refresh while waiting for access token (attempt ${refreshAttempts + 1})',
-          );
-          await _supabase.auth.refreshSession();
-        } catch (e) {
-          DebugLogger.debug('Session refresh attempt failed: $e');
-        }
-        refreshAttempts++;
-      }
-      await Future.delayed(const Duration(milliseconds: 200));
-      pollCount++;
-
-      session = _supabase.auth.currentSession;
-      if (_hasUsableAccessToken(session, minTtlSeconds: effectiveMinTtlSeconds)) {
-        DebugLogger.auth(
-          'Access token obtained after $pollCount polls (length: ${session!.accessToken.length}, '
-          'expiresIn: ${_sessionExpiresInSeconds(session)}s)',
-        );
-        return session.accessToken;
-      }
-    }
-
-    DebugLogger.error(
-      'Access token not available or still stale after ${timeout.inSeconds}s '
-      'and $pollCount polls',
-    );
-    throw const AuthException('Access token not available in time');
+    return refreshed!.accessToken;
   }
 
   bool _hasUsableAccessToken(Session? session, {required int minTtlSeconds}) {

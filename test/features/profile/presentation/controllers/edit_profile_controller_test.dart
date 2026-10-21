@@ -1,206 +1,142 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
+
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/data/models/user_model.dart';
-import 'package:ghar360/features/profile/data/profile_repository.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/profile/presentation/controllers/edit_profile_controller.dart';
-import 'package:mocktail/mocktail.dart';
-
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
+import '../../../../helpers/profile_test_harness.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  late MockAuthController authController;
-  late MockProfileRepository profileRepository;
-
+  late ProfileHarness h;
+  late EditProfileController controller;
   setUp(() {
-    GetxTestBinding.init();
-
-    authController = MockAuthController();
-    profileRepository = MockProfileRepository();
-
-    // Default: no current user (controller handles null gracefully).
-    when(() => authController.currentUser).thenReturn(Rxn<UserModel>());
-
-    GetxTestBinding.bind()
-      ..register<AuthController>(authController)
-      ..register<ProfileRepository>(profileRepository);
+    h = ProfileHarness();
+    h.listen(editProfileProvider);
+    controller = h.container.read(editProfileProvider.notifier);
   });
-
-  tearDown(() => GetxTestBinding.reset());
-
-  /// Constructs an EditProfileController and calls onInit manually so the
-  /// field-initializer Get.find calls resolve against the registered mocks.
-  EditProfileController createController() {
-    final controller = EditProfileController();
-    controller.onInit();
-    return controller;
-  }
-
-  group('EditProfileController — initial load', () {
-    test('loads user data into controllers when currentUser is set', () {
-      final user = testUserModel(fullName: 'John Doe', email: 'john@example.com');
-      // testUserModel doesn't expose all fields; build a full model directly.
-      final fullUser = user.copyWith(
-        profileImageUrl: 'https://example.com/avatar.jpg',
-        dateOfBirth: '1995-06-15',
-        preferences: {'location': 'Mumbai'},
-      );
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(fullUser));
-
-      final controller = createController();
-
-      expect(controller.nameController.text, 'John Doe');
-      expect(controller.emailController.text, 'john@example.com');
-      expect(controller.profileImageUrl.value, 'https://example.com/avatar.jpg');
-      expect(controller.dateOfBirth.value, DateTime(1995, 6, 15));
-      expect(controller.locationController.text, 'Mumbai');
-    });
-
-    test('handles null currentUser gracefully', () {
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>());
-
-      final controller = createController();
-
-      expect(controller.nameController.text, isEmpty);
-      expect(controller.emailController.text, isEmpty);
-      expect(controller.profileImageUrl.value, isEmpty);
-      expect(controller.dateOfBirth.value, isNull);
-      expect(controller.locationController.text, isEmpty);
-    });
-
-    test('handles preferences without location key', () {
-      final user = testUserModel(
-        fullName: 'Jane',
-        email: 'jane@example.com',
-      ).copyWith(preferences: {'other': 'value'});
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-
-      final controller = createController();
-
-      expect(controller.locationController.text, isEmpty);
-    });
-
-    test('handles non-string location in preferences', () {
-      final user = testUserModel(
-        fullName: 'Jane',
-        email: 'jane@example.com',
-      ).copyWith(preferences: {'location': 12345});
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-
-      final controller = createController();
-
-      // Non-string location falls back to empty string.
-      expect(controller.locationController.text, isEmpty);
-    });
-
-    test('handles null preferences', () {
-      final user = testUserModel(fullName: 'Jane', email: 'jane@example.com');
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-
-      final controller = createController();
-
-      expect(controller.locationController.text, isEmpty);
-    });
-
-    test('handles invalid dateOfBirth string', () {
-      final user = testUserModel(
-        fullName: 'Jane',
-        email: 'jane@example.com',
-      ).copyWith(dateOfBirth: 'not-a-date');
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-
-      final controller = createController();
-
-      expect(controller.dateOfBirth.value, isNull);
+  tearDown(() => h.close());
+  test('starts idle without widget-owned text or form state', () {
+    expect(h.container.read(editProfileProvider).busy, isFalse);
+  });
+  test('saves the profile keys and sends the place through the preferences writer', () async {
+    h.session.set(
+      h.container.read(authProvider).copyWith(user: profile().copyWith(profileImageUrl: 'avatar')),
+    );
+    await h.container.pump();
+    expect(
+      await controller.saveProfile(
+        name: ' Updated ',
+        location: ' Delhi ',
+        dateOfBirth: DateTime(1990, 5, 20),
+      ),
+      isTrue,
+    );
+    // The profile body holds only keys of UserUpdate: no email, avatar or preferences.
+    expect(h.session.lastProfile, {'full_name': 'Updated', 'date_of_birth': '1990-05-20'});
+    expect(h.session.lastPreferences, {
+      'location_preference': ['Delhi'],
     });
   });
-
-  group('EditProfileController — formatDate', () {
-    test('formats date as dd/MM/yyyy with zero-padding', () {
-      final controller = createController();
-
-      expect(controller.formatDate(DateTime(2025, 3, 5)), '05/03/2025');
-      expect(controller.formatDate(DateTime(2025, 12, 31)), '31/12/2025');
-      expect(controller.formatDate(DateTime(2025, 1, 1)), '01/01/2025');
-    });
+  test('an unchanged place sends no preferences', () async {
+    h.session.set(
+      h.container
+          .read(authProvider)
+          .copyWith(
+            user: profile().copyWith(
+              preferences: const UserPreferences(locationPreference: ['Delhi']),
+            ),
+          ),
+    );
+    await h.container.pump();
+    await controller.saveProfile(name: 'Name', location: ' Delhi ');
+    expect(h.session.lastPreferences, isNull);
   });
-
-  group('EditProfileController — clearDateOfBirth', () {
-    test('sets dateOfBirth to null', () {
-      final user = testUserModel(
-        fullName: 'Jane',
-        email: 'jane@example.com',
-      ).copyWith(dateOfBirth: '1995-06-15');
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-
-      final controller = createController();
-      expect(controller.dateOfBirth.value, isNotNull);
-
-      controller.clearDateOfBirth();
-
-      expect(controller.dateOfBirth.value, isNull);
-    });
+  test('a cleared place removes the key with null', () async {
+    h.session.set(
+      h.container
+          .read(authProvider)
+          .copyWith(
+            user: profile().copyWith(
+              preferences: const UserPreferences(locationPreference: ['Delhi']),
+            ),
+          ),
+    );
+    await h.container.pump();
+    await controller.saveProfile(name: 'Name', location: '  ');
+    expect(h.session.lastPreferences, {'location_preference': null});
   });
-
-  group('EditProfileController — saveProfile', () {
-    test('throws when formKey has no attached Form (currentState is null)', () async {
-      final controller = createController();
-
-      // formKey.currentState is null (no Form widget) → null check throws.
-      await expectLater(controller.saveProfile(), throwsA(isA<TypeError>()));
-      verifyNever(() => authController.updateUserProfile(any()));
-      expect(controller.isSaving.value, isFalse);
-    });
-
-    test('throws when currentUser is null (after form validation passes)', () async {
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>());
-
-      final controller = createController();
-      // Without a Form widget, currentState is null and it throws before
-      // reaching the currentUser check. Verify it still doesn't call update.
-      await expectLater(controller.saveProfile(), throwsA(isA<TypeError>()));
-      verifyNever(() => authController.updateUserProfile(any()));
-      expect(controller.isSaving.value, isFalse);
-    });
-
-    test('does not call updateUserProfile when form validation fails', () async {
-      final user = testUserModel(
-        fullName: 'John',
-        email: 'john@example.com',
-      ).copyWith(preferences: {'existing': 'value'});
-      when(() => authController.currentUser).thenReturn(Rxn<UserModel>(user));
-      when(() => authController.updateUserProfile(any())).thenAnswer((_) async => true);
-
-      final controller = createController();
-      controller.nameController.text = 'John Updated';
-      controller.locationController.text = 'Delhi';
-      controller.profileImageUrl.value = 'https://example.com/new.jpg';
-      controller.dateOfBirth.value = DateTime(1990, 5, 20);
-
-      // Without a Form widget, currentState is null → throws before update.
-      await expectLater(controller.saveProfile(), throwsA(isA<TypeError>()));
-      verifyNever(() => authController.updateUserProfile(any()));
-    });
+  test('a failed preferences write stops before the profile write', () async {
+    h.session.savePreferences = () async => false;
+    final saved = await controller.saveProfile(name: 'Name', location: 'Mumbai');
+    expect(saved, isFalse);
+    expect(h.session.lastProfile, isNull);
   });
-
-  group('EditProfileController — onClose', () {
-    test('disposes text controllers without throwing', () {
-      final controller = createController();
-
-      expect(controller.onClose, returnsNormally);
-    });
+  test('cleared date is sent as null', () async {
+    await controller.saveProfile(name: 'Name', location: '');
+    expect(h.session.lastProfile!['date_of_birth'], isNull);
   });
-
-  group('EditProfileController — loading flags', () {
-    test('isSaving and isUploadingImage start as false', () {
-      final controller = createController();
-
-      expect(controller.isSaving.value, isFalse);
-      expect(controller.isUploadingImage.value, isFalse);
-      expect(controller.isBusy, isFalse);
-    });
+  test('missing user does not send a write', () async {
+    h.session.set(h.container.read(authProvider).copyWith(user: null));
+    await h.container.pump();
+    expect(await controller.saveProfile(name: 'Name', location: ''), isFalse);
+    expect(h.session.lastProfile, isNull);
+  });
+  test('duplicate saves are blocked while first write is pending', () async {
+    final completer = Completer<bool>();
+    h.session.save = () => completer.future;
+    final first = controller.saveProfile(name: 'First', location: '');
+    expect(h.container.read(editProfileProvider).saving, isTrue);
+    expect(await controller.saveProfile(name: 'Second', location: ''), isFalse);
+    expect(h.session.lastProfile!['full_name'], 'First');
+    completer.complete(true);
+    expect(await first, isTrue);
+    expect(h.container.read(editProfileProvider).busy, isFalse);
+  });
+  test('network failure is visible and preserves retry', () async {
+    h.session.save = () async => throw NetworkException('offline');
+    expect(await controller.saveProfile(name: 'Draft', location: ''), isFalse);
+    expect(h.container.read(editProfileProvider).error, isA<NetworkException>());
+    h.session.save = null;
+    expect(await controller.saveProfile(name: 'Draft', location: ''), isTrue);
+  });
+  test('avatar upload owns only mutation state and delegates once', () async {
+    final completer = Completer<bool>();
+    h.session.upload = () => completer.future;
+    final first = controller.uploadImage('/avatar.jpg');
+    expect(h.container.read(editProfileProvider).uploading, isTrue);
+    expect(await controller.uploadImage('/other.jpg'), isFalse);
+    expect(h.session.lastImage, '/avatar.jpg');
+    completer.complete(true);
+    expect(await first, isTrue);
+    expect(h.container.read(editProfileProvider).busy, isFalse);
+  });
+  test('avatar failure is visible and resets progress', () async {
+    h.session.upload = () async => throw NetworkException('offline');
+    expect(await controller.uploadImage('/avatar.jpg'), isFalse);
+    expect(h.container.read(editProfileProvider).error, isA<NetworkException>());
+    expect(h.container.read(editProfileProvider).busy, isFalse);
+  });
+  test('late save cannot complete for a replacement account', () async {
+    final completer = Completer<bool>();
+    h.session.save = () => completer.future;
+    final first = controller.saveProfile(name: 'Old', location: '');
+    h.session.set(h.container.read(authProvider).copyWith(user: profile('account-b')));
+    await h.container.pump();
+    completer.complete(true);
+    expect(await first, isFalse);
+    expect(h.container.read(editProfileProvider).busy, isFalse);
+  });
+  test('disposing the form ignores late avatar completion', () async {
+    final sub = h.listen(editProfileProvider);
+    final completer = Completer<bool>();
+    h.session.upload = () => completer.future;
+    final first = controller.uploadImage('/old.jpg');
+    sub.close();
+    h.container.invalidate(editProfileProvider);
+    await h.container.pump();
+    completer.complete(true);
+    expect(await first, isFalse);
   });
 }

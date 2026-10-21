@@ -9,5 +9,8 @@ appId: com.the360ghar.ghar360
     visible:
       id: qa.profile.edit.screen
     timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: qa.profile.edit.save
 - assertVisible:
     id: qa.profile.edit.save

@@ -1,53 +1,31 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/utils/tour_url.dart';
+import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/tour_webview.dart';
+import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
+import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
 import 'package:ghar360/features/tour/presentation/views/tour_view.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+
 import '../../../../helpers/fake_webview_platform.dart';
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
+
+/// The invalid-link state and its one action.
+final _invalidState = find.byType(StateBlock);
+final _backAction = find.byKey(const ValueKey('qa.tour.invalid_state.action'));
+
+/// Mirrors the JS channel name TourWebView registers for the iframe handshake.
+const String _signalChannel = 'GharTourLoadSignal';
 
 void main() {
-  setUp(() {
-    Get.testMode = true;
-    Get.reset();
-    installFakeWebViewPlatform();
-    // Suppress RenderFlex overflow errors from constrained test surfaces.
-    FlutterError.onError = (details) {
-      if (!details.summary.toString().contains('overflowed')) {
-        FlutterError.presentError(details);
-      }
-    };
-  });
+  setUp(installFakeWebViewPlatform);
+  tearDown(uninstallFakeWebViewPlatform);
 
-  tearDown(() {
-    FlutterError.onError = FlutterError.presentError;
-    uninstallFakeWebViewPlatform();
-    Get.reset();
-  });
-
-  /// Wraps [TourView] in a [GetMaterialApp] and pumps it.
-  /// Uses `Get.toNamed` with route arguments so `Get.arguments` is populated
-  /// when `TourView.initState` runs.
   Future<void> pumpTour(WidgetTester tester, {dynamic arguments}) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        initialRoute: '/',
-        getPages: [
-          GetPage(name: '/', page: () => const SizedBox.shrink()),
-          GetPage(name: '/tour', page: () => const TourView()),
-        ],
-      ),
-    );
-    // Navigate to TourView with arguments (or without for null test).
-    // Use Get.offNamed to replace the current route (no transition animation
-    // to wait for, which avoids pumpAndSettle hangs).
-    Get.offNamed('/tour', arguments: arguments);
-    await tester.pump();
+    await tester.pumpProviderApp(TourView(url: TourUrl.extractFromArgs(arguments) ?? ''));
     await tester.pump(const Duration(milliseconds: 200));
   }
 
@@ -58,38 +36,38 @@ void main() {
       await pumpTour(tester);
 
       expect(find.byKey(const ValueKey('qa.tour.screen')), findsOneWidget);
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows fallback for non-http URL scheme', (tester) async {
       await pumpTour(tester, arguments: 'ftp://example.com/tour');
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
-      expect(find.bySemanticsLabel('qa.tour.webview'), findsNothing);
+      expect(_invalidState, findsOneWidget);
+      expect(find.byType(TourWebView), findsNothing);
     });
 
     testWidgets('shows fallback for empty string argument', (tester) async {
       await pumpTour(tester, arguments: '');
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows fallback for whitespace-only URL', (tester) async {
       await pumpTour(tester, arguments: '   ');
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows back button in fallback state', (tester) async {
       await pumpTour(tester);
 
-      expect(find.byType(ElevatedButton), findsOneWidget);
+      expect(_backAction, findsOneWidget);
     });
 
     // ── URL extraction logic tests ──────────────────────────────────────
 
     testWidgets('extracts tourUrl from map argument', (tester) async {
-      // TourView._extractTourUrl should handle map arguments.
+      // TourUrl.extractFromArgs should handle map arguments.
       // Since we can't reliably pass arguments in widget tests,
       // verify the fallback handles null gracefully.
       await pumpTour(tester);
@@ -102,7 +80,7 @@ void main() {
 
       // The fallback scaffold should have an AppBar with back button.
       expect(find.byType(Scaffold), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+      expect(findKnife(KnifeIcon.arrowLeft), findsOneWidget);
     });
 
     testWidgets('fallback shows descriptive text', (tester) async {
@@ -114,20 +92,18 @@ void main() {
 
     // ── Fallback content details ────────────────────────────────────────
 
-    testWidgets('fallback shows link_off icon with correct size', (tester) async {
+    testWidgets('fallback shows the not-found scene and a localized title', (tester) async {
       await pumpTour(tester);
 
-      final icon = tester.widget<Icon>(find.byIcon(Icons.link_off));
-      expect(icon.size, 48);
+      expect(find.byType(PaperVignette), findsOneWidget);
+      expect(find.text('360° Tour Unavailable'), findsOneWidget);
     });
 
-    testWidgets('fallback ElevatedButton navigates back on tap', (tester) async {
+    testWidgets('fallback back action is enabled', (tester) async {
       await pumpTour(tester);
 
-      // The ElevatedButton should call Get.back() when tapped.
-      // We can't easily verify Get.back() in a test without a navigation
-      // stack, but we can verify the button exists and has an onPressed.
-      final button = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+      // The action pops or goes to Discover; verify it is live.
+      final button = tester.widget<FilledButton>(_backAction);
       expect(button.onPressed, isNotNull);
     });
 
@@ -136,14 +112,14 @@ void main() {
 
       // The fallback content is a Column with an icon, title, subtitle, and button.
       expect(find.byType(Column), findsWidgets);
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
-      expect(find.byType(ElevatedButton), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
+      expect(_backAction, findsOneWidget);
     });
 
     testWidgets('fallback AppBar has back arrow icon', (tester) async {
       await pumpTour(tester);
 
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+      expect(findKnife(KnifeIcon.arrowLeft), findsOneWidget);
     });
 
     // ── Valid URL rendering (WebView loading state) ─────────────────────
@@ -155,7 +131,7 @@ void main() {
 
       // The TourWebView should be rendered (not the fallback).
       expect(find.byType(TourWebView), findsOneWidget);
-      expect(find.byIcon(Icons.link_off), findsNothing);
+      expect(_invalidState, findsNothing);
     });
 
     testWidgets('shows loading overlay initially for valid URL', (tester) async {
@@ -163,27 +139,26 @@ void main() {
 
       // The loading overlay should show a CircularProgressIndicator.
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.byIcon(Icons.link_off), findsNothing);
+      expect(_invalidState, findsNothing);
     });
 
-    testWidgets('renders AppBar with fullscreen and share actions for valid URL', (tester) async {
+    testWidgets('renders AppBar with the share action for valid URL', (tester) async {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
-      expect(find.byIcon(Icons.fullscreen), findsOneWidget);
-      expect(find.byIcon(Icons.share), findsOneWidget);
+      expect(findKnife(KnifeIcon.share), findsOneWidget);
     });
 
     testWidgets('renders back arrow in AppBar for valid URL', (tester) async {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+      expect(findKnife(KnifeIcon.arrowLeft), findsOneWidget);
     });
 
     testWidgets('does not render fallback content for valid URL', (tester) async {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
-      expect(find.byIcon(Icons.link_off), findsNothing);
-      expect(find.byType(ElevatedButton), findsNothing);
+      expect(_invalidState, findsNothing);
+      expect(_backAction, findsNothing);
     });
 
     testWidgets('renders Scaffold with correct key for valid URL', (tester) async {
@@ -210,7 +185,7 @@ void main() {
         find.byType(CircularProgressIndicator),
       );
       // The loading overlay uses AppDesign.primaryYellow color.
-      expect(indicator.strokeWidth, 3);
+      expect(indicator.strokeWidth, 2);
     });
 
     testWidgets('loading overlay contains loading text', (tester) async {
@@ -227,32 +202,32 @@ void main() {
 
       // Should render the TourWebView, not the fallback.
       expect(find.byType(TourWebView), findsOneWidget);
-      expect(find.byIcon(Icons.link_off), findsNothing);
+      expect(_invalidState, findsNothing);
     });
 
     testWidgets('extracts tourUrl from map with url key', (tester) async {
       await pumpTour(tester, arguments: {'url': 'https://kuula.co/post/test'});
 
       expect(find.byType(TourWebView), findsOneWidget);
-      expect(find.byIcon(Icons.link_off), findsNothing);
+      expect(_invalidState, findsNothing);
     });
 
     testWidgets('shows fallback for map with invalid URL', (tester) async {
       await pumpTour(tester, arguments: {'tourUrl': 'not-a-url'});
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows fallback for map with empty URL', (tester) async {
       await pumpTour(tester, arguments: {'tourUrl': ''});
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows fallback for map with null URL', (tester) async {
       await pumpTour(tester, arguments: {'tourUrl': null});
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     // ── Various invalid URL formats ─────────────────────────────────────
@@ -260,31 +235,31 @@ void main() {
     testWidgets('shows fallback for javascript: URL', (tester) async {
       await pumpTour(tester, arguments: 'javascript:alert(1)');
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows fallback for data: URL', (tester) async {
       await pumpTour(tester, arguments: 'data:text/html,<h1>test</h1>');
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows fallback for file: URL', (tester) async {
       await pumpTour(tester, arguments: 'file:///etc/passwd');
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows fallback for URL with credentials', (tester) async {
       await pumpTour(tester, arguments: 'https://user:pass@example.com/tour');
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     testWidgets('shows fallback for URL with empty host', (tester) async {
       await pumpTour(tester, arguments: 'https:///tour');
 
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
+      expect(_invalidState, findsOneWidget);
     });
 
     // ── Valid URL variations ────────────────────────────────────────────
@@ -309,20 +284,64 @@ void main() {
 
     // ── AppBar actions for valid URL ────────────────────────────────────
 
-    testWidgets('fullscreen button is present and tappable', (tester) async {
+    // TourView drives its own opaque overlay from onLoadingChanged, and on the
+    // embed path that now clears only when the iframe reports in.
+    testWidgets('loading overlay clears when the embedded iframe signals load', (tester) async {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
-      final button = tester.widget<IconButton>(
-        find.ancestor(of: find.byIcon(Icons.fullscreen), matching: find.byType(IconButton)),
-      );
-      expect(button.onPressed, isNotNull);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      lastWebViewController?.simulateJavaScriptMessage(_signalChannel, 'loaded');
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(TourWebView), findsOneWidget);
+    });
+
+    // Broken-channel fallback: nothing ever signals, so after the watchdog the
+    // overlay must lift onto whatever rendered rather than claiming failure.
+    testWidgets('overlay lifts with no error toast when the channel never signals', (tester) async {
+      await pumpTour(tester, arguments: 'https://kuula.co/post/example');
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      // Cleared at the short handshake deadline, not after the 20s watchdog.
+      await tester.pump(const Duration(seconds: 6));
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('360° Tour Unavailable'), findsNothing);
+      expect(find.byType(TourWebView), findsOneWidget);
+    });
+
+    testWidgets('sub-frame resource errors raise no error toast', (tester) async {
+      await pumpTour(tester, arguments: 'https://kuula.co/post/example');
+
+      lastNavigationDelegate?.webResourceErrorCallback?.call(_FrameScopedError(false));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('360° Tour Unavailable'), findsNothing);
+    });
+
+    testWidgets('main-frame resource errors show retryable inline failure', (tester) async {
+      await pumpTour(tester, arguments: 'https://kuula.co/post/example');
+
+      lastNavigationDelegate?.webResourceErrorCallback?.call(_FrameScopedError(true));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('360° Tour Unavailable'), findsOneWidget);
+
+      // Let the snackbar auto-dismiss so its ticker is disposed before teardown.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('share button is present and tappable', (tester) async {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
       final button = tester.widget<IconButton>(
-        find.ancestor(of: find.byIcon(Icons.share), matching: find.byType(IconButton)),
+        find.ancestor(of: findKnife(KnifeIcon.share), matching: find.byType(IconButton)),
       );
       expect(button.onPressed, isNotNull);
     });
@@ -331,30 +350,48 @@ void main() {
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
       final button = tester.widget<IconButton>(
-        find.ancestor(of: find.byIcon(Icons.arrow_back), matching: find.byType(IconButton)),
+        find.ancestor(of: findKnife(KnifeIcon.arrowLeft), matching: find.byType(IconButton)),
       );
       expect(button.onPressed, isNotNull);
     });
 
     // ── Container structure for valid URL ───────────────────────────────
 
-    testWidgets('wraps TourWebView in ClipRRect with rounded corners', (tester) async {
+    testWidgets('lays the tour full width on the sheet under the skyline header', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       await pumpTour(tester, arguments: 'https://kuula.co/post/example');
 
-      expect(find.byType(ClipRRect), findsOneWidget);
-      final clipRRect = tester.widget<ClipRRect>(find.byType(ClipRRect));
-      expect(clipRRect.borderRadius, BorderRadius.circular(12));
-    });
-
-    testWidgets('applies padding around TourWebView container', (tester) async {
-      await pumpTour(tester, arguments: 'https://kuula.co/post/example');
-
-      final padding = tester.widget<Padding>(find.byType(Padding).first);
-      final edges = padding.padding as EdgeInsets;
-      expect(edges.top, 8);
-      expect(edges.bottom, 8);
-      expect(edges.left, 8);
-      expect(edges.right, 8);
+      // No frame or clip around the native view: every drag and pixel is the tour's.
+      expect(find.byType(ClipRRect), findsNothing);
+      expect(find.byType(SceneHeaderSliver), findsOneWidget);
+      final screen = tester.getSize(find.byKey(const ValueKey('qa.tour.screen')));
+      final tour = tester.getRect(find.byType(TourWebView));
+      expect(tour.width, screen.width);
+      expect(tour.bottom, screen.height);
+      expect(tour.top, greaterThan(SceneHeaderSliver.bar));
     });
   });
+}
+
+/// A [WebResourceError] whose main-frame flag the test controls.
+class _FrameScopedError implements WebResourceError {
+  _FrameScopedError(this.isForMainFrame);
+
+  @override
+  final bool? isForMainFrame;
+
+  @override
+  String get description => 'boom';
+
+  @override
+  int get errorCode => 1;
+
+  @override
+  WebResourceErrorType? get errorType => null;
+
+  @override
+  String? get url => null;
 }

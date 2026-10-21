@@ -1,496 +1,363 @@
-import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/design/app_design_tokens.dart';
-import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/core/utils/responsive.dart';
-import 'package:ghar360/core/widgets/common/max_content_width.dart';
-import 'package:ghar360/core/widgets/frosted_glass_container.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_art.dart';
+import 'package:ghar360/core/design/paper/paper_cut.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/splash/presentation/controllers/splash_controller.dart';
+import 'package:ghar360/features/splash/presentation/widgets/gurugram_diorama.dart';
 
-class SplashView extends GetView<SplashController> {
+const _pageCount = 3;
+
+/// Onboarding: a paper diorama of Gurugram that grows with each page (the
+/// city, then the street with a pin, then a home with a lit window) above a
+/// hand-cut sheet with the words and the controls.
+class SplashView extends ConsumerStatefulWidget {
   const SplashView({super.key});
-
   @override
-  Widget build(BuildContext context) {
-    final slides = _onboardingSlides;
-    // Width cap for the centered content column on tablet/desktop so the
-    // skip button, slide text and bottom dock don't stretch full-bleed.
-    // `null` on compact → MaxContentWidth is a full-bleed no-op (phone unchanged).
-    final dockWidthCap = context.isTabletWidth ? 560.0 : null;
-    final topPadding = MediaQuery.of(context).padding.top;
-    final bottomInset = MediaQuery.of(context).padding.bottom;
-
-    final pc = controller.pageController;
-    final fade = controller.fadeAnimation;
-    final slide = controller.slideAnimation;
-    if (pc == null || fade == null || slide == null) {
-      return const Scaffold(
-        backgroundColor: AppDesign.overlayDark,
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    return Scaffold(
-      key: const ValueKey('qa.splash.screen'),
-      backgroundColor: AppDesign.overlayDark,
-      body: Stack(
-        children: [
-          // Full-bleed paged background (image + gradient stay edge-to-edge).
-          PageView.builder(
-            controller: pc,
-            itemCount: slides.length,
-            onPageChanged: (index) => controller.currentStep.value = index,
-            itemBuilder: (context, index) => _OnboardingSlideCard(
-              slide: slides[index],
-              fadeAnimation: fade,
-              slideAnimation: slide,
-            ),
-          ),
-          // Skip button anchored to the top-right of the centered content area,
-          // not the raw screen edge — so it tracks the capped column on tablets.
-          Positioned(
-            top: topPadding + 16,
-            left: 0,
-            right: 0,
-            child: MaxContentWidth(
-              maxWidth: dockWidthCap,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 20),
-                  child: Semantics(
-                    label: 'qa.splash.skip',
-                    identifier: 'qa.splash.skip',
-                    child: TextButton(
-                      key: const ValueKey('qa.splash.skip'),
-                      onPressed: controller.skipToHome,
-                      style: TextButton.styleFrom(
-                        backgroundColor: AppDesign.overlayDark.withValues(alpha: 0.3),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      ),
-                      child: Text(
-                        'skip'.tr,
-                        style: const TextStyle(
-                          color: AppDesign.overlayLight,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // Bottom dock centered + capped so it doesn't span the full iPad width.
-          Positioned(
-            bottom: bottomInset + 20,
-            left: 0,
-            right: 0,
-            child: MaxContentWidth(
-              maxWidth: dockWidthCap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _FrostedBottomDock(slides: slides, controller: controller),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<_OnboardingSlideModel> get _onboardingSlides => const [
-    _OnboardingSlideModel(
-      backgroundImagePath: 'assets/images/onboarding_slide_1.jpg',
-      titleKey: 'onboarding_slide_1_title',
-      descriptionKey: 'onboarding_slide_1_desc',
-      points: [
-        'onboarding_slide_1_point_1',
-        'onboarding_slide_1_point_2',
-        'onboarding_slide_1_point_3',
-      ],
-      accentColor: AppDesignTokens.brandGold,
-      chipLabelKey: 'onboarding_chip_live_tours',
-    ),
-    _OnboardingSlideModel(
-      backgroundImagePath: 'assets/images/onboarding_slide_2.jpg',
-      titleKey: 'onboarding_slide_2_title',
-      descriptionKey: 'onboarding_slide_2_desc',
-      points: [
-        'onboarding_slide_2_point_1',
-        'onboarding_slide_2_point_2',
-        'onboarding_slide_2_point_3',
-      ],
-      accentColor: AppDesignTokens.accentBlue,
-      chipLabelKey: 'onboarding_chip_verified',
-    ),
-    _OnboardingSlideModel(
-      backgroundImagePath: 'assets/images/onboarding_slide_3.jpg',
-      titleKey: 'onboarding_slide_3_title',
-      descriptionKey: 'onboarding_slide_3_desc',
-      points: [
-        'onboarding_slide_3_point_1',
-        'onboarding_slide_3_point_2',
-        'onboarding_slide_3_point_3',
-      ],
-      accentColor: AppDesignTokens.accentGreen,
-      chipLabelKey: 'onboarding_chip_support',
-    ),
-  ];
+  ConsumerState<SplashView> createState() => _SplashViewState();
 }
 
-class _OnboardingSlideCard extends StatelessWidget {
-  const _OnboardingSlideCard({
-    required this.slide,
-    required this.fadeAnimation,
-    required this.slideAnimation,
-  });
+class _SplashViewState extends ConsumerState<SplashView> {
+  final _pages = PageController();
+  int _step = 0;
 
-  final _OnboardingSlideModel slide;
-  final Animation<double> fadeAnimation;
-  final Animation<Offset> slideAnimation;
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  void _move(int index) {
+    if (index < 0 || index >= _pageCount) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pages.jumpToPage(index);
+    } else {
+      _pages.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeInOutCubic,
+      );
+    }
+  }
+
+  void _next() => _step < _pageCount - 1 ? _move(_step + 1) : _complete();
+
+  void _complete() => ref.read(onboardingProvider.notifier).complete();
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 180;
-
-    return FadeTransition(
-      opacity: fadeAnimation,
-      child: SlideTransition(
-        position: slideAnimation,
-        child: Stack(
-          fit: StackFit.expand,
+    final design = context.design;
+    final onboarding = ref.watch(onboardingProvider);
+    final busy = onboarding.save.isLoading;
+    final l10n = context.l10n;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: design.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        key: const ValueKey('qa.splash.screen'),
+        backgroundColor: design.background,
+        body: Stack(
           children: [
-            _buildBackgroundImage(),
-            _buildGradientScrim(),
-            _buildContent(context, bottomPadding),
+            const Positioned.fill(child: _PaperGround()),
+            // Swipes anywhere turn the page; the pages themselves are empty.
+            Positioned.fill(
+              child: PageView(
+                controller: _pages,
+                onPageChanged: (index) => setState(() => _step = index),
+                children: [for (var i = 0; i < _pageCount; i++) const SizedBox.expand()],
+              ),
+            ),
+            Column(
+              children: [
+                Expanded(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: IgnorePointer(child: GurugramDiorama(pages: _pages)),
+                      ),
+                      Positioned(
+                        top: MediaQuery.paddingOf(context).top + 8,
+                        right: 12,
+                        child: Semantics(
+                          identifier: 'qa.splash.skip',
+                          child: TextButton(
+                            key: const ValueKey('qa.splash.skip'),
+                            onPressed: busy ? null : _complete,
+                            child: Text(l10n.text('skip')),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Large text on a short screen: the sheet may scroll, up to
+                // two thirds of the height. Otherwise it passes swipes through.
+                Builder(
+                  builder: (context) {
+                    final screen = MediaQuery.sizeOf(context).height;
+                    final sheet = _OnboardingSheet(
+                      pages: _pages,
+                      step: _step,
+                      busy: busy,
+                      failed: onboarding.save.hasError,
+                      onBack: () => _move(_step - 1),
+                      onNext: _next,
+                    );
+                    if (MediaQuery.textScalerOf(context).scale(10) <= 13 && screen >= 640) {
+                      return sheet;
+                    }
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: screen * 2 / 3),
+                      child: SingleChildScrollView(child: sheet),
+                    );
+                  },
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildBackgroundImage() {
-    return Positioned.fill(
-      child: Image.asset(
-        slide.backgroundImagePath,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                slide.accentColor.withValues(alpha: 0.3),
-                AppDesign.overlayDark.withValues(alpha: 0.6),
-              ],
-            ),
-          ),
-        ),
-      ),
+/// The page itself: plain paper with grain, under the scene.
+class _PaperGround extends StatelessWidget {
+  const _PaperGround();
+
+  @override
+  Widget build(BuildContext context) {
+    final design = context.design;
+    return RepaintBoundary(
+      child: CustomPaint(painter: _GroundPainter(design.tone(PaperTone.sky), design.grain)),
     );
   }
+}
 
-  Widget _buildGradientScrim() {
-    return Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            stops: const [0.0, 0.35, 0.65, 1.0],
-            colors: [
-              AppDesign.overlayDark.withValues(alpha: 0.15),
-              AppDesign.transparent,
-              AppDesign.overlayDark.withValues(alpha: 0.4),
-              AppDesign.overlayDark.withValues(alpha: 0.7),
-            ],
-          ),
-        ),
-      ),
-    );
+class _GroundPainter extends CustomPainter {
+  const _GroundPainter(this.color, this.grain);
+  final Color color;
+  final Color grain;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = color);
+    paintPaperGrain(canvas, Offset.zero & size, grain);
   }
 
-  Widget _buildContent(BuildContext context, double bottomPadding) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
+  @override
+  bool shouldRepaint(_GroundPainter old) => old.color != color || old.grain != grain;
+}
+
+/// The sheet on the road: page tabs, the title and one line, then Back and
+/// Next. Its top edge is cut by hand; it lies over the kerb of the scene.
+class _OnboardingSheet extends StatelessWidget {
+  const _OnboardingSheet({
+    required this.pages,
+    required this.step,
+    required this.busy,
+    required this.failed,
+    required this.onBack,
+    required this.onNext,
+  });
+
+  final PageController pages;
+  final int step;
+  final bool busy;
+  final bool failed;
+  final VoidCallback onBack;
+  final VoidCallback onNext;
+
+  static const _cut = 14.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final design = context.design;
+    final l10n = context.l10n;
+    final text = Theme.of(context).textTheme;
+    final last = step == _pageCount - 1;
+    final nextId = last ? 'qa.splash.get_started' : 'qa.splash.next';
+    return CustomPaint(
+      painter: _SheetPainter(sheet: design.surface, edge: design.border),
       child: SafeArea(
         top: false,
-        child: MaxContentWidth(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildChip(context),
-                const SizedBox(height: 16),
-                _buildTitle(context),
-                const SizedBox(height: 12),
-                _buildDescription(context),
-                const SizedBox(height: 24),
-                _buildBulletPoints(context),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChip(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: slide.accentColor.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        slide.chipLabelKey.tr,
-        style: const TextStyle(
-          color: AppDesign.overlayDark,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTitle(BuildContext context) {
-    return Text(
-      slide.titleKey.tr,
-      style: const TextStyle(
-        color: AppDesign.overlayLight,
-        fontSize: 32,
-        fontWeight: FontWeight.w700,
-        height: 1.15,
-        letterSpacing: -0.5,
-      ),
-    );
-  }
-
-  Widget _buildDescription(BuildContext context) {
-    return Text(
-      slide.descriptionKey.tr,
-      style: TextStyle(
-        color: AppDesign.overlayLight.withValues(alpha: 0.85),
-        fontSize: 15,
-        fontWeight: FontWeight.w400,
-        height: 1.5,
-      ),
-    );
-  }
-
-  Widget _buildBulletPoints(BuildContext context) {
-    return FrostedGlassContainer(
-      opacity: 0.08,
-      blur: 12,
-      borderRadius: 16,
-      borderOpacity: 0.25,
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: slide.points.map((point) => _buildBulletItem(point)).toList(),
-      ),
-    );
-  }
-
-  Widget _buildBulletItem(String pointKey) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              color: slide.accentColor.withValues(alpha: 0.25),
-              shape: BoxShape.circle,
-              border: Border.all(color: slide.accentColor, width: 1.5),
-            ),
-            child: Icon(Icons.check, size: 12, color: slide.accentColor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              pointKey.tr,
-              style: TextStyle(
-                color: AppDesign.overlayLight.withValues(alpha: 0.95),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                height: 1.4,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, _cut + 18, 24, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IgnorePointer(child: _PageTabs(step: step)),
+                  const SizedBox(height: 16),
+                  IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: pages,
+                      builder: (context, child) {
+                        final page = pages.hasClients && pages.positions.length == 1
+                            ? pages.page ?? step.toDouble()
+                            : step.toDouble();
+                        // The words follow the finger a little; they are
+                        // never hidden.
+                        return Transform.translate(
+                          offset: Offset((step - page) * 40, 0),
+                          child: child,
+                        );
+                      },
+                      // Sized to the longest page, so the sheet never jumps.
+                      child: IndexedStack(
+                        index: step,
+                        children: [
+                          for (var i = 1; i <= _pageCount; i++)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Semantics(
+                                  header: true,
+                                  child: Text(
+                                    l10n.text('onboarding_slide_${i}_title'),
+                                    style: text.displaySmall,
+                                    maxLines: 2,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  l10n.text('onboarding_slide_${i}_desc'),
+                                  style: text.bodyLarge?.copyWith(color: design.textSecondary),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (failed) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      l10n.text('local_save_failed'),
+                      style: text.bodyMedium?.copyWith(color: design.error),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  // Side by side when they fit; stacked, Next on top, when they do not.
+                  OverflowBar(
+                    alignment: MainAxisAlignment.spaceBetween,
+                    overflowAlignment: OverflowBarAlignment.end,
+                    overflowDirection: VerticalDirection.up,
+                    overflowSpacing: 4,
+                    children: [
+                      // Kept in the layout on page 1, so Next never moves.
+                      Visibility(
+                        visible: step > 0,
+                        maintainSize: true,
+                        maintainAnimation: true,
+                        maintainState: true,
+                        child: Semantics(
+                          identifier: 'qa.splash.back',
+                          child: TextButton(
+                            key: const ValueKey('qa.splash.back'),
+                            onPressed: busy || step == 0 ? null : onBack,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const PaperIcon(KnifeIcon.arrowLeft, size: 18),
+                                const SizedBox(width: 6),
+                                Text(l10n.text('back')),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Semantics(
+                        identifier: nextId,
+                        child: FilledButton(
+                          key: ValueKey(nextId),
+                          onPressed: busy ? null : onNext,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(l10n.text(last ? 'get_started' : 'next')),
+                              const SizedBox(width: 8),
+                              PaperIcon(last ? KnifeIcon.check : KnifeIcon.arrowRight, size: 18),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Three card-stock tabs; the current one is gold and longer.
+class _PageTabs extends StatelessWidget {
+  const _PageTabs({required this.step});
+  final int step;
+
+  @override
+  Widget build(BuildContext context) {
+    final design = context.design;
+    final instant = MediaQuery.disableAnimationsOf(context);
+    return Semantics(
+      label: context.l10n.text(
+        'page_of',
+        params: {'current': '${step + 1}', 'total': '$_pageCount'},
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < _pageCount; i++)
+            AnimatedContainer(
+              duration: instant ? Duration.zero : const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              margin: const EdgeInsets.only(right: 6),
+              width: i == step ? 28 : 12,
+              height: 6,
+              decoration: BoxDecoration(
+                color: i == step ? design.buttonPrimary : design.border,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class _FrostedBottomDock extends StatelessWidget {
-  const _FrostedBottomDock({required this.slides, required this.controller});
-
-  final List<_OnboardingSlideModel> slides;
-  final SplashController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          decoration: BoxDecoration(
-            color: AppDesign.overlayLight.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppDesign.overlayLight.withValues(alpha: 0.2), width: 1),
-          ),
-          child: Obx(() {
-            final currentStep = controller.currentStep.value;
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildLineIndicators(currentStep),
-                const SizedBox(height: 14),
-                _buildNavigationButtons(currentStep),
-              ],
-            );
-          }),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLineIndicators(int currentStep) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(slides.length, (index) {
-        final selected = index == currentStep;
-        return AnimatedContainer(
-          duration: AppDurations.fast,
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(horizontal: 6),
-          height: 2,
-          width: selected ? 40 : 24,
-          decoration: BoxDecoration(
-            color: selected
-                ? AppDesignTokens.brandGold
-                : AppDesign.overlayLight.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(1),
-          ),
-        );
-      }),
-    );
-  }
-
-  Widget _buildNavigationButtons(int currentStep) {
-    return Row(
-      children: [
-        if (currentStep > 0)
-          Expanded(
-            child: Semantics(
-              label: 'qa.splash.back',
-              identifier: 'qa.splash.back',
-              child: _FrostedOutlinedButton(
-                key: const ValueKey('qa.splash.back'),
-                onPressed: controller.previousStep,
-                icon: Icons.arrow_back,
-                label: 'back'.tr,
-              ),
-            ),
-          )
-        else
-          const Spacer(),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: Semantics(
-            label: currentStep < slides.length - 1 ? 'qa.splash.next' : 'qa.splash.get_started',
-            identifier: currentStep < slides.length - 1
-                ? 'qa.splash.next'
-                : 'qa.splash.get_started',
-            child: FilledButton.icon(
-              key: ValueKey(
-                currentStep < slides.length - 1 ? 'qa.splash.next' : 'qa.splash.get_started',
-              ),
-              onPressed: controller.nextStep,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppDesignTokens.brandGold,
-                foregroundColor: AppDesign.overlayDark,
-                minimumSize: const Size(0, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              icon: Icon(
-                currentStep < slides.length - 1 ? Icons.arrow_forward : Icons.check_circle_outline,
-                size: 18,
-              ),
-              label: Text(
-                currentStep < slides.length - 1 ? 'next'.tr : 'get_started'.tr,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FrostedOutlinedButton extends StatelessWidget {
-  const _FrostedOutlinedButton({
-    super.key,
-    required this.onPressed,
-    required this.icon,
-    required this.label,
-  });
-
-  final VoidCallback onPressed;
-  final IconData icon;
-  final String label;
+class _SheetPainter extends CustomPainter {
+  const _SheetPainter({required this.sheet, required this.edge});
+  final Color sheet;
+  final Color edge;
 
   @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      key: key,
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppDesign.overlayLight,
-        side: BorderSide(color: AppDesign.overlayLight.withValues(alpha: 0.4), width: 1.5),
-        backgroundColor: AppDesign.overlayLight.withValues(alpha: 0.1),
-        minimumSize: const Size(0, 48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  void paint(Canvas canvas, Size size) {
+    final band = parsePaperPath(
+      cutBandPath(
+        'onboarding',
+        width: size.width,
+        height: _OnboardingSheet._cut,
+        segments: math.max(8, (size.width / 28).round()),
       ),
-      icon: Icon(icon, size: 18),
-      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-    );
+      fillType: PathFillType.nonZero,
+    )..addRect(Rect.fromLTWH(0, _OnboardingSheet._cut - 0.5, size.width, size.height));
+    canvas.drawPath(band.shift(const Offset(0, -2)), Paint()..color = edge);
+    canvas.drawPath(band, Paint()..color = sheet);
   }
-}
 
-class _OnboardingSlideModel {
-  const _OnboardingSlideModel({
-    required this.backgroundImagePath,
-    required this.titleKey,
-    required this.descriptionKey,
-    required this.points,
-    required this.accentColor,
-    required this.chipLabelKey,
-  });
-
-  final String backgroundImagePath;
-  final String titleKey;
-  final String descriptionKey;
-  final List<String> points;
-  final Color accentColor;
-  final String chipLabelKey;
+  @override
+  bool shouldRepaint(_SheetPainter old) => old.sheet != sheet || old.edge != edge;
 }

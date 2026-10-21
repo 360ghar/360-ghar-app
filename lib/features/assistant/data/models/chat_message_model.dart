@@ -46,36 +46,47 @@ class ChatMessageModel {
     );
   }
 
+  /// A stored message (`ConversationMessageOut`): `id`, `role` and `created_at` always come;
+  /// `role` is `user`, `assistant` or `widget`. A widget row carries `widget_name` and
+  /// `widget_data`. Anything else is a contract break and throws a [FormatException].
   factory ChatMessageModel.fromJson(Map<String, dynamic> json) {
+    final id = json['id'];
+    final createdAt = json['created_at'];
+    if (id is! int || createdAt is! String) {
+      throw const FormatException('Message needs an integer id and a created_at string');
+    }
+    final content = json['content'];
+    if (content != null && content is! String) {
+      throw const FormatException('Message content is not a string');
+    }
     return ChatMessageModel(
-      id: json['id']?.toString() ?? '',
-      role: _parseRole(json['role'] as String?),
-      content: json['content'] as String? ?? '',
-      toolName: json['tool_name'] as String?,
-      toolArgs: json['tool_args'] as Map<String, dynamic>?,
-      toolResult: json['tool_result'] as Map<String, dynamic>?,
-      widgetName: json['widget_name'] as String?,
-      widgetData: json['widget_data'] as Map<String, dynamic>?,
-      timestamp: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : DateTime.now(),
+      id: '$id',
+      role: _parseRole(json['role']),
+      content: content as String? ?? '',
+      toolName: _asString(json['tool_name']),
+      toolArgs: _asMap(json['tool_args']),
+      toolResult: _asMap(json['tool_result']),
+      widgetName: _asString(json['widget_name']),
+      widgetData: _asMap(json['widget_data']),
+      timestamp: DateTime.parse(createdAt),
     );
   }
 
-  static ChatRole _parseRole(String? role) {
-    switch (role) {
-      case 'user':
-        return ChatRole.user;
-      case 'assistant':
-        return ChatRole.assistant;
-      case 'tool_call':
-        return ChatRole.toolCall;
-      case 'tool_result':
-        return ChatRole.toolResult;
-      case 'widget':
-        return ChatRole.widget;
-      default:
-        return ChatRole.assistant;
-    }
+  static String? _asString(dynamic value) {
+    if (value == null || value is String) return value as String?;
+    throw const FormatException('Message field is not a string');
   }
+
+  static Map<String, dynamic>? _asMap(dynamic value) {
+    if (value == null) return null;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    throw const FormatException('Message field is not an object');
+  }
+
+  static ChatRole _parseRole(Object? role) => switch (role) {
+    'user' => ChatRole.user,
+    'assistant' => ChatRole.assistant,
+    'widget' => ChatRole.widget,
+    _ => throw FormatException('Unknown message role: $role'),
+  };
 }

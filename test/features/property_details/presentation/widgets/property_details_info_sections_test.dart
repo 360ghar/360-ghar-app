@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/translations/app_translations.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_info_sections.dart';
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/google_fonts_test_helper.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 PropertyModel _buyProperty() {
   return const PropertyModel(
@@ -83,20 +81,10 @@ PropertyModel _pgProperty() {
 }
 
 void main() {
-  configureGoogleFontsForTests();
-
-  setUp(() => GetxTestBinding.init());
-  tearDown(() => GetxTestBinding.reset());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
   Future<void> pumpWidget(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: Scaffold(body: SingleChildScrollView(child: child)),
-      ),
-    );
+    await tester.pumpProviderApp(Scaffold(body: SingleChildScrollView(child: child)));
   }
 
   group('PropertyDetailsInfoSection', () {
@@ -150,11 +138,11 @@ void main() {
 
       expect(find.text('Pricing Details'), findsOneWidget);
       expect(find.text('Sale Price'), findsOneWidget);
-      expect(find.text('₹5000000'), findsOneWidget);
+      expect(find.text('₹50,00,000'), findsOneWidget);
       expect(find.text('Price per sq ft'), findsOneWidget);
-      expect(find.text('₹4000'), findsOneWidget);
+      expect(find.text('₹4,000'), findsOneWidget);
       expect(find.text('Maintenance'), findsOneWidget);
-      expect(find.text('₹2000'), findsOneWidget);
+      expect(find.text('₹2,000'), findsOneWidget);
     });
 
     testWidgets('renders monthly rent, security deposit, and maintenance for rent property', (
@@ -163,20 +151,20 @@ void main() {
       await pumpWidget(tester, PropertyDetailsPricingSection(property: _rentProperty()));
 
       expect(find.text('Monthly Rent'), findsOneWidget);
-      expect(find.text('₹30000'), findsOneWidget);
+      expect(find.text('₹30,000'), findsOneWidget);
       expect(find.text('Security Deposit'), findsOneWidget);
-      expect(find.text('₹60000'), findsOneWidget);
+      expect(find.text('₹60,000'), findsOneWidget);
       expect(find.text('Maintenance'), findsOneWidget);
-      expect(find.text('₹1500'), findsOneWidget);
+      expect(find.text('₹1,500'), findsOneWidget);
     });
 
     testWidgets('renders daily rate and security deposit for short stay property', (tester) async {
       await pumpWidget(tester, PropertyDetailsPricingSection(property: _shortStayProperty()));
 
       expect(find.text('Daily Rate'), findsOneWidget);
-      expect(find.text('₹2000'), findsOneWidget);
+      expect(find.text('₹2,000'), findsOneWidget);
       expect(find.text('Security Deposit'), findsOneWidget);
-      expect(find.text('₹5000'), findsOneWidget);
+      expect(find.text('₹5,000'), findsOneWidget);
     });
 
     testWidgets('uses basePrice as monthly rent when monthlyRent is null', (tester) async {
@@ -194,13 +182,13 @@ void main() {
       await pumpWidget(tester, PropertyDetailsPricingSection(property: property));
 
       expect(find.text('Monthly Rent'), findsOneWidget);
-      expect(find.text('₹25000'), findsOneWidget);
+      expect(find.text('₹25,000'), findsOneWidget);
     });
 
-    testWidgets('uses basePrice as daily rate when dailyRate is null', (tester) async {
+    testWidgets('shows no daily rate row when short stay has no rate', (tester) async {
       final property = const PropertyModel(
         id: 7,
-        title: 'Short Stay Fallback',
+        title: 'Short Stay No Rate',
         basePrice: 3000,
         propertyType: PropertyType.villa,
         purpose: PropertyPurpose.shortStay,
@@ -211,8 +199,8 @@ void main() {
       );
       await pumpWidget(tester, PropertyDetailsPricingSection(property: property));
 
-      expect(find.text('Daily Rate'), findsOneWidget);
-      expect(find.text('₹3000'), findsOneWidget);
+      expect(find.text('Daily Rate'), findsNothing);
+      expect(find.text('₹3,000'), findsNothing);
     });
   });
 
@@ -244,20 +232,55 @@ void main() {
     });
   });
 
-  group('buildInfoRow', () {
-    testWidgets('renders label and value', (tester) async {
+  group('PropertyDetailsAgentRow', () {
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    final launched = <String>[];
+    setUp(() {
+      launched.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        (call) async {
+          if (call.method == 'launch' || call.method == 'launchUrl') {
+            final url = (call.arguments as Map?)?['url']?.toString();
+            if (url != null) launched.add(url);
+          }
+          return true;
+        },
+      );
+    });
+    tearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+
+    testWidgets('shows the agent and calls the number the backend sent', (tester) async {
       await pumpWidget(
         tester,
-        Material(
-          child: Directionality(
-            textDirection: TextDirection.ltr,
-            child: buildInfoRow('Label', 'Value'),
-          ),
+        const PropertyDetailsAgentRow(
+          agent: PropertyAgent(id: 7, name: 'Ravi Kumar', contactNumber: '+91 98100 00000'),
         ),
       );
 
-      expect(find.text('Label'), findsOneWidget);
-      expect(find.text('Value'), findsOneWidget);
+      expect(find.text('Listed by'), findsOneWidget);
+      expect(find.text('Ravi Kumar'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('qa.property_details.agent_call')));
+      await tester.pump();
+      expect(launched, hasLength(1));
+      expect(launched.single, startsWith('tel:'));
+      expect(launched.single, contains('98100'));
+    });
+
+    testWidgets('hides Call when the backend masks the number', (tester) async {
+      for (final number in [null, '', '  ']) {
+        await pumpWidget(
+          tester,
+          PropertyDetailsAgentRow(
+            agent: PropertyAgent(id: 7, name: 'Ravi Kumar', contactNumber: number),
+          ),
+        );
+        expect(find.text('Ravi Kumar'), findsOneWidget);
+        expect(find.byKey(const ValueKey('qa.property_details.agent_call')), findsNothing);
+      }
     });
   });
 }

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
 import 'package:ghar360/features/assistant/presentation/widgets/chat_message_bubble.dart';
+import '../../../../helpers/provider_test_app.dart';
 
 ChatMessageModel _userMessage({String content = 'Hello there'}) {
   return ChatMessageModel(
@@ -36,11 +37,9 @@ ChatMessageModel _streamingMessage({String content = ''}) {
 
 void main() {
   Future<void> pumpBubble(WidgetTester tester, Widget child) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(child: SingleChildScrollView(child: child)),
-        ),
+    await tester.pumpProviderApp(
+      Scaffold(
+        body: Center(child: SingleChildScrollView(child: child)),
       ),
     );
   }

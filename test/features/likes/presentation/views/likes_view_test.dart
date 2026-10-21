@@ -1,1011 +1,232 @@
-// test/features/likes/presentation/views/likes_view_test.dart
-//
-// Widget + controller tests for [LikesView] and [LikesController].
-// Covers:
-// - Rendering the scaffold, app bar, and segmented control
-// - Loading skeleton state
-// - Error state (generic + network)
-// - Empty state (liked / passed / search-empty)
-// - Property grid with cards
-// - Segment switching via tap
-// - Refresh progress indicator
-// - Search filter badge
-// - Favorite toggle calls removeFromLikes / moveToLikes
-// - Controller-level state transitions
-
 import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:ghar360/core/controllers/location_controller.dart';
-import 'package:ghar360/core/controllers/page_state_service.dart';
-import 'package:ghar360/core/data/models/page_state_model.dart';
-import 'package:ghar360/core/data/models/property_model.dart';
-import 'package:ghar360/core/data/models/unified_filter_model.dart';
+
+import 'package:ghar360/core/data/models/likes_segment.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
-import 'package:ghar360/features/dashboard/presentation/controllers/dashboard_controller.dart';
+import 'package:ghar360/core/widgets/common/property_list_card.dart';
+import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
+import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
 import 'package:ghar360/features/likes/presentation/controllers/likes_controller.dart';
 import 'package:ghar360/features/likes/presentation/views/likes_view.dart';
-import 'package:mocktail/mocktail.dart';
-
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/mocks.dart';
-import '../../../../helpers/pump_app.dart';
-
-// ---------------------------------------------------------------------------
-// Stub PageStateService — provides reactive fields and overrides the methods
-// that UnifiedTopBar / LocationSelector / LikesView call during build.
-// ---------------------------------------------------------------------------
-
-class _MockPageStateService extends GetxServiceMock implements PageStateService {
-  @override
-  final Rx<PageStateModel> discoverState = PageStateModel.initial(PageType.discover).obs;
-  @override
-  final Rx<PageStateModel> likesState = PageStateModel.initial(PageType.likes).obs;
-  @override
-  final Rx<PageStateModel> exploreState = PageStateModel.initial(PageType.explore).obs;
-  @override
-  final Rx<PageType> currentPageType = PageType.discover.obs;
-
-  // Reactive backing for isSearchVisible / isPageRefreshing so Obx widgets
-  // in UnifiedTopBar observe a real reactive and don't throw.
-  final RxBool _searchVisible = false.obs;
-  final RxBool _pageRefreshing = false.obs;
-
-  final Map<PageType, TextEditingController> _searchControllers = {};
-
-  @override
-  bool isSearchVisible(PageType pageType) => _searchVisible.value;
-
-  @override
-  bool isPageRefreshing(PageType pageType) => _pageRefreshing.value;
-
-  @override
-  void toggleSearch(PageType pageType) {
-    _searchVisible.value = !_searchVisible.value;
-  }
-
-  @override
-  TextEditingController getOrCreateSearchController(PageType pageType, {String? seedText}) {
-    return _searchControllers.putIfAbsent(pageType, () => TextEditingController());
-  }
-
-  @override
-  PageStateModel getStateForPage(PageType pageType) {
-    switch (pageType) {
-      case PageType.explore:
-        return exploreState.value;
-      case PageType.discover:
-        return discoverState.value;
-      case PageType.likes:
-        return likesState.value;
-    }
-  }
-
-  @override
-  String get currentLikesSegment =>
-      likesState.value.getAdditionalData<String>('currentSegment') ?? 'liked';
-
-  @override
-  Future<void> loadPageData(
-    PageType pageType, {
-    bool forceRefresh = false,
-    bool backgroundRefresh = false,
-  }) async {}
-
-  @override
-  Future<void> loadMorePageData(PageType pageType) async {}
-
-  @override
-  Future<void> updatePageSearch(PageType pageType, String query) async {}
-}
-
-// ---------------------------------------------------------------------------
-// Stub LikesController — provides reactive backing fields so Obx widgets in
-// LikesView can track changes. Methods are no-op or record calls for verification.
-// ---------------------------------------------------------------------------
-
-class _StubLikesController extends GetxServiceMock implements LikesController {
-  @override
-  final Rx<LikesSegment> currentSegment = LikesSegment.liked.obs;
-  @override
-  final RxString searchQuery = ''.obs;
-
-  final RxList<PropertyModel> _properties = <PropertyModel>[].obs;
-  final RxBool _isLoading = false.obs;
-  final RxnString _error = RxnString();
-  final RxBool _hasMore = false.obs;
-  final RxBool _isLoadingMore = false.obs;
-
-  bool removeFromLikesCalled = false;
-  bool moveToLikesCalled = false;
-  bool refreshCalled = false;
-  bool loadMoreCalled = false;
-  bool retryCalled = false;
-  bool clearSearchCalled = false;
-
-  @override
-  List<PropertyModel> get currentProperties => _properties;
-
-  @override
-  bool get isCurrentLoading => _isLoading.value;
-
-  @override
-  bool get hasCurrentError => _error.value != null;
-
-  @override
-  String? get currentError => _error.value;
-
-  @override
-  bool get isCurrentEmpty => !_isLoading.value && _properties.isEmpty && _error.value == null;
-
-  @override
-  bool get currentHasMore => _hasMore.value;
-
-  @override
-  bool get isCurrentLoadingMore => _isLoadingMore.value;
-
-  @override
-  bool get hasCurrentProperties => _properties.isNotEmpty;
-
-  @override
-  bool get hasSearchQuery => searchQuery.value.isNotEmpty;
-
-  @override
-  String get emptyStateMessage => 'No properties yet';
-
-  @override
-  void updateSearchQuery(String query) {
-    searchQuery.value = query;
-  }
-
-  @override
-  void switchToSegment(LikesSegment segment) {
-    currentSegment.value = segment;
-  }
-
-  @override
-  void clearSearch() {
-    clearSearchCalled = true;
-    searchQuery.value = '';
-  }
-
-  @override
-  Future<void> refreshCurrentSegment() async {
-    refreshCalled = true;
-  }
-
-  @override
-  Future<void> loadMoreCurrentSegment() async {
-    loadMoreCalled = true;
-  }
-
-  @override
-  Future<void> removeFromLikes(PropertyModel property) async {
-    removeFromLikesCalled = true;
-    _properties.removeWhere((p) => p.id == property.id);
-  }
-
-  @override
-  Future<void> moveToLikes(PropertyModel property) async {
-    moveToLikesCalled = true;
-  }
-
-  @override
-  void retryCurrentSegment() {
-    retryCalled = true;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Stub DashboardController — for the empty-state "explore properties" action.
-// ---------------------------------------------------------------------------
-
-class _StubDashboardController extends GetxServiceMock implements DashboardController {
-  @override
-  final RxInt currentIndex = 2.obs;
-  @override
-  final Set<int> visitedTabs = <int>{};
-
-  @override
-  void changeTab(int index) {
-    if (currentIndex.value == index) return;
-    visitedTabs.add(index);
-    currentIndex.value = index;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+import 'package:ghar360/features/properties/application/property_queries.dart';
+import 'package:ghar360/features/properties/application/swipe_history.dart';
+import '../../../../helpers/property_query_test_support.dart';
+import '../../../../helpers/property_screen_harness.dart';
 
 void main() {
-  late _MockPageStateService pageStateService;
-  late _StubLikesController likesController;
-  late _StubDashboardController dashboardController;
-  late MockLocationController locationController;
-
-  setUp(() {
-    GetxTestBinding.init();
-
-    pageStateService = _MockPageStateService();
-    likesController = _StubLikesController();
-    dashboardController = _StubDashboardController();
-    locationController = MockLocationController();
-
-    // Stub LocationController reactive fields used by LocationSelector
-    when(() => locationController.currentPosition).thenReturn(Rxn());
-    when(() => locationController.currentAddress).thenReturn(''.obs);
-    when(() => locationController.hasLocation).thenReturn(false);
-    when(() => locationController.locationStatusText).thenReturn('location_not_available');
-
-    GetxTestBinding.bind()
-      ..register<PageStateService>(pageStateService)
-      ..register<LikesController>(likesController)
-      ..register<DashboardController>(dashboardController)
-      ..register<LocationController>(locationController);
-
-    // Suppress RenderFlex overflow errors that can occur in constrained test
-    // environments (the segmented control / badges may overflow at small widths).
-    FlutterError.onError = (FlutterErrorDetails details) {
-      final summary = details.exception.toString();
-      if (summary.contains('RenderFlex overflowed')) return;
-      FlutterError.presentError(details);
-    };
-  });
-
-  tearDown(() {
-    FlutterError.onError = FlutterError.presentError;
-    GetxTestBinding.reset();
-  });
-
-  // Helper: pump the LikesView without calling pumpAndSettle (shimmer skeletons
-  // run infinite animations that would time out pumpAndSettle).
-  Future<void> pumpLikesView(WidgetTester tester) async {
-    await tester.pumpApp(const LikesView());
-    // A single pump lets the first frame render without waiting for animations.
-    await tester.pump();
+  Future<PropertyScreenHarness> setup(
+    WidgetTester tester, {
+    PropertyPageState? liked,
+    PropertyPageState? passed,
+    Size size = const Size(390, 844),
+    double scale = 1,
+    bool dark = false,
+    Locale locale = const Locale('en', 'US'),
+  }) async {
+    final data = (await tester.runAsync(PropertyQueryHarness.create))!;
+    final h = PropertyScreenHarness(
+      data,
+      pages: {PropertyFeed.liked: ?liked, PropertyFeed.passed: ?passed},
+    );
+    await h.pump(tester, const LikesView(), size: size, scale: scale, dark: dark, locale: locale);
+    return h;
   }
 
-  // =========================================================================
-  // Widget rendering tests
-  // =========================================================================
-
-  group('LikesView rendering', () {
-    testWidgets('renders scaffold with semantics label and app bar', (tester) async {
-      await pumpLikesView(tester);
-
-      expect(find.byType(LikesView), findsOneWidget);
-      expect(find.byType(Scaffold), findsOneWidget);
-      // The LikesTopBar is an AppBar
-      expect(find.byType(AppBar), findsOneWidget);
-    });
-
-    testWidgets('renders segmented control with liked and passed tabs', (tester) async {
-      await pumpLikesView(tester);
-
-      expect(find.bySemanticsIdentifier('qa.likes.tab.liked'), findsOneWidget);
-      expect(find.bySemanticsIdentifier('qa.likes.tab.passed'), findsOneWidget);
-    });
-
-    testWidgets('liked tab is selected by default', (tester) async {
-      await pumpLikesView(tester);
-
-      // The liked segment identifier should be present
-      expect(find.bySemanticsIdentifier('qa.likes.tab.liked'), findsOneWidget);
-    });
+  PropertyPageState content([List<int> ids = const [1, 2]]) =>
+      PropertyPageState(phase: PropertyLoadPhase.content, items: ids.map(queryProperty).toList());
+  testWidgets('Saved exposes Liked Passed and always-visible search', (tester) async {
+    final h = await setup(tester);
+    expect(find.text('Liked'), findsWidgets);
+    expect(find.text('Passed'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('No Liked Properties'), findsOneWidget);
+    await tester.tap(find.text('Passed'));
+    await tester.pump();
+    expect(h.container.read(likesProvider), LikesSegment.passed);
+    expect(find.text('No Passed Properties'), findsOneWidget);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Loading state
-  // =========================================================================
-
-  group('LikesView loading state', () {
-    testWidgets('shows skeleton loading grid when isCurrentLoading is true', (tester) async {
-      likesController._isLoading.value = true;
-
-      await pumpLikesView(tester);
-
-      // The AnimatedSwitcher child should be the loading skeleton (KeyedSubtree
-      // with ValueKey('loading'))
-      expect(find.byKey(const ValueKey('loading')), findsOneWidget);
+  for (final phase in [PropertyLoadPhase.idle, PropertyLoadPhase.loading]) {
+    testWidgets('$phase shows skeleton before an empty result', (tester) async {
+      final h = await setup(tester, liked: PropertyPageState(phase: phase));
+      expect(find.text('No Liked Properties'), findsNothing);
+      expect(find.byType(PropertyListCard), findsNothing);
+      expect(tester.takeException(), isNull);
+      await h.close(tester);
     });
-
-    testWidgets('does not show loading skeleton when not loading', (tester) async {
-      likesController._isLoading.value = false;
-      likesController._properties.value = [testPropertyModel(id: 1)];
-
-      await pumpLikesView(tester);
-
-      expect(find.byKey(const ValueKey('loading')), findsNothing);
-    });
+  }
+  testWidgets('initial failure shows safe retry and never an empty success', (tester) async {
+    final h = await setup(
+      tester,
+      liked: PropertyPageState(
+        phase: PropertyLoadPhase.failure,
+        error: NetworkException('secret-diagnostic'),
+      ),
+    );
+    expect(find.text('No Liked Properties'), findsNothing);
+    expect(find.textContaining('secret-diagnostic'), findsNothing);
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(h.query(PropertyFeed.liked).loads, 1);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Error state
-  // =========================================================================
-
-  group('LikesView error state', () {
-    testWidgets('shows error state when hasCurrentError is true', (tester) async {
-      likesController._error.value = 'Something went wrong';
-
-      await pumpLikesView(tester);
-
-      expect(find.byKey(const ValueKey('error')), findsOneWidget);
-    });
-
-    testWidgets('does not show error state when no error', (tester) async {
-      likesController._properties.value = [testPropertyModel(id: 1)];
-
-      await pumpLikesView(tester);
-
-      expect(find.byKey(const ValueKey('error')), findsNothing);
-    });
+  testWidgets('content renders both properties and switches segments without losing rows', (
+    tester,
+  ) async {
+    final h = await setup(tester, liked: content(), passed: content([3]));
+    expect(find.byType(PropertyListCard), findsNWidgets(2));
+    // The open tab counts its rows; a tab not opened yet has no number.
+    expect(find.text('Liked 2'), findsOneWidget);
+    expect(find.text('Passed'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qa.likes.tab.passed')));
+    await tester.pump();
+    expect(find.text('Property 3'), findsOneWidget);
+    expect(find.text('Passed 1'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qa.likes.tab.liked')));
+    await tester.pump();
+    expect(find.text('Property 1'), findsOneWidget);
+    expect(find.text('Property 2'), findsOneWidget);
+    expect(find.text('Liked 2'), findsOneWidget);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Empty state
-  // =========================================================================
-
-  group('LikesView empty state', () {
-    testWidgets('shows empty state for liked segment when no properties', (tester) async {
-      likesController.currentSegment.value = LikesSegment.liked;
-
-      await pumpLikesView(tester);
-
-      expect(find.byKey(const ValueKey('empty')), findsOneWidget);
-    });
-
-    testWidgets('shows empty state for passed segment when no properties', (tester) async {
-      likesController.currentSegment.value = LikesSegment.passed;
-
-      await pumpLikesView(tester);
-
-      expect(find.byKey(const ValueKey('empty')), findsOneWidget);
-    });
-
-    testWidgets('does not show empty state when properties exist', (tester) async {
-      likesController._properties.value = [testPropertyModel(id: 1)];
-
-      await pumpLikesView(tester);
-
-      expect(find.byKey(const ValueKey('empty')), findsNothing);
-    });
+  testWidgets('the facade lights one window per liked home', (tester) async {
+    final h = await setup(tester, liked: content([1, 2, 3]));
+    final header = tester.widget<SceneHeaderSliver>(find.byType(SceneHeaderSliver));
+    expect(header.scene.litCount, 3);
+    expect(find.bySemanticsIdentifier('qa.likes.title'), findsOneWidget);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Property grid
-  // =========================================================================
-
-  group('LikesView property grid', () {
-    testWidgets('shows grid key when properties are loaded', (tester) async {
-      likesController._properties.value = [testPropertyModel(id: 1), testPropertyModel(id: 2)];
-
-      await pumpLikesView(tester);
-
-      expect(find.byKey(const ValueKey('grid')), findsOneWidget);
-    });
-
-    testWidgets('renders a card for each property', (tester) async {
-      likesController._properties.value = [testPropertyModel(id: 1), testPropertyModel(id: 2)];
-
-      await pumpLikesView(tester);
-
-      // Each property card has a key 'qa.likes.card.<id>'
-      expect(find.byKey(const ValueKey('qa.likes.card.1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('qa.likes.card.2')), findsOneWidget);
-    });
+  testWidgets('favorite toggle sends the current property and keeps tap state safe', (
+    tester,
+  ) async {
+    final h = await setup(tester, liked: content([1]));
+    final card = tester.widget<PropertyListCard>(find.byType(PropertyListCard));
+    card.onFavouriteToggle();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+    expect(h.data.swipes.mutations, [(id: 1, liked: true)]);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Segment switching
-  // =========================================================================
-
-  group('LikesView segment switching', () {
-    testWidgets('tapping passed segment calls switchToSegment', (tester) async {
-      await pumpLikesView(tester);
-
-      // Tap the "passed" tab (semantics identifier)
-      await tester.tap(find.bySemanticsIdentifier('qa.likes.tab.passed'));
-      await tester.pump();
-
-      expect(likesController.currentSegment.value, LikesSegment.passed);
-    });
-
-    testWidgets('tapping liked segment calls switchToSegment', (tester) async {
-      // Start on passed
-      likesController.currentSegment.value = LikesSegment.passed;
-
-      await pumpLikesView(tester);
-
-      await tester.tap(find.bySemanticsIdentifier('qa.likes.tab.liked'));
-      await tester.pump();
-
-      expect(likesController.currentSegment.value, LikesSegment.liked);
-    });
+  testWidgets('property card routes to the numeric details URL', (tester) async {
+    final h = await setup(tester, liked: content([1]));
+    await tester.tap(find.text('Property 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Details 1'), findsOneWidget);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Refresh indicator
-  // =========================================================================
-
-  group('LikesView refresh indicator', () {
-    testWidgets('shows LinearProgressIndicator when page state is refreshing', (tester) async {
-      // Set the likes page state to refreshing
-      pageStateService.likesState.value = pageStateService.likesState.value.copyWith(
-        isRefreshing: true,
-      );
-
-      await pumpLikesView(tester);
-
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
-    });
-
-    testWidgets('hides LinearProgressIndicator when not refreshing', (tester) async {
-      pageStateService.likesState.value = pageStateService.likesState.value.copyWith(
-        isRefreshing: false,
-      );
-
-      await pumpLikesView(tester);
-
-      expect(find.byType(LinearProgressIndicator), findsNothing);
-    });
+  for (final pagination in [true, false]) {
+    testWidgets(
+      '${pagination ? 'pagination' : 'refresh'} error retains rows and retries in place',
+      (tester) async {
+        final h = await setup(
+          tester,
+          liked: content().copyWith(
+            error: pagination ? null : NetworkException('offline'),
+            paginationError: pagination ? NetworkException('offline') : null,
+          ),
+        );
+        expect(find.byType(PropertyListCard), findsNWidgets(2));
+        final before = h.query(PropertyFeed.liked).more;
+        await tester.tap(find.byKey(const ValueKey('qa.likes.content.retry')));
+        await tester.pump();
+        expect(
+          pagination ? h.query(PropertyFeed.liked).retried : h.query(PropertyFeed.liked).refreshed,
+          isTrue,
+        );
+        expect(
+          pagination
+              ? h.query(PropertyFeed.liked).more - before
+              : h.query(PropertyFeed.liked).loads,
+          1,
+        );
+        await h.close(tester);
+      },
+    );
+  }
+  testWidgets('cached stale content is labeled while it refreshes', (tester) async {
+    final h = await setup(
+      tester,
+      liked: content().copyWith(stale: true, phase: PropertyLoadPhase.refreshing),
+    );
+    expect(find.textContaining('Showing saved properties'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(PropertyListCard), findsNWidgets(2));
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Search filter badge
-  // =========================================================================
-
-  group('LikesView search filter', () {
-    testWidgets('shows grid when no search query', (tester) async {
-      likesController._properties.value = [testPropertyModel(id: 1)];
-
-      await pumpLikesView(tester);
-
-      expect(find.byKey(const ValueKey('grid')), findsOneWidget);
-    });
+  testWidgets('mutation failure uses the shared notification and retains content', (tester) async {
+    final h = await setup(tester, liked: content());
+    h.history.emit(
+      SwipeHistoryState(hydrated: true, failures: {1: ServerException('raw-response')}),
+    );
+    await tester.pump();
+    expect(find.textContaining('raw-response'), findsNothing);
+    expect(find.byType(PropertyListCard), findsNWidgets(2));
+    expect(find.text('Action Failed'), findsOneWidget);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Favorite toggle
-  // =========================================================================
-
-  group('LikesView favorite toggle', () {
-    testWidgets('tapping favorite on a liked property calls removeFromLikes', (tester) async {
-      likesController.currentSegment.value = LikesSegment.liked;
-      likesController._properties.value = [testPropertyModel(id: 1)];
-
-      await pumpLikesView(tester);
-
-      // The favorite toggle is an AnimatedFavoriteIcon (GestureDetector).
-      // When isFavourite=true (liked segment), the icon is Icons.favorite (filled).
-      final card = find.byKey(const ValueKey('qa.likes.card.1'));
-      expect(card, findsOneWidget);
-
-      final favoriteIcon = find.descendant(of: card, matching: find.byIcon(Icons.favorite));
-      expect(favoriteIcon, findsOneWidget);
-
-      await tester.tap(favoriteIcon);
-      await tester.pump();
-
-      expect(likesController.removeFromLikesCalled, isTrue);
-    });
-
-    testWidgets('tapping favorite on a passed property calls moveToLikes', (tester) async {
-      likesController.currentSegment.value = LikesSegment.passed;
-      likesController._properties.value = [testPropertyModel(id: 1)];
-
-      await pumpLikesView(tester);
-
-      final card = find.byKey(const ValueKey('qa.likes.card.1'));
-      expect(card, findsOneWidget);
-
-      final favoriteIcon = find.descendant(of: card, matching: find.byIcon(Icons.favorite_border));
-      expect(favoriteIcon, findsOneWidget);
-
-      await tester.tap(favoriteIcon);
-      await tester.pump();
-
-      expect(likesController.moveToLikesCalled, isTrue);
-    });
+  testWidgets('empty search offers clear and preserves the active segment', (tester) async {
+    final h = await setup(tester);
+    await tester.enterText(find.byType(TextField), 'villa');
+    await tester.pump();
+    expect(find.textContaining('villa'), findsWidgets);
+    expect(h.container.read(likesProvider), LikesSegment.liked);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Controller-level tests (preserved from original)
-  // =========================================================================
-
-  group('LikesController state', () {
-    test('initial segment is liked', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentSegment.value, LikesSegment.liked);
+  for (final dark in [false, true]) {
+    for (final size in [const Size(320, 740), const Size(1024, 768)]) {
+      testWidgets('Saved ${size.width}px Hindi2x dark=$dark has no overflow', (tester) async {
+        final h = await setup(
+          tester,
+          liked: content(),
+          size: size,
+          scale: 2,
+          dark: dark,
+          locale: const Locale('hi', 'IN'),
+        );
+        expect(find.byType(PropertyListCard), findsWidgets);
+        expect(tester.takeException(), isNull);
+        await h.close(tester);
+      });
+    }
+  }
+  for (final liked in [true, false]) {
+    final name = liked ? 'liked' : 'passed';
+    testWidgets('empty $name shows its own scene and one action to Discover', (tester) async {
+      final h = await setup(tester);
+      if (!liked) {
+        await tester.tap(find.text('Passed'));
+        await tester.pump();
+      }
+      expect(tester.widget<PaperVignette>(find.byType(PaperVignette)).seed, name);
+      expect(find.byKey(const ValueKey('qa.state.empty.action')), findsOneWidget);
+      expect(find.byKey(const ValueKey('qa.state.empty.secondary')), findsNothing);
+      expect(find.text('Go to Discover'), findsOneWidget);
+      await tester.tap(find.text('Go to Discover'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discover destination'), findsOneWidget);
+      await h.close(tester);
     });
-
-    test('switchToSegment changes to passed', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      controller.switchToSegment(LikesSegment.passed);
-
-      expect(controller.currentSegment.value, LikesSegment.passed);
-    });
-
-    test('switchToSegment no-op for same segment', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      controller.switchToSegment(LikesSegment.liked);
-
-      expect(controller.currentSegment.value, LikesSegment.liked);
-    });
-
-    test('currentProperties returns page state properties', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentProperties, isEmpty);
-    });
-
-    test('page state has liked segment data', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        additionalData: {'currentSegment': 'liked'},
-      );
-
-      expect(
-        pageStateService.likesState.value.getAdditionalData<String>('currentSegment'),
-        'liked',
-      );
-    });
-
-    test('page state has passed segment data', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        additionalData: {'currentSegment': 'passed'},
-      );
-
-      expect(
-        pageStateService.likesState.value.getAdditionalData<String>('currentSegment'),
-        'passed',
-      );
-    });
+  }
+  testWidgets('a failed first load uses the saved error scene', (tester) async {
+    final h = await setup(
+      tester,
+      liked: PropertyPageState(phase: PropertyLoadPhase.failure, error: ServerException('x')),
+    );
+    expect(tester.widget<PaperVignette>(find.byType(PaperVignette)).seed, 'saved');
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Controller getters
-  // =========================================================================
-
-  group('LikesController getters', () {
-    test('currentState returns loading when page state is loading', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        isLoading: true,
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentState, LikesState.loading);
-    });
-
-    test('currentState returns error when page state has error', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [],
-        error: ServerException('test error'),
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentState, LikesState.error);
-    });
-
-    test('currentState returns empty when no properties and not loading', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentState, LikesState.empty);
-    });
-
-    test('currentState returns loaded when properties exist', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 1)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentState, LikesState.loaded);
-    });
-
-    test('currentState returns loadingMore when isLoadingMore is true', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        isLoadingMore: true,
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentState, LikesState.loadingMore);
-    });
-
-    test('currentError returns error string from page state', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [],
-        error: ServerException('err msg'),
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentError, isNotNull);
-      expect(controller.currentError, contains('err msg'));
-    });
-
-    test('currentHasMore delegates to page state', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        hasMore: true,
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentHasMore, isTrue);
-    });
-
-    test('isCurrentLoading delegates to page state', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        isLoading: true,
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isCurrentLoading, isTrue);
-    });
-
-    test('isCurrentEmpty is true when not loading, empty, no error', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isCurrentEmpty, isTrue);
-    });
-
-    test('isCurrentEmpty is false when loading', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        isLoading: true,
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isCurrentEmpty, isFalse);
-    });
-
-    test('isCurrentEmpty is false when properties exist', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 1)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isCurrentEmpty, isFalse);
-    });
-
-    test('hasCurrentError is true when page state has error', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [],
-        error: ServerException('err'),
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.hasCurrentError, isTrue);
-    });
-
-    test('hasCurrentProperties is true when properties exist', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 1)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.hasCurrentProperties, isTrue);
-    });
-
-    test('hasSearchQuery is true when searchQuery is non-empty', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.searchQuery.value = 'villa';
-
-      expect(controller.hasSearchQuery, isTrue);
-    });
-
-    test('hasSearchQuery is false when searchQuery is empty', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.hasSearchQuery, isFalse);
-    });
-
-    test('isCurrentLoadingMore delegates to page state', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-        isLoadingMore: true,
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isCurrentLoadingMore, isTrue);
-    });
-
-    test('isCurrentLoaded is true when loaded, not empty, no error', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 1)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isCurrentLoaded, isTrue);
-    });
+  testWidgets('rows are flat photo-beside-words rows', (tester) async {
+    final h = await setup(tester, liked: content());
+    final cards = tester.widgetList<PropertyListCard>(find.byType(PropertyListCard));
+    expect(cards.every((card) => card.row), isTrue);
+    await h.close(tester);
   });
-
-  // =========================================================================
-  // Controller search and segment
-  // =========================================================================
-
-  group('LikesController search', () {
-    test('updateSearchQuery sets searchQuery reactively', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      controller.updateSearchQuery('apartment');
-
-      expect(controller.searchQuery.value, 'apartment');
-    });
-
-    test('clearSearch resets searchQuery', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.searchQuery.value = 'villa';
-
-      controller.clearSearch();
-
-      expect(controller.searchQuery.value, '');
-    });
-  });
-
-  group('LikesController retry', () {
-    test('retryCurrentSegment calls loadPageData for liked segment', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      // retryCurrentSegment delegates to _pageStateService.loadPageData
-      // which is not stubbed on the mock — it will throw, but the call is made.
-      // We just verify it doesn't crash on the segment check.
-      controller.currentSegment.value = LikesSegment.liked;
-      expect(() => controller.retryCurrentSegment(), returnsNormally);
-    });
-
-    test('retryCurrentSegment for passed segment', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.currentSegment.value = LikesSegment.passed;
-
-      expect(() => controller.retryCurrentSegment(), returnsNormally);
-    });
-  });
-
-  group('LikesController refresh', () {
-    test('refreshCurrentSegment calls refreshLiked for liked segment', () async {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.currentSegment.value = LikesSegment.liked;
-
-      await controller.refreshCurrentSegment();
-      // No exception thrown — success
-    });
-
-    test('refreshCurrentSegment calls refreshPassed for passed segment', () async {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.currentSegment.value = LikesSegment.passed;
-
-      await controller.refreshCurrentSegment();
-    });
-  });
-
-  group('LikesController isFavourite', () {
-    test('isFavourite returns true when property is in likes list', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 42)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isFavourite(42), isTrue);
-    });
-
-    test('isFavourite returns false when property is not in likes list', () {
-      pageStateService.likesState.value = const PageStateModel(
-        pageType: PageType.likes,
-        filters: UnifiedFilterModel(),
-        properties: [],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isFavourite(99), isFalse);
-    });
-
-    test('isFavourite handles string property id', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 42)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.isFavourite('42'), isTrue);
-    });
-  });
-
-  group('LikesController count text', () {
-    test('currentCountText returns property count for single property', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 1)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentCountText, contains('1'));
-    });
-
-    test('currentCountText returns properties count for multiple', () {
-      pageStateService.likesState.value = PageStateModel(
-        pageType: PageType.likes,
-        filters: const UnifiedFilterModel(),
-        properties: [testPropertyModel(id: 1), testPropertyModel(id: 2)],
-      );
-
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-
-      expect(controller.currentCountText, contains('2'));
-    });
-  });
-
-  group('LikesController segment title', () {
-    test('currentSegmentTitle returns liked_properties for liked segment', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.currentSegment.value = LikesSegment.liked;
-
-      expect(controller.currentSegmentTitle, 'liked_properties');
-    });
-
-    test('currentSegmentTitle returns passed_properties for passed segment', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.currentSegment.value = LikesSegment.passed;
-
-      expect(controller.currentSegmentTitle, 'passed_properties');
-    });
-  });
-
-  group('LikesController emptyStateMessage', () {
-    test('returns search message when searchQuery is non-empty', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.searchQuery.value = 'test';
-
-      expect(controller.emptyStateMessage, 'no_properties_match_your_search');
-    });
-
-    test('returns liked message for liked segment', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.currentSegment.value = LikesSegment.liked;
-
-      expect(controller.emptyStateMessage, contains('no_liked_properties'));
-    });
-
-    test('returns passed message for passed segment', () {
-      final controller = LikesController();
-      Get.put<LikesController>(controller);
-      controller.currentSegment.value = LikesSegment.passed;
-
-      expect(controller.emptyStateMessage, contains('no_passed_properties'));
-    });
+  testWidgets('the next page loads under the kept rows', (tester) async {
+    final h = await setup(tester, liked: content().copyWith(phase: PropertyLoadPhase.paginating));
+    expect(find.byType(PropertyListCard), findsNWidgets(2));
+    expect(find.text('Loading more properties...'), findsOneWidget);
+    expect(find.byKey(const ValueKey('qa.likes.content.retry')), findsNothing);
+    await h.close(tester);
   });
 }

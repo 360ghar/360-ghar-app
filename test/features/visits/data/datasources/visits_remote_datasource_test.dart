@@ -3,10 +3,13 @@ import 'package:ghar360/core/data/models/agent_model.dart';
 import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/network/api_client.dart';
 import 'package:ghar360/core/network/api_paths.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/visits/data/datasources/visits_remote_datasource.dart';
 import 'package:mocktail/mocktail.dart';
 
-import '../../../../helpers/mocks.dart';
+import '../../../../helpers/api_fixtures.dart';
+
+class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
   late MockApiClient apiClient;
@@ -17,618 +20,458 @@ void main() {
     datasource = VisitsRemoteDatasource(apiClient);
   });
 
-  /// Builds a minimal visit JSON map matching the backend wire format.
-  Map<String, dynamic> visitJson({
-    int id = 1,
-    int propertyId = 100,
-    int userId = 50,
-    String status = 'requested',
-  }) {
-    return {
-      'id': id,
-      'property_id': propertyId,
-      'user_id': userId,
-      'status': status,
-      'scheduled_date': '2025-06-01T10:00:00.000Z',
-      'created_at': '2025-01-15T10:00:00.000Z',
-    };
+  final visits = asObject(apiFixture('visits'));
+  Map<String, dynamic> visit([Map<String, dynamic> overrides = const {}]) => {
+    ...asObject(visits['created']),
+    ...overrides,
+  };
+  Map<String, dynamic> page({
+    List<Map<String, dynamic>>? items,
+    bool hasMore = false,
+    String? nextCursor,
+  }) => {
+    'items': items ?? [visit()],
+    'next_cursor': nextCursor,
+    'has_more': hasMore,
+    'limit': 50,
+    'total': null,
+  };
+  Map<String, dynamic> agent([Map<String, dynamic> overrides = const {}]) => {
+    ...asObject(apiFixture('agents')['assigned']),
+    ...overrides,
+  };
+
+  void stubGet(Object? body) {
+    when(
+      () => apiClient.get(
+        any(),
+        queryParams: any(named: 'queryParams'),
+        useCache: any(named: 'useCache'),
+      ),
+    ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: body, headers: const {}));
   }
 
-  /// Builds a minimal agent JSON map.
-  Map<String, dynamic> agentJson({int id = 7}) {
-    return {
-      'id': id,
-      'name': 'Ravi Kumar',
-      'agent_type': 'general',
-      'experience_level': 'intermediate',
-      'is_active': true,
-      'is_available': true,
-      'created_at': '2024-01-01T00:00:00.000Z',
-    };
+  void stubPost(Object? body, {int statusCode = 200}) {
+    when(
+      () => apiClient.post(
+        any(),
+        body: any(named: 'body'),
+        idempotent: any(named: 'idempotent'),
+      ),
+    ).thenAnswer((_) async => ApiResponse(statusCode: statusCode, body: body, headers: const {}));
   }
 
-  group('VisitsRemoteDatasource.fetchVisitsSummary', () {
-    test('parses visits list from data-wrapped envelope', () async {
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {
-            'data': [visitJson(id: 1), visitJson(id: 2)],
-            'has_more': true,
-            'next_cursor': 'cursor-abc',
-          },
-          headers: const {},
+  Map<String, dynamic> postedBody() =>
+      verify(
+            () => apiClient.post(
+              any(),
+              body: captureAny(named: 'body'),
+              idempotent: any(named: 'idempotent'),
+            ),
+          ).captured.single
+          as Map<String, dynamic>;
+
+  Map<String, dynamic> queryOfGet() =>
+      verify(
+            () => apiClient.get(
+              any(),
+              queryParams: captureAny(named: 'queryParams'),
+              useCache: any(named: 'useCache'),
+            ),
+          ).captured.single
+          as Map<String, dynamic>;
+
+  group('fetchVisitsSummary', () {
+    test('reads the CursorPage of visits with its paging keys', () async {
+      stubGet(
+        page(
+          items: [
+            visit({'id': 1}),
+            visit({'id': 2}),
+          ],
+          hasMore: true,
+          nextCursor: 'cursor-abc',
         ),
       );
 
       final payload = await datasource.fetchVisitsSummary();
 
-      expect(payload.visits.length, 2);
-      expect(payload.visits[0].id, 1);
-      expect(payload.visits[1].id, 2);
+      expect(payload.visits.map((v) => v.id), [1, 2]);
       expect(payload.hasMore, isTrue);
       expect(payload.nextCursor, 'cursor-abc');
     });
 
-    test('parses visits list from items envelope', () async {
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {
-            'items': [visitJson(id: 5)],
-            'has_more': false,
-          },
-          headers: const {},
-        ),
-      );
+    test('the recorded list fixture parses, counterparty included', () async {
+      stubGet(visits['list_page']);
 
       final payload = await datasource.fetchVisitsSummary();
 
-      expect(payload.visits.length, 1);
-      expect(payload.visits[0].id, 5);
+      expect(payload.visits, isNotEmpty);
+      expect(payload.visits.first.counterpartyUser?.displayName, 'Karan Mehta');
+    });
+
+    test('a last page has no cursor', () async {
+      stubGet(page());
+
+      final payload = await datasource.fetchVisitsSummary();
+
       expect(payload.hasMore, isFalse);
       expect(payload.nextCursor, isNull);
     });
 
-    test('parses visits list from visits fallback key', () async {
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 200,
-          body: {
-            'visits': [visitJson(id: 9)],
-          },
-          headers: const {},
-        ),
-      );
+    test('sends the cursor and the limit', () async {
+      stubGet(page());
 
-      final payload = await datasource.fetchVisitsSummary();
+      await datasource.fetchVisitsSummary(cursor: 'next-page', limit: 10);
 
-      expect(payload.visits.length, 1);
-      expect(payload.visits[0].id, 9);
+      final query = queryOfGet();
+      expect(query['cursor'], 'next-page');
+      expect(query['limit'], '10');
     });
 
-    test('includes cursor query param when provided', () async {
-      Map<String, dynamic>? capturedQuery;
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedQuery = invocation.namedArguments[#queryParams] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
-      });
-
-      await datasource.fetchVisitsSummary(cursor: 'next-page');
-
-      expect(capturedQuery!['cursor'], 'next-page');
-      expect(capturedQuery!['limit'], '50');
-    });
-
-    test('omits cursor query param when null', () async {
-      Map<String, dynamic>? capturedQuery;
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedQuery = invocation.namedArguments[#queryParams] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
-      });
+    test('omits the cursor on the first page, null or empty', () async {
+      stubGet(page());
 
       await datasource.fetchVisitsSummary();
-
-      expect(capturedQuery!.containsKey('cursor'), isFalse);
-    });
-
-    test('omits cursor query param when empty string', () async {
-      Map<String, dynamic>? capturedQuery;
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedQuery = invocation.namedArguments[#queryParams] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
-      });
-
       await datasource.fetchVisitsSummary(cursor: '');
 
-      expect(capturedQuery!.containsKey('cursor'), isFalse);
-    });
-
-    test('uses custom limit value', () async {
-      Map<String, dynamic>? capturedQuery;
-      when(
+      for (final query in verify(
         () => apiClient.get(
           any(),
-          queryParams: any(named: 'queryParams'),
+          queryParams: captureAny(named: 'queryParams'),
           useCache: any(named: 'useCache'),
         ),
-      ).thenAnswer((invocation) async {
-        capturedQuery = invocation.namedArguments[#queryParams] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
-      });
-
-      await datasource.fetchVisitsSummary(limit: 10);
-
-      expect(capturedQuery!['limit'], '10');
+      ).captured) {
+        expect((query as Map).containsKey('cursor'), isFalse);
+      }
     });
 
-    test('passes useCache false to apiClient', () async {
-      bool? capturedUseCache;
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedUseCache = invocation.namedArguments[#useCache] as bool;
-        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
-      });
+    test('the limit stays between 1 and 100', () async {
+      stubGet(page());
+
+      await datasource.fetchVisitsSummary(limit: 500);
+
+      expect(queryOfGet()['limit'], '100');
+    });
+
+    test('reads from the visits route and skips the cache', () async {
+      stubGet(page());
 
       await datasource.fetchVisitsSummary();
 
-      expect(capturedUseCache, isFalse);
+      verify(
+        () =>
+            apiClient.get(ApiPaths.visits, queryParams: any(named: 'queryParams'), useCache: false),
+      ).called(1);
     });
 
-    test('uses ApiPaths.visits endpoint', () async {
-      String? capturedEndpoint;
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedEndpoint = invocation.positionalArguments[0] as String;
-        return ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {});
+    for (final entry in <String, Object?>{
+      'a bare string': 'not a map',
+      'a bare list': [visit()],
+      'a data envelope': {'data': page()},
+      'the visits key': {
+        'visits': [visit()],
+      },
+      'a page with no next_cursor': page()..remove('next_cursor'),
+      'a row that is not a visit': {
+        ...page(),
+        'items': [visit(), 'x'],
+      },
+      'a visit with no id': page(items: [visit()..remove('id')]),
+    }.entries) {
+      test('${entry.key} is a malformed response', () async {
+        stubGet(entry.value);
+
+        await expectLater(
+          datasource.fetchVisitsSummary(),
+          throwsA(isA<ApiException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+        );
       });
-
-      await datasource.fetchVisitsSummary();
-
-      expect(capturedEndpoint, ApiPaths.visits);
-    });
-
-    test('returns empty visits for empty items list', () async {
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(statusCode: 200, body: {'items': <dynamic>[]}, headers: const {}),
-      );
-
-      final payload = await datasource.fetchVisitsSummary();
-
-      expect(payload.visits, isEmpty);
-      expect(payload.hasMore, isFalse);
-    });
-
-    test('rethrows on parse failure (invalid body type)', () async {
-      when(
-        () => apiClient.get(
-          any(),
-          queryParams: any(named: 'queryParams'),
-          useCache: any(named: 'useCache'),
-        ),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 'not a map', headers: const {}));
-
-      await expectLater(datasource.fetchVisitsSummary(), throwsA(isA<FormatException>()));
-    });
+    }
   });
 
-  group('VisitsRemoteDatasource.scheduleVisit', () {
-    test('returns parsed VisitModel from data-wrapped response', () async {
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(
-          statusCode: 201,
-          body: {'data': visitJson(id: 42, status: 'confirmed')},
-          headers: const {},
-        ),
-      );
+  group('scheduleVisit', () {
+    test('reads the Visit of a 201', () async {
+      stubPost(visit({'id': 42, 'status': 'confirmed'}), statusCode: 201);
 
-      final visit = await datasource.scheduleVisit(
+      final created = await datasource.scheduleVisit(
         propertyId: 100,
-        scheduledDate: '2025-06-01T10:00:00.000Z',
+        scheduledDate: '2026-10-01T10:00:00Z',
       );
 
-      expect(visit.id, 42);
-      expect(visit.status, VisitStatus.confirmed);
+      expect(created.id, 42);
+      expect(created.status, VisitStatus.confirmed);
     });
 
-    test('returns parsed VisitModel from unwrapped response', () async {
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(statusCode: 201, body: visitJson(id: 77), headers: const {}),
-      );
+    test(
+      'sends property_id and scheduled_date, and the requirements when there are some',
+      () async {
+        stubPost(visit(), statusCode: 201);
 
-      final visit = await datasource.scheduleVisit(
-        propertyId: 100,
-        scheduledDate: '2025-06-01T10:00:00.000Z',
-      );
+        await datasource.scheduleVisit(
+          propertyId: 55,
+          scheduledDate: '2026-10-01T14:00:00Z',
+          specialRequirements: '  Need parking  ',
+        );
 
-      expect(visit.id, 77);
-    });
+        expect(postedBody(), {
+          'property_id': 55,
+          'scheduled_date': '2026-10-01T14:00:00Z',
+          'special_requirements': 'Need parking',
+        });
+      },
+    );
 
-    test('sends correct body with property_id and scheduled_date', () async {
-      Map<String, dynamic>? capturedBody;
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 201, body: visitJson(), headers: const {});
-      });
+    test('omits special_requirements when there are none', () async {
+      stubPost(visit(), statusCode: 201);
 
       await datasource.scheduleVisit(
         propertyId: 55,
-        scheduledDate: '2025-07-01T14:00:00.000Z',
-        specialRequirements: 'Need parking',
+        scheduledDate: '2026-10-01T14:00:00Z',
+        specialRequirements: '   ',
       );
 
-      expect(capturedBody!['property_id'], 55);
-      expect(capturedBody!['scheduled_date'], '2025-07-01T14:00:00.000Z');
-      expect(capturedBody!['special_requirements'], 'Need parking');
+      expect(postedBody().containsKey('special_requirements'), isFalse);
     });
 
-    test('defaults special_requirements to empty string when null', () async {
-      Map<String, dynamic>? capturedBody;
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 201, body: visitJson(), headers: const {});
+    test('the body holds only keys of VisitCreate', () async {
+      stubPost(visit(), statusCode: 201);
+
+      await datasource.scheduleVisit(
+        propertyId: 55,
+        scheduledDate: '2026-10-01T14:00:00Z',
+        specialRequirements: 'x',
+      );
+
+      const declared = {
+        'property_id',
+        'scheduled_date',
+        'special_requirements',
+        'conversation_id',
+        'counterparty_user_id',
+        'match_id',
+        'time_slot_label',
+        'user_id',
+      };
+      expect(declared.containsAll(postedBody().keys), isTrue);
+    });
+
+    test('does not retry the POST by itself', () async {
+      stubPost(visit(), statusCode: 201);
+
+      await datasource.scheduleVisit(propertyId: 55, scheduledDate: '2026-10-01T14:00:00Z');
+
+      verify(
+        () => apiClient.post(ApiPaths.visits, body: any(named: 'body'), idempotent: false),
+      ).called(1);
+    });
+
+    for (final entry in <String, Object?>{
+      'an empty object': <String, dynamic>{},
+      'a data envelope': {'data': visit()},
+      'a visit with no status': visit()..remove('status'),
+    }.entries) {
+      test('${entry.key} is a malformed response', () async {
+        stubPost(entry.value, statusCode: 201);
+
+        await expectLater(
+          datasource.scheduleVisit(propertyId: 1, scheduledDate: '2026-10-01T14:00:00Z'),
+          throwsA(isA<ApiException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+        );
       });
-
-      await datasource.scheduleVisit(propertyId: 55, scheduledDate: '2025-07-01T14:00:00.000Z');
-
-      expect(capturedBody!['special_requirements'], '');
-    });
-
-    test('passes idempotent true to apiClient', () async {
-      bool? capturedIdempotent;
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedIdempotent = invocation.namedArguments[#idempotent] as bool;
-        return ApiResponse(statusCode: 201, body: visitJson(), headers: const {});
-      });
-
-      await datasource.scheduleVisit(propertyId: 55, scheduledDate: '2025-07-01T14:00:00.000Z');
-
-      expect(capturedIdempotent, isTrue);
-    });
-
-    test('throws FormatException on empty response object', () async {
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(statusCode: 201, body: <String, dynamic>{}, headers: const {}),
-      );
-
-      await expectLater(
-        datasource.scheduleVisit(propertyId: 1, scheduledDate: '2025-01-01'),
-        throwsA(isA<FormatException>()),
-      );
-    });
+    }
   });
 
-  group('VisitsRemoteDatasource.cancelVisit', () {
-    test('returns true when body has success=true', () async {
-      when(
+  group('cancelVisit', () {
+    test('returns the updated Visit', () async {
+      stubPost(visits['cancelled']);
+
+      final cancelled = await datasource.cancelVisit(92, reason: 'Plans changed');
+
+      expect(cancelled.id, 92);
+      expect(cancelled.status, VisitStatus.cancelled);
+      expect(cancelled.cancellationReason, 'Plans changed');
+    });
+
+    test('sends the trimmed reason to the cancel route of the visit', () async {
+      stubPost(visits['cancelled']);
+
+      await datasource.cancelVisit(12, reason: '  Schedule conflict  ');
+
+      verify(
+        () => apiClient.post(
+          ApiPaths.visitCancel(12),
+          body: {'reason': 'Schedule conflict'},
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).called(1);
+    });
+
+    test('a reason with no text or more than 1000 characters is not sent', () async {
+      for (final reason in ['', '   ', 'x' * 1001]) {
+        await expectLater(
+          datasource.cancelVisit(5, reason: reason),
+          throwsA(isA<ValidationException>().having((e) => e.code, 'code', 'INVALID_REASON')),
+        );
+      }
+      verifyNever(
         () => apiClient.post(
           any(),
           body: any(named: 'body'),
           idempotent: any(named: 'idempotent'),
         ),
-      ).thenAnswer(
-        (_) async => ApiResponse(statusCode: 200, body: {'success': true}, headers: const {}),
       );
-
-      final result = await datasource.cancelVisit(5, reason: 'Not interested');
-
-      expect(result, isTrue);
     });
 
-    test('returns true when status code is 200 even without success field', () async {
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer(
-        (_) async =>
-            ApiResponse(statusCode: 200, body: {'message': 'cancelled'}, headers: const {}),
-      );
+    test('a reason of exactly 1000 characters is sent', () async {
+      stubPost(visits['cancelled']);
 
-      final result = await datasource.cancelVisit(5, reason: 'Not interested');
+      await datasource.cancelVisit(5, reason: 'x' * 1000);
 
-      expect(result, isTrue);
+      expect((postedBody()['reason'] as String).length, 1000);
     });
 
-    test('returns true when body is not a Map and status is 200', () async {
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 'ok', headers: const {}));
+    for (final entry in <String, Object?>{
+      'a success flag': {'success': true},
+      'a plain string': 'ok',
+      'an empty object': <String, dynamic>{},
+    }.entries) {
+      test('${entry.key} is not a Visit and fails', () async {
+        stubPost(entry.value);
 
-      final result = await datasource.cancelVisit(5, reason: 'Not interested');
-
-      expect(result, isTrue);
-    });
-
-    test('sends reason in body', () async {
-      Map<String, dynamic>? capturedBody;
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
+        await expectLater(
+          datasource.cancelVisit(5, reason: 'Not interested'),
+          throwsA(isA<ApiException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+        );
       });
-
-      await datasource.cancelVisit(9, reason: 'Schedule conflict');
-
-      expect(capturedBody!['reason'], 'Schedule conflict');
-    });
-
-    test('uses visitCancel endpoint with visit id', () async {
-      String? capturedEndpoint;
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedEndpoint = invocation.positionalArguments[0] as String;
-        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
-      });
-
-      await datasource.cancelVisit(12, reason: 'test');
-
-      expect(capturedEndpoint, ApiPaths.visitCancel(12));
-    });
+    }
   });
 
-  group('VisitsRemoteDatasource.rescheduleVisit', () {
-    test('returns true when body has success=true', () async {
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer(
-        (_) async => ApiResponse(statusCode: 200, body: {'success': true}, headers: const {}),
-      );
+  group('rescheduleVisit', () {
+    test('returns the updated Visit', () async {
+      stubPost(visits['rescheduled']);
 
-      final result = await datasource.rescheduleVisit(5, newDate: '2025-08-01T10:00:00.000Z');
+      final moved = await datasource.rescheduleVisit(92, newDate: '2026-11-01T10:00:00Z');
 
-      expect(result, isTrue);
+      expect(moved.id, 92);
     });
 
-    test('returns true when status code is 200 without success field', () async {
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer(
-        (_) async =>
-            ApiResponse(statusCode: 200, body: {'message': 'rescheduled'}, headers: const {}),
-      );
-
-      final result = await datasource.rescheduleVisit(5, newDate: '2025-08-01T10:00:00.000Z');
-
-      expect(result, isTrue);
-    });
-
-    test('sends new_date and reason in body', () async {
-      Map<String, dynamic>? capturedBody;
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
-      });
+    test('sends new_date and the trimmed reason', () async {
+      stubPost(visits['rescheduled']);
 
       await datasource.rescheduleVisit(
         7,
-        newDate: '2025-09-01T10:00:00.000Z',
-        reason: 'Time change',
+        newDate: '2026-11-01T10:00:00Z',
+        reason: '  Time change  ',
       );
 
-      expect(capturedBody!['new_date'], '2025-09-01T10:00:00.000Z');
-      expect(capturedBody!['reason'], 'Time change');
+      expect(postedBody(), {'new_date': '2026-11-01T10:00:00Z', 'reason': 'Time change'});
     });
 
-    test('defaults reason to empty string when null', () async {
-      Map<String, dynamic>? capturedBody;
-      when(
+    test('omits the reason when it has no text', () async {
+      stubPost(visits['rescheduled']);
+
+      await datasource.rescheduleVisit(7, newDate: '2026-11-01T10:00:00Z');
+      await datasource.rescheduleVisit(7, newDate: '2026-11-01T10:00:00Z', reason: '  ');
+
+      final bodies = verify(
         () => apiClient.post(
           any(),
+          body: captureAny(named: 'body'),
+          idempotent: any(named: 'idempotent'),
+        ),
+      ).captured;
+      for (final body in bodies) {
+        expect((body as Map).containsKey('reason'), isFalse);
+      }
+    });
+
+    test('uses the reschedule route of the visit', () async {
+      stubPost(visits['rescheduled']);
+
+      await datasource.rescheduleVisit(15, newDate: '2026-11-01T10:00:00Z');
+
+      verify(
+        () => apiClient.post(
+          ApiPaths.visitReschedule(15),
           body: any(named: 'body'),
           idempotent: any(named: 'idempotent'),
         ),
-      ).thenAnswer((invocation) async {
-        capturedBody = invocation.namedArguments[#body] as Map<String, dynamic>?;
-        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
+      ).called(1);
+    });
+
+    for (final entry in <String, Object?>{
+      'a success flag': {'success': true},
+      'a number': 42,
+    }.entries) {
+      test('${entry.key} is not a Visit and fails', () async {
+        stubPost(entry.value);
+
+        await expectLater(
+          datasource.rescheduleVisit(5, newDate: '2026-11-01T10:00:00Z'),
+          throwsA(isA<ApiException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+        );
       });
-
-      await datasource.rescheduleVisit(7, newDate: '2025-09-01T10:00:00.000Z');
-
-      expect(capturedBody!['reason'], '');
-    });
-
-    test('uses visitReschedule endpoint with visit id', () async {
-      String? capturedEndpoint;
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((invocation) async {
-        capturedEndpoint = invocation.positionalArguments[0] as String;
-        return ApiResponse(statusCode: 200, body: {'success': true}, headers: const {});
-      });
-
-      await datasource.rescheduleVisit(15, newDate: '2025-08-01');
-
-      expect(capturedEndpoint, ApiPaths.visitReschedule(15));
-    });
-
-    test('returns true when body is not a Map and status is 200', () async {
-      when(
-        () => apiClient.post(
-          any(),
-          body: any(named: 'body'),
-          idempotent: any(named: 'idempotent'),
-        ),
-      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: 42, headers: const {}));
-
-      final result = await datasource.rescheduleVisit(5, newDate: '2025-08-01');
-
-      expect(result, isTrue);
-    });
+    }
   });
 
-  group('VisitsRemoteDatasource.fetchRelationshipManager', () {
-    test('returns parsed AgentModel from data-wrapped response', () async {
-      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenAnswer(
-        (_) async =>
-            ApiResponse(statusCode: 200, body: {'data': agentJson(id: 3)}, headers: const {}),
-      );
+  group('fetchRelationshipManager', () {
+    void stubAgent(Object? body) {
+      when(
+        () => apiClient.get(any(), useCache: any(named: 'useCache')),
+      ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: body, headers: const {}));
+    }
 
-      final agent = await datasource.fetchRelationshipManager();
+    test('reads the assigned agent', () async {
+      stubAgent(agent({'id': 3}));
 
-      expect(agent.id, 3);
-      expect(agent.name, 'Ravi Kumar');
-      expect(agent.agentType, AgentType.general);
+      final manager = await datasource.fetchRelationshipManager();
+
+      expect(manager!.id, 3);
+      expect(manager.name, 'Ravi Kumar');
+      expect(manager.agentType, AgentType.general);
+      expect(manager.contactNumber, '+919811111111');
     });
 
-    test('returns parsed AgentModel from unwrapped response', () async {
-      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenAnswer(
-        (_) async => ApiResponse(statusCode: 200, body: agentJson(id: 8), headers: const {}),
-      );
-
-      final agent = await datasource.fetchRelationshipManager();
-
-      expect(agent.id, 8);
-    });
-
-    test('uses agentsAssigned endpoint', () async {
-      String? capturedEndpoint;
-      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenAnswer((
-        invocation,
-      ) async {
-        capturedEndpoint = invocation.positionalArguments[0] as String;
-        return ApiResponse(statusCode: 200, body: agentJson(), headers: const {});
-      });
+    test('reads from the assigned route and skips the cache', () async {
+      stubAgent(agent());
 
       await datasource.fetchRelationshipManager();
 
-      expect(capturedEndpoint, ApiPaths.agentsAssigned);
+      verify(() => apiClient.get(ApiPaths.agentsAssigned, useCache: false)).called(1);
     });
 
-    test('passes useCache false to apiClient', () async {
-      bool? capturedUseCache;
-      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenAnswer((
-        invocation,
-      ) async {
-        capturedUseCache = invocation.namedArguments[#useCache] as bool;
-        return ApiResponse(statusCode: 200, body: agentJson(), headers: const {});
-      });
+    test('a data envelope is a malformed response', () async {
+      stubAgent({'data': agent()});
 
-      await datasource.fetchRelationshipManager();
+      await expectLater(
+        datasource.fetchRelationshipManager(),
+        throwsA(isA<ApiException>().having((e) => e.code, 'code', 'MALFORMED_RESPONSE')),
+      );
+    });
 
-      expect(capturedUseCache, isFalse);
+    test('404 "No agent assigned yet" means no manager, not a failure', () async {
+      when(
+        () => apiClient.get(any(), useCache: any(named: 'useCache')),
+      ).thenThrow(NotFoundException('No agent assigned yet'));
+
+      expect(await datasource.fetchRelationshipManager(), isNull);
+    });
+
+    test('a 404 shaped as an ApiException also means no manager', () async {
+      when(() => apiClient.get(any(), useCache: any(named: 'useCache'))).thenThrow(
+        ApiException('The request could not be completed.', code: 'NOT_FOUND', statusCode: 404),
+      );
+
+      expect(await datasource.fetchRelationshipManager(), isNull);
+    });
+
+    test('other agent failures still throw', () async {
+      when(
+        () => apiClient.get(any(), useCache: any(named: 'useCache')),
+      ).thenThrow(ApiException('Forbidden', statusCode: 403));
+
+      await expectLater(datasource.fetchRelationshipManager(), throwsA(isA<ApiException>()));
     });
   });
 

@@ -2,7 +2,7 @@
 
 ![Flutter](https://img.shields.io/badge/Flutter-3.44+-blue?logo=flutter)
 ![Dart](https://img.shields.io/badge/Dart-3.12+-blue?logo=dart)
-![GetX](https://img.shields.io/badge/State%20Management-GetX-orange)
+![Riverpod](https://img.shields.io/badge/State%20Management-Riverpod-blue)
 ![Supabase](https://img.shields.io/badge/Backend-Supabase-green?logo=supabase)
 
 **360Ghar** is a modern Flutter real estate application that revolutionizes property discovery with a **Bumble-inspired swipe interface**. It offers an engaging, intuitive way for users to find their dream homes, complete with 360° virtual tours, detailed property information, and seamless agent communication.
@@ -26,27 +26,30 @@
 This project is built with a modern, scalable technology stack and follows a clean, feature-first architecture.
 
 -   **Framework:** [Flutter](https://flutter.dev/)
--   **State Management:** [GetX](https://pub.dev/packages/get) (for state, dependency, and route management)
+-   **State Management:** [Riverpod](https://pub.dev/packages/flutter_riverpod) with manual providers and immutable state
+-   **Navigation:** [GoRouter](https://pub.dev/packages/go_router) with five stateful shell branches
 -   **Backend:** [Supabase](https://supabase.io/) (Authentication, Database) + [Cloudinary](https://cloudinary.com/) (Storage)
--   **Mapping:** [flutter_map](https://pub.dev/packages/flutter_map)
+-   **Mapping:** [MapLibre](https://pub.dev/packages/maplibre_gl)
 -   **Code Generation:** [json_serializable](https://pub.dev/packages/json_serializable) for type-safe models
--   **Local Storage:** [get_storage](https://pub.dev/packages/get_storage)
--   **UI:** [Google Fonts](https://pub.dev/packages/google_fonts), [CachedNetworkImage](https://pub.dev/packages/cached_network_image), [Shimmer](https://pub.dev/packages/shimmer)
+-   **Transport:** [http](https://pub.dev/packages/http) through injected API and SSE clients
+-   **Local Storage:** SQLite through `AppDatabase`, with scoped caches, drafts, and durable pending actions
+-   **UI:** Bundled fonts, Flutter localization for English and Hindi, shared design tokens, [CachedNetworkImage](https://pub.dev/packages/cached_network_image), and [Shimmer](https://pub.dev/packages/shimmer)
 
 ### Architecture
 
-The codebase is structured using a **GetX Clean Architecture** pattern, separating the application into two main parts:
+The app uses a feature-first structure. Riverpod owns shared state and dependencies. Widgets own local form, focus, scroll, animation, and media presentation state.
 
--   `lib/core`: Contains shared application logic, infrastructure, and base components. This includes API services, data models, repositories, global controllers (Auth, Theme), routing, and common widgets.
--   `lib/features`: Each distinct feature of the app (e.g., `discover`, `explore`, `profile`) is a self-contained module with its own views, controllers, and bindings.
+-   `lib/core`: Shared models, repository contracts, providers, transport, storage, routing, localization, and widgets.
+-   `lib/features`: Feature application state, injected repositories and datasources, views, and widgets. Existing `presentation/controllers` directories contain manual Riverpod Notifiers.
 
 ```
 lib/
 ├── core/                  # Core infrastructure and shared components
-│   ├── bindings/          # Global dependency injection
-│   ├── controllers/       # Core business logic (Auth, Location, Theme)
-│   ├── data/              # Models, Providers, Repositories
-│   ├── routes/            # App navigation configuration
+│   ├── providers/         # Database, network, and authentication composition
+│   ├── controllers/       # Session, settings, and durable queue owners
+│   ├── data/              # Shared models and injected repository contracts
+│   ├── storage/           # AppDatabase and read-only legacy preference import
+│   ├── routes/            # GoRouter and redirect/link policy
 │   └── ...
 ├── features/              # Feature-based modules
 │   ├── auth/              # Authentication and profile completion
@@ -56,6 +59,12 @@ lib/
 │   └── ...
 └── main.dart              # App entry point
 ```
+
+Use `ProviderScope`, constructor injection, and manual `Provider`, `NotifierProvider`, or `AsyncNotifierProvider` declarations. Dispose owned resources with the provider or widget lifecycle. Provider retries are disabled at the root; the transport owns bounded retries for safe reads. Mutations require an explicit replay contract.
+
+Keep existing content during refresh or pagination errors. Return typed failures from data boundaries and translate them in presentation code with `context.l10n`. Capture the account scope before asynchronous work and reject stale results after account or input changes.
+
+See [CLAUDE.md](CLAUDE.md) for contributor conventions, [the persistence policy](docs/persistence.md) for cache and migration rules, and [the migration checklist](docs/migration/riverpod-checklist.md) for verification status. Tests use provider overrides and injected fakes; storage and queue tests use SQLite fixtures. Run `flutter analyze` and `flutter test --coverage`; keep the 85% coverage gate.
 
 ## 🚀 Getting Started
 
@@ -71,8 +80,8 @@ Follow these instructions to get a copy of the project up and running on your lo
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/360ghar-flutter.git
-    cd 360ghar-flutter
+    git clone git@github.com:360ghar/360-ghar-app.git
+    cd 360-ghar-app
     ```
 
 2.  **Set up environment variables:**
@@ -127,11 +136,13 @@ Notes:
 
 The app features a 5-tab bottom navigation bar for easy access to key features:
 
--   **Profile:** User management, settings, and preferences.
--   **Explore:** Map view with property markers for geographical discovery.
 -   **Discover (Home):** The main swipe interface for liking or passing on properties.
--   **Likes:** A gallery of your favorited and passed properties.
+-   **Explore:** Map view with property markers for geographical discovery.
+-   **Saved:** Liked and passed properties, with controls for pending actions.
 -   **Visits:** Manage agent appointments and scheduled property tours.
+-   **Profile:** User management, settings, and preferences.
+
+Assistant is available from labeled entries in Discover and Profile. Each primary destination preserves its own navigation history.
 
 ## 🔔 iOS Push Troubleshooting
 

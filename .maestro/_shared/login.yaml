@@ -1,39 +1,53 @@
 appId: com.the360ghar.ghar360
 ---
+# Requires a dedicated non-production account with verified identifier/password.
 - runFlow: launch_clean.yaml
 - runFlow: skip_onboarding.yaml
+- tapOn:
+    id: qa.auth.phone_entry.identifier_input
+- inputText: "${TEST_PHONE}"
+- runFlow: dismiss_auth_keyboard.yaml
+- scrollUntilVisible:
+    element:
+      id: qa.auth.phone_entry.continue
+- tapOn:
+    id: qa.auth.phone_entry.continue
+- extendedWaitUntil:
+    visible:
+      id: qa.auth.login.password_input
+    timeout: 20000
+- tapOn:
+    id: qa.auth.login.password_input
+- inputText: "${TEST_PASSWORD}"
+- runFlow: dismiss_auth_keyboard.yaml
+- scrollUntilVisible:
+    element:
+      id: qa.auth.login.submit
+- tapOn:
+    id: qa.auth.login.submit
+- extendedWaitUntil:
+    visible:
+      id: "qa.auth.profile_completion.screen|qa.dashboard.nav.discover"
+    timeout: 30000
 
-# If phone entry is present, submit test phone.
-- runFlow:
-    when:
-      visible:
-        id: qa.auth.phone_entry.phone_input
-    commands:
-      - tapOn:
-          id: qa.auth.phone_entry.phone_input
-      - inputText: "${TEST_PHONE}"
-      - tapOn:
-          id: qa.auth.phone_entry.continue
-
-# If login is present, submit credentials.
-- runFlow:
-    when:
-      visible:
-        id: qa.auth.login.password_input
-    commands:
-      - tapOn:
-          id: qa.auth.login.password_input
-      - inputText: "${TEST_PASSWORD}"
-      - tapOn:
-          id: qa.auth.login.submit
-
-# If profile completion appears, skip to home.
+# Optional personal details can be deferred only after purpose is saved.
+# Mandatory password setup is not bypassed; that fixture must use its own flow.
 - runFlow:
     when:
       visible:
         id: qa.auth.profile_completion.screen
     commands:
+      - scrollUntilVisible:
+          element:
+            id: qa.auth.profile_completion.skip
+      - tapOn:
+          id: qa.auth.profile_completion.skip
+      - assertVisible:
+          id: qa.auth.profile_completion.purpose.buy
+      - tapOn:
+          id: qa.auth.profile_completion.purpose.buy
       - tapOn:
           id: qa.auth.profile_completion.skip
 
+- runFlow: dismiss_location_explainer.yaml
 - runFlow: assert_dashboard_ready.yaml

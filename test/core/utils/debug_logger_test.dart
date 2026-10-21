@@ -1,10 +1,94 @@
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/core/utils/best_effort.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
+import 'package:logger/logger.dart';
+
+import '../../helpers/log_capture.dart';
 
 void main() {
+  group('diagnostic redaction', () {
+    late LogCapture logs;
+    setUp(() => logs = LogCapture());
+    tearDown(() => logs.close());
+    test('all error-bearing entry points discard exception messages and payloads', () {
+      final error = ApiException(
+        'Bearer private-token name@example.com',
+        code: 'RATE_LIMITED',
+        statusCode: 429,
+        response: 'private-response',
+        details: {'token': 'private-token'},
+      );
+      final stack = StackTrace.fromString('#0 safeFrame (package:ghar360/example.dart:7:1)');
+      for (final log in [
+        DebugLogger.debug,
+        DebugLogger.info,
+        DebugLogger.success,
+        DebugLogger.warning,
+        DebugLogger.error,
+        DebugLogger.auth,
+        DebugLogger.startup,
+      ]) {
+        log('Known operation', error, stack);
+      }
+      expect(logs.events, hasLength(7));
+      expect(logs.text, contains('ApiException code=RATE_LIMITED status=429'));
+      expect(logs.text, contains('safeFrame'));
+      for (final secret in ['private-token', 'private-response', 'name@example.com']) {
+        expect(logs.text, isNot(contains(secret)));
+      }
+    });
+    test('detailed logging keeps known numeric context but drops arbitrary keys and values', () {
+      DebugLogger.logDetailedError(
+        operation: 'fetchProperties',
+        error: StateError('private-error'),
+        additionalData: {
+          'method': 'GET',
+          'statusCode': 500,
+          'attempt': 2,
+          'count': 4,
+          'url': 'https://private/?token=secret',
+          'token': 'private-token',
+          'body': {'name': 'private-name'},
+          'private-key': 'value',
+          'durationMs': 'private-value',
+        },
+      );
+      expect(logs.text, contains('fetchProperties'));
+      expect(logs.text, contains('statusCode: 500'));
+      expect(logs.text, contains('attempt: 2'));
+      expect(logs.text, isNot(contains('private-')));
+      expect(logs.text, isNot(contains('secret')));
+    });
+    test('unsafe error codes and hostile toString are never printed or evaluated', () {
+      DebugLogger.warning(
+        'Failure',
+        NetworkException('private-message', code: 'token=private-code'),
+      );
+      final hostile = _HostileError();
+      expect(() => DebugLogger.error('Failure', hostile), returnsNormally);
+      expect(hostile.calls, 0);
+      expect(logs.text, contains('_HostileError'));
+      expect(logs.text, isNot(contains('private-')));
+    });
+    test('best-effort failures retain operation and type without changing control flow', () async {
+      await BestEffort.runAsync(() async => throw StateError('private-async'), label: 'closeSheet');
+      expect(logs.text, contains('closeSheet'));
+      expect(logs.text, contains('StateError'));
+      expect(logs.text, isNot(contains('private-')));
+    });
+    test('an output sink failure cannot escape diagnostic logging', () {
+      void fail(OutputEvent event) => throw StateError('sink failed');
+      Logger.addOutputListener(fail);
+      try {
+        expect(() => DebugLogger.warning('Failure', StateError('private')), returnsNormally);
+      } finally {
+        Logger.removeOutputListener(fail);
+      }
+    });
+  });
+
   group('DebugLogger.initialize', () {
     test('can be called without throwing', () {
       expect(() => DebugLogger.initialize(), returnsNormally);
@@ -43,10 +127,6 @@ void main() {
   });
 
   group('DebugLogger logging methods — do not throw', () {
-    test('verbose does not throw', () {
-      expect(() => DebugLogger.verbose('test verbose'), returnsNormally);
-    });
-
     test('debug does not throw', () {
       expect(() => DebugLogger.debug('test debug'), returnsNormally);
     });
@@ -67,18 +147,6 @@ void main() {
       expect(() => DebugLogger.error('test error'), returnsNormally);
     });
 
-    test('wtf does not throw', () {
-      expect(() => DebugLogger.wtf('test wtf'), returnsNormally);
-    });
-
-    test('verbose with error and stackTrace does not throw', () {
-      final error = StateError('boom');
-      expect(
-        () => DebugLogger.verbose('test verbose with error', error, StackTrace.current),
-        returnsNormally,
-      );
-    });
-
     test('error with error and stackTrace does not throw', () {
       final error = StateError('boom');
       expect(
@@ -97,88 +165,8 @@ void main() {
       expect(() => DebugLogger.auth('test auth'), returnsNormally);
     });
 
-    test('jwt does not throw', () {
-      expect(() => DebugLogger.jwt('test jwt'), returnsNormally);
-    });
-
-    test('user does not throw', () {
-      expect(() => DebugLogger.user('test user'), returnsNormally);
-    });
-
-    test('property does not throw', () {
-      expect(() => DebugLogger.property('test property'), returnsNormally);
-    });
-
-    test('network does not throw (no-op when shouldLogAPICalls is false)', () {
-      expect(() => DebugLogger.network('test network'), returnsNormally);
-    });
-
-    test('connection does not throw', () {
-      expect(() => DebugLogger.connection('test connection'), returnsNormally);
-    });
-
     test('startup does not throw', () {
       expect(() => DebugLogger.startup('test startup'), returnsNormally);
-    });
-  });
-
-  group('DebugLogger.logJWTToken', () {
-    test('does not throw with a valid token', () {
-      expect(() => DebugLogger.logJWTToken('a'.padRight(32, 'a')), returnsNormally);
-    });
-
-    test('does not throw with expiresAt, userId, and userEmail', () {
-      expect(
-        () => DebugLogger.logJWTToken(
-          'a'.padRight(32, 'a'),
-          expiresAt: DateTime(2025, 1, 1),
-          userId: 'user-12345678',
-          userEmail: 'test@example.com',
-        ),
-        returnsNormally,
-      );
-    });
-  });
-
-  group('DebugLogger.logAPIRequest', () {
-    test('does not throw (no-op when shouldLogAPICalls is false)', () {
-      expect(
-        () => DebugLogger.logAPIRequest(method: 'GET', endpoint: '/api/properties'),
-        returnsNormally,
-      );
-    });
-
-    test('does not throw with headers and body', () {
-      expect(
-        () => DebugLogger.logAPIRequest(
-          method: 'POST',
-          endpoint: '/api/properties',
-          headers: {'Authorization': 'Bearer token'},
-          body: '{"title": "Test"}',
-        ),
-        returnsNormally,
-      );
-    });
-  });
-
-  group('DebugLogger.logAPIResponse', () {
-    test('does not throw (no-op when shouldLogAPICalls is false)', () {
-      expect(
-        () => DebugLogger.logAPIResponse(statusCode: 200, endpoint: '/api/properties'),
-        returnsNormally,
-      );
-    });
-
-    test('does not throw with body and responseTime', () {
-      expect(
-        () => DebugLogger.logAPIResponse(
-          statusCode: 404,
-          endpoint: '/api/properties/999',
-          body: '{"error": "not found"}',
-          responseTime: 150,
-        ),
-        returnsNormally,
-      );
     });
   });
 
@@ -202,38 +190,13 @@ void main() {
       );
     });
   });
+}
 
-  group('DebugLogger.reportError', () {
-    test('does not throw with required parameters', () {
-      expect(
-        () => DebugLogger.reportError(context: 'testContext', error: StateError('boom')),
-        returnsNormally,
-      );
-    });
-
-    test('does not throw with all optional parameters', () {
-      expect(
-        () => DebugLogger.reportError(
-          context: 'testContext',
-          error: StateError('boom'),
-          stackTrace: StackTrace.current,
-          userId: 'user-123',
-          operationId: 'op-456',
-          metadata: {'key': 'value'},
-        ),
-        returnsNormally,
-      );
-    });
-
-    test('does not throw with empty metadata map', () {
-      expect(
-        () => DebugLogger.reportError(
-          context: 'testContext',
-          error: StateError('boom'),
-          metadata: {},
-        ),
-        returnsNormally,
-      );
-    });
-  });
+class _HostileError implements Exception {
+  int calls = 0;
+  @override
+  String toString() {
+    calls++;
+    throw StateError('private-data');
+  }
 }

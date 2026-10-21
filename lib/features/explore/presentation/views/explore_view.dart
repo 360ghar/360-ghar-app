@@ -1,608 +1,528 @@
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ghar360/core/controllers/page_state_service.dart';
+import 'package:ghar360/core/data/models/page_state_model.dart';
+import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/design/app_design_tokens.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
-import 'package:ghar360/core/utils/responsive.dart';
-import 'package:ghar360/core/widgets/common/error_states.dart';
+import 'package:ghar360/core/utils/error_message.dart';
+import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
+import 'package:ghar360/core/widgets/common/property_location_recovery.dart';
+import 'package:ghar360/core/widgets/common/property_recovery_banner.dart';
 import 'package:ghar360/core/widgets/common/unified_top_bar.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
+import 'package:ghar360/core/widgets/paper/paper_sheet.dart';
+import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
+import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
 import 'package:ghar360/features/explore/presentation/widgets/explore_map.dart';
+import 'package:ghar360/features/explore/presentation/widgets/property_detail_pane.dart';
 import 'package:ghar360/features/explore/presentation/widgets/property_horizontal_list.dart';
+import 'package:ghar360/features/properties/application/property_filters.dart';
+import 'package:ghar360/features/properties/application/property_location.dart';
+import 'package:ghar360/features/properties/application/property_queries.dart';
 
-class ExploreView extends GetView<ExploreController> {
+const _feed = PropertyFeed.explore;
+const _page = PageType.explore;
+
+/// The map with a strip of homes over it. From 840 px the open home shows in
+/// a pane on the right. The frame watches nothing; each part below watches
+/// only what it draws, so a camera move or a highlight does not rebuild it.
+class ExploreView extends ConsumerStatefulWidget {
   const ExploreView({super.key});
+  @override
+  ConsumerState<ExploreView> createState() => _ExploreViewState();
+}
 
-  // Side panel width for the two-pane (expanded/large) layout.
-  static const double _sidePanelWidth = 360.0;
+class _ExploreViewState extends ConsumerState<ExploreView> {
+  /// The home in the detail pane. Only two-pane windows use it.
+  PropertyModel? _open;
 
   @override
   Widget build(BuildContext context) {
-    final pageStateService = Get.find<PageStateService>();
-
+    final twoPane = isTwoPane(context);
     return Scaffold(
-      backgroundColor: AppDesign.scaffoldBackground,
+      backgroundColor: context.design.background,
       appBar: ExploreTopBar(
-        onSearchChanged: (query) => controller.updateSearchQuery(query),
-        onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: 'explore'),
+        onFilterTap: () => showPropertyFilterBottomSheet(context, pageType: _page),
       ),
       body: Semantics(
-        label: 'qa.explore.screen',
+        label: context.l10n.text('explore'),
         identifier: 'qa.explore.screen',
         child: Column(
           children: [
-            // Subtle refresh indicator (reactive only)
-            Obx(() {
-              final isRefreshing = pageStateService.exploreState.value.isRefreshing;
-              if (!isRefreshing) return const SizedBox.shrink();
-              return const LinearProgressIndicator(
-                minHeight: 2,
-                backgroundColor: AppDesign.transparent,
-                valueColor: AlwaysStoppedAnimation<Color>(AppDesign.primaryYellow),
-              );
-            }),
-            // Main content (reactive state switch with smooth fade)
+            const PropertyRecoveryBanner(feed: _feed),
+            const _ExploreBanners(),
             Expanded(
-              child: Obx(() {
-                final currentState = controller.state.value;
-                final Widget child;
-                final Key key;
-
-                switch (currentState) {
-                  case ExploreState.loading:
-                    final hasLocation = pageStateService.exploreState.value.hasLocation;
-                    if (hasLocation) {
-                      key = const ValueKey('map');
-                      child = _buildMapInterface(context);
-                    } else {
-                      key = const ValueKey('loading');
-                      child = _buildLoadingState(context);
-                    }
-
-                  case ExploreState.error:
-                    key = const ValueKey('error');
-                    child = _buildErrorState();
-
-                  case ExploreState.empty:
-                    key = const ValueKey('empty');
-                    child = _buildEmptyState(context);
-
-                  case ExploreState.loaded:
-                  case ExploreState.loadingMore:
-                    key = const ValueKey('map');
-                    child = _buildMapInterface(context);
-
-                  default:
-                    final hasLocation = pageStateService.exploreState.value.hasLocation;
-                    if (hasLocation) {
-                      key = const ValueKey('map');
-                      child = _buildMapInterface(context);
-                    } else {
-                      key = const ValueKey('loading');
-                      child = _buildLoadingState(context);
-                    }
-                }
-
-                return AnimatedSwitcher(
-                  duration: AppDurations.contentFade,
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(opacity: animation, child: child),
-                  child: KeyedSubtree(key: key, child: child),
-                );
-              }),
+              child: twoPane
+                  ? Row(
+                      children: [
+                        Expanded(
+                          child: _ExploreBody(
+                            openId: _open?.id,
+                            onOpen: (property) => setState(() => _open = property),
+                          ),
+                        ),
+                        SizedBox(width: 420, child: PropertyDetailPane(property: _open)),
+                      ],
+                    )
+                  : const _ExploreBody(),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildLoadingState(BuildContext context) {
-    return Stack(
-      children: [
-        // Skeleton map
-        Container(
-          color: AppDesign.surface,
-          child: Center(child: Icon(Icons.map, size: 100, color: AppDesign.divider)),
-        ),
+/// The sky's hand-cut bottom edge, lying over the top of the map.
+class _SkyEdge extends StatelessWidget {
+  const _SkyEdge();
 
-        // Loading overlay
-        LoadingStates.mapLoadingOverlay(context),
-      ],
+  @override
+  Widget build(BuildContext context) {
+    final design = context.design;
+    return IgnorePointer(
+      child: CustomPaint(painter: _SkyEdgePainter(design.background, design.sheetLip)),
     );
   }
+}
 
-  Widget _buildErrorState() {
-    return Obx(() {
-      final appException = controller.error.value;
-      if (appException == null) return const SizedBox();
+class _SkyEdgePainter extends CustomPainter {
+  const _SkyEdgePainter(this.sky, this.edge);
 
-      return ErrorStates.genericError(error: appException, onRetry: controller.retryLoading);
-    });
+  final Color sky;
+  final Color edge;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // A sheet lip turned upside down: the cut faces the map below.
+    canvas
+      ..save()
+      ..translate(0, size.height)
+      ..scale(1, -1);
+    paintPaperLip(canvas, size, 'explore-sky', sheet: sky, edge: edge);
+    canvas.restore();
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    // Keep the map interactive so users can pan/zoom while expanding search;
-    // show an empty-state card that only captures its own taps.
-    return Stack(
+  @override
+  bool shouldRepaint(_SkyEdgePainter old) => old.sky != sky || old.edge != edge;
+}
+
+/// Progress and the failures that keep the map: refresh, next page, GPS,
+/// location save and the map-area search.
+class _ExploreBanners extends ConsumerWidget {
+  const _ExploreBanners();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (refreshing, loading, paginationError, error, busy) = ref.watch(
+      propertyQueryProvider(_feed).select(
+        (page) => (page.isRefreshing, page.isLoading, page.paginationError, page.error, page.busy),
+      ),
+    );
+    final (located, loadFailed, loadBusy, saveFailed, saveBusy) = ref.watch(
+      propertyLocationProvider(_page).select(
+        (location) => (
+          location.location != null,
+          location.load.hasError,
+          location.load.isLoading,
+          location.save.hasError,
+          location.save.isLoading,
+        ),
+      ),
+    );
+    final (cameraFailed, cameraBusy) = ref.watch(
+      exploreProvider.select(
+        (state) => (state.cameraUpdate.hasError, state.cameraUpdate.isLoading),
+      ),
+    );
+    final contentError = paginationError ?? (located && error is! LocationException ? error : null);
+    return Column(
       children: [
-        _buildMapInterface(context),
-        SafeArea(
-          child: Align(
-            alignment: Alignment.center,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: Material(
-                color: AppDesign.surface.withValues(alpha: 0.96),
-                elevation: 6,
-                borderRadius: BorderRadius.circular(AppBorderRadius.lg),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                  child: ErrorStates.emptyState(
-                    title: 'no_properties_found'.tr,
-                    message: 'no_properties_found_area_message'.tr,
-                    icon: Icons.location_off,
-                    onAction: () =>
-                        showPropertyFilterBottomSheet(Get.context ?? context, pageType: 'explore'),
-                    actionText: 'adjust_filters'.tr,
-                  ),
-                ),
-              ),
-            ),
+        SizedBox(
+          height: 2,
+          child: refreshing || (loading && located)
+              ? const LinearProgressIndicator(minHeight: 2)
+              : null,
+        ),
+        if (contentError != null)
+          InlineRetryBanner(
+            message: paginationError != null
+                ? context.l10n.text('load_more_failed')
+                : errorMessage(context, contentError),
+            error: contentError,
+            isLoading: busy,
+            identifier: 'qa.explore.content.retry',
+            onRetry: () {
+              final query = ref.read(propertyQueryProvider(_feed).notifier);
+              if (paginationError != null) {
+                query.loadMore(retry: true);
+              } else {
+                query.load(refresh: true);
+              }
+            },
           ),
-        ),
+        if (located && (loadFailed || loadBusy))
+          const PropertyLocationRecovery(pageType: _page, inline: true),
+        if (located && (saveFailed || cameraFailed))
+          InlineRetryBanner(
+            message: context.l10n.text(
+              saveFailed ? 'location_storage_failed' : 'unable_to_get_current_location',
+            ),
+            isLoading: loadBusy || saveBusy || cameraBusy,
+            identifier: 'qa.explore.location.retry',
+            onRetry: () {
+              if (saveFailed) {
+                ref.read(propertyLocationProvider(_page).notifier).retrySave();
+              } else {
+                ref.read(exploreProvider.notifier).retryCameraSearch();
+              }
+            },
+          ),
       ],
     );
   }
+}
 
-  /// Branches between the single-pane phone layout (compact/medium) and the
-  /// two-pane tablet layout (expanded/large).
-  Widget _buildMapInterface(BuildContext context) {
-    final sizeClass = context.windowSizeClass;
-    final isTwoPane = sizeClass == WindowSizeClass.expanded || sizeClass == WindowSizeClass.large;
+/// The map once there is a place to show, else location recovery or loading.
+class _ExploreBody extends ConsumerWidget {
+  const _ExploreBody({this.onOpen, this.openId});
 
-    if (isTwoPane) {
-      return _buildTwoPaneMapInterface(context);
+  final ValueChanged<PropertyModel>? onOpen;
+  final int? openId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (located, loadFailed) = ref.watch(
+      propertyLocationProvider(
+        _page,
+      ).select((location) => (location.location != null, location.load.hasError)),
+    );
+    final locationError = ref.watch(
+      propertyQueryProvider(_feed).select((page) => page.error is LocationException),
+    );
+    if (!located) {
+      if (loadFailed || locationError) return const PropertyLocationRecovery(pageType: _page);
+      return Stack(
+        children: [
+          Positioned.fill(child: ColoredBox(color: context.design.surface)),
+          LoadingStates.mapLoadingOverlay(context),
+        ],
+      );
     }
-    return _buildSinglePaneMapInterface(context);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Single-pane layout (compact / medium) — phone, visually unchanged.
-  // ---------------------------------------------------------------------------
-  Widget _buildSinglePaneMapInterface(BuildContext context) {
     return Stack(
       children: [
-        // Main map (MapLibre + OpenFreeMap Liberty vector tiles)
         Positioned.fill(
           child: Semantics(
-            label: 'qa.explore.map',
+            label: context.l10n.text('explore'),
             identifier: 'qa.explore.map',
-            child: ExploreMap(controller: controller),
+            child: const ExploreMap(),
           ),
         ),
-        // Map controls (body is already below AppBar — do not re-add status-bar inset)
-        Positioned(top: AppSpacing.sm + 4, right: AppSpacing.md, child: _buildMapControls(context)),
-        // Info panel
-        Positioned(top: AppSpacing.sm + 4, left: AppSpacing.md, child: _buildInfoPanel(context)),
-        // Loading indicator for more properties (position reacts to collapse)
-        if (controller.state.value == ExploreState.loadingMore)
-          Obx(() {
-            final indicatorBottom = controller.isListCollapsed.value ? 58.0 : 230.0;
-            final isDark = Theme.of(context).brightness == Brightness.dark;
-            final chipBg = (isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream)
-                .withValues(alpha: 0.95);
-            final chipBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-            final chipText = isDark
-                ? AppDesignTokens.darkTextSecondary
-                : AppDesignTokens.neutral500;
-            return Positioned(
-              bottom: indicatorBottom,
-              left: 16,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: chipBg,
-                  borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-                  border: Border.all(color: chipBorder, width: 1),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(AppDesignTokens.brandGold),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'loading_more_properties'.tr,
-                      style: TextStyle(fontSize: 12, color: chipText),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
-        // Collapsible horizontal property list at bottom
-        Obx(() {
-          final collapsed = controller.isListCollapsed.value;
-          final isDark = Theme.of(context).brightness == Brightness.dark;
-          final panelBg = (isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream)
-              .withValues(alpha: 0.95);
-          final borderColor = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-          final handleBarColor = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-          final textColor = isDark ? AppDesignTokens.darkTextSecondary : AppDesignTokens.neutral500;
-          final iconColor = isDark ? AppDesignTokens.darkTextTertiary : AppDesignTokens.neutral500;
-
-          return AnimatedPositioned(
-            duration: AppDurations.normal,
-            curve: AppCurves.standard,
-            left: 0,
-            right: 0,
-            bottom: collapsed ? -220.0 : 0.0,
-            child: SafeArea(
-              top: false,
-              child: Container(
-                clipBehavior: Clip.hardEdge,
-                decoration: BoxDecoration(
-                  color: panelBg,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(AppBorderRadius.lg),
-                  ),
-                  border: Border(
-                    top: BorderSide(color: borderColor, width: 1),
-                    left: BorderSide(color: borderColor, width: 1),
-                    right: BorderSide(color: borderColor, width: 1),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle area — inherits panel bg, no separate container
-                    GestureDetector(
-                      onTap: () => controller.toggleListCollapsed(),
-                      onVerticalDragEnd: (details) {
-                        if (details.primaryVelocity != null) {
-                          if (details.primaryVelocity! < -200) {
-                            controller.expandList();
-                          } else if (details.primaryVelocity! > 200) {
-                            controller.collapseList();
-                          }
-                        }
-                      },
-                      behavior: HitTestBehavior.opaque,
-                      child: Semantics(
-                        label: collapsed ? 'expand_property_list'.tr : 'collapse_property_list'.tr,
-                        button: true,
-                        child: SizedBox(
-                          height: 44,
-                          width: double.infinity,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: handleBarColor,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Obx(() {
-                                final count = controller.properties.length;
-                                return Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '$count ${count == 1 ? 'property'.tr : 'properties'.tr}',
-                                      style: TextStyle(fontSize: 12, color: textColor),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      collapsed
-                                          ? Icons.keyboard_arrow_up
-                                          : Icons.keyboard_arrow_down,
-                                      size: 16,
-                                      color: iconColor,
-                                    ),
-                                  ],
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Card list
-                    PropertyHorizontalList(controller: controller),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }),
+        // The page's hand-cut edge over the top of the map: the map is a
+        // print laid under the sky.
+        const Positioned(top: 0, left: 0, right: 0, height: kPaperLip, child: _SkyEdge()),
+        // The search slip floats over the top of the map with the map
+        // controls beside it on a wide map, or in one row under it on a
+        // phone, so a short map (320 px, 2x text, a banner) keeps them clear
+        // of the list sheet. Gaps pass touches to the map.
+        const Positioned(top: 8, left: 16, right: 16, child: _MapTop()),
+        const _LoadingMore(),
+        _ListSheet(onOpen: onOpen, openId: openId),
       ],
     );
   }
+}
 
-  // ---------------------------------------------------------------------------
-  // Two-pane layout (expanded / large) — iPad / tablet.
-  // ---------------------------------------------------------------------------
-  Widget _buildTwoPaneMapInterface(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Row(
-        children: [
-          // Left: map fills the remaining width with re-anchored overlays.
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Semantics(
-                        label: 'qa.explore.map',
-                        identifier: 'qa.explore.map',
-                        child: ExploreMap(controller: controller),
-                      ),
-                    ),
-                    // Map controls — anchored to the top-right of the *map pane*
-                    // (not the screen), so they never float over the side panel.
-                    Positioned(
-                      top: AppSpacing.sm + 4,
-                      right: AppSpacing.md,
-                      child: _buildMapControls(context),
-                    ),
-                    // Info panel — top-left of the map pane.
-                    Positioned(
-                      top: AppSpacing.sm + 4,
-                      left: AppSpacing.md,
-                      child: _buildInfoPanel(context),
-                    ),
-                    // Loading-more indicator — sits just above the panel's bottom.
-                    if (controller.state.value == ExploreState.loadingMore)
-                      Positioned(
-                        bottom: AppSpacing.md,
-                        left: AppSpacing.md,
-                        right: AppSpacing.md,
-                        child: _buildLoadingMoreChip(context),
-                      ),
-                  ],
-                );
-              },
+/// The search slip and the map controls over the top of the map.
+class _MapTop extends StatelessWidget {
+  const _MapTop();
+
+  @override
+  Widget build(BuildContext context) {
+    const search = PaperSheet(
+      seed: 'explore-search',
+      elevation: PaperElevation.low,
+      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: PropertySearchField(pageType: _page, bare: true),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) => constraints.maxWidth >= 600
+          ? const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: search),
+                SizedBox(width: 12),
+                _MapControls(),
+              ],
+            )
+          : const Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [search, SizedBox(height: 10), _MapControls()],
             ),
-          ),
-          // Right: fixed-width vertical property list panel.
-          _buildSidePanel(context),
-        ],
-      ),
     );
   }
+}
 
-  Widget _buildSidePanel(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final panelBg = isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream;
-    final borderColor = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-    final textPrimary = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
-    final textSecondary = isDark ? AppDesignTokens.darkTextSecondary : AppDesignTokens.neutral500;
-    final dividerColor = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
+/// Zoom, my location and show-all on one paper slip, in a row. Bare icons.
+class _MapControls extends ConsumerWidget {
+  const _MapControls();
 
-    return Container(
-      width: _sidePanelWidth,
-      decoration: BoxDecoration(
-        color: panelBg,
-        border: Border(left: BorderSide(color: borderColor, width: 1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Panel header — count + area summary (mirrors the info panel text).
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              AppSpacing.md,
-              AppSpacing.md,
-              AppSpacing.sm,
-            ),
-            child: Obx(() {
-              final count = controller.properties.length;
-              return Row(
-                children: [
-                  Text(
-                    '$count',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: textPrimary),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      count == 1 ? 'property'.tr : 'properties'.tr,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: textSecondary,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    controller.currentAreaText,
-                    style: TextStyle(fontSize: 12, color: textSecondary),
-                  ),
-                ],
-              );
-            }),
-          ),
-          Divider(height: 1, thickness: 1, color: dividerColor),
-          // Vertical property list.
-          Expanded(
-            child: PropertyHorizontalList(controller: controller, direction: Axis.vertical),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoadingMoreChip(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final chipBg = (isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream).withValues(
-      alpha: 0.95,
-    );
-    final chipBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-    final chipText = isDark ? AppDesignTokens.darkTextSecondary : AppDesignTokens.neutral500;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: chipBg,
-        borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-        border: Border.all(color: chipBorder, width: 1),
-      ),
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.read(exploreProvider.notifier);
+    final ink = context.design.textPrimary;
+    const target = BoxConstraints(minHeight: 48, minWidth: 48);
+    return PaperSheet(
+      seed: 'explore-controls',
+      elevation: PaperElevation.low,
+      padding: const EdgeInsets.all(4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(
-              strokeWidth: 1.5,
-              valueColor: AlwaysStoppedAnimation<Color>(AppDesignTokens.brandGold),
-            ),
+          IconButton(
+            icon: PaperIcon(KnifeIcon.plus, color: ink),
+            tooltip: context.l10n.text('zoom_in'),
+            onPressed: controller.zoomIn,
+            constraints: target,
+          ),
+          IconButton(
+            icon: PaperIcon(KnifeIcon.minus, color: ink),
+            tooltip: context.l10n.text('zoom_out'),
+            onPressed: controller.zoomOut,
+            constraints: target,
           ),
           const SizedBox(width: 8),
-          Text('loading_more_properties'.tr, style: TextStyle(fontSize: 12, color: chipText)),
+          IconButton(
+            icon: PaperIcon(KnifeIcon.locate, color: context.design.accent),
+            tooltip: context.l10n.text('my_location'),
+            onPressed: controller.recenterToCurrentLocation,
+            constraints: target,
+          ),
+          IconButton(
+            icon: PaperIcon(KnifeIcon.map, color: ink),
+            tooltip: context.l10n.text('fit_map_to_properties'),
+            onPressed: controller.fitBoundsToProperties,
+            constraints: target,
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildMapControls(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final controlBg = isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream;
-    final controlBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-    final iconTint = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
-    const target = BoxConstraints(minHeight: 44, minWidth: 44);
+/// The search radius, quiet beside the count on the list handle.
+class _RadiusNote extends ConsumerWidget {
+  const _RadiusNote();
 
-    return Column(
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final radius = ref.watch(
+      propertyFiltersProvider.select((state) => state.forPage(_page).radiusKm ?? 10),
+    );
+    return Text(
+      context.l10n.text(
+        'radius_km',
+        // 10 km, 12.5 km: no trailing ".0".
+        params: {'km': radius.clamp(5, 50).toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '')},
+      ),
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.design.textSecondary),
+    );
+  }
+}
+
+class _LoadingMore extends ConsumerWidget {
+  const _LoadingMore();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final loadingMore = ref.watch(
+      propertyQueryProvider(_feed).select((page) => page.isLoadingMore),
+    );
+    final collapsed = ref.watch(exploreProvider.select((state) => state.collapsed));
+    return Positioned(
+      bottom: (collapsed ? 0 : PropertyHorizontalList.height(context)) + 64,
+      left: 16,
+      right: 16,
+      child: !loadingMore
+          ? const SizedBox.shrink()
+          : Center(
+              child: PaperSheet(
+                seed: 'explore-more',
+                elevation: PaperElevation.low,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    LoadingStates.buttonSpinner(size: 16, color: context.design.textSecondary),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        context.l10n.text('loading_more_properties'),
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// The paper sheet of homes over the map. Its sides and bottom sit just past
+/// the edges, so only the cut top edge shows. Tap or drag the handle to fold it.
+class _ListSheet extends ConsumerWidget {
+  const _ListSheet({this.onOpen, this.openId});
+
+  final ValueChanged<PropertyModel>? onOpen;
+  final int? openId;
+
+  static const double _bleed = 4;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final collapsed = ref.watch(exploreProvider.select((state) => state.collapsed));
+    final (count, empty) = ref.watch(
+      propertyQueryProvider(
+        _feed,
+      ).select((page) => (page.items.length, page.phase == PropertyLoadPhase.empty)),
+    );
+    final controller = ref.read(exploreProvider.notifier);
+    final design = context.design;
+    final l10n = context.l10n;
+    return AnimatedPositioned(
+      duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : AppDurations.normal,
+      curve: AppCurves.standard,
+      left: -_bleed,
+      right: -_bleed,
+      bottom: (collapsed && !empty ? -PropertyHorizontalList.height(context) : 0) - _bleed,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          color: design.surface,
+          shape: CutBorder(
+            seed: 'explore-list',
+            amp: 3,
+            shadows: paperShadows(PaperElevation.mid, design.shadowOn(design.background)),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(_bleed, _bleed, _bleed, _bleed),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: controller.toggleListCollapsed,
+                  onVerticalDragEnd: (details) {
+                    final velocity = details.primaryVelocity ?? 0;
+                    if (velocity < -200) controller.expandList();
+                    if (velocity > 200) controller.collapseList();
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: Semantics(
+                    label: l10n.text(collapsed ? 'expand_property_list' : 'collapse_property_list'),
+                    button: true,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        // The count, the radius in quiet type, the fold mark.
+                        child: Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 10,
+                          runSpacing: 2,
+                          children: [
+                            Text(
+                              '$count ${l10n.text(count == 1 ? 'property' : 'properties')}',
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                            const _RadiusNote(),
+                            PaperIcon(
+                              collapsed ? KnifeIcon.chevronUp : KnifeIcon.chevronDown,
+                              size: 18,
+                              color: design.textSecondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (empty)
+                  const _EmptyArea()
+                else
+                  PropertyHorizontalList(onOpen: onOpen, openId: openId),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Nothing in this area. It takes the place of the list, so the map stays
+/// clear and the controls stay whole; one way forward.
+class _EmptyArea extends StatelessWidget {
+  const _EmptyArea();
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
+    final words = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Zoom controls
-        Container(
-          decoration: BoxDecoration(
-            color: controlBg,
-            borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-            border: Border.all(color: controlBorder, width: 1),
-          ),
-          child: Column(
-            children: [
-              IconButton(
-                icon: Icon(Icons.add, color: iconTint),
-                tooltip: 'zoom_in'.tr,
-                onPressed: controller.zoomIn,
-                constraints: target,
-              ),
-              Container(width: 24, height: 1, color: controlBorder),
-              IconButton(
-                icon: Icon(Icons.remove, color: iconTint),
-                tooltip: 'zoom_out'.tr,
-                onPressed: controller.zoomOut,
-                constraints: target,
-              ),
-            ],
-          ),
+        Text(l10n.text('no_properties_found'), style: text.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          l10n.text('no_properties_found_area_message'),
+          style: text.bodyMedium?.copyWith(color: context.design.textSecondary),
         ),
-
         const SizedBox(height: 12),
-
-        // Current location button
-        Container(
-          decoration: BoxDecoration(
-            color: controlBg,
-            borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-            border: Border.all(color: controlBorder, width: 1),
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.my_location, color: AppDesign.primaryYellow),
-            tooltip: 'my_location'.tr,
-            onPressed: controller.recenterToCurrentLocation,
-            constraints: target,
-          ),
-        ),
-
-        const SizedBox(height: 12),
-
-        // Fit bounds button
-        Container(
-          decoration: BoxDecoration(
-            color: controlBg,
-            borderRadius: BorderRadius.circular(AppBorderRadius.sm),
-            border: Border.all(color: controlBorder, width: 1),
-          ),
-          child: IconButton(
-            icon: Icon(Icons.center_focus_strong, color: iconTint),
-            tooltip: 'fit_map_to_properties'.tr,
-            onPressed: controller.fitBoundsToProperties,
-            constraints: target,
+        Semantics(
+          identifier: 'qa.explore.empty.action',
+          child: FilledButton(
+            key: const ValueKey('qa.explore.empty.action'),
+            onPressed: () => showPropertyFilterBottomSheet(context, pageType: _page),
+            child: Text(l10n.text('adjust_filters')),
           ),
         ),
       ],
     );
-  }
-
-  Widget _buildInfoPanel(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final panelBg = isDark ? AppDesignTokens.darkSurfaceAlt : AppDesignTokens.warmCream;
-    final panelBorder = isDark ? AppDesignTokens.darkBorder : AppDesignTokens.neutral300;
-    final textPrimary = isDark ? AppDesignTokens.darkTextPrimary : AppDesignTokens.neutral900;
-    final textSecondary = isDark ? AppDesignTokens.darkTextSecondary : AppDesignTokens.neutral500;
-    final maxPanelWidth = MediaQuery.sizeOf(context).width * 0.55;
-
+    // No taller than the list it replaces, so the sheet never climbs over the
+    // map controls. The scene sits beside the words when there is room.
     return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxPanelWidth),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: panelBg.withValues(alpha: 0.95),
-          borderRadius: BorderRadius.circular(AppBorderRadius.md),
-          border: Border.all(color: panelBorder, width: 1),
+      constraints: BoxConstraints(maxHeight: PropertyHorizontalList.height(context)),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+            if (constraints.maxWidth / scale < 340) return words;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const PaperVignette(PaperScene.empty, seed: 'explore', width: 128),
+                const SizedBox(width: 16),
+                Expanded(child: words),
+              ],
+            );
+          },
         ),
-        child: Obx(() {
-          final count = controller.properties.length;
-          final currentAreaText = controller.currentAreaText;
-
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '$count',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textPrimary),
-              ),
-              Text(
-                ' ${count == 1 ? 'property'.tr : 'properties'.tr}',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: textSecondary),
-              ),
-              Text('bullet_separator'.tr, style: TextStyle(fontSize: 11, color: textSecondary)),
-              Flexible(
-                child: Text(
-                  currentAreaText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: textSecondary),
-                ),
-              ),
-            ],
-          );
-        }),
       ),
     );
   }
-
-  // Bottom sheet removed in favor of persistent horizontal list
 }

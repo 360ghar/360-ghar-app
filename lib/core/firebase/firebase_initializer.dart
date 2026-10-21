@@ -10,7 +10,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:ghar360/core/config/app_config.dart';
 import 'package:ghar360/core/firebase/firebase_runtime_state.dart';
 import 'package:ghar360/core/firebase/remote_config_service.dart';
@@ -23,7 +22,7 @@ import 'package:ghar360/firebase_options.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    DebugLogger.info('📩 [FCM][BG] Message received: ${message.messageId ?? 'no-id'}');
+    DebugLogger.info('Background notification received');
 
     // Extract notification content from either notification payload or data payload
     String? title = message.notification?.title;
@@ -92,7 +91,7 @@ Future<void> _showBackgroundNotification(
       payload: jsonEncode(data),
     );
 
-    DebugLogger.info('📩 [FCM][BG] Local notification displayed: $title');
+    DebugLogger.info('Background notification displayed');
   } catch (e, st) {
     DebugLogger.error('Failed to show background notification', e, st);
   }
@@ -104,7 +103,7 @@ class FirebaseInitializer {
   static bool get isFirebaseEnabled => FirebaseRuntimeState.isEnabled;
   static bool get isFirebaseReady => FirebaseRuntimeState.isReady;
 
-  static Future<void> init() async {
+  static Future<void> init({bool Function(String)? readConsent}) async {
     if (_initialized) return;
 
     final config = AppConfig.isInitialized ? AppConfig.instance : null;
@@ -191,11 +190,8 @@ class FirebaseInitializer {
         _initialized = true;
         return;
       }
-      final storage = GetStorage();
-      bool consent(String key) {
-        final v = storage.read(key);
-        return v is bool ? v : true; // Default allow until explicit choice
-      }
+      // Default allow until an explicit choice, as before the migration.
+      bool consent(String key) => readConsent?.call(key) ?? true;
 
       final analyticsOn = RemoteConfigService.analyticsEnabled && consent('consent_analytics');
       final perfOn = RemoteConfigService.performanceEnabled && consent('consent_performance');

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ghar360/core/design/app_design_components.dart';
+import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/app_design_tokens.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 
@@ -10,65 +11,58 @@ class AppDesignTheme {
   static const Duration defaultTransitionDuration = AppDurations.normal;
   static const Curve defaultTransitionCurve = AppCurves.standard;
 
-  static ThemeData light() {
-    const colorScheme = ColorScheme.light(
-      primary: AppDesignTokens.brandGold,
-      onPrimary: AppDesignTokens.neutral900,
-      secondary: AppDesignTokens.accentOrange,
-      onSecondary: AppDesignTokens.neutralWhite,
-      surface: AppDesignTokens.neutralWhite,
-      onSurface: AppDesignTokens.neutral900,
-      error: AppDesignTokens.error,
-      onError: AppDesignTokens.neutralWhite,
-      outline: AppDesignTokens.neutral300,
-    );
+  static ThemeData light() => _theme(Brightness.light);
+  static ThemeData dark() => _theme(Brightness.dark);
 
+  static ThemeData _theme(Brightness brightness) {
+    final p = AppPalette(isDark: brightness == Brightness.dark);
+    final colorScheme = ColorScheme(
+      brightness: brightness,
+      // Material paints chosen states with primary (cursor, focused label, sliders,
+      // checkboxes, radios, pickers), so primary is the teal accent. Gold is set
+      // on the action buttons only; on white it is 1.8:1, too faint for a control.
+      primary: p.accent,
+      onPrimary: p.isDark ? AppDesignTokens.ink900 : AppDesignTokens.paper,
+      secondary: p.accent,
+      onSecondary: p.isDark ? AppDesignTokens.ink900 : AppDesignTokens.paper,
+      surface: p.surface,
+      onSurface: p.textPrimary,
+      onSurfaceVariant: p.textSecondary,
+      surfaceContainerHighest: p.raised,
+      error: p.error,
+      onError: p.isDark ? AppDesignTokens.ink900 : AppDesignTokens.paper,
+      outline: p.fieldBorder,
+      outlineVariant: p.border,
+      shadow: p.shadowOn(p.background),
+      surfaceTint: Colors.transparent,
+    );
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.light,
-      scaffoldBackgroundColor: AppDesignTokens.neutral50,
+      fontFamily: kBodyFont,
+      fontFamilyFallback: kFontFallback,
+      brightness: brightness,
+      scaffoldBackgroundColor: p.background,
+      canvasColor: p.surface,
       colorScheme: colorScheme,
-      textTheme: AppDesignComponents.textTheme(Brightness.light),
-      appBarTheme: AppDesignComponents.appBarTheme(Brightness.light),
-      elevatedButtonTheme: AppDesignComponents.elevatedButtonTheme(Brightness.light),
-      filledButtonTheme: AppDesignComponents.filledButtonTheme(Brightness.light),
-      outlinedButtonTheme: AppDesignComponents.outlinedButtonTheme(Brightness.light),
-      textButtonTheme: AppDesignComponents.textButtonTheme(Brightness.light),
-      inputDecorationTheme: AppDesignComponents.inputDecorationTheme(Brightness.light),
-      cardTheme: AppDesignComponents.cardTheme(Brightness.light),
-      switchTheme: AppDesignComponents.switchTheme(Brightness.light),
-      dividerTheme: const DividerThemeData(color: AppDesignTokens.neutral300, thickness: 1),
-    );
-  }
-
-  static ThemeData dark() {
-    const colorScheme = ColorScheme.dark(
-      primary: AppDesignTokens.brandGold,
-      onPrimary: AppDesignTokens.neutral900,
-      secondary: AppDesignTokens.accentOrange,
-      onSecondary: AppDesignTokens.darkTextPrimary,
-      surface: AppDesignTokens.darkSurface,
-      onSurface: AppDesignTokens.darkTextPrimary,
-      error: AppDesignTokens.error,
-      onError: AppDesignTokens.darkTextPrimary,
-      outline: AppDesignTokens.darkTextTertiary,
-    );
-
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: AppDesignTokens.neutral900,
-      colorScheme: colorScheme,
-      textTheme: AppDesignComponents.textTheme(Brightness.dark),
-      appBarTheme: AppDesignComponents.appBarTheme(Brightness.dark),
-      elevatedButtonTheme: AppDesignComponents.elevatedButtonTheme(Brightness.dark),
-      filledButtonTheme: AppDesignComponents.filledButtonTheme(Brightness.dark),
-      outlinedButtonTheme: AppDesignComponents.outlinedButtonTheme(Brightness.dark),
-      textButtonTheme: AppDesignComponents.textButtonTheme(Brightness.dark),
-      inputDecorationTheme: AppDesignComponents.inputDecorationTheme(Brightness.dark),
-      cardTheme: AppDesignComponents.cardTheme(Brightness.dark),
-      switchTheme: AppDesignComponents.switchTheme(Brightness.dark),
-      dividerTheme: const DividerThemeData(color: AppDesignTokens.darkBorder, thickness: 1),
+      splashFactory: NoSplash.splashFactory,
+      textTheme: AppDesignComponents.textTheme(brightness),
+      appBarTheme: AppDesignComponents.appBarTheme(brightness),
+      elevatedButtonTheme: AppDesignComponents.elevatedButtonTheme(brightness),
+      filledButtonTheme: AppDesignComponents.filledButtonTheme(brightness),
+      outlinedButtonTheme: AppDesignComponents.outlinedButtonTheme(brightness),
+      textButtonTheme: AppDesignComponents.textButtonTheme(brightness),
+      inputDecorationTheme: AppDesignComponents.inputDecorationTheme(brightness),
+      cardTheme: AppDesignComponents.cardTheme(brightness),
+      listTileTheme: AppDesignComponents.listTileTheme(brightness),
+      expansionTileTheme: AppDesignComponents.expansionTileTheme(brightness),
+      pageTransitionsTheme: AppDesignComponents.pageTransitionsTheme,
+      switchTheme: AppDesignComponents.switchTheme(brightness),
+      dialogTheme: AppDesignComponents.dialogTheme(brightness),
+      bottomSheetTheme: AppDesignComponents.bottomSheetTheme(brightness),
+      progressIndicatorTheme: AppDesignComponents.progressTheme(brightness),
+      dividerTheme: DividerThemeData(color: p.divider, thickness: 1, space: 1),
+      // Tabs are marked by the indicator under the chosen label, not a full-width rule.
+      tabBarTheme: TabBarThemeData(dividerHeight: 0, indicatorColor: p.accent),
     );
   }
 }

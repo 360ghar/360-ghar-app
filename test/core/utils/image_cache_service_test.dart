@@ -1,226 +1,232 @@
-import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
-
+import 'package:flutter_cache_manager/file.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:ghar360/core/utils/image_cache_service.dart';
+import 'package:mocktail/mocktail.dart';
+
+class _CacheManager extends Mock implements BaseCacheManager {}
+
+class _File extends Mock implements File {}
 
 void main() {
-  // ImageCacheService's constructor creates a CacheManager which uses
-  // path_provider/platform channels and an HttpClient. The binding must be
-  // initialized and the path_provider channel must be mocked so the cache
-  // manager's async initialization does not throw MissingPluginException.
-  TestWidgetsFlutterBinding.ensureInitialized();
+  late _CacheManager manager;
+  late ImageCacheService service;
+  late _File file;
+  const url = 'https://example.com/photo.jpg';
 
-  late Directory tempDir;
-
-  setUpAll(() {
-    tempDir = Directory.systemTemp.createTempSync('image_cache_test_');
-    // Mock path_provider method channel to return a real temp directory so
-    // flutter_cache_manager can initialize its file system and database.
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (MethodCall call) async {
-        return tempDir.path;
-      },
-    );
+  setUp(() {
+    manager = _CacheManager();
+    service = ImageCacheService(cacheManager: manager);
+    file = _File();
+    when(() => file.exists()).thenAnswer((_) async => true);
+    when(() => file.length()).thenAnswer((_) async => 32);
+    when(() => manager.getFileFromCache(any())).thenAnswer((_) async => null);
+    when(() => manager.getSingleFile(any())).thenAnswer((_) async => file);
+    when(() => manager.removeFile(any())).thenAnswer((_) async {});
+    when(() => manager.emptyCache()).thenAnswer((_) async {});
+    when(() => manager.dispose()).thenAnswer((_) async {});
   });
 
-  tearDownAll(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      null,
-    );
-    if (tempDir.existsSync()) {
-      tempDir.deleteSync(recursive: true);
+  test('repository disposal before open completes waits and closes exactly once', () async {
+    final exists = Completer<bool>();
+    when(() => file.exists()).thenAnswer((_) => exists.future);
+    when(() => file.writeAsString(any())).thenAnswer((_) async => file);
+    final repository = ImageCacheInfoRepository.withFile(file);
+    final opening = repository.open();
+    expect(repository.open(), same(opening));
+    var closed = false;
+    final closing = repository.close().then((_) => closed = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(closed, isFalse);
+    verifyNever(() => file.writeAsString(any()));
+    exists.complete(false);
+    await opening;
+    await closing;
+    await repository.close();
+    verify(() => file.writeAsString('[]')).called(1);
+  });
+
+  test('unused repository close does not create or flush a file', () async {
+    final repository = ImageCacheInfoRepository.withFile(file);
+    expect(await repository.close(), isFalse);
+    verifyZeroInteractions(file);
+  });
+
+  group('URL validation', () {
+    for (final value in [
+      url,
+      'http://example.com/photo.png',
+      'https://cdn.example.com/photo?w=80',
+    ]) {
+      test('accepts $value', () => expect(service.isValidImageUrl(value), isTrue));
+    }
+    for (final value in [
+      '',
+      ' ',
+      'example.com/image.jpg',
+      'ftp://example.com/photo',
+      'file:///photo',
+      'not a url',
+      'https://[invalid',
+      'https://',
+      'https://user:password@example.com/photo',
+      ' https://example.com/photo',
+    ]) {
+      test('rejects $value', () => expect(service.isValidImageUrl(value), isFalse));
     }
   });
 
-  late ImageCacheService service;
-
-  setUp(() {
-    service = ImageCacheService.instance;
+  test('uses injected manager without creating platform dependencies', () {
+    expect(service.cacheManager, same(manager));
   });
 
-  group('ImageCacheService.instance (singleton)', () {
-    test('returns the same instance on repeated calls', () {
-      final a = ImageCacheService.instance;
-      final b = ImageCacheService.instance;
-
-      expect(identical(a, b), isTrue);
-    });
+  test('invalid input does not start a cache or network request', () async {
+    expect(await service.getImageFile('not-a-url'), isNull);
+    expect(await service.getImageBytes(''), isNull);
+    expect(await service.isImageCached(''), isFalse);
+    await service.preloadImage('');
+    verifyZeroInteractions(manager);
   });
 
-  group('ImageCacheService.isValidImageUrl', () {
-    test('returns true for valid https URLs', () {
-      expect(service.isValidImageUrl('https://example.com/image.jpg'), isTrue);
-    });
-
-    test('returns true for valid http URLs', () {
-      expect(service.isValidImageUrl('http://example.com/image.png'), isTrue);
-    });
-
-    test('returns true for URLs with paths and query parameters', () {
-      expect(service.isValidImageUrl('https://cdn.example.com/images/123?w=800&h=600'), isTrue);
-    });
-
-    test('returns true for URLs with subdomains', () {
-      expect(service.isValidImageUrl('https://res.cloudinary.com/360ghar/image.jpg'), isTrue);
-    });
-
-    test('returns false for empty string', () {
-      expect(service.isValidImageUrl(''), isFalse);
-    });
-
-    test('returns false for whitespace-only input', () {
-      expect(service.isValidImageUrl('   '), isFalse);
-    });
-
-    test('returns false for URL without a scheme', () {
-      expect(service.isValidImageUrl('example.com/image.jpg'), isFalse);
-    });
-
-    test('returns false for ftp scheme', () {
-      expect(service.isValidImageUrl('ftp://example.com/image.jpg'), isFalse);
-    });
-
-    test('returns false for file scheme', () {
-      expect(service.isValidImageUrl('file:///path/to/image.jpg'), isFalse);
-    });
-
-    test('returns false for a plain string that is not a URL', () {
-      expect(service.isValidImageUrl('not a url'), isFalse);
-    });
-
-    test('returns false for a malformed string', () {
-      expect(service.isValidImageUrl('https://[invalid'), isFalse);
-    });
+  test('expired entry goes through manager freshness revalidation', () async {
+    when(
+      () => manager.getFileFromCache(url),
+    ).thenAnswer((_) async => FileInfo(file, FileSource.Cache, DateTime(2000), url));
+    expect(await service.getImageFile(url), same(file));
+    verify(() => manager.getSingleFile(url)).called(1);
+    verifyNever(() => manager.emptyCache());
+    verifyNever(() => manager.removeFile(any()));
   });
 
-  group('ImageCacheService.getCacheSize', () {
-    test('returns 0 (flutter_cache_manager does not expose size)', () async {
-      final size = await service.getCacheSize();
-
-      expect(size, 0);
-    });
+  test('empty cache file is removed before a new request', () async {
+    final corrupt = _File();
+    when(() => corrupt.exists()).thenAnswer((_) async => true);
+    when(() => corrupt.length()).thenAnswer((_) async => 0);
+    when(
+      () => manager.getFileFromCache(url),
+    ).thenAnswer((_) async => FileInfo(corrupt, FileSource.Cache, DateTime(2100), url));
+    expect(await service.getImageFile(url), same(file));
+    verifyInOrder([
+      () => manager.getFileFromCache(url),
+      () => manager.removeFile(url),
+      () => manager.getSingleFile(url),
+    ]);
+    verifyNever(() => manager.emptyCache());
   });
 
-  group('ImageCacheService.getCacheFileCount', () {
-    test('returns 0 (flutter_cache_manager does not expose count)', () async {
-      final count = await service.getCacheFileCount();
-
-      expect(count, 0);
-    });
+  test('missing file is not reported as cached', () async {
+    when(() => file.exists()).thenAnswer((_) async => false);
+    when(
+      () => manager.getFileFromCache(url),
+    ).thenAnswer((_) async => FileInfo(file, FileSource.Cache, DateTime(2100), url));
+    expect(await service.isImageCached(url), isFalse);
   });
 
-  group('ImageCacheService.getCacheStats', () {
-    test('returns a map with expected configuration keys', () async {
-      final stats = await service.getCacheStats();
-
-      expect(stats, isA<Map<String, dynamic>>());
-      expect(stats.containsKey('maxAge'), isTrue);
-      expect(stats.containsKey('maxSize'), isTrue);
-      expect(stats.containsKey('maxFiles'), isTrue);
-      expect(stats.containsKey('note'), isTrue);
-    });
-
-    test('returns maxSize as an integer', () async {
-      final stats = await service.getCacheStats();
-
-      expect(stats['maxSize'], isA<int>());
-    });
-
-    test('returns maxFiles as an integer', () async {
-      final stats = await service.getCacheStats();
-
-      expect(stats['maxFiles'], isA<int>());
-    });
-
-    test('returns maxAge as a string', () async {
-      final stats = await service.getCacheStats();
-
-      expect(stats['maxAge'], isA<String>());
-    });
-
-    test('returns a descriptive note string', () async {
-      final stats = await service.getCacheStats();
-
-      expect(stats['note'], isA<String>());
-      expect(stats['note'].toString(), isNotEmpty);
-    });
+  test('nonempty file is reported as cached', () async {
+    when(
+      () => manager.getFileFromCache(url),
+    ).thenAnswer((_) async => FileInfo(file, FileSource.Cache, DateTime(2100), url));
+    expect(await service.isImageCached(url), isTrue);
   });
 
-  group('ImageCacheService error paths', () {
-    test('getImageFile returns null for an invalid URL', () async {
-      final file = await service.getImageFile('not-a-url');
-
-      expect(file, isNull);
-    });
-
-    test('getImageFile returns null for an empty URL', () async {
-      final file = await service.getImageFile('');
-
-      expect(file, isNull);
-    });
-
-    test('getImageBytes returns null for an invalid URL', () async {
-      final bytes = await service.getImageBytes('not-a-url');
-
-      expect(bytes, isNull);
-    });
-
-    test('getImageBytes returns null for an empty URL', () async {
-      final bytes = await service.getImageBytes('');
-
-      expect(bytes, isNull);
-    });
-
-    test('updateCacheConfig does not throw', () async {
-      await expectLater(
-        service.updateCacheConfig(
-          maxAge: const Duration(hours: 12),
-          maxSize: 100 * 1024 * 1024,
-          maxFiles: 100,
-        ),
-        completes,
-      );
-    });
+  test('empty downloads and failed downloads use the local fallback', () async {
+    when(() => file.length()).thenAnswer((_) async => 0);
+    expect(await service.getImageFile(url), isNull);
+    when(() => manager.getSingleFile(url)).thenThrow(StateError('unavailable'));
+    expect(await service.getImageFile(url), isNull);
   });
 
-  group('ImageCacheServiceExtension', () {
-    test('preloadImage is a no-op for an invalid URL', () async {
-      await expectLater(service.preloadImage('not-a-url'), completes);
-    });
-
-    test('isImageCached returns false for an invalid URL', () async {
-      final cached = await service.isImageCached('not-a-url');
-
-      expect(cached, isFalse);
-    });
+  test('bytes are read from the same cache', () async {
+    final bytes = Uint8List.fromList([1, 2, 3]);
+    when(() => file.readAsBytes()).thenAnswer((_) async => bytes);
+    expect(await service.getImageBytes(url), bytes);
+    verify(() => manager.getSingleFile(url)).called(1);
   });
 
-  group('ImageCacheService cache maintenance', () {
-    test('removeFromCache completes for any key', () async {
-      await expectLater(service.removeFromCache('https://example.com/missing.jpg'), completes);
-    });
+  test('failed byte reads return a local image failure', () async {
+    when(() => file.readAsBytes()).thenThrow(StateError('disk failure'));
+    expect(await service.getImageBytes(url), isNull);
+  });
 
-    test('clearCache completes without throwing', () async {
-      await expectLater(service.clearCache(), completes);
-    });
+  test('prefetch deduplicates URLs and caps concurrent requests at two', () async {
+    final pending = Completer<File>();
+    when(() => manager.getSingleFile(any())).thenAnswer((_) => pending.future);
+    final first = service.preloadImage(url);
+    final duplicate = service.preloadImage(url);
+    final second = service.preloadImage('https://example.com/2.jpg');
+    await service.preloadImage('https://example.com/3.jpg');
+    await Future<void>.delayed(Duration.zero);
+    expect(duplicate, same(first));
+    verify(() => manager.getSingleFile(url)).called(1);
+    verify(() => manager.getSingleFile('https://example.com/2.jpg')).called(1);
+    verifyNever(() => manager.getSingleFile('https://example.com/3.jpg'));
+    pending.complete(file);
+    await Future.wait([first, second]);
+    await service.preloadImage('https://example.com/3.jpg');
+    verify(() => manager.getSingleFile('https://example.com/3.jpg')).called(1);
+  });
 
-    test('cleanExpiredCache completes without throwing', () async {
-      await expectLater(service.cleanExpiredCache(), completes);
-    });
+  test('gallery prefetch is limited to two distinct valid images', () async {
+    await service.preloadImages([
+      '',
+      url,
+      url,
+      'https://example.com/2.jpg',
+      'https://example.com/3.jpg',
+    ]);
+    verify(() => manager.getSingleFile(url)).called(1);
+    verify(() => manager.getSingleFile('https://example.com/2.jpg')).called(1);
+    verifyNever(() => manager.getSingleFile('https://example.com/3.jpg'));
+  });
 
-    test('smartCleanup completes without throwing', () async {
-      await expectLater(service.smartCleanup(), completes);
+  test('paging away stops the next speculative request', () async {
+    var current = true;
+    when(() => manager.getSingleFile(url)).thenAnswer((_) async {
+      current = false;
+      return file;
     });
+    await service.preloadImages([url, 'https://example.com/2.jpg'], isCurrent: () => current);
+    verifyNever(() => manager.getSingleFile('https://example.com/2.jpg'));
+  });
 
-    test('dispose releases singleton and allows re-instantiation', () async {
-      await service.dispose();
-      final next = ImageCacheService.instance;
-      expect(next, isA<ImageCacheService>());
-    });
+  test('explicit removal affects only the requested URL', () async {
+    await service.removeFromCache(url);
+    verify(() => manager.removeFile(url)).called(1);
+    verifyNever(() => manager.emptyCache());
+  });
+
+  test('only explicit clearing empties the cache', () async {
+    await service.clearCache();
+    verify(() => manager.emptyCache()).called(1);
+  });
+
+  test('cache maintenance failures are not reported as success', () async {
+    when(() => manager.removeFile(url)).thenThrow(StateError('disk failure'));
+    when(() => manager.emptyCache()).thenThrow(StateError('disk failure'));
+    await expectLater(service.removeFromCache(url), throwsStateError);
+    await expectLater(service.clearCache(), throwsStateError);
+  });
+
+  test('disposal is idempotent and rejects new speculative requests', () async {
+    await service.dispose();
+    await service.dispose();
+    await service.preloadImage(url);
+    expect(await service.getImageFile(url), isNull);
+    verify(() => manager.dispose()).called(1);
+    verifyNever(() => manager.getSingleFile(any()));
+  });
+
+  test('disposal prevents an in-flight read from starting a new download', () async {
+    final pending = Completer<FileInfo?>();
+    when(() => manager.getFileFromCache(url)).thenAnswer((_) => pending.future);
+    final prefetch = service.preloadImage(url);
+    final closing = service.dispose();
+    pending.complete(null);
+    await Future.wait([prefetch, closing]);
+    verifyNever(() => manager.getSingleFile(any()));
+    verify(() => manager.dispose()).called(1);
   });
 }

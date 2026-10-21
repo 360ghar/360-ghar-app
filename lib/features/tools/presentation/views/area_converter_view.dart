@@ -1,188 +1,124 @@
 import 'package:flutter/material.dart';
 
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/app_spacing.dart';
+import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/tools/presentation/controllers/area_converter_controller.dart';
+import 'package:ghar360/features/tools/presentation/widgets/calculator_widgets.dart';
 
-class AreaConverterView extends GetView<AreaConverterController> {
+class AreaConverterView extends ConsumerStatefulWidget {
   const AreaConverterView({super.key});
 
   @override
+  ConsumerState<AreaConverterView> createState() => _AreaConverterViewState();
+}
+
+class _AreaConverterViewState extends ConsumerState<AreaConverterView> {
+  late final TextEditingController _input;
+
+  @override
+  void initState() {
+    super.initState();
+    _input = TextEditingController(text: ref.read(areaConverterProvider).input);
+  }
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: const ValueKey('qa.tools.area_converter.screen'),
-      backgroundColor: AppDesign.background,
-      appBar: AppBar(
-        backgroundColor: AppDesign.appBarBackground,
-        elevation: 0,
-        title: Text(
-          'area_converter'.tr,
-          style: TextStyle(color: AppDesign.appBarText, fontSize: 20, fontWeight: FontWeight.w600),
-        ),
-        leading: IconButton(
-          tooltip: 'back'.tr,
-          icon: Icon(Icons.arrow_back, color: AppDesign.iconColor),
-          onPressed: () => Get.back(),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh, color: AppDesign.iconColor),
-            onPressed: controller.clear,
+    final state = ref.watch(areaConverterProvider);
+    final controller = ref.read(areaConverterProvider.notifier);
+    final palette = context.design;
+    final l10n = context.l10n;
+    return CalculatorScaffold(
+      screenKey: 'qa.tools.area_converter.screen',
+      title: l10n.text('area_converter'),
+      onReset: () {
+        _input.clear();
+        controller.clear();
+      },
+      inputs: [
+        CalculatorLabel(l10n.text('enter_area')),
+        const SizedBox(height: 8),
+        Semantics(
+          identifier: 'qa.tools.area_converter.input',
+          child: TextField(
+            key: const ValueKey('qa.tools.area_converter.input'),
+            controller: _input,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(
+              hintText: l10n.text('enter_value'),
+              errorText: state.validationKey == null ? null : l10n.text(state.validationKey!),
+              suffixIcon: state.validationKey == null
+                  ? null
+                  : PaperIcon(KnifeIcon.alert, color: palette.error),
+              errorMaxLines: 3,
+            ),
+            onChanged: controller.convert,
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        const SizedBox(height: 24),
+        CalculatorLabel(l10n.text('select_unit')),
+        const SizedBox(height: 8),
+        // A choice control: the chosen unit sits on a quiet slip, the rest are
+        // plain words. No outline ring and no gold fill.
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
           children: [
-            Card(
-              color: AppDesign.cardBackground,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'enter_area'.tr,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppDesign.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Semantics(
-                      label: 'qa.tools.area_converter.input',
-                      identifier: 'qa.tools.area_converter.input',
-                      child: TextField(
-                        key: const ValueKey('qa.tools.area_converter.input'),
-                        controller: controller.inputController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        style: TextStyle(color: AppDesign.textPrimary),
-                        decoration: InputDecoration(
-                          hintText: 'enter_value'.tr,
-                          hintStyle: TextStyle(color: AppDesign.textTertiary),
-                          filled: true,
-                          fillColor: AppDesign.inputBackground,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        onChanged: (_) => controller.convert(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'select_unit'.tr,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppDesign.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Obx(
-                      () => Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: AreaUnit.values.map((unit) {
-                          final isSelected = controller.selectedUnit.value == unit;
-                          return ChoiceChip(
-                            label: Text(controller.getUnitLabel(unit)),
-                            selected: isSelected,
-                            onSelected: (_) => controller.onUnitChanged(unit),
-                            selectedColor: AppDesign.primaryYellow,
-                            backgroundColor: AppDesign.inputBackground,
-                            labelStyle: TextStyle(
-                              color: isSelected ? AppDesign.buttonText : AppDesign.textPrimary,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
+            for (final unit in AreaUnit.values)
+              ChoiceChip(
+                label: Text(l10n.text(unit.labelKey)),
+                selected: state.selectedUnit == unit,
+                onSelected: (_) => controller.onUnitChanged(unit),
+                materialTapTargetSize: MaterialTapTargetSize.padded,
+                showCheckmark: false,
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppBorderRadius.sm),
+                ),
+                // Unchosen units are plain words on the sheet, not tinted pills.
+                backgroundColor: palette.surface,
+                selectedColor: palette.slip,
+                labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: state.selectedUnit == unit ? palette.textPrimary : palette.textSecondary,
+                  fontWeight: state.selectedUnit == unit ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Obx(() {
-              if (controller.conversions.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return Card(
-                color: AppDesign.cardBackground,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'conversions'.tr,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppDesign.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ...AreaUnit.values.map((unit) {
-                        final value = controller.conversions[unit] ?? 0;
-                        final isCurrentUnit = controller.selectedUnit.value == unit;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                controller.getUnitLabel(unit),
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: isCurrentUnit
-                                      ? AppDesign.primaryYellow
-                                      : AppDesign.textSecondary,
-                                  fontWeight: isCurrentUnit ? FontWeight.w600 : FontWeight.normal,
-                                ),
-                              ),
-                              Text(
-                                _formatNumber(value),
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: isCurrentUnit
-                                      ? AppDesign.primaryYellow
-                                      : AppDesign.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              );
-            }),
           ],
         ),
-      ),
+        if (state.selectedUnit == AreaUnit.bigha) ...[
+          const SizedBox(height: 12),
+          CalculatorNote(l10n.text('bigha_conversion_note')),
+        ],
+      ],
+      result: state.conversions.isEmpty
+          ? null
+          : [
+              CalculatorSectionTitle(l10n.text('conversions')),
+              const SizedBox(height: 8),
+              for (final unit in AreaUnit.values)
+                CalculatorResultRow(
+                  l10n.text(unit.labelKey),
+                  _formatNumber(state.conversions[unit]!),
+                  valueColor: state.selectedUnit == unit ? palette.accent : null,
+                ),
+            ],
     );
   }
 
   String _formatNumber(double value) {
-    if (value >= 1000000) {
-      return '${(value / 1000000).toStringAsFixed(2)}M';
-    } else if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(2)}K';
-    } else if (value >= 1) {
-      return value.toStringAsFixed(2);
-    } else {
-      return value.toStringAsFixed(4);
-    }
+    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(2)}M';
+    if (value >= 1000) return '${(value / 1000).toStringAsFixed(2)}K';
+    return value.toStringAsFixed(value >= 1 ? 2 : 4);
   }
 }

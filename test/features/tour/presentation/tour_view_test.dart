@@ -1,95 +1,67 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-import 'package:ghar360/core/translations/app_translations.dart';
+import 'package:ghar360/core/design/app_design_theme.dart';
+import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/features/tour/presentation/views/tour_view.dart';
+import '../../../helpers/fake_webview_platform.dart';
+import '../../../helpers/provider_test_app.dart';
 
 void main() {
-  setUp(() {
-    Get.testMode = true;
-    Get.reset();
-  });
-
-  tearDown(Get.reset);
-
-  /// Wraps [TourView] in a [GetMaterialApp] and pumps it.
-  Future<void> pumpTour(WidgetTester tester, {dynamic arguments}) async {
-    // Set arguments via Get.routing so TourView can read them in initState.
-    if (arguments != null) {
-      Get.routing.args = arguments;
-    }
-    await tester.pumpWidget(
-      GetMaterialApp(
-        translations: AppTranslations(),
-        locale: const Locale('en', 'US'),
-        fallbackLocale: const Locale('en', 'US'),
-        home: const TourView(),
+  setUp(installFakeWebViewPlatform);
+  tearDown(uninstallFakeWebViewPlatform);
+  testWidgets('invalid typed URL returns to the previous route', (tester) async {
+    await tester.pumpProviderApp(
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const TourView(url: 'invalid'))),
+            child: const Text('Open tour'),
+          ),
+        ),
       ),
     );
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.text('Open tour'));
+    await tester.pumpAndSettle();
+    expect(find.byType(StateBlock), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qa.tour.invalid_state.action')));
+    await tester.pumpAndSettle();
+    expect(find.text('Open tour'), findsOneWidget);
+    expect(find.byType(StateBlock), findsNothing);
+  });
+  for (final url in ['invalid', 'https://example.com/tour']) {
+    testWidgets('320 px, Hindi, 2x text and dark theme fit for $url', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpProviderApp(
+        TourView(url: url),
+        locale: const Locale('hi', 'IN'),
+        textScale: 2,
+        theme: AppDesignTheme.dark(),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.byType(StateBlock), url == 'invalid' ? findsOneWidget : findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   }
-
-  group('TourView', () {
-    // ── Fallback / invalid-arguments tests ──────────────────────────────
-
-    testWidgets('shows fallback when route arguments are missing', (tester) async {
-      await pumpTour(tester);
-
-      expect(find.byKey(const ValueKey('qa.tour.screen')), findsOneWidget);
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
-    });
-
-    testWidgets('shows fallback for non-http URL scheme', (tester) async {
-      await pumpTour(tester, arguments: 'ftp://example.com/tour');
-
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
-      expect(find.bySemanticsLabel('qa.tour.webview'), findsNothing);
-    });
-
-    testWidgets('shows fallback for empty string argument', (tester) async {
-      await pumpTour(tester, arguments: '');
-
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
-    });
-
-    testWidgets('shows fallback for whitespace-only URL', (tester) async {
-      await pumpTour(tester, arguments: '   ');
-
-      expect(find.byIcon(Icons.link_off), findsOneWidget);
-    });
-
-    testWidgets('shows back button in fallback state', (tester) async {
-      await pumpTour(tester);
-
-      expect(find.byType(ElevatedButton), findsOneWidget);
-    });
-
-    // ── URL extraction logic tests ──────────────────────────────────────
-
-    testWidgets('extracts tourUrl from map argument', (tester) async {
-      // TourView._extractTourUrl should handle map arguments.
-      // Since we can't reliably pass arguments in widget tests,
-      // verify the fallback handles null gracefully.
-      await pumpTour(tester);
-
-      expect(find.byKey(const ValueKey('qa.tour.screen')), findsOneWidget);
-    });
-
-    testWidgets('scaffold has back navigation in fallback', (tester) async {
-      await pumpTour(tester);
-
-      // The fallback scaffold should have an AppBar with back button.
-      expect(find.byType(Scaffold), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    });
-
-    testWidgets('fallback shows descriptive text', (tester) async {
-      await pumpTour(tester);
-
-      // Should show some text explaining the error.
-      expect(find.byType(Text), findsAtLeast(1));
-    });
+  testWidgets('typed title is shown and theme update does not reload the native page', (
+    tester,
+  ) async {
+    await tester.pumpProviderApp(
+      const TourView(url: 'https://example.com/tour', title: 'Listing tour'),
+    );
+    final controller = lastWebViewController!;
+    await tester.pumpProviderApp(
+      const TourView(url: 'https://example.com/tour', title: 'Listing tour'),
+      theme: ThemeData.dark(),
+    );
+    expect(lastWebViewController, same(controller));
+    expect(controller.loadRequestCalls, 1);
+    expect(find.text('Listing tour'), findsOneWidget);
   });
 }

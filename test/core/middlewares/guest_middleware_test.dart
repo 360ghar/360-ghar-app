@@ -1,78 +1,42 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ghar360/core/controllers/auth_controller.dart';
-import 'package:ghar360/core/middlewares/auth_middleware.dart';
-import 'package:ghar360/core/routes/app_routes.dart';
-import 'package:mocktail/mocktail.dart';
 
-import '../../helpers/getx_test_binding.dart';
-import '../../helpers/mocks.dart';
+import 'package:ghar360/core/data/models/auth_status.dart';
+import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/routes/route_policy.dart';
 
 void main() {
-  late MockAuthController mockAuthController;
-
-  setUp(() {
-    GetxTestBinding.init();
-    mockAuthController = MockAuthController();
+  String? redirect(AuthStatus status, String path) =>
+      authRedirect(status: status, onboardingComplete: true, location: Uri.parse(path));
+  test('all unauthenticated entry routes remain accessible', () {
+    for (final path in authEntryPaths) {
+      expect(redirect(AuthStatus.unauthenticated, path), isNull);
+    }
   });
-
-  tearDown(() {
-    GetxTestBinding.reset();
+  test(
+    'authenticated user leaves login for Discover',
+    () => expect(redirect(AuthStatus.authenticated, AppRoutes.login), AppRoutes.discover),
+  );
+  test(
+    'authenticated user leaves phone entry for Discover',
+    () => expect(redirect(AuthStatus.authenticated, AppRoutes.phoneEntry), AppRoutes.discover),
+  );
+  test('completion returns to validated intended destination', () {
+    for (final path in {...authEntryPaths, ...authGatePaths}) {
+      expect(
+        redirect(AuthStatus.authenticated, routeWithReturn(path, '/property/123')),
+        '/property/123',
+      );
+    }
   });
-
-  group('GuestMiddleware', () {
-    test('allows access when AuthController is not registered', () {
-      final middleware = GuestMiddleware();
-      final result = middleware.redirect('/login');
-      expect(result, isNull);
-    });
-
-    test('redirects to dashboard when user is authenticated', () {
-      when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      GetxTestBinding.bind().register<AuthController>(mockAuthController);
-
-      final middleware = GuestMiddleware();
-      final result = middleware.redirect('/login');
-
-      expect(result, isNotNull);
-      expect(result!.name, AppRoutes.dashboard);
-    });
-
-    test('allows access when user is not authenticated', () {
-      when(() => mockAuthController.isAuthenticated).thenReturn(false);
-      GetxTestBinding.bind().register<AuthController>(mockAuthController);
-
-      final middleware = GuestMiddleware();
-      final result = middleware.redirect('/login');
-
-      expect(result, isNull);
-    });
-
-    test('redirects authenticated user away from phone-entry route', () {
-      when(() => mockAuthController.isAuthenticated).thenReturn(true);
-      GetxTestBinding.bind().register<AuthController>(mockAuthController);
-
-      final middleware = GuestMiddleware();
-      final result = middleware.redirect(AppRoutes.phoneEntry);
-
-      expect(result, isNotNull);
-      expect(result!.name, AppRoutes.dashboard);
-    });
-
-    test('allows unauthenticated user to access phone-entry route', () {
-      when(() => mockAuthController.isAuthenticated).thenReturn(false);
-      GetxTestBinding.bind().register<AuthController>(mockAuthController);
-
-      final middleware = GuestMiddleware();
-      final result = middleware.redirect(AppRoutes.phoneEntry);
-
-      expect(result, isNull);
-    });
-
-    test('has higher priority than AuthMiddleware', () {
-      final guestMiddleware = GuestMiddleware();
-      final authMiddleware = AuthMiddleware();
-
-      expect(guestMiddleware.priority, greaterThan(authMiddleware.priority!));
-    });
-  });
+  test(
+    'unsafe from value falls back to Discover',
+    () => expect(
+      redirect(AuthStatus.authenticated, '${AppRoutes.login}?from=https%3A%2F%2Fevil.test'),
+      AppRoutes.discover,
+    ),
+  );
+  test(
+    'legacy dashboard resolves to Discover',
+    () => expect(redirect(AuthStatus.authenticated, AppRoutes.dashboard), AppRoutes.discover),
+  );
 }

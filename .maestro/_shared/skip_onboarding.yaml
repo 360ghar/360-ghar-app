@@ -1,17 +1,13 @@
 appId: com.the360ghar.ghar360
 ---
+# launch_clean starts onboarding. Fail if it cannot reach the unified entry form.
+- extendedWaitUntil:
+    visible:
+      id: qa.splash.skip
+    timeout: 20000
 - tapOn:
     id: qa.splash.skip
-    optional: true
-- tapOn:
-    id: qa.splash.next
-    optional: true
-- tapOn:
-    id: qa.splash.next
-    optional: true
-- tapOn:
-    id: qa.splash.get_started
-    optional: true
-- tapOn:
-    id: qa.splash.skip
-    optional: true
+- extendedWaitUntil:
+    visible:
+      id: qa.auth.phone_entry.identifier_input
+    timeout: 20000

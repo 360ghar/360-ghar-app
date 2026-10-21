@@ -1,0 +1,24 @@
+appId: com.the360ghar.ghar360
+---
+# Run after native_fixture_smoke with the loopback fixture server stopped.
+- runFlow:
+    when:
+      visible:
+        id: qa.profile.preferences.screen
+    commands:
+      - tapOn: "Back"
+- tapOn:
+    id: qa.dashboard.nav.saved
+- assertVisible: '(?s).*Garden Court Residence 7\b.*'
+- swipe:
+    start: 70%,40%
+    end: 70%,75%
+    duration: 700
+- extendedWaitUntil:
+    visible:
+      text: "(?s).*Could not refresh. Your loaded results are still available.*"
+    timeout: 20000
+- assertVisible: '(?s).*Garden Court Residence 7\b.*'
+- assertVisible:
+    id: qa.likes.content.retry
+- takeScreenshot: /tmp/360ghar-native-saved-refresh-failure

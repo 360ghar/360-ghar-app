@@ -1,75 +1,51 @@
-// test/features/tools/presentation/views/document_checklist_view_test.dart
-
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
+
+import 'package:ghar360/core/design/paper/knife_icons.dart';
+import 'package:ghar360/core/providers/app_database_provider.dart';
 import 'package:ghar360/features/tools/presentation/controllers/document_checklist_controller.dart';
 import 'package:ghar360/features/tools/presentation/views/document_checklist_view.dart';
-import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
-
-import '../../../../helpers/getx_test_binding.dart';
-import '../../../../helpers/pump_app.dart';
-
-// ---------------------------------------------------------------------------
-// Fake path_provider so GetStorage can initialise in tests
-// ---------------------------------------------------------------------------
-
-class _FakePathProviderPlatform extends PathProviderPlatform {
-  _FakePathProviderPlatform(this._path);
-  final String _path;
-
-  @override
-  Future<String?> getApplicationDocumentsPath() async => _path;
-}
+import '../../../../helpers/knife_finders.dart';
+import '../../../../helpers/provider_test_app.dart';
+import '../../../../helpers/tool_test_database.dart';
 
 void main() {
-  late DocumentChecklistController controller;
-  late Directory tempDir;
-
-  setUp(() async {
-    // Create a temp directory for GetStorage
-    tempDir = await Directory.systemTemp.createTemp('get_storage_test_');
-    PathProviderPlatform.instance = _FakePathProviderPlatform(tempDir.path);
-
-    GetxTestBinding.init();
-    await GetStorage.init();
-
-    controller = DocumentChecklistController();
-    Get.put<DocumentChecklistController>(controller);
-    // Manually trigger onInit since Get.put doesn't call it in test mode
-    controller.onInit();
-  });
-
-  tearDown(() async {
-    // Await flush so GetStorage does not write into a deleted temp dir.
-    await GetStorage().remove('document_checklist');
-    GetxTestBinding.reset();
-    if (tempDir.existsSync()) {
-      await tempDir.delete(recursive: true);
-    }
-  });
-
+  late ProviderContainer container;
+  late ToolTestDatabase database;
+  setUp(() => database = ToolTestDatabase());
+  DocumentChecklistController getController() => container.read(documentChecklistProvider.notifier);
+  DocumentChecklistState readState() => container.read(documentChecklistProvider);
   Future<void> pumpView(WidgetTester tester) async {
-    await tester.pumpApp(const DocumentChecklistView());
+    await tester.pumpProviderApp(
+      const DocumentChecklistView(),
+      overrides: [appDatabaseProvider.overrideWithValue(database)],
+    );
+    container = ProviderScope.containerOf(tester.element(find.byType(DocumentChecklistView)));
     await tester.pump();
   }
 
   group('DocumentChecklistView', () {
     testWidgets('renders scaffold with correct key and app bar title', (tester) async {
-      await pumpView(tester);
+      final semantics = tester.ensureSemantics();
+      try {
+        await pumpView(tester);
 
-      expect(find.byKey(const ValueKey('qa.tools.document_checklist.screen')), findsOneWidget);
-      expect(find.text('Document Checklist'), findsOneWidget);
+        expect(find.byKey(const ValueKey('qa.tools.document_checklist.screen')), findsOneWidget);
+        expect(find.bySemanticsIdentifier('qa.tools.document_checklist.screen'), findsOneWidget);
+        expect(find.bySemanticsLabel(RegExp(r'qa\.tools')), findsNothing);
+        expect(find.text('Document Checklist'), findsOneWidget);
+      } finally {
+        semantics.dispose();
+      }
     });
 
     testWidgets('renders back and refresh icons in app bar', (tester) async {
       await pumpView(tester);
 
       expect(find.byTooltip('Back'), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      expect(findKnife(KnifeIcon.retry), findsOneWidget);
     });
 
     testWidgets('renders progress section with progress label', (tester) async {
@@ -78,10 +54,14 @@ void main() {
       expect(find.text('Progress'), findsOneWidget);
     });
 
-    testWidgets('renders linear progress indicator', (tester) async {
+    testWidgets('renders a still progress bar that announces its value', (tester) async {
       await pumpView(tester);
 
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('qa.tools.document_checklist.progress'))),
+        matchesSemantics(label: 'Progress', value: '0/15'),
+      );
     });
 
     testWidgets('shows initial count as 0/total', (tester) async {
@@ -143,7 +123,7 @@ void main() {
 
       // Should now show 1/15
       expect(find.text('1/15'), findsOneWidget);
-      expect(controller.checkedItems.value, 1);
+      expect(readState().checkedItems, 1);
     });
 
     testWidgets('tapping a checked item unchecks it', (tester) async {
@@ -158,7 +138,7 @@ void main() {
       await tester.tap(find.text('Title Deed'));
       await tester.pumpAndSettle();
       expect(find.text('0/15'), findsOneWidget);
-      expect(controller.checkedItems.value, 0);
+      expect(readState().checkedItems, 0);
     });
 
     testWidgets('checking all items shows full progress', (tester) async {
@@ -184,26 +164,36 @@ void main() {
       ];
 
       for (final id in allItemIds) {
-        controller.toggleItem(id);
+        getController().toggleItem(id);
       }
       await tester.pumpAndSettle();
 
-      expect(controller.progress, 1.0);
-      expect(controller.checkedItems.value, 15);
+      expect(readState().progress, 1.0);
+      expect(readState().checkedItems, 15);
       expect(find.text('15/15'), findsOneWidget);
     });
 
-    testWidgets('checked items show check icon', (tester) async {
+    testWidgets('checked items show a ticked checkbox', (tester) async {
       await pumpView(tester);
 
-      // Initially no check icons
-      expect(find.byIcon(Icons.check), findsNothing);
+      bool ticked() => tester.widgetList<Checkbox>(find.byType(Checkbox)).first.value!;
+      expect(ticked(), isFalse);
 
       // Tap to check first item
       await tester.tap(find.text('Title Deed'));
       await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(ticked(), isTrue);
+      expect(
+        tester.getSemantics(find.bySemanticsIdentifier('qa.tools.document_checklist.title_deed')),
+        matchesSemantics(
+          label: 'Title Deed',
+          hint: 'Proof of property ownership',
+          hasCheckedState: true,
+          isChecked: true,
+          hasTapAction: true,
+        ),
+      );
     });
 
     testWidgets('reset button shows confirmation dialog', (tester) async {
@@ -242,7 +232,7 @@ void main() {
 
       // Items should still be checked
       expect(find.text('1/15'), findsOneWidget);
-      expect(controller.checkedItems.value, 1);
+      expect(readState().checkedItems, 1);
     });
 
     testWidgets('confirming reset clears all checked items', (tester) async {
@@ -265,10 +255,10 @@ void main() {
 
       // All items should be unchecked
       expect(find.text('0/15'), findsOneWidget);
-      expect(controller.checkedItems.value, 0);
+      expect(readState().checkedItems, 0);
     });
 
-    testWidgets('back button is wired to Get.back', (tester) async {
+    testWidgets('back button is wired to Navigator.maybePop', (tester) async {
       await pumpView(tester);
 
       final backButton = find.byTooltip('Back');
@@ -290,7 +280,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('3/15'), findsOneWidget);
-      expect(controller.progress, closeTo(0.2, 0.01));
+      expect(readState().progress, closeTo(0.2, 0.01));
     });
 
     testWidgets('renders document descriptions', (tester) async {
@@ -300,44 +290,55 @@ void main() {
       expect(find.text('Proof of property ownership'), findsOneWidget);
     });
 
-    testWidgets('renders ListView with category cards', (tester) async {
+    testWidgets('renders one flat scroll list: no cards, no dividers', (tester) async {
       await pumpView(tester);
 
-      expect(find.byType(ListView), findsOneWidget);
-      // At least the first category card should be rendered (ListView is lazy)
-      expect(find.byType(Card), findsAtLeast(1));
-    });
-
-    testWidgets('dividers are present between items in a category', (tester) async {
-      await pumpView(tester);
-
-      // Each visible category has 3 items with 2 dividers; at least 2 should be visible
-      expect(find.byType(Divider), findsAtLeast(2));
+      expect(find.byType(CustomScrollView), findsOneWidget);
+      // Dense lists stay flat: spacing and type separate the rows.
+      expect(find.byType(Card), findsNothing);
+      expect(find.byType(Divider), findsNothing);
+      expect(find.byType(Checkbox), findsAtLeast(3));
     });
 
     testWidgets('toggleItem method toggles item by id', (tester) async {
       await pumpView(tester);
 
-      controller.toggleItem('title_deed');
+      getController().toggleItem('title_deed');
       await tester.pumpAndSettle();
 
-      expect(controller.checkedItems.value, 1);
+      expect(readState().checkedItems, 1);
       expect(find.text('1/15'), findsOneWidget);
     });
 
     testWidgets('resetAll method clears all items', (tester) async {
       await pumpView(tester);
 
-      controller.toggleItem('title_deed');
-      controller.toggleItem('sale_deed');
+      getController().toggleItem('title_deed');
+      getController().toggleItem('sale_deed');
       await tester.pumpAndSettle();
-      expect(controller.checkedItems.value, 2);
+      expect(readState().checkedItems, 2);
 
-      controller.resetAll();
+      getController().resetAll();
       await tester.pumpAndSettle();
 
-      expect(controller.checkedItems.value, 0);
+      expect(readState().checkedItems, 0);
       expect(find.text('0/15'), findsOneWidget);
+    });
+    testWidgets('failed save retains the checked item and exposes retry', (tester) async {
+      database.failWrites = true;
+      await pumpView(tester);
+      await tester.tap(find.text('Title Deed'));
+      await tester.pumpAndSettle();
+      expect(readState().checkedItems, 1);
+      expect(
+        find.text('Changes could not be saved. Retry to keep your selection.'),
+        findsOneWidget,
+      );
+      database.failWrites = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(readState().saveStatus, ChecklistSaveStatus.saved);
+      expect(find.text('Changes could not be saved. Retry to keep your selection.'), findsNothing);
     });
   });
 }
