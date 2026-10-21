@@ -259,7 +259,8 @@ class AuthController extends Notifier<AuthState> {
     }
     _accountId = _auth.currentUser!.id;
     final generation = ++_generation;
-    state = state.copyWith(resolving: true, error: null);
+    // The bump above orphans any in-flight mutation, so it must not stay loading.
+    state = state.copyWith(resolving: true, error: null, mutation: const AsyncData(null));
     await _loadProfile(generation);
   }
 

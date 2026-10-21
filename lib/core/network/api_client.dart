@@ -291,9 +291,8 @@ class ApiClient {
       headers = await _buildHeaders(requireAuth: requireAuth, forceRefresh: false);
     } on AuthenticationException catch (e) {
       _ensureCurrentRequest(scope, generation);
-      // A dead refresh token surfaces here (MISSING_AUTH_HEADER) instead of as
-      // a 401, so it must reach the unauthorized handler too; otherwise the
-      // app stays "signed in" with every screen empty and never recovers.
+      // A dead refresh token surfaces here (MISSING_AUTH_HEADER) instead of as a 401. The
+      // handler sees it, but it carries no status, so only a server 401 ends the session.
       if (notifyUnauthorized) {
         await _notifyUnauthorized(
           UnauthorizedEvent(

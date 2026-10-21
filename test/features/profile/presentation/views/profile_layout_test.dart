@@ -56,6 +56,7 @@ void main() {
     );
     when(() => h.pages.fetchPublicPage(any())).thenAnswer(
       (_) async => StaticPageModel(
+        format: PageFormat.markdown,
         title: 'नीति',
         content:
             '# गोपनीयता नीति\n\n${'यह एक लंबा अनुच्छेद है जो कई पंक्तियों में लिपटता है। ' * 12}',

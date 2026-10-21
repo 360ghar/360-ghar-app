@@ -42,7 +42,7 @@ class AppDesignTheme {
       fontFamilyFallback: kFontFallback,
       brightness: brightness,
       scaffoldBackgroundColor: p.background,
-      canvasColor: p.background,
+      canvasColor: p.surface,
       colorScheme: colorScheme,
       splashFactory: NoSplash.splashFactory,
       textTheme: AppDesignComponents.textTheme(brightness),

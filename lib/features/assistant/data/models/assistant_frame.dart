@@ -42,7 +42,7 @@ sealed class AssistantFrame {
         return DoneFrame(_string(data, 'response_text'));
       case 'error':
         return ErrorFrame(
-          code: AssistantErrorCode.fromJson(data['code']),
+          code: AssistantErrorCode.fromJson(_string(data, 'code')),
           message: _string(data, 'message'),
         );
     }

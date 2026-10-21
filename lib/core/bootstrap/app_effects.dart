@@ -32,7 +32,9 @@ class _AppEffectsState extends ConsumerState<AppEffects> with WidgetsBindingObse
   late final GoRouter _router;
   PageType? _visiblePage;
   bool _foreground = true;
-  bool _firebaseReady = false;
+  // Set once startup effects have run, whether or not Firebase came up: update checks use
+  // the API, not Firebase.
+  bool _startupDone = false;
 
   /// Push permission is asked once, on the first signed-in tab, never over
   /// onboarding or sign-in.
@@ -92,16 +94,16 @@ class _AppEffectsState extends ConsumerState<AppEffects> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
     _updateLocationVisibility();
+    if (_foreground) _maybeAskForPush();
   }
 
   Future<void> _initializeNotifications() async {
     try {
       final database = ref.read(appDatabaseProvider);
       await FirebaseInitializer.init(
-        readConsent: (key) => database.readPreference<bool>(key) ?? false,
+        readConsent: (key) => database.readPreference<bool>(key) ?? true,
       );
       if (!mounted || !FirebaseInitializer.isFirebaseReady) return;
-      setState(() => _firebaseReady = true);
       PushNotificationsService.onNotificationTap = (payload) {
         if (!mounted) return;
         final path = notificationDestination(payload);
@@ -119,11 +121,14 @@ class _AppEffectsState extends ConsumerState<AppEffects> with WidgetsBindingObse
       _maybeAskForPush();
     } catch (error, stack) {
       DebugLogger.warning('Notification initialization failed', error.runtimeType, stack);
+    } finally {
+      if (mounted) setState(() => _startupDone = true);
     }
   }
 
   void _maybeAskForPush() {
-    if (_pushAsked || !_pushReady || !mounted) return;
+    if (_pushAsked || !_pushReady || !mounted || !_foreground) return;
+    if (ref.read(storageScopeProvider).accountId == null) return;
     if (!_shellPaths.contains(_router.state.uri.path)) return;
     _pushAsked = true;
     unawaited(() async {
@@ -132,7 +137,12 @@ class _AppEffectsState extends ConsumerState<AppEffects> with WidgetsBindingObse
         if (!mounted) return;
         if (settings?.authorizationStatus == AuthorizationStatus.authorized ||
             settings?.authorizationStatus == AuthorizationStatus.provisional) {
-          await PushNotificationsService.getToken();
+          final token = await PushNotificationsService.getToken();
+          // One delayed retry: the first token request can race the platform's own setup.
+          if (token == null && mounted) {
+            await Future<void>.delayed(const Duration(seconds: 5));
+            if (mounted) await PushNotificationsService.getToken();
+          }
         }
       } catch (error, stack) {
         DebugLogger.warning('Notification permission failed', error.runtimeType, stack);
@@ -153,7 +163,9 @@ class _AppEffectsState extends ConsumerState<AppEffects> with WidgetsBindingObse
   Widget build(BuildContext context) {
     ref.listen(storageScopeProvider, (_, _) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _updateLocationVisibility(reset: true);
+        if (!mounted) return;
+        _maybeAskForPush();
+        _updateLocationVisibility(reset: true);
       });
     });
     ref.listen(oauthCallbackProvider, (previous, next) {
@@ -163,7 +175,7 @@ class _AppEffectsState extends ConsumerState<AppEffects> with WidgetsBindingObse
     });
     return AppUpdateHost(
       navigatorKey: ref.read(rootNavigatorKeyProvider),
-      enabled: _firebaseReady,
+      enabled: _startupDone,
       child: widget.child,
     );
   }

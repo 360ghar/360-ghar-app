@@ -12,7 +12,7 @@ class StaticPageModel {
   const StaticPageModel({
     required this.title,
     required this.content,
-    this.format = PageFormat.markdown,
+    this.format,
     this.uniqueName,
     this.updatedAt,
   });
@@ -40,7 +40,7 @@ class StaticPageModel {
   /// tags. A `json` page, or a format this app does not know, is not rendered.
   bool get isRenderable => switch (format) {
     PageFormat.markdown => true,
-    PageFormat.html => !RegExp(r'<\s*/?\s*[a-zA-Z][^>]*>').hasMatch(content),
+    PageFormat.html => !RegExp(r'<\s*/?\s*[a-zA-Z][a-zA-Z0-9-]*(\s[^<>]*)?/?>').hasMatch(content),
     PageFormat.json || null => false,
   };
 }

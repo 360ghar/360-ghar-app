@@ -32,8 +32,14 @@ class LocationBackendSync {
   DateTime? _lastAt;
   bool _busy = false;
   bool _disposed = false;
+  LocationData? _pending;
   Future<void> sync(LocationData location) async {
-    if (_send == null || _busy || _disposed) return;
+    if (_send == null || _disposed) return;
+    if (_busy) {
+      // Keep only the newest fix; it is sent after the call in flight.
+      _pending = location;
+      return;
+    }
     if (_last != null &&
         _lastAt != null &&
         _now().difference(_lastAt!) < const Duration(minutes: 2) &&
@@ -58,6 +64,9 @@ class LocationBackendSync {
     } finally {
       _busy = false;
     }
+    final next = _pending;
+    _pending = null;
+    if (next != null && !_disposed) await sync(next);
   }
 
   void dispose() => _disposed = true;

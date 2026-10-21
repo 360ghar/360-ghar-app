@@ -31,6 +31,18 @@ class IdentifierStatus {
     required this.nextStep,
   });
 
+  @override
+  bool operator ==(Object other) =>
+      other is IdentifierStatus &&
+      other.exists == exists &&
+      other.verified == verified &&
+      other.hasPassword == hasPassword &&
+      other.channel == channel &&
+      other.nextStep == nextStep;
+
+  @override
+  int get hashCode => Object.hash(exists, verified, hasPassword, channel, nextStep);
+
   bool get isPasswordStep => nextStep == IdentifierNextStep.password;
   bool get isOtpStep => nextStep == IdentifierNextStep.otp;
   bool get isEmail => channel == IdentifierChannel.email;

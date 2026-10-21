@@ -119,6 +119,7 @@ final propertyQueryInputProvider = Provider.family<String?, PropertyFeed>((ref, 
   if (location == null) return null;
   return jsonEncode({
     'filters': PropertyQuery._canonical(filters.toApiQueryParams()),
+    'radiusKm': UnifiedFilterModel.apiRadiusKm(filters.radiusKm ?? 10),
     'latitude': location.latitude,
     'longitude': location.longitude,
   });
@@ -169,8 +170,11 @@ class PropertyQuery extends Notifier<PropertyPageState> {
   }
 
   bool _current(int generation) => !_disposed && ref.mounted && generation == _generation;
-  String _filterKey(UnifiedFilterModel filters) =>
-      jsonEncode(_canonical(filters.toApiQueryParams()));
+  // The radius is not in the query map (the datasource sends it as `radius`), so add it here.
+  String _filterKey(UnifiedFilterModel filters) => jsonEncode({
+    'filters': _canonical(filters.toApiQueryParams()),
+    'radiusKm': UnifiedFilterModel.apiRadiusKm(filters.radiusKm ?? 10),
+  });
   static Object? _canonical(Object? value) {
     if (value is Map) {
       final keys = value.keys.map((key) => key.toString()).toList()..sort();

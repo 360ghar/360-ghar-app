@@ -20,6 +20,10 @@ import '../../helpers/location_test_harness.dart';
 class _Updates extends AppUpdateController {
   @override
   AppUpdateState build() => const AppUpdateState();
+
+  // Update checks are not under test here; the host asks once startup is done.
+  @override
+  Future<void> checkForUpdates({bool force = false}) async {}
 }
 
 class _Visibility extends PropertyLocation {

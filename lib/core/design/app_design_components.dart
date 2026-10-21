@@ -129,7 +129,12 @@ class AppDesignComponents {
           ? (brightness == Brightness.dark ? AppDesignTokens.nightText3 : AppDesignTokens.ink500)
           : AppDesignTokens.ink900,
     ),
-    overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+    overlayColor: WidgetStateProperty.resolveWith(
+      // Keep a visible keyboard focus cue; every other state stays flat.
+      (states) => states.contains(WidgetState.focused)
+          ? AppDesignTokens.ink900.withValues(alpha: 0.14)
+          : Colors.transparent,
+    ),
     minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
     padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 22, vertical: 14)),
     shape: const WidgetStatePropertyAll(_buttonShape),
@@ -162,7 +167,12 @@ class AppDesignComponents {
         foregroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.disabled) ? p.textTertiary : p.textPrimary,
         ),
-        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        overlayColor: WidgetStateProperty.resolveWith(
+          // Keep a visible keyboard focus cue; every other state stays flat.
+          (states) => states.contains(WidgetState.focused)
+              ? p.textPrimary.withValues(alpha: 0.14)
+              : Colors.transparent,
+        ),
         side: const WidgetStatePropertyAll(BorderSide.none),
         minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
         padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 18, vertical: 12)),

@@ -6,9 +6,10 @@ abstract class AppException implements Exception {
   /// Backend code of a 403 for a deactivated account. It ends the session like a 401.
   static const String userInactiveCode = 'USER_INACTIVE';
 
-  /// Authentication code meaning the SDK could not mint a token at all
-  /// (dead refresh token). Treated as session-fatal in [AuthController], and
-  /// as offline-retryable in repositories that persist actions locally.
+  /// Authentication code meaning the SDK could not mint a token at all (dead refresh token, or
+  /// an expired token while offline). It carries no status, so it does not end the session
+  /// ([AuthenticationException.endsSession]); repositories that persist actions locally treat it
+  /// as offline-retryable. A dead session is ended by the 401 the server returns.
   static const String missingAuthHeaderCode = 'MISSING_AUTH_HEADER';
 
   final String message;

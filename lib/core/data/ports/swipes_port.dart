@@ -11,7 +11,8 @@ class ConfirmedSwipe extends SwipeOutcome {
   const ConfirmedSwipe({this.operationId, this.swipe});
   final String? operationId;
 
-  /// The server's receipt (`SwipeOut`). Null when the swipe was already confirmed earlier.
+  /// The server's receipt (`SwipeOut`). Null when the swipe was already confirmed earlier, or
+  /// when a 2xx response carried a receipt the app could not read.
   final SwipeOut? swipe;
 }
 

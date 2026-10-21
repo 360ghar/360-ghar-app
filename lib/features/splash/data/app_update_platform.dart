@@ -31,13 +31,17 @@ class AppUpdatePlatform {
       }
       if (mandatory && info.immediateUpdateAllowed) {
         final result = await InAppUpdate.performImmediateUpdate();
-        return result != AppUpdateResult.inAppUpdateFailed
+        // Declined or failed: a mandatory update falls back to the blocking prompt.
+        return result == AppUpdateResult.success
             ? NativeUpdateResult.handled
             : NativeUpdateResult.unsupported;
       }
       if (info.flexibleUpdateAllowed) {
         final result = await InAppUpdate.startFlexibleUpdate();
-        if (result == AppUpdateResult.userDeniedUpdate) return NativeUpdateResult.handled;
+        // A mandatory update cannot be declined: fall back to the blocking prompt.
+        if (result == AppUpdateResult.userDeniedUpdate) {
+          return mandatory ? NativeUpdateResult.unsupported : NativeUpdateResult.handled;
+        }
         if (result != AppUpdateResult.success) return NativeUpdateResult.unsupported;
         await InAppUpdate.completeFlexibleUpdate();
         return NativeUpdateResult.handled;

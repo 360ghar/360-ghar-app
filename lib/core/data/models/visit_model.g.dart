@@ -48,6 +48,7 @@ VisitModel _$VisitModelFromJson(Map<String, dynamic> json) => $checkedCreate(
         'follow_up_required',
         'created_at',
       ],
+      disallowNullValues: const ['visit_context'],
     );
     final val = VisitModel(
       id: $checkedConvert('id', (v) => (v as num).toInt()),
@@ -138,7 +139,7 @@ Map<String, dynamic> _$VisitModelToJson(VisitModel instance) => <String, dynamic
   'time_slot_label': instance.timeSlotLabel,
   'actual_date': instance.actualDate?.toIso8601String(),
   'status': const VisitStatusConverter().toJson(instance.status),
-  'visit_context': const VisitContextConverter().toJson(instance.visitContext),
+  'visit_context': ?const VisitContextConverter().toJson(instance.visitContext),
   'conversation_id': instance.conversationId,
   'match_id': instance.matchId,
   'special_requirements': instance.specialRequirements,

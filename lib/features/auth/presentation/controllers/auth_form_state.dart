@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ghar360/core/utils/app_exceptions.dart';
+import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/features/auth/data/auth_failure.dart';
 import 'package:ghar360/features/auth/presentation/controllers/otp_resend_timer.dart';
 
@@ -76,7 +77,8 @@ abstract class AuthFormController extends Notifier<AuthFormState> {
     try {
       await request();
       return isCurrent();
-    } catch (error) {
+    } catch (error, stack) {
+      DebugLogger.warning('Auth request failed', error, stack);
       if (isCurrent()) state = state.copyWith(error: authFailure(error));
       return false;
     } finally {

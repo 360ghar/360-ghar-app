@@ -179,7 +179,18 @@ class PushNotificationsService {
     );
 
     // Handle notification tap that launched the app from terminated state
-    final initialMessage = await messaging.getInitialMessage();
+    final RemoteMessage? initialMessage;
+    try {
+      initialMessage = await messaging.getInitialMessage();
+    } catch (_) {
+      // Do not keep half-registered listeners: a retry would register them twice.
+      final stale = List<StreamSubscription<dynamic>>.of(_subscriptions);
+      _subscriptions.clear();
+      for (final subscription in stale) {
+        unawaited(subscription.cancel());
+      }
+      rethrow;
+    }
     if (generation != _generation) return;
     if (initialMessage != null) {
       DebugLogger.info('Notification opened at launch');

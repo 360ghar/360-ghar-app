@@ -19,6 +19,7 @@ String errorMessageKey(Object? error) {
       return 'error_timeout';
     case 'FORBIDDEN':
     case 'PERMISSION_DENIED':
+    case 'USER_ACCESS_DENIED':
       return 'error_forbidden';
     case 'RATE_LIMITED':
     case 'TOO_MANY_REQUESTS':
@@ -33,10 +34,11 @@ String errorMessageKey(Object? error) {
       return 'location_permission_denied';
   }
   return switch (error) {
+    AuthenticationException(isPermissionDenied: true) => 'error_forbidden',
     AuthenticationException() => 'session_expired_signin',
     NetworkException() => 'error_no_connection',
     ValidationException() => 'error_validation_body',
-    NotFoundException() => 'error_not_found_body',
+    NotFoundException() || ApiException(statusCode: 404) => 'error_not_found_body',
     LocationException() => 'failed_to_get_location_message',
     ServerException() => 'error_server_generic',
     _ => 'something_went_wrong',
@@ -57,6 +59,6 @@ bool isRetryableFailure(Object? error) => switch (error) {
 /// The wait a failure asks for before the next attempt, if any.
 Duration? retryWaitOf(Object? error) => switch (error) {
   RateLimitException(:final retryAfter) => retryAfter,
-  ServerException(:final retryAfter?) when retryAfter > const Duration(seconds: 1) => retryAfter,
+  ServerException(:final retryAfter?) when retryAfter > Duration.zero => retryAfter,
   _ => null,
 };

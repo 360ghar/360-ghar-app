@@ -163,7 +163,7 @@ class AppUpdateController extends Notifier<AppUpdateState> {
         final native = await platform.tryAndroidUpdate(response.isMandatory);
         if (!ref.mounted || generation != _generation) return;
         if (native != NativeUpdateResult.unsupported) {
-          if (native == NativeUpdateResult.handled) {
+          if (native == NativeUpdateResult.handled && !response.isMandatory) {
             _lastAction = ref.read(appUpdateClockProvider)();
           }
           state = state.copyWith(check: const AsyncData(null));
@@ -213,7 +213,8 @@ class AppUpdateController extends Notifier<AppUpdateState> {
         }
       }
       if (!ref.mounted || generation != _generation) return false;
-      _lastAction = ref.read(appUpdateClockProvider)();
+      // A mandatory update must re-prompt on the next check, so it starts no cooldown.
+      if (!prompt.isMandatory) _lastAction = ref.read(appUpdateClockProvider)();
       state = state.copyWith(clearPrompt: true, action: const AsyncData(null));
       return true;
     } catch (error, stack) {

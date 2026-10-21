@@ -102,6 +102,9 @@ class SseClient {
               onTimeout: () => throw TimeoutException('SSE connection timed out'),
             );
 
+        // A request cancelled by an account switch must not report its 401 to the new account.
+        if (_closed || generation != _generation) return;
+
         if (response.statusCode == 401 && !forceRefresh) {
           // The shared rule: one forced refresh, one retry.
           forceRefresh = true;

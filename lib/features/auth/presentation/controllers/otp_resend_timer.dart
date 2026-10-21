@@ -9,9 +9,12 @@ class OtpResendTimer {
   Timer? _timer;
   void start() {
     cancel();
-    final deadline = _now().add(const Duration(seconds: resendCooldownSeconds));
+    var deadline = _now().add(const Duration(seconds: resendCooldownSeconds));
     onTick(resendCooldownSeconds);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      // A wall clock that moved back must not extend the wait.
+      final latest = _now().add(const Duration(seconds: resendCooldownSeconds));
+      if (latest.isBefore(deadline)) deadline = latest;
       final remaining = (deadline.difference(_now()).inMilliseconds / 1000).ceil().clamp(
         0,
         resendCooldownSeconds,

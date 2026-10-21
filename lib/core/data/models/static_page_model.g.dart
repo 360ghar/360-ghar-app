@@ -15,9 +15,7 @@ StaticPageModel _$StaticPageModelFromJson(Map<String, dynamic> json) {
   return StaticPageModel(
     title: json['title'] as String,
     content: json['content'] as String,
-    format: json['format'] == null
-        ? PageFormat.markdown
-        : const PageFormatConverter().fromJson(json['format']),
+    format: const PageFormatConverter().fromJson(json['format']),
     uniqueName: json['unique_name'] as String?,
     updatedAt: json['updated_at'] == null ? null : DateTime.parse(json['updated_at'] as String),
   );

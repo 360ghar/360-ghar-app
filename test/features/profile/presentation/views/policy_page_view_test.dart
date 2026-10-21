@@ -39,13 +39,16 @@ void main() {
     expect(find.byType(Skeleton), findsOneWidget);
 
     // Complete the future so the test can clean up.
-    completer.complete(const StaticPageModel(title: 'Privacy', content: 'content'));
+    completer.complete(
+      const StaticPageModel(title: 'Privacy', content: 'content', format: PageFormat.markdown),
+    );
     await tester.pumpAndSettle();
   });
 
   testWidgets('renders markdown content on successful load', (tester) async {
     when(() => repository.fetchPublicPage('privacy_policy')).thenAnswer(
       (_) async => const StaticPageModel(
+        format: PageFormat.markdown,
         title: 'Privacy Policy',
         content: '# Privacy Policy\n\nThis is our privacy policy.',
       ),
@@ -59,9 +62,10 @@ void main() {
   });
 
   testWidgets('shows content unavailable when page content is empty', (tester) async {
-    when(
-      () => repository.fetchPublicPage(any()),
-    ).thenAnswer((_) async => const StaticPageModel(title: 'Privacy', content: '   '));
+    when(() => repository.fetchPublicPage(any())).thenAnswer(
+      (_) async =>
+          const StaticPageModel(title: 'Privacy', content: '   ', format: PageFormat.markdown),
+    );
 
     await pumpView(tester);
     await tester.pumpAndSettle();
@@ -79,9 +83,10 @@ void main() {
   });
 
   testWidgets('shows no content when markdownContent is null after load', (tester) async {
-    when(
-      () => repository.fetchPublicPage(any()),
-    ).thenAnswer((_) async => const StaticPageModel(title: 'Privacy', content: ''));
+    when(() => repository.fetchPublicPage(any())).thenAnswer(
+      (_) async =>
+          const StaticPageModel(title: 'Privacy', content: '', format: PageFormat.markdown),
+    );
 
     await pumpView(tester);
     await tester.pumpAndSettle();
@@ -91,9 +96,10 @@ void main() {
   });
 
   testWidgets('renders app bar with provided title', (tester) async {
-    when(
-      () => repository.fetchPublicPage(any()),
-    ).thenAnswer((_) async => const StaticPageModel(title: 'Privacy', content: 'content'));
+    when(() => repository.fetchPublicPage(any())).thenAnswer(
+      (_) async =>
+          const StaticPageModel(title: 'Privacy', content: 'content', format: PageFormat.markdown),
+    );
 
     await pumpView(tester);
     await tester.pumpAndSettle();
@@ -104,6 +110,7 @@ void main() {
   testWidgets('renders markdown with headings and paragraphs', (tester) async {
     when(() => repository.fetchPublicPage('privacy_policy')).thenAnswer(
       (_) async => const StaticPageModel(
+        format: PageFormat.markdown,
         title: 'Privacy',
         content: '# Heading 1\n\nSome paragraph text.\n\n## Heading 2',
       ),
@@ -121,9 +128,13 @@ void main() {
     await pumpView(tester);
     await tester.pumpAndSettle();
     expect(find.text('Failed to load content'), findsOneWidget);
-    when(
-      () => repository.fetchPublicPage(any()),
-    ).thenAnswer((_) async => const StaticPageModel(title: 'Policy', content: 'Recovered policy'));
+    when(() => repository.fetchPublicPage(any())).thenAnswer(
+      (_) async => const StaticPageModel(
+        title: 'Policy',
+        content: 'Recovered policy',
+        format: PageFormat.markdown,
+      ),
+    );
     await tester.ensureVisible(find.text(tr('retry')));
     await tester.pump();
     await tester.tap(find.text(tr('retry')));
@@ -202,7 +213,9 @@ void main() {
       await tester.pump();
       expect(find.text('Old policy'), findsOneWidget);
       expect(find.byType(Skeleton), findsNothing);
-      response.complete(const StaticPageModel(title: 'Privacy', content: 'New policy'));
+      response.complete(
+        const StaticPageModel(title: 'Privacy', content: 'New policy', format: PageFormat.markdown),
+      );
       await tester.pump();
       expect(find.text('New policy'), findsOneWidget);
       final cached = await tester.runAsync(

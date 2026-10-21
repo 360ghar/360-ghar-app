@@ -190,7 +190,8 @@ class FirebaseInitializer {
         _initialized = true;
         return;
       }
-      bool consent(String key) => readConsent?.call(key) ?? false;
+      // Default allow until an explicit choice, as before the migration.
+      bool consent(String key) => readConsent?.call(key) ?? true;
 
       final analyticsOn = RemoteConfigService.analyticsEnabled && consent('consent_analytics');
       final perfOn = RemoteConfigService.performanceEnabled && consent('consent_performance');

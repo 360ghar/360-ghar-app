@@ -63,7 +63,7 @@ class VisitModel {
   @JsonKey(required: true)
   @VisitStatusConverter()
   final VisitStatus? status;
-  @JsonKey(name: 'visit_context', required: true)
+  @JsonKey(name: 'visit_context', required: true, disallowNullValue: true)
   @VisitContextConverter()
   final VisitContext? visitContext;
   @JsonKey(name: 'conversation_id')

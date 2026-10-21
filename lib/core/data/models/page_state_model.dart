@@ -31,10 +31,4 @@ enum LocationSource {
     'fallback' => fallback,
     _ => manual,
   };
-
-  /// Passive sources must not trigger a data refresh.
-  bool get triggersRefresh => this != initial && this != hydrate && this != gpsPassive;
-
-  /// Passive GPS updates already carry a usable name; skip reverse geocoding.
-  bool get resolvesName => this != gpsPassive;
 }

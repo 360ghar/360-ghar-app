@@ -120,6 +120,8 @@ String cutBandPath(Object seed, {double width = 1440, double height = 24, int se
 /// varied heights, water tanks, stair rooms, parapet steps and narrow gaps.
 /// Port of `rooflineBandPath` in `tool/paper/cut.ts`.
 String rooflineBandPath(Object seed, {double width = 390, double height = 18}) {
+  // A non-positive height would never advance the cursor below.
+  if (height <= 0) return 'M0 0 L${jsNum(width)} 0 Z';
   final rand = paperRng(seed);
   final h = height;
   final d = StringBuffer('M0 ${jsNum(height)}');

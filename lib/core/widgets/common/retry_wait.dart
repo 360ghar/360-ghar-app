@@ -35,7 +35,9 @@ class _RetryWaitState extends State<RetryWait> {
 
   void _start() {
     _timer?.cancel();
-    _left = retryWaitOf(widget.error)?.inSeconds ?? 0;
+    final wait = retryWaitOf(widget.error);
+    // Round up so a fractional wait never re-enables the action early.
+    _left = wait == null ? 0 : (wait.inMilliseconds + 999) ~/ 1000;
     if (_left <= 0) return;
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;

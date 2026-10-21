@@ -8,8 +8,6 @@ import 'package:ghar360/features/auth/data/auth_method.dart';
 import 'package:ghar360/features/auth/data/models/auth_flow_args.dart';
 import 'package:ghar360/features/auth/presentation/controllers/auth_form_state.dart';
 
-enum LoginStep { password, otp }
-
 final loginProvider = NotifierProvider.autoDispose
     .family<LoginController, AuthFormState, AuthFlowArgs>(LoginController.new);
 

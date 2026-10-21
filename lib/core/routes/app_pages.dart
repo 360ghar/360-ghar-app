@@ -151,7 +151,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.propertyDetails,
         builder: (_, state) {
           final property = state.extra is PropertyModel ? state.extra as PropertyModel : null;
-          final id = property?.id ?? positivePropertyId(state.uri.queryParameters['id']);
+          final extra = state.extra;
+          final id =
+              property?.id ??
+              (extra is int && extra > 0 ? extra : null) ??
+              positivePropertyId(state.uri.queryParameters['id']);
           return id == null
               ? const RouteNotFoundView()
               : PropertyDetailsView(propertyId: id, initialProperty: property);

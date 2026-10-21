@@ -13,7 +13,8 @@ class CountUpText extends StatelessWidget {
   final TextStyle? style;
   final TextAlign? textAlign;
 
-  static String _whole(double value) => value.round().toString();
+  static String _whole(double value) =>
+      value.isFinite ? value.round().toString() : value.toString();
 
   @override
   Widget build(BuildContext context) {

@@ -57,10 +57,14 @@ void main() {
     expect(await platform.tryAndroidUpdate(false), NativeUpdateResult.unsupported);
   });
   for (final mandatory in [true, false]) {
-    test('native cancellation does not open a second prompt for mandatory=$mandatory', () async {
+    test('native cancellation for mandatory=$mandatory', () async {
       errorAt = mandatory ? 'performImmediateUpdate' : 'startFlexibleUpdate';
       errorCode = 'USER_DENIED_UPDATE';
-      expect(await platform.tryAndroidUpdate(mandatory), NativeUpdateResult.handled);
+      // An optional update stays declined; a mandatory one falls back to the blocking prompt.
+      expect(
+        await platform.tryAndroidUpdate(mandatory),
+        mandatory ? NativeUpdateResult.unsupported : NativeUpdateResult.handled,
+      );
       expect(calls, isNot(contains('completeFlexibleUpdate')));
     });
     test('native failed update permits fallback for mandatory=$mandatory', () async {

@@ -51,7 +51,7 @@ class OfflineQueueService {
             previous.operationId != action.operationId &&
             previous.payload['property_id'] == propertyId &&
             previous.status != PendingActionStatus.confirmed) {
-          await update(
+          await _update(
             previous,
             scope: owner,
             status: PendingActionStatus.failed,
@@ -87,7 +87,24 @@ class OfflineQueueService {
     return action;
   }
 
+  /// Serialized with [enqueueSwipe], so a status write cannot overwrite a SUPERSEDED marker.
   Future<void> update(
+    PendingAction action, {
+    required StorageScope scope,
+    required PendingActionStatus status,
+    String? failureCode,
+    bool attempted = false,
+  }) => _serial(
+    () => _update(
+      action,
+      scope: scope,
+      status: status,
+      failureCode: failureCode,
+      attempted: attempted,
+    ),
+  );
+
+  Future<void> _update(
     PendingAction action, {
     required StorageScope scope,
     required PendingActionStatus status,
@@ -104,16 +121,17 @@ class OfflineQueueService {
     _notify();
   }
 
-  Future<void> discard(String operationId, {StorageScope? scope}) async {
+  Future<void> discard(String operationId, {StorageScope? scope}) => _serial(() async {
     await _database.discardAction(scope: scope ?? _scope(), operationId: operationId);
     _notify();
-  }
+  });
 
   void _notify() {
     if (!_changes.isClosed) _changes.add(null);
   }
 
+  /// Closes the change stream once queued writes have finished, so none outlives the database.
   void close() {
-    unawaited(_changes.close());
+    unawaited(_writes.whenComplete(_changes.close));
   }
 }

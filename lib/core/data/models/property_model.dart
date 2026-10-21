@@ -69,7 +69,15 @@ DateTime? _dateOnlyFromJson(Object? value) {
   if (value == null) return null;
   final match = value is String ? RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value) : null;
   if (match == null) throw FormatException('Expected a YYYY-MM-DD date, got ${value.runtimeType}');
-  return DateTime(int.parse(match[1]!), int.parse(match[2]!), int.parse(match[3]!));
+  final year = int.parse(match[1]!);
+  final month = int.parse(match[2]!);
+  final day = int.parse(match[3]!);
+  final date = DateTime(year, month, day);
+  // DateTime rolls 2026-02-30 over to March; an impossible date is a contract break.
+  if (date.year != year || date.month != month || date.day != day) {
+    throw FormatException('Not a calendar date: $value');
+  }
+  return date;
 }
 
 String? _dateOnlyToJson(DateTime? value) {

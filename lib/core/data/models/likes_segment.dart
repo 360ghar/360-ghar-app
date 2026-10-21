@@ -1,5 +1,6 @@
-/// The two tabs of the Likes page. Persisted inside the likes page state's
-/// `additionalData` under [additionalDataKey] using [name].
+/// The two tabs of the Likes page. The last choice of the legacy app is read once from the
+/// imported likes page state (`additionalData` under [additionalDataKey]); the new app does not
+/// write it back, so the page opens on Liked after a restart.
 enum LikesSegment {
   liked,
   passed;

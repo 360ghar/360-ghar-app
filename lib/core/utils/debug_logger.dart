@@ -72,6 +72,7 @@ class DebugLogger {
     };
     final status = switch (error) {
       ApiException(:final statusCode) => statusCode,
+      AuthenticationException(:final statusCode) => statusCode,
       ServerException(:final statusCode) => statusCode,
       _ => null,
     };
