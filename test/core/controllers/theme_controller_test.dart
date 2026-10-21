@@ -53,19 +53,6 @@ void main() {
     });
   }
 
-  test('toggle cycles light, dark, system without changing the stored format', () async {
-    final notifier = container.read(themeProvider.notifier);
-    for (final mode in [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.system]) {
-      await notifier.toggleTheme();
-      expect(container.read(themeProvider).mode, mode);
-      expect(database.values['themeMode'], mode.name);
-    }
-    await notifier.setTheme(true);
-    expect(container.read(themeProvider).mode, AppThemeMode.dark);
-    await notifier.setTheme(false);
-    expect(container.read(themeProvider).mode, AppThemeMode.light);
-  });
-
   test('failed persistence retains the effective theme and supports retry', () async {
     database.writeFailure = StorageFailure('write');
     final notifier = container.read(themeProvider.notifier);

@@ -8,8 +8,8 @@ import 'package:ghar360/core/design/paper/paper_cut.dart';
 /// Depth of the hand-cut top edge of a sheet (the lip).
 const kPaperLip = 12.0;
 
-/// Paints the hand-cut top edge of a full-width sheet in a box [kPaperLip]
-/// tall (or taller: the sheet fills the rest below the edge). The edge shows
+/// Paints the hand-cut top edge of a full-width sheet in a box [lip] (default
+/// [kPaperLip]) tall (or taller: the sheet fills the rest below the edge). The edge shows
 /// in [edge] 1.5 px proud, so the card's thickness reads; no blur, no rule.
 void paintPaperLip(
   Canvas canvas,
@@ -17,16 +17,18 @@ void paintPaperLip(
   String seed, {
   required Color sheet,
   required Color edge,
+  double lip = kPaperLip,
+  int? segments,
 }) {
   final band = parsePaperPath(
     cutBandPath(
       seed,
       width: size.width,
-      height: kPaperLip,
-      segments: math.max(8, (size.width / 28).round()),
+      height: lip,
+      segments: segments ?? math.max(8, (size.width / 28).round()),
     ),
     fillType: PathFillType.nonZero,
-  )..addRect(Rect.fromLTWH(0, kPaperLip - 0.5, size.width, size.height - kPaperLip + 0.5));
+  )..addRect(Rect.fromLTWH(0, lip - 0.5, size.width, size.height - lip + 0.5));
   canvas.drawPath(band.shift(const Offset(0, -1.5)), Paint()..color = edge);
   canvas.drawPath(band, Paint()..color = sheet);
 }

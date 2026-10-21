@@ -4,6 +4,7 @@ import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
@@ -241,7 +242,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
                   ),
           ),
           child: Text(
-            value != null ? dateDisplay(value) : l10n.text('select_your_date_of_birth'),
+            value != null ? formatDisplayDate(value) : l10n.text('select_your_date_of_birth'),
             style: TextStyle(
               color: value != null ? context.design.textPrimary : context.design.textSecondary,
             ),

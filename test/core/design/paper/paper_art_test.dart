@@ -103,4 +103,21 @@ void main() {
       expect(night.single.$1, const Rect.fromLTRB(0, 0, 60, 20));
     });
   });
+
+  test('paperLayerBounds covers the whole shadow on every side', () {
+    const layer = PaperLayerData(
+      id: 'box',
+      tone: PaperTone.mid,
+      depth: 0,
+      shadow: 1,
+      cut: ['M10 10L20 10L20 20L10 20Z'],
+      solid: [],
+      lit: [],
+    );
+    final bounds = paperLayerBounds(layer, (3, 4, 1.6));
+    expect(bounds.left, closeTo(10 + 3 - 4.8, 1e-6));
+    expect(bounds.top, closeTo(10 + 4 - 4.8, 1e-6));
+    expect(bounds.right, closeTo(20 + 3 + 4.8, 1e-6));
+    expect(bounds.bottom, closeTo(20 + 4 + 4.8, 1e-6));
+  });
 }

@@ -73,6 +73,20 @@ void main() {
       }
     });
 
+    test('a null items, limit or has_more is a contract break, not a default', () {
+      for (final key in ['items', 'limit', 'has_more']) {
+        final body = <String, dynamic>{
+          'items': <Object?>[],
+          'limit': 20,
+          'next_cursor': null,
+          'has_more': false,
+          'total': null,
+          key: null,
+        };
+        expect(() => UnifiedPropertyResponse.fromJson(body), throwsA(anything), reason: key);
+      }
+    });
+
     test('parses an empty items list', () {
       final response = UnifiedPropertyResponse.fromJson({
         'items': <Object?>[],

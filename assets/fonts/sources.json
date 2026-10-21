@@ -40,33 +40,38 @@
     },
     {
       "path": "assets/fonts/erode/Erode-Regular.ttf",
-      "source": "https://api.fontshare.com/v2/fonts/download/erode (Erode_Complete/Fonts/TTF)",
+      "source": "https://api.fontshare.com/v2/fonts/download/erode",
       "sha256": "607b05acf80de89d4552192d7eaab57f07b602311bfbe132213185342fc4b145",
-      "bytes": 62956
+      "bytes": 62956,
+      "archive_member": "Erode_Complete/Fonts/TTF/Erode-Regular.ttf"
     },
     {
       "path": "assets/fonts/erode/Erode-Medium.ttf",
-      "source": "https://api.fontshare.com/v2/fonts/download/erode (Erode_Complete/Fonts/TTF)",
+      "source": "https://api.fontshare.com/v2/fonts/download/erode",
       "sha256": "0cda960cb53a246787a997973cc8f5c2055cd139be0d6ba30fe3aacd5aaf031d",
-      "bytes": 62988
+      "bytes": 62988,
+      "archive_member": "Erode_Complete/Fonts/TTF/Erode-Medium.ttf"
     },
     {
       "path": "assets/fonts/erode/Erode-Semibold.ttf",
-      "source": "https://api.fontshare.com/v2/fonts/download/erode (Erode_Complete/Fonts/TTF)",
+      "source": "https://api.fontshare.com/v2/fonts/download/erode",
       "sha256": "10a3d32636b66a1ead4a4588c753912ccc5c18d5df853a84977a5f0aead072e3",
-      "bytes": 63072
+      "bytes": 63072,
+      "archive_member": "Erode_Complete/Fonts/TTF/Erode-Semibold.ttf"
     },
     {
       "path": "assets/fonts/erode/Erode-Bold.ttf",
-      "source": "https://api.fontshare.com/v2/fonts/download/erode (Erode_Complete/Fonts/TTF)",
+      "source": "https://api.fontshare.com/v2/fonts/download/erode",
       "sha256": "a4a80e8d00fa645da04c1e388a761b92d3363294d43979a4e7557420000ead27",
-      "bytes": 62072
+      "bytes": 62072,
+      "archive_member": "Erode_Complete/Fonts/TTF/Erode-Bold.ttf"
     },
     {
       "path": "assets/fonts/erode/FFL.txt",
-      "source": "https://api.fontshare.com/v2/fonts/download/erode (Erode_Complete/License/FFL.txt)",
+      "source": "https://api.fontshare.com/v2/fonts/download/erode",
       "sha256": "145e7fe2429a3336ba215c070ef722000e01348a3e1baaa127e871bb5012f554",
-      "bytes": 12734
+      "bytes": 12734,
+      "archive_member": "Erode_Complete/License/FFL.txt"
     },
     {
       "path": "assets/fonts/notoserifdevanagari/NotoSerifDevanagari[wdth,wght].ttf",

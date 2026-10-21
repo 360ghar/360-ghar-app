@@ -7,7 +7,11 @@ part of 'unified_property_response.dart';
 // **************************************************************************
 
 UnifiedPropertyResponse _$UnifiedPropertyResponseFromJson(Map<String, dynamic> json) {
-  $checkKeys(json, requiredKeys: const ['items', 'limit', 'next_cursor', 'has_more', 'total']);
+  $checkKeys(
+    json,
+    requiredKeys: const ['items', 'limit', 'next_cursor', 'has_more', 'total'],
+    disallowNullValues: const ['items', 'limit', 'has_more'],
+  );
   return UnifiedPropertyResponse(
     items:
         (json['items'] as List<dynamic>?)

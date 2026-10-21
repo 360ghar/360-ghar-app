@@ -30,8 +30,8 @@ class WebViewHelper {
         DebugLogger.success('WebView platform initialized for mobile');
       }
       _isInitialized = true;
-    } catch (e) {
-      DebugLogger.warning('WebView platform initialization failed: ${e.runtimeType}');
+    } catch (e, stack) {
+      DebugLogger.warning('WebView platform initialization failed', e.runtimeType, stack);
     }
   }
 
@@ -53,8 +53,11 @@ class WebViewHelper {
 
     if (_isAndroid) {
       unawaited(
-        AndroidWebViewController.enableDebugging(kDebugMode).catchError((Object error) {
-          DebugLogger.warning('WebView debug setting failed: ${error.runtimeType}');
+        AndroidWebViewController.enableDebugging(kDebugMode).catchError((
+          Object error,
+          StackTrace stack,
+        ) {
+          DebugLogger.warning('WebView debug setting failed', error.runtimeType, stack);
         }),
       );
     }
@@ -94,8 +97,8 @@ class WebViewHelper {
         ..loadRequest(Uri.parse(url));
 
       return controller;
-    } catch (e) {
-      DebugLogger.error('Error creating WebView controller: ${e.runtimeType}');
+    } catch (e, stack) {
+      DebugLogger.error('Error creating WebView controller', e.runtimeType, stack);
       rethrow;
     }
   }
@@ -130,8 +133,8 @@ class WebViewHelper {
           gestureRecognizers: createInteractiveGestureRecognizers(),
         ),
       );
-    } catch (e) {
-      DebugLogger.error('Error creating safe WebView: ${e.runtimeType}');
+    } catch (e, stack) {
+      DebugLogger.error('Error creating safe WebView', e.runtimeType, stack);
       return errorWidget ?? _buildErrorWidget(context, width, height, url);
     }
   }

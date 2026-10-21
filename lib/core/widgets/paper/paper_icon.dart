@@ -29,9 +29,16 @@ class PaperIcon extends StatelessWidget {
     final mark = SizedBox.square(
       dimension: side,
       child: Center(
-        child: SizedBox.square(
-          dimension: side,
-          child: CustomPaint(painter: _KnifeIconPainter(icon, ink, shadows ?? const [])),
+        // Overflow, as [Icon] does, when the parent's box is smaller than [side].
+        child: OverflowBox(
+          minWidth: side,
+          maxWidth: side,
+          minHeight: side,
+          maxHeight: side,
+          child: SizedBox.square(
+            dimension: side,
+            child: CustomPaint(painter: _KnifeIconPainter(icon, ink, shadows ?? const [])),
+          ),
         ),
       ),
     );

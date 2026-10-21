@@ -12,7 +12,7 @@
 export function compactPath(d: string, decimals?: number): string {
   if (!/^[MLZ\d\s.,-]*$/.test(d)) return d;
   const tokens = d.match(/[MLZ]|-?(?:\d+\.?\d*|\.\d+)/g) ?? [];
-  const places = decimals ?? Math.min(3, Math.max(0, ...tokens.map((n) => n.split('.')[1]?.length ?? 0)));
+  const places = decimals ?? Math.max(0, ...tokens.map((n) => n.split('.')[1]?.length ?? 0));
   const k = 10 ** places;
 
   // Integer units (value x 10^places) to the shortest decimal text.
@@ -39,8 +39,9 @@ export function compactPath(d: string, decimals?: number): string {
     prev = n;
   };
   const emit = (c: string, a: number, b: number) => {
-    // After "m" further pairs are relative lines, so "l" can be left out.
-    if (!(c === last || (c === 'l' && last === 'm'))) {
+    // After "l" or "m" further pairs are relative lines, so a repeated "l" can be left out. A
+    // repeated "m" must keep its letter: without it the pair would read as a line.
+    if (!(c === 'l' && (last === 'l' || last === 'm'))) {
       out += c;
       prev = '';
     }

@@ -59,8 +59,6 @@ Future<DateTime?> selectBirthDate(BuildContext context, DateTime? selected) {
   );
 }
 
-String dateDisplay(DateTime date) =>
-    '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 String? dateValue(DateTime? date) => date?.toIso8601String().split('T').first;
 
 class AuthFormError extends StatelessWidget {

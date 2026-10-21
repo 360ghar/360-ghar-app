@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:ghar360/core/design/app_design_extensions.dart';
-import 'package:ghar360/core/design/paper/paper_cut.dart';
+import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
 
 /// A strip of card stock with a hand-cut leading edge: the top of a bottom
 /// bar, or the right side of a rail when [vertical]. The edge shows in the
@@ -29,7 +29,7 @@ class PaperStrip extends StatelessWidget {
           seed: seed,
           vertical: vertical,
           sheet: design.surface,
-          edge: design.border,
+          edge: design.sheetLip,
         ),
         child: child,
       ),
@@ -60,17 +60,15 @@ class _StripPainter extends CustomPainter {
       canvas.translate(size.width, 0);
       canvas.rotate(math.pi / 2);
     }
-    final band = parsePaperPath(
-      cutBandPath(
-        seed,
-        width: length,
-        height: PaperStrip.cut,
-        segments: math.max(6, (length / 32).round()),
-      ),
-      fillType: PathFillType.nonZero,
-    )..addRect(Rect.fromLTWH(0, PaperStrip.cut - 0.5, length, depth - PaperStrip.cut + 0.5));
-    canvas.drawPath(band.shift(const Offset(0, -1.5)), Paint()..color = edge);
-    canvas.drawPath(band, Paint()..color = sheet);
+    paintPaperLip(
+      canvas,
+      Size(length, depth),
+      seed,
+      sheet: sheet,
+      edge: edge,
+      lip: PaperStrip.cut,
+      segments: math.max(6, (length / 32).round()),
+    );
     canvas.restore();
   }
 

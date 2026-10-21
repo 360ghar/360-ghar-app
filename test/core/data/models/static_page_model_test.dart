@@ -57,6 +57,13 @@ void main() {
   });
 
   group('StaticPageModel.isRenderable', () {
+    test('an HTML page with only a Markdown autolink is not treated as markup', () {
+      final model = StaticPageModel.fromJson(
+        _body(overrides: {'format': 'html', 'content': 'Write to <support@ghar360.com>'}),
+      );
+      expect(model.isRenderable, isTrue);
+    });
+
     StaticPageModel page(String format, String content) =>
         StaticPageModel.fromJson(_body(overrides: {'format': format, 'content': content}));
 

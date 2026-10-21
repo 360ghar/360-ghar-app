@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -122,11 +123,13 @@ Rect paperLayerBounds(PaperLayerData layer, (double, double, double) shadow) {
     bounds = bounds.isEmpty ? b : bounds.expandToInclude(b);
   }
   final (dx, dy, sigma) = shadow;
+  // The shadow is the layer moved by (dx, dy) and blurred out to 3 sigma on every side.
+  final spread = sigma * 3;
   return Rect.fromLTRB(
-    bounds.left,
-    bounds.top,
-    bounds.right + dx + sigma * 3,
-    bounds.bottom + dy + sigma * 3,
+    math.min(bounds.left, bounds.left + dx - spread),
+    math.min(bounds.top, bounds.top + dy - spread),
+    math.max(bounds.right, bounds.right + dx + spread),
+    math.max(bounds.bottom, bounds.bottom + dy + spread),
   );
 }
 

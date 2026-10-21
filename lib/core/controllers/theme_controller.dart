@@ -63,7 +63,4 @@ class ThemeController extends Notifier<ThemeSettings> {
   }
 
   Future<bool> retry() => setThemeMode(_requestedMode ?? state.mode);
-  Future<bool> toggleTheme() =>
-      setThemeMode(AppThemeMode.values[(state.mode.index + 1) % AppThemeMode.values.length]);
-  Future<bool> setTheme(bool dark) => setThemeMode(dark ? AppThemeMode.dark : AppThemeMode.light);
 }

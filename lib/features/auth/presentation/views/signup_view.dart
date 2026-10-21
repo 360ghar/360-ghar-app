@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
 import 'package:ghar360/features/auth/data/models/auth_flow_args.dart';
@@ -45,7 +46,7 @@ class _SignUpViewState extends ConsumerState<SignUpView> {
     if (mounted && date != null) {
       setState(() {
         _birthDate = date;
-        _dob.text = dateDisplay(date);
+        _dob.text = formatDisplayDate(date);
       });
     }
   }

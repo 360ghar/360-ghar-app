@@ -11,18 +11,7 @@ import 'package:ghar360/core/utils/debug_logger.dart';
 class BestEffort {
   BestEffort._();
 
-  /// Runs [body], logging any thrown error/stack at debug level.
-  ///
-  /// Synchronous variant: errors are caught and logged, never rethrown.
-  static void run(void Function() body, {String label = 'best-effort'}) {
-    try {
-      body();
-    } catch (e, st) {
-      DebugLogger.debug('🟡 [BEST_EFFORT] $label failed (ignored)', e, st);
-    }
-  }
-
-  /// Awaits [body]; resolves even when [body] throws (after logging).
+  /// Awaits [body]; resolves even when [body] throws (after logging at debug level).
   ///
   /// Use inside async flows where a failure must not propagate but the caller
   /// wants to `await` completion ordering.

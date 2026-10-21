@@ -82,7 +82,15 @@ class OfflineQueueService {
       payload: payload,
       status: status,
     );
-    final action = (await list(scope: owner)).singleWhere((item) => item.operationId == id);
+    // Built from what was just written; re-reading the whole history would decode every past row.
+    final action = PendingAction(
+      operationId: id,
+      scopeKey: owner.key,
+      kind: kind,
+      payload: payload.cast<String, dynamic>(),
+      createdAt: DateTime.now(),
+      status: status,
+    );
     _notify();
     return action;
   }

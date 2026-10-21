@@ -73,7 +73,6 @@ void main() {
       expect(logs.text, isNot(contains('private-')));
     });
     test('best-effort failures retain operation and type without changing control flow', () async {
-      BestEffort.run(() => throw StateError('private-sync'), label: 'closeSheet');
       await BestEffort.runAsync(() async => throw StateError('private-async'), label: 'closeSheet');
       expect(logs.text, contains('closeSheet'));
       expect(logs.text, contains('StateError'));

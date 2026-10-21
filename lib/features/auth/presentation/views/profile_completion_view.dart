@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_vignette.dart';
 import 'package:ghar360/features/auth/data/identifier_utils.dart';
@@ -37,7 +36,7 @@ class _ProfileCompletionViewState extends ConsumerState<ProfileCompletionView> {
     _name.text = user?.fullName ?? '';
     _email.text = user?.email ?? '';
     _birthDate = DateTime.tryParse(user?.dateOfBirth ?? '');
-    if (_birthDate != null) _dob.text = dateDisplay(_birthDate!);
+    if (_birthDate != null) _dob.text = formatDisplayDate(_birthDate!);
   }
 
   @override
@@ -53,7 +52,7 @@ class _ProfileCompletionViewState extends ConsumerState<ProfileCompletionView> {
     if (mounted && date != null) {
       setState(() {
         _birthDate = date;
-        _dob.text = dateDisplay(date);
+        _dob.text = formatDisplayDate(date);
       });
     }
   }

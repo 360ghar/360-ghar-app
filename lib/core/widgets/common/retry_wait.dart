@@ -33,11 +33,20 @@ class _RetryWaitState extends State<RetryWait> {
     if (!identical(oldWidget.error, widget.error)) _start();
   }
 
+  /// When each failure was first shown, so a remount counts down only what is left.
+  static final _shownAt = Expando<DateTime>();
+
   void _start() {
     _timer?.cancel();
-    final wait = retryWaitOf(widget.error);
+    final error = widget.error;
+    final wait = retryWaitOf(error);
+    var remaining = wait ?? Duration.zero;
+    if (wait != null && error != null) {
+      final shownAt = _shownAt[error] ??= DateTime.now();
+      remaining = wait - DateTime.now().difference(shownAt);
+    }
     // Round up so a fractional wait never re-enables the action early.
-    _left = wait == null ? 0 : (wait.inMilliseconds + 999) ~/ 1000;
+    _left = remaining <= Duration.zero ? 0 : (remaining.inMilliseconds + 999) ~/ 1000;
     if (_left <= 0) return;
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;

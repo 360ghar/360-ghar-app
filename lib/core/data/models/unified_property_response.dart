@@ -11,13 +11,13 @@ part 'unified_property_response.g.dart';
 /// opaque and is passed back unchanged with the same filters.
 @JsonSerializable(explicitToJson: true)
 class UnifiedPropertyResponse {
-  @JsonKey(required: true)
+  @JsonKey(required: true, disallowNullValue: true)
   final List<PropertyModel> items;
-  @JsonKey(required: true)
+  @JsonKey(required: true, disallowNullValue: true)
   final int limit;
   @JsonKey(name: 'next_cursor', required: true)
   final String? nextCursor;
-  @JsonKey(name: 'has_more', required: true)
+  @JsonKey(name: 'has_more', required: true, disallowNullValue: true)
   final bool hasMore;
   @JsonKey(required: true)
   final int? total;

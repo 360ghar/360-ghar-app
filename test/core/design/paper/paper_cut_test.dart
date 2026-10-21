@@ -133,4 +133,9 @@ void main() {
       expect(() => parsePaperPath('L1 1'), throwsFormatException);
     });
   });
+
+  test('rooflineBandPath with a non-positive height returns at once', () {
+    expect(rooflineBandPath('seed', height: 0), isNotEmpty);
+    expect(rooflineBandPath('seed', height: -4), isNotEmpty);
+  });
 }

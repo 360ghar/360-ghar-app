@@ -4,8 +4,10 @@ import 'dart:ui';
 /// Turns gyroscope rotation rates into a small, smooth tilt in -1..1.
 ///
 /// Rates are integrated into an angle, clamped to [maxAngle], pulled back to
-/// the centre over [recenter] (so drift never builds up) and eased over
-/// [ease] so the scene never jitters.
+/// the centre with time constant [recenter] (so drift never builds up) and
+/// eased with time constant [ease] so the scene never jitters. A time constant
+/// is the time to cover about 63% of the way: the tilt is within 2% of rest
+/// after four of them (about 3.2 s for the default [recenter]).
 class TiltFilter {
   TiltFilter({
     this.maxAngle = 0.3,

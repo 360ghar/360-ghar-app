@@ -33,22 +33,6 @@ class PaperSkylineStrip extends StatelessWidget {
   );
 }
 
-/// The far towers and sector blocks with no sky, anchored to the bottom of
-/// the area it fills, for a page whose content overlaps the city (Discover).
-/// Painted once; the page tone shows above the roofs.
-class SkylineBackdrop extends StatelessWidget {
-  const SkylineBackdrop({super.key});
-
-  static final _art = _city(const {'towers', 'blocks'});
-
-  @override
-  Widget build(BuildContext context) => ExcludeSemantics(
-    child: RepaintBoundary(
-      child: CustomPaint(painter: _SkylinePainter(context.design, _art, sky: false)),
-    ),
-  );
-}
-
 class _SkylinePainter extends CustomPainter {
   const _SkylinePainter(this.design, this.art, {required this.sky, this.artTop = 0});
 
