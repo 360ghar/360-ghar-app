@@ -85,6 +85,10 @@ class ApiClient {
 
   String get baseUrl => _baseUrl;
 
+  /// False for a guest. Public reads pass it as `requireAuth` so a guest sends no token
+  /// and a signed-in user keeps the forced refresh.
+  bool get signedIn => _authProvider.signedIn;
+
   http.Client get _resolvedClient => _client ??= http.Client();
 
   /// Makes a GET request.

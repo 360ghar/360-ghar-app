@@ -12,6 +12,18 @@ const authEntryPaths = {
   AppRoutes.signup,
   AppRoutes.forgotPassword,
 };
+
+/// Account-only screens. A guest who opens one is sent to sign-in and brought back.
+const protectedPaths = {
+  AppRoutes.likes,
+  AppRoutes.visits,
+  AppRoutes.profile,
+  AppRoutes.assistant,
+  AppRoutes.editProfile,
+  AppRoutes.preferences,
+  AppRoutes.privacy,
+  AppRoutes.feedback,
+};
 const authGatePaths = {AppRoutes.setPassword, AppRoutes.profileCompletion};
 const _knownDestinations = {
   AppRoutes.dashboard,
@@ -136,7 +148,11 @@ String? authRedirect({
       if (!onboardingComplete) {
         return path == AppRoutes.splash ? null : routeWithReturn(AppRoutes.splash, destination);
       }
-      return entry ? null : routeWithReturn(AppRoutes.phoneEntry, destination);
+      if (entry) return null;
+      if (path == '/' || path == AppRoutes.splash) return returnTo ?? AppRoutes.discover;
+      return protectedPaths.contains(path)
+          ? routeWithReturn(AppRoutes.phoneEntry, destination)
+          : null;
     case AuthStatus.requiresPasswordSetup:
       return path == AppRoutes.setPassword
           ? null

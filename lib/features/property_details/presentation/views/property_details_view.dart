@@ -13,7 +13,6 @@ import 'package:ghar360/core/design/paper/paper_art.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
-import 'package:ghar360/core/routes/route_policy.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
@@ -26,6 +25,7 @@ import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_list_card.dart';
+import 'package:ghar360/core/widgets/common/sign_in_gate.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_skyline.dart';
 import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
@@ -642,10 +642,10 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
           onPressed: phase == SwipePhase.submitting
               ? null
               : () async {
-                  if (ref.read(storageScopeProvider).accountId == null) {
-                    context.push(routeWithReturn(AppRoutes.phoneEntry, '/property/${property.id}'));
+                  if (!await requireAccount(context, ref, returnTo: '/property/${property.id}')) {
                     return;
                   }
+                  if (!context.mounted) return;
                   final ok = await ref.read(swipeHistoryProvider.notifier).record(property, !liked);
                   if (!context.mounted) return;
                   if (!ok) {

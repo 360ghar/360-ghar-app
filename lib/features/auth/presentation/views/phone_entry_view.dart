@@ -61,6 +61,8 @@ class _PhoneEntryViewState extends ConsumerState<PhoneEntryView> {
       child: AuthPremiumShell(
         title: l.text('auth_entry_title'),
         subtitle: l.text('auth_entry_subtitle'),
+        // A guest can always go back to browsing; after login's back button the stack is gone.
+        onBack: () => context.canPop() ? context.pop() : context.go(AppRoutes.discover),
         footer: Text(l.text('terms_footer'), textAlign: TextAlign.center),
         child: AutofillGroup(
           child: Form(

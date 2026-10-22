@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghar360/core/design/app_design_theme.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
+import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/features/dashboard/presentation/views/dashboard_view.dart';
 import 'package:go_router/go_router.dart';
@@ -40,25 +43,43 @@ GoRouter shellRouter({String initial = '/discover', Set<String>? built, Set<Stri
       ],
     );
 
+class _FakeScope extends Fake implements StorageScope {
+  _FakeScope(this.accountId);
+  @override
+  final String? accountId;
+}
+
+class _ShellScope extends StorageScopeNotifier {
+  _ShellScope(this.accountId);
+  final String? accountId;
+  @override
+  StorageScope build() => _FakeScope(accountId);
+}
+
+/// The shell reads the account only when a guest taps an account tab.
 Widget shellApp(
   GoRouter router, {
+  bool guest = false,
   bool dark = false,
   double scale = 1,
   Locale locale = const Locale('en', 'US'),
-}) => MaterialApp.router(
-  routerConfig: router,
-  theme: dark ? AppDesignTheme.dark() : AppDesignTheme.light(),
-  locale: locale,
-  supportedLocales: AppLocalizations.supportedLocales,
-  localizationsDelegates: const [
-    AppLocalizations.delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-  ],
-  builder: (context, child) => MediaQuery(
-    data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-    child: child!,
+}) => ProviderScope(
+  overrides: [storageScopeProvider.overrideWith(() => _ShellScope(guest ? null : 'a'))],
+  child: MaterialApp.router(
+    routerConfig: router,
+    theme: dark ? AppDesignTheme.dark() : AppDesignTheme.light(),
+    locale: locale,
+    supportedLocales: AppLocalizations.supportedLocales,
+    localizationsDelegates: const [
+      AppLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+      child: child!,
+    ),
   ),
 );
 

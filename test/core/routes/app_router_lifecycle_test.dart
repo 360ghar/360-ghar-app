@@ -179,4 +179,15 @@ void main() {
     expect(tester.widget<TextFormField>(title).controller!.text, isEmpty);
     await unmount(tester);
   });
+
+  testWidgets('sign-out on an account screen lands on guest Discover, not a wall', (tester) async {
+    auth.session.initial = AuthState(status: AuthStatus.authenticated, user: profile());
+    await pump(tester, '/edit-profile');
+    expect(router.state.uri.path, '/edit-profile');
+    auth.session.set(const AuthState(status: AuthStatus.unauthenticated));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(router.state.uri.path, '/discover');
+    await unmount(tester);
+  });
 }
