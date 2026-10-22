@@ -5,6 +5,8 @@
 # generated SwiftPM plugin manifest, which `flutter pub get` rewrites to
 # .iOS("13.0") every time (hardcoded in flutter_tools). Everything else is
 # checked only, never touched.
+#
+# VERIFY_SKIP_DART_DEFINES=1 skips the baked dart-defines check (CI has none).
 set -euo pipefail
 
 FIX_MODE=""
@@ -52,6 +54,7 @@ fi
 
 python3 - "$SOURCE_PLIST" "$PRIVACY_MANIFEST" "$APP_FRAMEWORK_INFO" "$PROJECT_PBXPROJ" "$PUBSPEC" "$GENERATED_PACKAGE" "$EXPECTED_DEPLOYMENT_TARGET" "${1:-}" "$FIX_MODE" "$GENERATED_XCCONFIG" "$LAST_SUBMITTED_BUILD" <<'PY'
 import base64
+import os
 import plistlib
 import re
 import sys
@@ -236,7 +239,11 @@ def check_dart_defines(path: Path):
         print("PASS [DART_DEFINES]: production defines are set (no debug flags, Firebase on, prod API, Supabase present)")
 
 
-check_dart_defines(generated_xcconfig_path)
+if os.environ.get("VERIFY_SKIP_DART_DEFINES") == "1":
+    # CI has no production defines; the owner's build machine runs this check.
+    print("SKIP [DART_DEFINES]: VERIFY_SKIP_DART_DEFINES=1")
+else:
+    check_dart_defines(generated_xcconfig_path)
 
 # Privacy manifest
 privacy = load_plist(privacy_path)
