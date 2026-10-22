@@ -84,7 +84,8 @@ class _SplashViewState extends ConsumerState<SplashView> {
                       ),
                       Positioned(
                         top: MediaQuery.paddingOf(context).top + 8,
-                        right: 12,
+                        // Clear of a side cut-out (the Duo's status pill).
+                        right: 12 + MediaQuery.paddingOf(context).right,
                         child: Semantics(
                           identifier: 'qa.splash.skip',
                           child: TextButton(
@@ -266,6 +267,10 @@ class _OnboardingSheet extends StatelessWidget {
                           child: TextButton(
                             key: const ValueKey('qa.splash.back'),
                             onPressed: busy || step == 0 ? null : onBack,
+                            // No start padding: the arrow lines up with the text above.
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsetsDirectional.only(end: 12),
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
