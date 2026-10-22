@@ -15,6 +15,7 @@ import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
+import 'package:ghar360/core/utils/responsive.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
@@ -291,34 +292,46 @@ class _DiscoverBody extends ConsumerWidget {
           // gutters and the gap above the buttons.
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
           child: Column(
+            // On a wide, tall window the deck stops at a sane card shape and
+            // the deck with its buttons sits in the middle of the page.
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: Semantics(
-                  identifier: 'qa.discover.swipe_stack',
-                  label: context.l10n.text('discover'),
-                  child: PropertySwipeStack(
-                    key: const ValueKey('qa.discover.swipe_stack'),
-                    properties: cards,
-                    onSwipeLeft: controller.swipeLeft,
-                    onSwipeRight: controller.swipeRight,
-                    onSwipeUp: (property) =>
-                        context.push(AppRoutes.detailsFor(property.id), extra: property),
-                    isLoadingMore: isLoadingMore,
-                    canSwipe: (property, isRight) {
-                      if (!ref
-                          .read(visiblePropertiesProvider(_feed))
-                          .any((item) => item.id == property.id)) {
-                        return false;
-                      }
-                      // A guest may pass but not like: the card snaps back.
-                      if (isRight && ref.read(guestProvider)) {
-                        unawaited(requireAccount(context, ref));
-                        return false;
-                      }
-                      return true;
-                    },
-                    onRefresh: controller.refreshDeck,
-                    onChangeFilters: () => DiscoverView._filters(context),
+              Flexible(
+                child: LayoutBuilder(
+                  builder: (context, box) => ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: context.windowSizeClass == WindowSizeClass.compact
+                          ? double.infinity
+                          : box.maxWidth * 1.5,
+                    ),
+                    child: Semantics(
+                      identifier: 'qa.discover.swipe_stack',
+                      label: context.l10n.text('discover'),
+                      child: PropertySwipeStack(
+                        key: const ValueKey('qa.discover.swipe_stack'),
+                        properties: cards,
+                        onSwipeLeft: controller.swipeLeft,
+                        onSwipeRight: controller.swipeRight,
+                        onSwipeUp: (property) =>
+                            context.push(AppRoutes.detailsFor(property.id), extra: property),
+                        isLoadingMore: isLoadingMore,
+                        canSwipe: (property, isRight) {
+                          if (!ref
+                              .read(visiblePropertiesProvider(_feed))
+                              .any((item) => item.id == property.id)) {
+                            return false;
+                          }
+                          // A guest may pass but not like: the card snaps back.
+                          if (isRight && ref.read(guestProvider)) {
+                            unawaited(requireAccount(context, ref));
+                            return false;
+                          }
+                          return true;
+                        },
+                        onRefresh: controller.refreshDeck,
+                        onChangeFilters: () => DiscoverView._filters(context),
+                      ),
+                    ),
                   ),
                 ),
               ),
