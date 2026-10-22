@@ -20,6 +20,7 @@ import 'package:ghar360/features/property_details/presentation/controllers/prope
 import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/fullscreen_photo_gallery.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
+
 import '../../../../helpers/knife_finders.dart';
 import '../../../../helpers/provider_test_app.dart';
 import '../../../../helpers/visits_test_support.dart';
@@ -80,7 +81,7 @@ const fullProperty = PropertyModel(
   mainImageUrl: '',
   city: 'Bangalore',
   locality: 'Indiranagar',
-  features: ['Swimming Pool', 'Gym', 'Garden', 'Security'],
+  features: ['pool', 'gym', 'garden', 'security', 'slug'],
   amenities: [
     PropertyAmenity(id: 1, title: 'Swimming Pool'),
     PropertyAmenity(id: 2, title: 'Gym'),
@@ -403,6 +404,28 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets('highlights show labels and never internal keys', (tester) async {
+    await pump(tester);
+    expect(find.text('Swimming pool'), findsOneWidget);
+    expect(find.text('Gym'), findsWidgets);
+    expect(find.text('slug'), findsNothing);
+  });
+  testWidgets('highlights are hidden when no feature is a known key', (tester) async {
+    detail = DetailController(
+      100,
+      PropertyDetailsState(
+        property: PropertyModel.fromJson({
+          ...fullPropertyJson,
+          'features': ['amenities', 'listing_bucket', 'slug', 'society_name'],
+        }),
+        phase: PropertyDetailPhase.content,
+      ),
+    );
+    await pump(tester);
+    expect(find.text('Highlights'), findsNothing);
+    expect(find.text('slug'), findsNothing);
+    expect(find.text('listing_bucket'), findsNothing);
+  });
   testWidgets('description expands and collapses', (tester) async {
     await pump(tester, size: const Size(430, 2200));
     await tester.tap(find.text('Read more'));
