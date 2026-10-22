@@ -311,7 +311,8 @@ class _LocationPickerModalState extends ConsumerState<LocationPickerModal> {
                         onTap: busy ? null : _useCurrent,
                       ),
                     ),
-                    if (error != null)
+                    // Skipping the location prompt is not a failure; Use Current Location asks.
+                    if (error != null && code != 'LOCATION_NOT_ASKED')
                       _LocationRecovery(
                         messageKey: switch (code) {
                           'LOCATION_DENIED_FOREVER' => 'location_permission_permanently_denied',
