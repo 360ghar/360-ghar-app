@@ -11,6 +11,7 @@ import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_art.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/presentation/property_labels.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/storage/app_database.dart';
@@ -470,7 +471,7 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
   Widget _buildDetailSections(BuildContext context, PropertyModel property) {
     final design = context.design;
     final text = Theme.of(context).textTheme;
-    final features = property.features ?? const <String>[];
+    final features = property.localizedHighlights(context);
     final agent = property.agent;
     final failure = widget.failure;
     const gap = SizedBox(height: AppSpacing.xl);
