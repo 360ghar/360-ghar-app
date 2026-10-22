@@ -279,6 +279,7 @@ const appMessages = <String, Map<String, String>>{
     'location_services_disabled': 'Location services are disabled',
     'location_permission_permanently_denied': 'Location permission permanently denied',
     'location_permission_denied': 'Location permission denied',
+    'location_not_asked': 'Choose an area to see homes near you',
     'failed_to_get_location_message': 'Failed to get your current location. Please try again.',
     'failed_to_search_locations': 'Failed to search locations',
     'location_selected': 'Location Selected',
@@ -1302,6 +1303,7 @@ const appMessages = <String, Map<String, String>>{
     'location_services_disabled': 'स्थान सेवाएं अक्षम हैं',
     'location_permission_permanently_denied': 'स्थान अनुमति स्थायी रूप से अस्वीकृत',
     'location_permission_denied': 'स्थान अनुमति अस्वीकृत',
+    'location_not_asked': 'आस-पास के घर देखने के लिए क्षेत्र चुनें',
     'failed_to_get_location_message':
         'आपका वर्तमान स्थान प्राप्त करने में विफल। कृपया फिर से कोशिश करें।',
     'failed_to_search_locations': 'स्थानों की खोज करने में विफल',

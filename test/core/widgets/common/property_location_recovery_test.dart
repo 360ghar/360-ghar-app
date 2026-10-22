@@ -151,6 +151,17 @@ void main() {
       await unmount(tester);
     });
 
+    testWidgets('${feed.name} skipped location prompt shows a neutral choose-an-area message', (
+      tester,
+    ) async {
+      device.response = () async =>
+          throw LocationException('not asked', code: 'LOCATION_NOT_ASKED');
+      await pump(tester, feed);
+      expect(find.text('Choose an area to see homes near you'), findsOneWidget);
+      expect(find.text('Unable to get current location'), findsNothing);
+      await unmount(tester);
+    });
+
     testWidgets(
       '${feed.name} GPS retry waits for location before requesting and restores content',
       (tester) async {

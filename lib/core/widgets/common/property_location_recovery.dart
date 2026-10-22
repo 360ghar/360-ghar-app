@@ -32,6 +32,8 @@ class PropertyLocationRecovery extends ConsumerWidget {
       'LOCATION_DENIED_FOREVER' => 'location_permission_permanently_denied',
       'LOCATION_DENIED' => 'location_permission_denied',
       'LOCATION_DISABLED' => 'location_services_disabled',
+      // The visitor skipped the location explainer, so nothing failed.
+      'LOCATION_NOT_ASKED' => 'location_not_asked',
       _ => 'unable_to_get_current_location',
     });
     final busy = location.load.isLoading || location.save.isLoading;
