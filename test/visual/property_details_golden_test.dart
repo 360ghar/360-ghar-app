@@ -66,7 +66,7 @@ const _home = PropertyModel(
   fullAddress: 'Sector 57, Gurugram, Haryana',
   mainImageUrl: 'https://visual-fixture.invalid/details.jpg',
   builderName: 'Parkside Estates',
-  features: ['Corner unit', 'Two balconies', 'Covered parking'],
+  features: ['lift', 'power_backup', 'parking'],
   amenities: [
     PropertyAmenity(id: 1, title: 'Swimming Pool', icon: 'pool'),
     PropertyAmenity(id: 2, title: 'Power Backup', icon: 'battery'),
