@@ -16,6 +16,7 @@ import 'package:ghar360/features/properties/application/swipe_history.dart';
 import 'package:go_router/go_router.dart';
 
 import 'image_test_cache.dart';
+import 'layout_variants.dart';
 import 'property_query_test_support.dart';
 
 class ScreenQuery extends PropertyQuery {
@@ -84,6 +85,7 @@ class PropertyScreenHarness {
     double scale = 1,
     bool dark = false,
     Locale locale = const Locale('en', 'US'),
+    EdgeInsets padding = EdgeInsets.zero,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -128,9 +130,12 @@ class PropertyScreenHarness {
             GlobalCupertinoLocalizations.delegate,
           ],
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(scale), disableAnimations: true),
+            data: withInset(
+              MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale), disableAnimations: true),
+              padding,
+            ),
             child: AppToastHost(child: child!),
           ),
         ),
