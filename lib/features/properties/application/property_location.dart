@@ -130,6 +130,7 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
           .current(forceRefresh: false, prompt: false);
       if (!ref.mounted ||
           generation != _generation ||
+          (_visibilityKnown && !_visible) ||
           resolution.source == LocationSource.fallback) {
         return;
       }

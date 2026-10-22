@@ -204,6 +204,27 @@ void main() {
       await unmount(tester);
     });
 
+    testWidgets('${feed.name} Retry GPS waits for location and restores content', (tester) async {
+      // A page that is not visible has not started its own read yet.
+      final location = container.read(propertyLocationProvider(feed.page).notifier);
+      await location.useCurrent();
+      location.setVisible(false);
+      await pump(tester, feed);
+      final retry = find.byKey(ValueKey('qa.${feed.page.name}.location.gps_retry'));
+      expect(find.text('Unable to get current location'), findsOneWidget);
+      final pending = Completer<LocationResolution>();
+      device.response = () => pending.future;
+      await tester.tap(retry);
+      await tester.pump();
+      expect(tester.widget<TextButton>(retry).onPressed, isNull);
+      pending.complete(const LocationResolution(delhi, LocationSource.gps));
+      await tester.pumpAndSettle();
+      expect(container.read(propertyLocationProvider(feed.page)).source, LocationSource.gps);
+      expect(find.byType(PropertyLocationRecovery), findsNothing);
+      expectContent(feed);
+      await unmount(tester);
+    });
+
     testWidgets('${feed.name} GPS failure retains loaded content with manual recovery', (
       tester,
     ) async {
