@@ -182,6 +182,7 @@ dart run tool/env_to_dart_defines.dart .env.production > .dart_defines.prod.json
 flutter build ipa --release \
   --dart-define-from-file=.dart_defines.prod.json \
   --export-options-plist=ios/ExportOptions.plist
+rm -f .dart_defines.prod.json
 ```
 
 - Artifact lands in **`build/ios/ipa/`** (e.g. `build/ios/ipa/ghar360.ipa`).

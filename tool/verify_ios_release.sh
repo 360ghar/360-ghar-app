@@ -228,8 +228,18 @@ def check_dart_defines(path: Path):
     for key in ("FIREBASE_ENABLED", "FIREBASE_CRASHLYTICS", "FIREBASE_APPCHECK"):
         if defines.get(key, "").lower() == "false":
             failures.append(f"{key}=false")
-    api = urlparse(defines.get("API_BASE_URL", ""))
-    if api.scheme != "https" or api.hostname != "api.360ghar.com" or api.username or api.password:
+    try:
+        api = urlparse(defines.get("API_BASE_URL", ""))
+        valid_api = (
+            api.scheme == "https"
+            and api.hostname == "api.360ghar.com"
+            and api.port in (None, 443)
+            and not api.username
+            and not api.password
+        )
+    except ValueError:  # a malformed port
+        valid_api = False
+    if not valid_api:
         failures.append("API_BASE_URL must be an https URL on host api.360ghar.com")
     for key in ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"):
         if not defines.get(key, "").strip():
