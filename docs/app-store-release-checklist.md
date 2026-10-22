@@ -27,7 +27,7 @@ Work top to bottom; every box should be checked before you hit **Submit for Revi
 | App name | **360 Ghar** |
 | Bundle ID | `com.the360ghar.ghar360` |
 | Apple Team ID | `HMWGCVU4SV` |
-| Current version | `1.0.9+16` (marketing `1.0.9`, build `16`) |
+| Current version | `1.1.0+18` (marketing `1.1.0`, build `18`) |
 | Minimum iOS | `15.0` |
 | Firebase project | `ghar-3c690` |
 | Universal Link domains | `360ghar.com`, `www.360ghar.com` |
@@ -168,7 +168,7 @@ in the manifest.
 
 - [ ] `flutter clean && flutter pub get`
 - [ ] Confirm iOS uses Swift Package Manager (no `pod install`; plugins resolve via SPM)
-- [ ] Confirm `pubspec.yaml` version is `1.0.9+16` (or bumped — see policy below).
+- [ ] Confirm `pubspec.yaml` version is `1.1.0+18` (or bumped — see policy below).
 
 ### Build the IPA
 
@@ -202,9 +202,9 @@ rm -f /tmp/ghar360_defines.json
 
 ### Build-number policy
 
-- [ ] Current build is `+16`. **Every subsequent upload must bump the build number** (`+17`, `+18`, …)
+- [ ] Current build is `+18` (builds 16 and 17 may already be uploaded). **Every subsequent upload must bump the build number** (`+19`, `+20`, …)
       in `pubspec.yaml` — App Store Connect rejects a re-upload that reuses a build number for the same marketing version.
-- [ ] Bump the marketing version (`1.0.9` → `1.0.10` / `1.1.0`) when shipping a new user-facing release.
+- [ ] Bump the marketing version (`1.1.0` → `1.1.1` / `1.2.0`) when shipping a new user-facing release.
 
 ### After upload
 

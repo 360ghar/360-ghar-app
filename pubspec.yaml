@@ -1,7 +1,7 @@
 name: ghar360
 description: A Flutter property discovery app with Riverpod state and declarative navigation
 publish_to: 'none'
-version: 1.1.0+17
+version: 1.1.0+18
 
 environment:
   sdk: '>=3.12.0 <4.0.0'

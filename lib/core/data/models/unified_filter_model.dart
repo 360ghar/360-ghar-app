@@ -177,11 +177,6 @@ class UnifiedFilterModel {
       case 'short_stay':
       case 'shortstay':
         return normalized == 'shortstay' ? 'short_stay' : normalized;
-      case 'pg':
-        return 'rent';
-      case 'investment':
-        // Legacy UI option: closest supported backend value.
-        return 'buy';
       default:
         return null;
     }

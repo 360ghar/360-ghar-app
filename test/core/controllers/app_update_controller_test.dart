@@ -9,12 +9,56 @@ import 'package:ghar360/core/data/models/wire_enums.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/splash/data/app_update_platform.dart';
+
 import '../../helpers/app_update_test_harness.dart';
 
 void main() {
   late UpdateTestHarness harness;
   setUp(() => harness = UpdateTestHarness());
   tearDown(() => harness.dispose());
+  group('isVersionGreater', () {
+    test('compares numerically and pads with zeros', () {
+      expect(isVersionGreater('1.0.10', '1.0.9'), isTrue);
+      expect(isVersionGreater('1.0.9', '1.0.9'), isFalse);
+      expect(isVersionGreater('1.0.0', '1.0.9'), isFalse);
+      expect(isVersionGreater('1.0', '1.0.0'), isFalse);
+      expect(isVersionGreater('2.0.0+5', '1.9.9'), isTrue);
+    });
+    test('null or unparseable is false', () {
+      expect(isVersionGreater(null, '1.0.0'), isFalse);
+      expect(isVersionGreater('garbage', '1.0.0'), isFalse);
+      expect(isVersionGreater('2.0.0', 'garbage'), isFalse);
+    });
+  });
+  group('stale server response guard', () {
+    const stale = AppVersionCheckResponse(
+      updateAvailable: true,
+      isMandatory: false,
+      latestVersion: '1.0.0',
+      downloadUrl: 'https://store.test/dead',
+    );
+    test('app review rejection: older latest_version never prompts', () async {
+      harness.platform.version = () async =>
+          const AppVersionInfo(version: '1.1.0', buildNumber: 18);
+      harness.repository.response = () async => stale;
+      await harness.controller.checkForUpdates();
+      expect(harness.state.prompt, isNull);
+      expect(harness.state.check.isLoading, isFalse);
+      expect(harness.database.writes, 0);
+    });
+    test('mandatory with an older minimum and latest never prompts', () async {
+      harness.repository.response = () async =>
+          stale.copyWith(isMandatory: true, minSupportedVersion: '1.0.0');
+      await harness.controller.checkForUpdates();
+      expect(harness.state.prompt, isNull);
+    });
+    test('min supported above installed prompts even with a stale latest', () async {
+      harness.repository.response = () async =>
+          stale.copyWith(isMandatory: true, minSupportedVersion: '9.9.9');
+      await harness.controller.checkForUpdates();
+      expect(harness.state.prompt?.isMandatory, isTrue);
+    });
+  });
   test('initial state is idle with no cached version or prompt', () {
     expect(harness.state.check.isLoading, isFalse);
     expect(harness.state.action.isLoading, isFalse);

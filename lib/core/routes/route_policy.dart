@@ -172,7 +172,6 @@ String? authRedirect({
 /// The FCM `data` map of a push from this backend. Every value is a string. `route` is the
 /// in-app path to open, `type_key` names the notification type, `_meta` is JSON text
 /// (`{type_key, channel, priority}`), and the other keys are data for that type (`property_id`).
-/// The old `deep_link` key is gone; nothing reads it.
 @immutable
 class PushPayload {
   const PushPayload({this.route, this.typeKey, this.propertyId, this.meta = const {}});
