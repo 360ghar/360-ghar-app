@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/presentation/property_labels.dart';
-
 import '../../helpers/provider_test_app.dart';
 
 PropertyModel _home({

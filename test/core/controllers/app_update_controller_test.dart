@@ -9,7 +9,6 @@ import 'package:ghar360/core/data/models/wire_enums.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/splash/data/app_update_platform.dart';
-
 import '../../helpers/app_update_test_harness.dart';
 
 void main() {

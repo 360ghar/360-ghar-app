@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_routes.dart';

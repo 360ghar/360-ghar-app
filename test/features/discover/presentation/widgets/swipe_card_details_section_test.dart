@@ -7,7 +7,6 @@ import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/image_cache_service.dart';
 import 'package:ghar360/features/discover/presentation/widgets/swipe_card_details_section.dart';
-
 import '../../../../helpers/image_test_cache.dart';
 
 PropertyModel _richProperty({

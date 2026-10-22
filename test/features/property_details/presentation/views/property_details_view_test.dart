@@ -20,7 +20,6 @@ import 'package:ghar360/features/property_details/presentation/controllers/prope
 import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/fullscreen_photo_gallery.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
-
 import '../../../../helpers/knife_finders.dart';
 import '../../../../helpers/provider_test_app.dart';
 import '../../../../helpers/visits_test_support.dart';
