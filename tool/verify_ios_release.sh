@@ -59,6 +59,7 @@ import plistlib
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 args = sys.argv[1:]
 source_path = Path(args[0])
@@ -227,8 +228,9 @@ def check_dart_defines(path: Path):
     for key in ("FIREBASE_ENABLED", "FIREBASE_CRASHLYTICS", "FIREBASE_APPCHECK"):
         if defines.get(key, "").lower() == "false":
             failures.append(f"{key}=false")
-    if not defines.get("API_BASE_URL", "").startswith("https://api.360ghar.com"):
-        failures.append("API_BASE_URL does not start with https://api.360ghar.com")
+    api = urlparse(defines.get("API_BASE_URL", ""))
+    if api.scheme != "https" or api.hostname != "api.360ghar.com" or api.username or api.password:
+        failures.append("API_BASE_URL must be an https URL on host api.360ghar.com")
     for key in ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"):
         if not defines.get(key, "").strip():
             failures.append(f"{key} is missing or empty")

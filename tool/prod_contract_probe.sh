@@ -29,9 +29,9 @@ request() {
   CODE="${CODE:-000}"
 }
 
-# rate-limited responses are not a contract answer
+# A rate-limited response is not a contract answer, so the gate must not pass on it.
 throttled() {
-  [ "$CODE" = "429" ] && { warn "$1" "HTTP 429 (rate limited), check not evaluated"; return 0; }
+  [ "$CODE" = "429" ] && { fail "$1" "HTTP 429 (rate limited), inconclusive; run the probe again later"; return 0; }
   return 1
 }
 

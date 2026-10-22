@@ -172,16 +172,16 @@ in the manifest.
 
 ### Build the IPA
 
-The binary **must be built with Shorebird** so it can receive OTA patches
-(see [`shorebird.md`](./shorebird.md)). Bump the version in `pubspec.yaml`
-first — Shorebird refuses duplicate versions.
+Store binaries must normally be built with Shorebird so they can receive OTA
+patches (see [`shorebird.md`](./shorebird.md)). The iOS `1.1.0+18` build is an
+explicit exception: build it as a plain Flutter IPA, as in `RELEASE_IOS.md` §6.
+Later store releases must use `shorebird release ios`.
 
 ```bash
-dart run tool/env_to_dart_defines.dart .env.production > /tmp/ghar360_defines.json
-shorebird release ios \
-  --dart-define-from-file=/tmp/ghar360_defines.json \
+dart run tool/env_to_dart_defines.dart .env.production > .dart_defines.prod.json
+flutter build ipa --release \
+  --dart-define-from-file=.dart_defines.prod.json \
   --export-options-plist=ios/ExportOptions.plist
-rm -f /tmp/ghar360_defines.json
 ```
 
 - Artifact lands in **`build/ios/ipa/`** (e.g. `build/ios/ipa/ghar360.ipa`).

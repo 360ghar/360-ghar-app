@@ -111,7 +111,8 @@ class AuthPremiumShell extends StatelessWidget {
                   child: Align(
                     alignment: wide ? Alignment.center : Alignment.topCenter,
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 480),
+                      // The side inset is spent beside the 480 pt form, not inside it.
+                      constraints: BoxConstraints(maxWidth: wide ? 480 + 2 * side : 480),
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(
                           20 + (wide ? side : media.padding.left),
