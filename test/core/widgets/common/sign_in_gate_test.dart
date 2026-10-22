@@ -97,6 +97,21 @@ void main() {
     expect(router.state.uri.path, '/property/7');
   });
 
+  testWidgets('a right-only inset keeps the sheet content centered on the sheet', (tester) async {
+    tester.view.physicalSize = const Size(466, 678);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(right: 84);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPadding);
+    await pump(tester);
+    await tester.tap(find.text('Act'));
+    await tester.pumpAndSettle();
+    expect(tester.getCenter(find.text('Sign in to continue')).dx, closeTo(233, 0.5));
+    final button = tester.getRect(find.byKey(const ValueKey('qa.sign_in_gate.sign_in')));
+    expect(button.left, closeTo(466 - button.right, 0.5), reason: 'same margin on both sides');
+  });
+
   testWidgets('Sign in returns false and opens sign-in with the current location', (tester) async {
     final router = await pump(tester);
     await tester.tap(find.text('Act'));

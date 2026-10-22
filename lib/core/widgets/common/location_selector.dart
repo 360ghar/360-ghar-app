@@ -13,6 +13,7 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/location/application/location_search_controller.dart';
 import 'package:ghar360/features/location/application/location_source.dart';
@@ -25,10 +26,10 @@ Future<void> showLocationPicker(BuildContext context, {required PageType pageTyp
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
+    constraints: sheetConstraints(context),
     builder: (_) => UncontrolledProviderScope(
       container: container,
-      child: LocationPickerModal(pageType: pageType),
+      child: SafeArea(top: false, bottom: false, child: LocationPickerModal(pageType: pageType)),
     ),
   );
 }

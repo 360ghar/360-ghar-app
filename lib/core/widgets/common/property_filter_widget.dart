@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
@@ -13,6 +11,7 @@ import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/utils/indian_currency.dart';
 import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/property/property_facts.dart';
 import 'package:ghar360/features/properties/application/amenities.dart';
@@ -29,10 +28,15 @@ void showPropertyFilterBottomSheet(
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
+    constraints: sheetConstraints(context),
     builder: (_) => UncontrolledProviderScope(
       container: ProviderScope.containerOf(context),
-      child: _FilterBottomSheet(pageType: pageType, onFiltersApplied: onFiltersApplied),
+      // A left-aligned form: it clears the pill on the right, not both sides.
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: _FilterBottomSheet(pageType: pageType, onFiltersApplied: onFiltersApplied),
+      ),
     ),
   );
 }

@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/utils/responsive.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_skyline.dart';
 import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
@@ -38,99 +39,120 @@ class AuthPremiumShell extends StatelessWidget {
     // starts below it, so the kite and the sun never run into the name.
     const titleRow = 56.0;
     final band = keyboard ? 72.0 : math.min(176.0, media.size.height * 0.22);
+    final header = media.padding.top + titleRow + band;
+    // A centered (wide) form takes the same inset on both sides; a phone's
+    // full-width form only clears the side that has the cut-out.
+    final wide = media.size.width >= kCompactBreakpoint;
+    final side = symmetricSideInset(context);
     return Scaffold(
       backgroundColor: design.surface,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         excludeFromSemantics: true,
         onTap: () => FocusScope.of(context).unfocus(),
-        child: CustomScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          slivers: [
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: media.padding.top + titleRow + band,
-                child: Stack(
-                  children: [
-                    Positioned.fill(child: PaperSkylineStrip(artTop: media.padding.top + titleRow)),
-                    // The sheet's hand-cut lip belongs to this sliver: a
-                    // scroll view paints earlier slivers over later ones, so a
-                    // lip drawn by the form sliver would sit under the city.
-                    const Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: kPaperLip,
-                      child: PaperLip(seed: 'auth'),
-                    ),
-                    Positioned(
-                      top: media.padding.top + 4,
-                      left: 4,
-                      right: 4,
-                      child: Row(
-                        children: [
-                          if (onBack != null)
-                            IconButton(
-                              tooltip: context.l10n.text('back'),
-                              onPressed: onBack,
-                              icon: const PaperIcon(KnifeIcon.arrowLeft, size: 22),
-                            )
-                          else
-                            const SizedBox.square(dimension: 48),
-                          Expanded(
-                            child: Text(
-                              context.l10n.text('app_name'),
-                              textAlign: TextAlign.center,
-                              style: text.headlineSmall,
-                            ),
-                          ),
-                          const SizedBox.square(dimension: 48),
-                        ],
+        child: LayoutBuilder(
+          builder: (context, box) => CustomScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: header,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: PaperSkylineStrip(artTop: media.padding.top + titleRow),
                       ),
-                    ),
-                  ],
+                      // The sheet's hand-cut lip belongs to this sliver: a
+                      // scroll view paints earlier slivers over later ones, so a
+                      // lip drawn by the form sliver would sit under the city.
+                      const Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: kPaperLip,
+                        child: PaperLip(seed: 'auth'),
+                      ),
+                      Positioned(
+                        top: media.padding.top + 4,
+                        left: 4 + media.padding.left,
+                        right: 4 + media.padding.right,
+                        child: Row(
+                          children: [
+                            if (onBack != null)
+                              IconButton(
+                                tooltip: context.l10n.text('back'),
+                                onPressed: onBack,
+                                icon: const PaperIcon(KnifeIcon.arrowLeft, size: 22),
+                              )
+                            else
+                              const SizedBox.square(dimension: 48),
+                            Expanded(
+                              child: Text(
+                                context.l10n.text('app_name'),
+                                textAlign: TextAlign.center,
+                                style: text.headlineSmall,
+                              ),
+                            ),
+                            const SizedBox.square(dimension: 48),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            // The scaffold is the sheet colour, so the sheet needs no fill below.
-            SliverToBoxAdapter(
-              child: Center(
+              // The scaffold is the sheet colour, so the sheet needs no fill below.
+              // A tall wide window (an iPad) centres the form under the city;
+              // a phone keeps it at the top. Either scrolls when it must.
+              SliverToBoxAdapter(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 480),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(20, 16, 20, media.padding.bottom + 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Semantics(
-                          identifier: 'qa.auth.shell.title',
-                          header: true,
-                          child: Text(title, style: text.headlineLarge),
+                  constraints: BoxConstraints(minHeight: math.max(0, box.maxHeight - header)),
+                  child: Align(
+                    alignment: wide ? Alignment.center : Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 480),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          20 + (wide ? side : media.padding.left),
+                          16,
+                          20 + (wide ? side : media.padding.right),
+                          media.padding.bottom + 24,
                         ),
-                        if (subtitle.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            subtitle,
-                            style: text.bodyMedium?.copyWith(color: design.textSecondary),
-                          ),
-                        ],
-                        const SizedBox(height: 24),
-                        child,
-                        if (footer case final footer?) ...[
-                          const SizedBox(height: 16),
-                          DefaultTextStyle.merge(
-                            style: text.bodySmall?.copyWith(color: design.textSecondary),
-                            textAlign: TextAlign.center,
-                            child: Center(child: footer),
-                          ),
-                        ],
-                      ],
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Semantics(
+                              identifier: 'qa.auth.shell.title',
+                              header: true,
+                              child: Text(title, style: text.headlineLarge),
+                            ),
+                            if (subtitle.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                subtitle,
+                                style: text.bodyMedium?.copyWith(color: design.textSecondary),
+                              ),
+                            ],
+                            const SizedBox(height: 24),
+                            child,
+                            if (footer case final footer?) ...[
+                              const SizedBox(height: 16),
+                              DefaultTextStyle.merge(
+                                style: text.bodySmall?.copyWith(color: design.textSecondary),
+                                textAlign: TextAlign.center,
+                                child: Center(child: footer),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

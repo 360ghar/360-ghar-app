@@ -347,6 +347,8 @@ class AppDesignComponents {
       elevation: 0,
       modalElevation: 0,
       showDragHandle: false,
+      // A wide window (iPad, Duo inner) centres the sheet at a reading width.
+      constraints: const BoxConstraints(maxWidth: 560),
       shape: CutBorder(
         seed: 'sheet',
         amp: 3,

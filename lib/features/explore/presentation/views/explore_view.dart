@@ -234,7 +234,12 @@ class _ExploreBody extends ConsumerWidget {
         // controls beside it on a wide map, or in one row under it on a
         // phone, so a short map (320 px, 2x text, a banner) keeps them clear
         // of the list sheet. Gaps pass touches to the map.
-        const Positioned(top: 8, left: 16, right: 16, child: _MapTop()),
+        Positioned(
+          top: 8,
+          left: 16 + MediaQuery.paddingOf(context).left,
+          right: 16 + MediaQuery.paddingOf(context).right,
+          child: const _MapTop(),
+        ),
         const _LoadingMore(),
         _ListSheet(onOpen: onOpen, openId: openId),
       ],

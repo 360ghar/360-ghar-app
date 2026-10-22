@@ -52,6 +52,32 @@ void main() {
     expect(tester.getCenter(find.byKey(_tower)).dx, closeTo(itemCentre(tester, 3), 0.01));
   });
 
+  testWidgets('a right-only inset (the Duo pill) leaves the strip centered, tower on its item', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(466, 678);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpProviderApp(
+      Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(padding: const EdgeInsets.only(right: 84)),
+          child: Scaffold(
+            body: const SizedBox(),
+            bottomNavigationBar: CustomBottomNavigationBar(currentIndex: 2, onTap: (_) {}),
+          ),
+        ),
+      ),
+      theme: AppDesignTheme.light(),
+    );
+    final first = tester.getRect(find.byKey(ValueKey('qa.dashboard.nav.${_ids.first}')));
+    final last = tester.getRect(find.byKey(ValueKey('qa.dashboard.nav.${_ids.last}')));
+    expect(first.left, closeTo(466 - last.right, 0.01), reason: 'same margin on both sides');
+    expect(first.left, closeTo(0, 0.01), reason: 'the pill is at the top: full width');
+    expect(tester.getCenter(find.byKey(_tower)).dx, closeTo(itemCentre(tester, 2), 0.01));
+  });
+
   testWidgets('with reduced motion the tower jumps', (tester) async {
     await pumpBar(tester, 1, still: true);
     await pumpBar(tester, 4, still: true);

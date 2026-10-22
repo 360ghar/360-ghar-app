@@ -21,6 +21,7 @@ class PropertySwipeCard extends StatelessWidget {
   final PropertyModel property;
   final VoidCallback? onTap;
   final double? viewportHeight;
+  final double? cardWidth;
   final VoidCallback? onInteractionStart;
   final VoidCallback? onInteractionEnd;
 
@@ -29,6 +30,7 @@ class PropertySwipeCard extends StatelessWidget {
     required this.property,
     this.onTap,
     this.viewportHeight,
+    this.cardWidth,
     this.onInteractionStart,
     this.onInteractionEnd,
   });
@@ -52,6 +54,7 @@ class PropertySwipeCard extends StatelessWidget {
               property: property,
               onViewDetails: onTap,
               viewportHeight: viewportHeight,
+              cardWidth: cardWidth,
             ),
             SwipeCardDetailsSection(
               property: property,

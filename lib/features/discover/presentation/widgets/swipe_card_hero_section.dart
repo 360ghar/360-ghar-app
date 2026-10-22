@@ -28,20 +28,24 @@ class SwipeCardHeroSection extends StatefulWidget {
   final VoidCallback? onViewDetails;
   final double? viewportHeight;
 
+  /// Width of the card; the screen width when null.
+  final double? cardWidth;
+
   const SwipeCardHeroSection({
     super.key,
     required this.property,
     this.onViewDetails,
     this.viewportHeight,
+    this.cardWidth,
   });
 
   /// Decode size for the hero photo; prefetch uses the same numbers so the
   /// decoded image is reused when a card comes to the top.
-  static (int, int) decodeSize(BuildContext context, {double? viewportHeight}) {
-    final screen = MediaQuery.sizeOf(context);
+  static (int, int) decodeSize(BuildContext context, {double? viewportHeight, double? cardWidth}) {
+    final width = cardWidth ?? MediaQuery.sizeOf(context).width;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final height = heroHeight(context, viewportHeight: viewportHeight);
-    return ((screen.width * dpr).round().clamp(320, 1600), (height * dpr).round().clamp(480, 2000));
+    return ((width * dpr).round().clamp(320, 1600), (height * dpr).round().clamp(480, 2000));
   }
 
   static double heroHeight(BuildContext context, {double? viewportHeight}) {
@@ -91,6 +95,7 @@ class _SwipeCardHeroSectionState extends State<SwipeCardHeroSection> {
     final (memWidth, memHeight) = SwipeCardHeroSection.decodeSize(
       context,
       viewportHeight: widget.viewportHeight,
+      cardWidth: widget.cardWidth,
     );
     final images = _imageUrls;
     final l10n = context.l10n;

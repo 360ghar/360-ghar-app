@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:ghar360/core/controllers/offline_queue_service.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
@@ -10,6 +8,7 @@ import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/error_message.dart';
 import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
 
@@ -41,10 +40,10 @@ class SavedActionsButton extends ConsumerWidget {
             await showModalBottomSheet<void>(
               context: context,
               isScrollControlled: true,
-              useSafeArea: true,
+              constraints: sheetConstraints(context),
               builder: (_) => UncontrolledProviderScope(
                 container: container,
-                child: const _SavedActionsSheet(),
+                child: const SafeArea(top: false, bottom: false, child: _SavedActionsSheet()),
               ),
             );
           },

@@ -41,6 +41,35 @@ void main() {
     final selected = tester.getSemantics(find.byKey(const ValueKey('qa.dashboard.nav.visits')));
     expect(selected.flagsCollection.isSelected, Tristate.isTrue);
   });
+  testWidgets('crossing 600 px keeps branch state (fold, split resize)', (tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(599, 900);
+    final built = <String>{};
+    final disposed = <String>{};
+    final router = shellRouter(built: built, disposed: disposed);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(shellApp(router));
+    await tester.pumpAndSettle();
+    expect(find.byType(CustomBottomNavigationBar), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('/discover.input')), 'kept');
+    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    final offset = tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels;
+    for (final width in [601.0, 599.0]) {
+      tester.view.physicalSize = Size(width, 900);
+      await tester.pumpAndSettle();
+      expect(find.byType(PaperNavigationRail).evaluate().isNotEmpty, width >= 600);
+      expect(built, {'/discover'}, reason: 'no branch rebuilt at $width');
+      expect(disposed, isEmpty, reason: 'no branch disposed at $width');
+      expect(
+        tester.widget<TextField>(find.byKey(const ValueKey('/discover.input'))).controller!.text,
+        'kept',
+      );
+      expect(tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels, offset);
+    }
+  });
   testWidgets('switching tabs retains local form and scroll state', (tester) async {
     usePhoneView(tester);
     final router = shellRouter();

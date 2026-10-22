@@ -27,6 +27,7 @@ import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_list_card.dart';
 import 'package:ghar360/core/widgets/common/sign_in_gate.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_skyline.dart';
 import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
@@ -345,13 +346,12 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
   Widget _buildTwoPaneBody(BuildContext context, PropertyModel property) {
     final design = context.design;
     final screen = MediaQuery.sizeOf(context);
-    final galleryHeight = math.min(screen.height * 0.7, 520.0);
     final leftPaneWidth = math.min(screen.width * 0.42, 460.0);
     final hasPhoto = PropertyDetailsImageGallery.imagesOf(property).isNotEmpty;
     final printShape = CutBorder(seed: 'details-print-${property.id}');
     _pinned = 0;
 
-    return SafeArea(
+    return SymmetricSafeArea(
       bottom: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
@@ -390,30 +390,41 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
                           ],
                         ),
                       ),
-                      // The photo is a print laid on the sky.
-                      DecoratedBox(
-                        decoration: ShapeDecoration(
-                          color: design.surface,
-                          shape: CutBorder(
-                            seed: printShape.seed,
-                            shadows: paperShadows(
-                              PaperElevation.low,
-                              design.shadowOn(design.background),
-                            ),
-                          ),
-                        ),
-                        child: ClipPath(
-                          clipper: ShapeBorderClipper(shape: printShape),
-                          child: hasPhoto
-                              ? PropertyDetailsImageGallery(
-                                  property: property,
-                                  maxHeight: galleryHeight,
-                                  heroTag: propertyPhotoHeroTag(property.id),
-                                )
-                              : SizedBox(
-                                  height: galleryHeight * 0.5,
-                                  child: const PaperSkylineStrip(),
+                      // The photo is a print laid on the sky. It takes the
+                      // pane's height up to a 2:3 print and sits in the middle
+                      // of what the buttons leave.
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, box) {
+                            final galleryHeight = math.min(box.maxHeight, leftPaneWidth * 1.5);
+                            return Align(
+                              child: DecoratedBox(
+                                decoration: ShapeDecoration(
+                                  color: design.surface,
+                                  shape: CutBorder(
+                                    seed: printShape.seed,
+                                    shadows: paperShadows(
+                                      PaperElevation.low,
+                                      design.shadowOn(design.background),
+                                    ),
+                                  ),
                                 ),
+                                child: ClipPath(
+                                  clipper: ShapeBorderClipper(shape: printShape),
+                                  child: hasPhoto
+                                      ? PropertyDetailsImageGallery(
+                                          property: property,
+                                          maxHeight: galleryHeight,
+                                          heroTag: propertyPhotoHeroTag(property.id),
+                                        )
+                                      : SizedBox(
+                                          height: galleryHeight * 0.5,
+                                          child: const PaperSkylineStrip(),
+                                        ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -728,6 +739,8 @@ class _GalleryHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     final design = context.design;
+    // The bar's buttons stay clear of a side cut-out (the Duo's status pill).
+    final side = MediaQuery.paddingOf(context);
     final range = maxHeight - minHeight;
     final shrink = shrinkOffset.clamp(0.0, range);
     // The photo gives way over the last one and a half bars of the collapse.
@@ -770,14 +783,14 @@ class _GalleryHeaderDelegate extends SliverPersistentHeaderDelegate {
           if (lead != null)
             Positioned(
               top: top,
-              left: 4,
+              left: 4 + side.left,
               height: bar,
               child: Center(child: lead),
             ),
           Positioned(
             top: top,
-            left: lead == null ? 16 : 60,
-            right: 12 + 48.0 * buttons.length,
+            left: (lead == null ? 16 : 60) + side.left,
+            right: 12 + side.right + 48.0 * buttons.length,
             height: bar,
             // The name repeats the overview's title, so it is not read twice.
             child: IgnorePointer(
@@ -802,7 +815,7 @@ class _GalleryHeaderDelegate extends SliverPersistentHeaderDelegate {
           ),
           Positioned(
             top: top,
-            right: 4,
+            right: 4 + side.right,
             height: bar,
             child: Row(mainAxisSize: MainAxisSize.min, children: buttons),
           ),
