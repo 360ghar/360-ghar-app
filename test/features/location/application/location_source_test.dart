@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
+import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/location/application/location_source.dart';
 import 'package:http/http.dart' as http;
@@ -49,15 +50,72 @@ void main() {
     return value;
   }
 
+  group('service area', () {
+    const cupertino = (37.3349, -122.0090);
+    LocationResolution at((double, double) point, LocationSource source) => LocationResolution(
+      LocationData(name: 'Somewhere', latitude: point.$1, longitude: point.$2),
+      source,
+    );
+    Future<LocationResolution> ipAt((double, double) point) => source(
+      gps: FakeGeolocatorPlatform(serviceEnabled: false),
+      request: (_) async => http.Response(
+        jsonEncode({'latitude': point.$1, 'longitude': point.$2, 'city': 'Somewhere'}),
+        200,
+      ),
+    ).current();
+
+    test('a US GPS fix starts in Gurugram with the fallback source', () async {
+      final gps = FakeGeolocatorPlatform(
+        currentPosition: testPosition(latitude: cupertino.$1, longitude: cupertino.$2),
+      );
+      final result = await source(gps: gps).current(allowIpFallback: false);
+      expect(result.source, LocationSource.fallback);
+      expect(result.location.name, 'Gurugram');
+      expect(result.location.latitude, ServiceArea.center.latitude);
+      expect(result.location.longitude, ServiceArea.center.longitude);
+    });
+    test('a US IP location starts in Gurugram with the fallback source', () async {
+      final result = await ipAt(cupertino);
+      expect(result.source, LocationSource.fallback);
+      expect(result.location.name, 'Gurugram');
+    });
+    test('a Gurugram GPS fix is unchanged', () async {
+      final gps = FakeGeolocatorPlatform(
+        currentPosition: testPosition(latitude: 28.4595, longitude: 77.0266),
+      );
+      final result = await source(gps: gps).current(allowIpFallback: false);
+      expect(result.source, LocationSource.gps);
+      expect(result.location.latitude, 28.4595);
+    });
+    test('a Delhi fix inside the radius is unchanged', () async {
+      final result = await ipAt((28.6139, 77.2090));
+      expect(result.source, LocationSource.ip);
+      expect(result.location.latitude, 28.6139);
+    });
+    test('manual and saved places are never replaced', () {
+      for (final kept in [LocationSource.manual, LocationSource.hydrate, LocationSource.initial]) {
+        final resolution = at(cupertino, kept);
+        expect(identical(ServiceArea.apply(resolution), resolution), isTrue, reason: '$kept');
+      }
+    });
+    test('Delhi, Noida and Gurugram are inside; Mumbai and the US are outside', () {
+      bool inside((double, double) point) =>
+          ServiceArea.contains(LocationData(name: '', latitude: point.$1, longitude: point.$2));
+      expect(inside((28.5355, 77.3910)), isTrue);
+      expect(inside((28.6139, 77.2090)), isTrue);
+      expect(inside((19.076, 72.8777)), isFalse);
+      expect(inside(cupertino), isFalse);
+    });
+  });
   test('GPS returns coordinates and explicit source', () async {
     final gps = FakeGeolocatorPlatform(
-      currentPosition: testPosition(latitude: 19.1, longitude: 72.9),
+      currentPosition: testPosition(latitude: 28.5, longitude: 77.1),
     );
     final result = await source(gps: gps).current(allowIpFallback: false);
     expect(result.source, LocationSource.gps);
-    expect(result.location.latitude, 19.1);
-    expect(result.location.longitude, 72.9);
-    expect(result.location.name, '19.100, 72.900');
+    expect(result.location.latitude, 28.5);
+    expect(result.location.longitude, 77.1);
+    expect(result.location.name, '28.500, 77.100');
     expect(gps.getCurrentPositionCallCount, 1);
   });
   for (final entry in [
@@ -121,18 +179,18 @@ void main() {
   });
   test('fresh last-known position avoids GPS and force refresh bypasses it', () async {
     final gps = FakeGeolocatorPlatform(
-      lastKnownPosition: testPosition(latitude: 25),
-      currentPosition: testPosition(latitude: 26),
+      lastKnownPosition: testPosition(latitude: 28.5),
+      currentPosition: testPosition(latitude: 28.6),
     );
     final device = source(gps: gps);
-    expect((await device.current(allowIpFallback: false)).location.latitude, 25);
+    expect((await device.current(allowIpFallback: false)).location.latitude, 28.5);
     expect(gps.getCurrentPositionCallCount, 0);
     expect(
       (await device.current(allowIpFallback: false, forceRefresh: true)).location.latitude,
-      26,
+      28.6,
     );
     expect(gps.getCurrentPositionCallCount, 1);
-    expect((await device.current(allowIpFallback: false)).location.latitude, 26);
+    expect((await device.current(allowIpFallback: false)).location.latitude, 28.6);
     expect(gps.getCurrentPositionCallCount, 1);
   });
   test('last-known failure still permits fresh GPS', () async {

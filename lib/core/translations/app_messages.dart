@@ -171,6 +171,7 @@ const appMessages = <String, Map<String, String>>{
     'app_update_save_failed': 'Could not save your choice. Try again.',
     'current_location': 'Current Location',
     'location_approximate': 'Approximate',
+    'out_of_area_note': 'Homes are in Gurugram for now',
     'location_storage_failed':
         'Could not open or save your location settings. Your current selection is kept. Retry.',
     'location_settings_failed':
@@ -1204,6 +1205,7 @@ const appMessages = <String, Map<String, String>>{
     'app_update_save_failed': 'आपका चयन सहेजा नहीं गया। फिर प्रयास करें।',
     'current_location': 'वर्तमान स्थान',
     'location_approximate': 'अनुमानित',
+    'out_of_area_note': 'फिलहाल घर गुरुग्राम में हैं',
     'location_storage_failed':
         'स्थान सेटिंग खुली या सहेजी नहीं गई। आपका वर्तमान चयन सुरक्षित है। फिर प्रयास करें।',
     'location_settings_failed': 'डिवाइस सेटिंग नहीं खुली। आप स्थान स्वयं चुन सकते हैं।',

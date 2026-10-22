@@ -19,6 +19,7 @@ import 'package:ghar360/core/utils/responsive.dart';
 import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/common/out_of_area_note.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
 import 'package:ghar360/core/widgets/common/property_location_recovery.dart';
 import 'package:ghar360/core/widgets/common/property_recovery_banner.dart';
@@ -96,6 +97,7 @@ class DiscoverView extends ConsumerWidget {
                 child: Column(
                   children: [
                     _RefreshBar(),
+                    OutOfAreaNote(pageType: PageType.discover),
                     _DiscoverBanners(),
                     PropertyRecoveryBanner(feed: PropertyFeed.discover),
                     Expanded(child: _DiscoverBody()),

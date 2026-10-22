@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ghar360/core/data/models/page_state_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
+import 'package:ghar360/core/data/models/unified_filter_model.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/discover/presentation/views/discover_view.dart';
 import 'package:ghar360/features/discover/presentation/widgets/property_swipe_stack.dart';
+import 'package:ghar360/features/location/application/location_source.dart';
+import 'package:ghar360/features/properties/application/property_location.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
 import '../../../../helpers/property_query_test_support.dart';
@@ -50,6 +54,26 @@ void main() {
     phase: PropertyLoadPhase.content,
     items: [queryProperty(1), queryProperty(2)],
   );
+  testWidgets('the out-of-area line shows only while the Gurugram fallback applies', (
+    tester,
+  ) async {
+    final h = await setup(tester, content());
+    final location =
+        h.container.read(propertyLocationProvider(PageType.discover).notifier) as QueryLocation;
+    const line = 'Homes are in Gurugram for now';
+    expect(find.text(line), findsNothing);
+    location.replace(ServiceArea.center, source: LocationSource.fallback);
+    await tester.pump();
+    expect(find.text(line), findsOneWidget);
+    // A place the user picks replaces the fallback and the line goes.
+    location.replace(
+      const LocationData(name: 'Noida', latitude: 28.5355, longitude: 77.391),
+      source: LocationSource.manual,
+    );
+    await tester.pump();
+    expect(find.text(line), findsNothing);
+    await h.close(tester);
+  });
   for (final phase in [
     PropertyLoadPhase.idle,
     PropertyLoadPhase.loading,

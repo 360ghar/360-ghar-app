@@ -35,8 +35,11 @@ class QueryLocation extends PropertyLocation {
 
   @override
   Future<void> ensureLocation() async {}
-  void replace(LocationData? value, {AsyncValue<void> load = const AsyncData(null)}) =>
-      state = PropertyLocationState(location: value, load: load);
+  void replace(
+    LocationData? value, {
+    AsyncValue<void> load = const AsyncData(null),
+    LocationSource source = LocationSource.initial,
+  }) => state = PropertyLocationState(location: value, load: load, source: source);
 }
 
 class PropertyRequest {
