@@ -115,6 +115,15 @@ class AuthHeaderProvider {
     }
   }
 
+  /// True when a session is held in memory, even a stale one. A guest has none.
+  bool get signedIn {
+    try {
+      return _readCurrentSession() != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Session? _readCurrentSession() {
     final sessionProvider = _currentSessionProvider;
     if (sessionProvider != null) {

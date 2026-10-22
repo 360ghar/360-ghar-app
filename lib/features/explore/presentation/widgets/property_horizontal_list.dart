@@ -11,6 +11,7 @@ import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/debug_logger.dart';
 import 'package:ghar360/core/widgets/common/property_list_card.dart';
+import 'package:ghar360/core/widgets/common/sign_in_gate.dart';
 import 'package:ghar360/features/explore/presentation/controllers/explore_controller.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:ghar360/features/properties/application/swipe_history.dart';
@@ -174,7 +175,9 @@ class _ExploreCard extends ConsumerWidget {
       property: property,
       isFavourite: liked,
       selected: open || highlighted,
-      onFavouriteToggle: () => controller.toggleLike(property),
+      onFavouriteToggle: () async {
+        if (await requireAccount(context, ref)) controller.toggleLike(property);
+      },
       onTap: onOpen == null
           ? null
           : () {

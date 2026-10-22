@@ -74,7 +74,9 @@ class PropertySwipeStack extends StatefulWidget {
   ///
   /// Must stay synchronous: the exit path runs from gesture callbacks, and
   /// awaiting here would strand the card mid-air with gestures unlocked.
-  final bool Function(PropertyModel)? canSwipe;
+  /// [isRight] is the direction, so a guest can be refused a like and the card
+  /// snaps back.
+  final bool Function(PropertyModel property, bool isRight)? canSwipe;
 
   const PropertySwipeStack({
     super.key,
@@ -315,7 +317,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     // POST, no stats and no feedback, while the card flew off as a like.
     // Bounce it back instead — deliberately before any exit state is set, so
     // gestures stay unlocked and the user can swipe the actual top card.
-    if (widget.canSwipe?.call(card) == false) {
+    if (widget.canSwipe?.call(card, isRight) == false) {
       _rejectSwipe();
       return;
     }

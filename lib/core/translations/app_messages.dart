@@ -376,6 +376,9 @@ const appMessages = <String, Map<String, String>>{
     'already_have_account': 'Already have an account?',
     'sign_up': 'Sign Up',
     'sign_in': 'Sign In',
+    'sign_in_required_title': 'Sign in to continue',
+    'sign_in_required_message':
+        'Sign in to save properties, book visits and chat with the assistant.',
     'welcome_back': 'Welcome back!',
     'auth_login_subtitle': 'Securely sign in to continue your property journey.',
     'auth_signup_security_title': 'Secure your account',
@@ -1310,6 +1313,9 @@ const appMessages = <String, Map<String, String>>{
     'already_have_account': 'पहले से खाता है?',
     'sign_up': 'साइन अप',
     'sign_in': 'साइन इन',
+    'sign_in_required_title': 'जारी रखने के लिए साइन इन करें',
+    'sign_in_required_message':
+        'प्रॉपर्टी सहेजने, विज़िट बुक करने और सहायक से चैट करने के लिए साइन इन करें।',
     'welcome_back': 'वापसी पर स्वागत है!',
     // Unified auth entry (email or phone + Google)
     'auth_entry_title': 'साइन इन करें या खाता बनाएं',

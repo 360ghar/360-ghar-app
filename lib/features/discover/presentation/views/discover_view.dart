@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghar360/core/data/models/page_state_model.dart';
@@ -6,7 +8,9 @@ import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_art.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
 import 'package:ghar360/core/design/paper/paper_scene_data.dart';
+import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
+import 'package:ghar360/core/routes/route_policy.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
@@ -17,6 +21,7 @@ import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_filter_widget.dart';
 import 'package:ghar360/core/widgets/common/property_location_recovery.dart';
 import 'package:ghar360/core/widgets/common/property_recovery_banner.dart';
+import 'package:ghar360/core/widgets/common/sign_in_gate.dart';
 import 'package:ghar360/core/widgets/common/unified_top_bar.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/discover/presentation/controllers/discover_controller.dart';
@@ -52,12 +57,22 @@ class DiscoverView extends ConsumerWidget {
           appBar: DiscoverTopBar(
             onFilterTap: () => _filters(context),
             additionalActions: [
-              // The Assistant's mark is the onboarding kite: bare, no box.
-              TextButton.icon(
-                key: const ValueKey('qa.discover.assistant'),
-                onPressed: () => context.push(AppRoutes.assistant),
-                icon: PaperIcon(KnifeIcon.kite, size: 22, color: context.design.accent),
-                label: Text(context.l10n.text('assistant')),
+              Consumer(
+                builder: (context, ref, _) => ref.watch(guestProvider)
+                    // A guest has no Assistant: the slot offers sign-in.
+                    ? TextButton(
+                        key: const ValueKey('qa.discover.sign_in'),
+                        onPressed: () =>
+                            context.push(routeWithReturn(AppRoutes.phoneEntry, AppRoutes.discover)),
+                        child: Text(context.l10n.text('sign_in')),
+                      )
+                    // The Assistant's mark is the onboarding kite: bare, no box.
+                    : TextButton.icon(
+                        key: const ValueKey('qa.discover.assistant'),
+                        onPressed: () => context.push(AppRoutes.assistant),
+                        icon: PaperIcon(KnifeIcon.kite, size: 22, color: context.design.accent),
+                        label: Text(context.l10n.text('assistant')),
+                      ),
               ),
             ],
           ),
@@ -95,6 +110,10 @@ class DiscoverView extends ConsumerWidget {
 }
 
 const _feed = PropertyFeed.discover;
+
+final guestProvider = Provider<bool>(
+  (ref) => ref.watch(storageScopeProvider.select((scope) => scope.accountId == null)),
+);
 
 /// The far towers, sector blocks and lawn of the city, standing at the foot
 /// of the page behind the deck. Painted once at the full height of the box;
@@ -285,9 +304,19 @@ class _DiscoverBody extends ConsumerWidget {
                     onSwipeUp: (property) =>
                         context.push(AppRoutes.detailsFor(property.id), extra: property),
                     isLoadingMore: isLoadingMore,
-                    canSwipe: (property) => ref
-                        .read(visiblePropertiesProvider(_feed))
-                        .any((item) => item.id == property.id),
+                    canSwipe: (property, isRight) {
+                      if (!ref
+                          .read(visiblePropertiesProvider(_feed))
+                          .any((item) => item.id == property.id)) {
+                        return false;
+                      }
+                      // A guest may pass but not like: the card snaps back.
+                      if (isRight && ref.read(guestProvider)) {
+                        unawaited(requireAccount(context, ref));
+                        return false;
+                      }
+                      return true;
+                    },
                     onRefresh: controller.refreshDeck,
                     onChangeFilters: () => DiscoverView._filters(context),
                   ),
@@ -326,7 +355,9 @@ class _DiscoverBody extends ConsumerWidget {
                         FilledButton.icon(
                           key: const ValueKey('qa.discover.action.like'),
                           style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
-                          onPressed: () => controller.swipeRight(top),
+                          onPressed: () async {
+                            if (await requireAccount(context, ref)) controller.swipeRight(top);
+                          },
                           icon: const PaperIcon(KnifeIcon.heart, size: 20),
                           label: Text(context.l10n.text('like')),
                         ),
