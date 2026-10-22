@@ -1,11 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/responsive.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_skyline.dart';
 import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
@@ -40,6 +40,10 @@ class AuthPremiumShell extends StatelessWidget {
     const titleRow = 56.0;
     final band = keyboard ? 72.0 : math.min(176.0, media.size.height * 0.22);
     final header = media.padding.top + titleRow + band;
+    // A centered (wide) form takes the same inset on both sides; a phone's
+    // full-width form only clears the side that has the cut-out.
+    final wide = media.size.width >= kCompactBreakpoint;
+    final side = symmetricSideInset(context);
     return Scaffold(
       backgroundColor: design.surface,
       body: GestureDetector(
@@ -104,16 +108,14 @@ class AuthPremiumShell extends StatelessWidget {
                 child: ConstrainedBox(
                   constraints: BoxConstraints(minHeight: math.max(0, box.maxHeight - header)),
                   child: Align(
-                    alignment: media.size.width >= kCompactBreakpoint
-                        ? Alignment.center
-                        : Alignment.topCenter,
+                    alignment: wide ? Alignment.center : Alignment.topCenter,
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 480),
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(
-                          20 + media.padding.left,
+                          20 + (wide ? side : media.padding.left),
                           16,
-                          20 + media.padding.right,
+                          20 + (wide ? side : media.padding.right),
                           media.padding.bottom + 24,
                         ),
                         child: Column(

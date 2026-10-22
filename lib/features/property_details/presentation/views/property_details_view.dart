@@ -27,6 +27,7 @@ import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_list_card.dart';
 import 'package:ghar360/core/widgets/common/sign_in_gate.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_skyline.dart';
 import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
@@ -350,7 +351,7 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
     final printShape = CutBorder(seed: 'details-print-${property.id}');
     _pinned = 0;
 
-    return SafeArea(
+    return SymmetricSafeArea(
       bottom: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),

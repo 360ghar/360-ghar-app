@@ -6,6 +6,7 @@ import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
 import 'package:ghar360/core/routes/route_policy.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:go_router/go_router.dart';
 
 enum _Pick { signIn, policy }
@@ -39,7 +40,7 @@ class _SignInSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final text = Theme.of(context).textTheme;
-    return SafeArea(
+    return SymmetricSafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 16),
         child: Column(
