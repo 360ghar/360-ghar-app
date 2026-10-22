@@ -268,7 +268,7 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
       builder: (context, constraints) {
         final tabsHeight = PropertyDetailsSectionNav.heightFor(
           context,
-          constraints.maxWidth,
+          constraints.maxWidth - media.padding.horizontal,
           showMedia: property.hasAnyMedia,
           showLocation: property.hasLocation,
         );
@@ -779,7 +779,14 @@ class _GalleryHeaderDelegate extends SliverPersistentHeaderDelegate {
             height: 2,
             child: ColoredBox(color: design.surface),
           ),
-          Positioned(left: 0, right: 0, bottom: 0, height: tabsHeight, child: tabs),
+          // Collapsed, the tabs sit at the status pill's height: they stop short of it.
+          Positioned(
+            left: side.left,
+            right: side.right,
+            bottom: 0,
+            height: tabsHeight,
+            child: tabs,
+          ),
           if (lead != null)
             Positioned(
               top: top,

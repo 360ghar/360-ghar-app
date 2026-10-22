@@ -19,6 +19,7 @@ import 'package:ghar360/features/properties/application/swipe_history.dart';
 import 'package:ghar360/features/property_details/presentation/controllers/property_details_controller.dart';
 import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/fullscreen_photo_gallery.dart';
+import 'package:ghar360/features/property_details/presentation/widgets/property_details_section_nav.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 import '../../../../helpers/knife_finders.dart';
 import '../../../../helpers/provider_test_app.dart';
@@ -291,6 +292,17 @@ void main() {
       expect(backColour(), const AppPalette(isDark: false).textPrimary);
       expect(tester.takeException(), isNull);
     });
+  });
+  testWidgets('the section tabs stop short of a right cut-out (the Duo status pill)', (
+    tester,
+  ) async {
+    tester.view.padding = const FakeViewPadding(right: 160);
+    tester.view.viewPadding = const FakeViewPadding(right: 160);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetViewPadding);
+    await pump(tester, size: const Size(466, 678));
+    expect(tester.getTopRight(find.byType(PropertyDetailsSectionNav)).dx, lessThanOrEqualTo(306));
+    expect(tester.takeException(), isNull);
   });
   testWidgets('agent row shows the name and Call only with a number', (tester) async {
     PropertyModel withAgent(String? number) => PropertyModel.fromJson({
