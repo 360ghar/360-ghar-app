@@ -138,9 +138,11 @@ class _LocationPickerModalState extends ConsumerState<LocationPickerModal> {
       return;
     }
     final title = context.l10n.text('location_updated');
-    final message = state.source == LocationSource.ip
-        ? context.l10n.text('using_approximate_location')
-        : context.l10n.text('using_current_location');
+    final message = switch (state.source) {
+      LocationSource.fallback => context.l10n.text('out_of_area_note'),
+      LocationSource.ip => context.l10n.text('using_approximate_location'),
+      _ => context.l10n.text('using_current_location'),
+    };
     Navigator.of(context).pop();
     AppToast.success(title, message);
   }

@@ -106,6 +106,12 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
     // An automatic load never shows the OS prompt; the location explainer
     // or an explicit "use my location" does.
     await useCurrent(forceRefresh: false, prompt: false);
+    // Nothing resolved (prompt skipped or denied, services off, no GPS fix, IP
+    // lookup failed): start in Gurugram, where the homes are. An explicit
+    // "use my location" keeps its own error instead.
+    if (ref.mounted && state.location == null && !state.load.isLoading) {
+      await select(ServiceArea.center, source: LocationSource.fallback);
+    }
   }
 
   Future<void> useCurrent({bool forceRefresh = true, bool prompt = true}) async {
