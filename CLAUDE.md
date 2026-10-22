@@ -95,6 +95,8 @@ flutter build web
 plain `flutter build` binary to the stores silently breaks code push. See
 `docs/shorebird.md` for the release/patch workflow and CI wiring.
 
+Build 1.1.0+18 ships as a plain flutter build ipa; Shorebird patches cannot target it.
+
 ### Platform-Specific Setup
 ```bash
 # Clean Flutter build cache
