@@ -33,7 +33,7 @@ class SwipeCardDetailsSection extends StatelessWidget {
     final l10n = context.l10n;
     final text = Theme.of(context).textTheme;
     final design = context.design;
-    final features = property.features ?? const [];
+    final features = property.localizedHighlights(context);
     return ColoredBox(
       color: design.surface,
       child: Padding(
