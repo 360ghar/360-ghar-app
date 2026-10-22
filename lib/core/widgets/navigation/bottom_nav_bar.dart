@@ -56,8 +56,8 @@ class CustomBottomNavigationBar extends StatelessWidget {
     return RepaintBoundary(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // The strip is centered: the same inset on both sides (see the Duo).
-          final inset = symmetricSideInset(context);
+          // The strip is centered and sits below the Duo's pill: only the inset both sides share.
+          final inset = symmetricSideInset(context, sharedOnly: true);
           final item = (constraints.maxWidth - 2 * inset) / _destinations.length;
           return Stack(
             children: [
@@ -83,6 +83,7 @@ class CustomBottomNavigationBar extends StatelessWidget {
               ),
               SymmetricSafeArea(
                 top: false,
+                sharedOnly: true,
                 child: Padding(
                   padding: const EdgeInsets.only(top: _itemsTop),
                   child: SizedBox(

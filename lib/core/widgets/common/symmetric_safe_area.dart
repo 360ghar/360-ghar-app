@@ -5,29 +5,40 @@ import 'package:flutter/material.dart';
 /// Widest a modal sheet grows, matching the theme's bottom sheet cap.
 const double kSheetMaxWidth = 560;
 
-/// The larger of the left and right safe-area insets.
+/// The larger of the left and right safe-area insets, or with [sharedOnly] the
+/// smaller: the inset that both sides have, so a bottom strip far from the
+/// pill is not squeezed by it.
 ///
 /// The Duo reports its status pill as a right inset for the whole window
 /// height, though the pill sits at the top. Centered content that takes only
 /// that inset drifts off-center, so it uses this on both sides.
-double symmetricSideInset(BuildContext context) {
+double symmetricSideInset(BuildContext context, {bool sharedOnly = false}) {
   final padding = MediaQuery.paddingOf(context);
-  return math.max(padding.left, padding.right);
+  return sharedOnly ? math.min(padding.left, padding.right) : math.max(padding.left, padding.right);
 }
 
 /// A [SafeArea] whose side inset is the same on the left and right, for
 /// centered compositions (a nav strip, a sheet). Left-aligned columns and top
 /// bars keep the one-sided inset of a plain [SafeArea].
 class SymmetricSafeArea extends StatelessWidget {
-  const SymmetricSafeArea({super.key, this.top = true, this.bottom = true, required this.child});
+  const SymmetricSafeArea({
+    super.key,
+    this.top = true,
+    this.bottom = true,
+    this.sharedOnly = false,
+    required this.child,
+  });
 
   final bool top;
   final bool bottom;
+
+  /// Use the smaller side inset (see [symmetricSideInset]).
+  final bool sharedOnly;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final side = symmetricSideInset(context);
+    final side = symmetricSideInset(context, sharedOnly: sharedOnly);
     return SafeArea(
       left: false,
       right: false,

@@ -74,6 +74,7 @@ void main() {
     final first = tester.getRect(find.byKey(ValueKey('qa.dashboard.nav.${_ids.first}')));
     final last = tester.getRect(find.byKey(ValueKey('qa.dashboard.nav.${_ids.last}')));
     expect(first.left, closeTo(466 - last.right, 0.01), reason: 'same margin on both sides');
+    expect(first.left, closeTo(0, 0.01), reason: 'the pill is at the top: full width');
     expect(tester.getCenter(find.byKey(_tower)).dx, closeTo(itemCentre(tester, 2), 0.01));
   });
 

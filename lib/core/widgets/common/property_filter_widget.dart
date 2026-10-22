@@ -31,7 +31,8 @@ void showPropertyFilterBottomSheet(
     constraints: sheetConstraints(context),
     builder: (_) => UncontrolledProviderScope(
       container: ProviderScope.containerOf(context),
-      child: SymmetricSafeArea(
+      // A left-aligned form: it clears the pill on the right, not both sides.
+      child: SafeArea(
         top: false,
         bottom: false,
         child: _FilterBottomSheet(pageType: pageType, onFiltersApplied: onFiltersApplied),
@@ -484,7 +485,7 @@ class _FilterBottomSheetState extends ConsumerState<_FilterBottomSheet> {
       onPressed: _applying ? null : _applyFilters,
       child: Text(context.l10n.text('apply_filters'), textAlign: TextAlign.center),
     );
-    return SymmetricSafeArea(
+    return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),

@@ -29,11 +29,7 @@ Future<void> showLocationPicker(BuildContext context, {required PageType pageTyp
     constraints: sheetConstraints(context),
     builder: (_) => UncontrolledProviderScope(
       container: container,
-      child: SymmetricSafeArea(
-        top: false,
-        bottom: false,
-        child: LocationPickerModal(pageType: pageType),
-      ),
+      child: SafeArea(top: false, bottom: false, child: LocationPickerModal(pageType: pageType)),
     ),
   );
 }

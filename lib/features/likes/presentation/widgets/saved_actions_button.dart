@@ -43,11 +43,7 @@ class SavedActionsButton extends ConsumerWidget {
               constraints: sheetConstraints(context),
               builder: (_) => UncontrolledProviderScope(
                 container: container,
-                child: const SymmetricSafeArea(
-                  top: false,
-                  bottom: false,
-                  child: _SavedActionsSheet(),
-                ),
+                child: const SafeArea(top: false, bottom: false, child: _SavedActionsSheet()),
               ),
             );
           },

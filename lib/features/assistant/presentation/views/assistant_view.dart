@@ -106,7 +106,7 @@ class _AssistantViewState extends ConsumerState<AssistantView> with WidgetsBindi
       constraints: sheetConstraints(context),
       builder: (_) => UncontrolledProviderScope(
         container: ProviderScope.containerOf(context),
-        child: SymmetricSafeArea(
+        child: SafeArea(
           top: false,
           bottom: false,
           child: _HistorySheet(
