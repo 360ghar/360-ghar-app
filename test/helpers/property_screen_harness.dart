@@ -101,6 +101,11 @@ class PropertyScreenHarness {
           builder: (_, _) => const Scaffold(body: Text('Assistant destination')),
         ),
         GoRoute(
+          path: AppRoutes.phoneEntry,
+          builder: (_, state) =>
+              Scaffold(body: Text('Sign-in destination ${state.uri.queryParameters['from']}')),
+        ),
+        GoRoute(
           path: AppRoutes.discover,
           builder: (_, _) => const Scaffold(body: Text('Discover destination')),
         ),

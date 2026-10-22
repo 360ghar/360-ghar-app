@@ -111,4 +111,35 @@ void main() {
       },
     );
   }
+  group('guest', () {
+    for (final id in ['saved', 'visits', 'profile']) {
+      testWidgets('tapping $id shows the sign-in sheet and the tab does not change', (
+        tester,
+      ) async {
+        usePhoneView(tester);
+        final router = shellRouter();
+        addTearDown(router.dispose);
+        await tester.pumpWidget(shellApp(router, guest: true));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey('qa.dashboard.nav.$id')));
+        await tester.pumpAndSettle();
+        expect(find.text('Sign in to continue'), findsOneWidget);
+        expect(router.state.uri.path, '/discover');
+        await tester.tap(find.byKey(const ValueKey('qa.sign_in_gate.not_now')));
+        await tester.pumpAndSettle();
+        expect(router.state.uri.path, '/discover');
+      });
+    }
+    testWidgets('Explore stays open to a guest', (tester) async {
+      usePhoneView(tester);
+      final router = shellRouter();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(shellApp(router, guest: true));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('qa.dashboard.nav.explore_properties')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sign in to continue'), findsNothing);
+      expect(router.state.uri.path, '/explore');
+    });
+  });
 }

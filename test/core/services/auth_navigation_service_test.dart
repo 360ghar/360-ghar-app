@@ -21,13 +21,14 @@ void main() {
     expect(redirect(AuthStatus.unauthenticated, '/visits', seen: false), '/splash?from=%2Fvisits');
     expect(redirect(AuthStatus.unauthenticated, '/splash?from=%2Fvisits', seen: false), isNull);
   });
-  test('completed onboarding leads to phone entry and keeps the destination', () {
-    expect(
-      redirect(AuthStatus.unauthenticated, '/splash?from=%2Fvisits'),
-      '/phone-entry?from=%2Fvisits',
-    );
-    expect(redirect(AuthStatus.unauthenticated, '/visits'), '/phone-entry?from=%2Fvisits');
-  });
+  test(
+    'completed onboarding leaves splash for the destination; account screens ask to sign in',
+    () {
+      expect(redirect(AuthStatus.unauthenticated, '/splash?from=%2Fvisits'), '/visits');
+      expect(redirect(AuthStatus.unauthenticated, '/splash'), '/discover');
+      expect(redirect(AuthStatus.unauthenticated, '/visits'), '/phone-entry?from=%2Fvisits');
+    },
+  );
   for (final path in authEntryPaths) {
     test('unauthenticated $path remains stable', () {
       expect(redirect(AuthStatus.unauthenticated, path), isNull);
@@ -66,9 +67,10 @@ void main() {
     }
   });
   test('detail identity survives auth through a safe query parameter', () {
-    final gate = redirect(AuthStatus.unauthenticated, '/property-details?id=42');
+    expect(redirect(AuthStatus.unauthenticated, '/property-details?id=42'), isNull);
+    final gate = routeWithReturn('/phone-entry', '/property-details?id=42');
     expect(gate, '/phone-entry?from=%2Fproperty-details%3Fid%3D42');
-    expect(redirect(AuthStatus.authenticated, gate!), '/property-details?id=42');
+    expect(redirect(AuthStatus.authenticated, gate), '/property-details?id=42');
   });
   for (final unsafe in [
     null,
