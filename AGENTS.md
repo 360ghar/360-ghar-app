@@ -218,10 +218,12 @@ devices, and do not boot more than one simulator.
 
 ```bash
 dart run tool/env_to_dart_defines.dart .env.development > .dart_defines.dev.json
+xcrun simctl uninstall booted com.the360ghar.ghar360   # optional: fresh install
 flutter run -d "iPhone 18 Pro" --dart-define-from-file=.dart_defines.dev.json
-xcrun simctl uninstall booted com.the360ghar.ghar360   # fresh install
-xcrun simctl io booted screenshot <file>.png             # screenshot
 ```
+
+`flutter run` stays in the foreground while the app runs. Take a screenshot from a
+second terminal: `xcrun simctl io booted screenshot <file>.png`.
 
 iPad and iPhone Duo layouts are covered by the golden tests in `test/visual/` at
 466x678 and 669x951 (iPhone Duo outer and inner), 820x1180 and 1376x1032 (iPad),
@@ -262,8 +264,9 @@ checks.
   `flutter build ios` or `flutter build ipa` raises it again. Before an Xcode build
   or archive, run `./tool/verify_ios_release.sh --fix`, or
   `flutter build ios --config-only`.
-- **Crashlytics and the verify script.** Both need the FlutterFire CLI:
-  `dart pub global activate flutterfire_cli`.
+- **Crashlytics and the verify script.** Both need a Crashlytics upload tool: the
+  FlutterFire CLI (`dart pub global activate flutterfire_cli`) or the SwiftPM
+  checkout's `upload-symbols` under Xcode DerivedData.
 - **Provider and lifecycle errors.** Inspect the provider state and its scope
   overrides. Check the generation and scope after every awaited boundary. Check that
   the owner disposes timers, streams, media, and clients. Do not fix a lifecycle
