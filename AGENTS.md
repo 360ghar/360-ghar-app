@@ -264,9 +264,12 @@ checks.
   `flutter build ios` or `flutter build ipa` raises it again. Before an Xcode build
   or archive, run `./tool/verify_ios_release.sh --fix`, or
   `flutter build ios --config-only`.
-- **Crashlytics and the verify script.** Both need a Crashlytics upload tool: the
-  FlutterFire CLI (`dart pub global activate flutterfire_cli`) or the SwiftPM
-  checkout's `upload-symbols` under Xcode DerivedData.
+- **Crashlytics and the verify script.** The Xcode Crashlytics phase and
+  `./tool/verify_ios_release.sh` need a Crashlytics upload tool: the FlutterFire
+  CLI (`dart pub global activate flutterfire_cli`) or the SwiftPM checkout's
+  `upload-symbols` under Xcode DerivedData. The manual uploader
+  `./tool/upload_ios_symbols.sh` does not use FlutterFire. It needs the SwiftPM
+  `upload-symbols`, so archive once in Xcode first.
 - **Provider and lifecycle errors.** Inspect the provider state and its scope
   overrides. Check the generation and scope after every awaited boundary. Check that
   the owner disposes timers, streams, media, and clients. Do not fix a lifecycle
