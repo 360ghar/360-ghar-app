@@ -64,7 +64,7 @@ Use `ProviderScope`, constructor injection, and manual `Provider`, `NotifierProv
 
 Keep existing content during refresh or pagination errors. Return typed failures from data boundaries and translate them in presentation code with `context.l10n`. Capture the account scope before asynchronous work and reject stale results after account or input changes.
 
-See [CLAUDE.md](CLAUDE.md) for contributor conventions, [the persistence policy](docs/persistence.md) for cache and migration rules, and [the migration checklist](docs/migration/riverpod-checklist.md) for verification status. Tests use provider overrides and injected fakes; storage and queue tests use SQLite fixtures. Run `flutter analyze` and `flutter test --coverage`; keep the 85% coverage gate.
+See [AGENTS.md](AGENTS.md) for contributor conventions, [the persistence policy](docs/persistence.md) for cache and migration rules, and [the migration checklist](docs/migration/riverpod-checklist.md) for verification status. Tests use provider overrides and injected fakes; storage and queue tests use SQLite fixtures. Run `flutter analyze` and `flutter test --coverage`; keep the 85% coverage gate.
 
 ## 🚀 Getting Started
 
