@@ -7,6 +7,7 @@ import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_art.dart';
 import 'package:ghar360/core/design/paper/paper_cut.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 
 /// Width from which the shell shows a rail on the left instead of the strip.
@@ -56,7 +57,9 @@ class CustomBottomNavigationBar extends StatelessWidget {
     return RepaintBoundary(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final item = constraints.maxWidth / _destinations.length;
+          // The strip is centered and sits below the Duo's pill: only the inset both sides share.
+          final inset = symmetricSideInset(context, sharedOnly: true);
+          final item = (constraints.maxWidth - 2 * inset) / _destinations.length;
           return Stack(
             children: [
               Positioned.fill(
@@ -73,14 +76,15 @@ class CustomBottomNavigationBar extends StatelessWidget {
                 key: const ValueKey('qa.dashboard.nav.tower'),
                 duration: reduce ? Duration.zero : _slide,
                 curve: Curves.easeOutCubic,
-                left: item * (currentIndex + 0.5) - kNavTowerWidth / 2 - _towerPad,
+                left: inset + item * (currentIndex + 0.5) - kNavTowerWidth / 2 - _towerPad,
                 top: 0,
                 width: kNavTowerWidth + 2 * _towerPad,
                 height: _towerDepth,
                 child: _Tower(vertical: false, design: design),
               ),
-              SafeArea(
+              SymmetricSafeArea(
                 top: false,
+                sharedOnly: true,
                 child: Padding(
                   padding: const EdgeInsets.only(top: _itemsTop),
                   child: SizedBox(

@@ -125,53 +125,105 @@ void main() {
   }
 
   for (final feed in [PropertyFeed.discover, PropertyFeed.explore, PropertyFeed.liked]) {
-    testWidgets('${feed.name} missing location opens manual picker and loads selected area', (
+    testWidgets(
+      '${feed.name} unresolved automatic location starts in Gurugram and can be changed',
+      (tester) async {
+        await pump(tester, feed);
+        expect(device.currentCalls, 1);
+        expect(find.textContaining('private GPS'), findsNothing);
+        expect(find.text('Unable to get current location'), findsNothing);
+        final state = container.read(propertyLocationProvider(feed.page));
+        expect(state.source, LocationSource.fallback);
+        expect(state.location?.name, 'Gurugram');
+        expect(requestCount(feed), 1);
+        expectContent(feed);
+        expect(
+          find.text('Homes are in Gurugram for now'),
+          feed == PropertyFeed.discover ? findsOneWidget : findsNothing,
+        );
+        await tester.tap(find.byKey(ValueKey('qa.location.selector.trigger.${feed.page.name}')));
+        await tester.pumpAndSettle();
+        expect(find.byType(LocationPickerModal), findsOneWidget);
+        await tester.enterText(find.byType(TextField).last, 'Delhi');
+        await tester.pump(const Duration(milliseconds: 450));
+        await tester.pumpAndSettle();
+        final result = find.text('Delhi').last;
+        await tester.ensureVisible(result);
+        await tester.tap(result);
+        await tester.pumpAndSettle();
+        expect(find.byType(LocationPickerModal), findsNothing);
+        expect(container.read(propertyLocationProvider(feed.page)).source, LocationSource.manual);
+        expect(device.currentCalls, 1);
+        expect(requestCount(feed), 2);
+        expect(find.text('Homes are in Gurugram for now'), findsNothing);
+        await unmount(tester);
+      },
+    );
+
+    testWidgets('${feed.name} skipped location prompt starts in Gurugram without an error', (
       tester,
     ) async {
+      device.response = () async =>
+          throw LocationException('not asked', code: 'LOCATION_NOT_ASKED');
       await pump(tester, feed);
-      expect(device.currentCalls, 1);
-      expect(requestCount(feed), 0);
-      expect(find.textContaining('private GPS'), findsNothing);
-      expect(find.text('Unable to get current location'), findsOneWidget);
-      await tester.tap(find.byKey(ValueKey('qa.${feed.page.name}.location.select')));
-      await tester.pumpAndSettle();
-      expect(find.byType(LocationPickerModal), findsOneWidget);
-      await tester.enterText(find.byType(TextField).last, 'Delhi');
-      await tester.pump(const Duration(milliseconds: 450));
-      await tester.pumpAndSettle();
-      final result = find.text('Delhi').last;
-      await tester.ensureVisible(result);
-      await tester.tap(result);
-      await tester.pumpAndSettle();
-      expect(find.byType(LocationPickerModal), findsNothing);
-      expect(container.read(propertyLocationProvider(feed.page)).source, LocationSource.manual);
-      expect(device.currentCalls, 1);
-      expect(requestCount(feed), 1);
+      expect(container.read(propertyLocationProvider(feed.page)).source, LocationSource.fallback);
+      expect(find.text('Choose an area to see homes near you'), findsNothing);
+      expect(find.text('Unable to get current location'), findsNothing);
       expectContent(feed);
       await unmount(tester);
     });
 
-    testWidgets(
-      '${feed.name} GPS retry waits for location before requesting and restores content',
-      (tester) async {
-        await pump(tester, feed);
-        final pending = Completer<LocationResolution>();
-        device.response = () => pending.future;
-        final retry = find.byKey(ValueKey('qa.${feed.page.name}.location.gps_retry'));
-        await tester.tap(retry);
-        await tester.pump();
-        expect(device.currentCalls, 2);
-        expect(requestCount(feed), 0);
-        expect(tester.widget<TextButton>(retry).onPressed, isNull);
-        pending.complete(const LocationResolution(delhi, LocationSource.gps));
-        await tester.pumpAndSettle();
-        expect(container.read(propertyLocationProvider(feed.page)).source, LocationSource.gps);
-        expect(requestCount(feed), 1);
-        expect(find.byType(PropertyLocationRecovery), findsNothing);
-        expectContent(feed);
-        await unmount(tester);
-      },
-    );
+    testWidgets('${feed.name} an explicit read that fails keeps the Gurugram fallback', (
+      tester,
+    ) async {
+      device.response = () async =>
+          throw LocationException('not asked', code: 'LOCATION_NOT_ASKED');
+      await pump(tester, feed);
+      await container.read(propertyLocationProvider(feed.page).notifier).useCurrent();
+      await tester.pumpAndSettle();
+      final state = container.read(propertyLocationProvider(feed.page));
+      expect(state.source, LocationSource.fallback);
+      expect(state.load.hasError, isTrue);
+      expect(find.text('Choose an area to see homes near you'), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('${feed.name} GPS read waits for location and restores content', (tester) async {
+      await pump(tester, feed);
+      final pending = Completer<LocationResolution>();
+      device.response = () => pending.future;
+      final read = container.read(propertyLocationProvider(feed.page).notifier).useCurrent();
+      await tester.pump();
+      expect(device.currentCalls, 2);
+      pending.complete(const LocationResolution(delhi, LocationSource.gps));
+      await read;
+      await tester.pumpAndSettle();
+      expect(container.read(propertyLocationProvider(feed.page)).source, LocationSource.gps);
+      expect(find.byType(PropertyLocationRecovery), findsNothing);
+      expectContent(feed);
+      await unmount(tester);
+    });
+
+    testWidgets('${feed.name} Retry GPS waits for location and restores content', (tester) async {
+      // A page that is not visible has not started its own read yet.
+      final location = container.read(propertyLocationProvider(feed.page).notifier);
+      await location.useCurrent();
+      location.setVisible(false);
+      await pump(tester, feed);
+      final retry = find.byKey(ValueKey('qa.${feed.page.name}.location.gps_retry'));
+      expect(find.text('Unable to get current location'), findsOneWidget);
+      final pending = Completer<LocationResolution>();
+      device.response = () => pending.future;
+      await tester.tap(retry);
+      await tester.pump();
+      expect(tester.widget<TextButton>(retry).onPressed, isNull);
+      pending.complete(const LocationResolution(delhi, LocationSource.gps));
+      await tester.pumpAndSettle();
+      expect(container.read(propertyLocationProvider(feed.page)).source, LocationSource.gps);
+      expect(find.byType(PropertyLocationRecovery), findsNothing);
+      expectContent(feed);
+      await unmount(tester);
+    });
 
     testWidgets('${feed.name} GPS failure retains loaded content with manual recovery', (
       tester,
@@ -197,6 +249,23 @@ void main() {
     });
   }
 
+  testWidgets('a guest who skips the location explainer sees Gurugram homes and the line', (
+    tester,
+  ) async {
+    device
+      ..undetermined = true
+      ..response = () async => throw LocationException('not asked', code: 'LOCATION_NOT_ASKED');
+    await pump(tester, PropertyFeed.discover);
+    await tester.tap(find.byKey(const ValueKey('qa.location.explainer.skip')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('qa.location.explainer.skip')), findsNothing);
+    expect(find.text('Choose an area to see homes near you'), findsNothing);
+    expect(find.text('Unable to get current location'), findsNothing);
+    expect(find.text('Homes are in Gurugram for now'), findsOneWidget);
+    expectContent(PropertyFeed.discover);
+    await unmount(tester);
+  });
+
   for (final dark in [false, true]) {
     for (final hindi in [false, true]) {
       testWidgets('recovery actions fit narrow 2x text, dark=$dark, Hindi=$hindi', (tester) async {
@@ -204,7 +273,7 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        await container.read(propertyLocationProvider(PageType.discover).notifier).ensureLocation();
+        await container.read(propertyLocationProvider(PageType.discover).notifier).useCurrent();
         await tester.pumpProviderApp(
           UncontrolledProviderScope(
             container: container,

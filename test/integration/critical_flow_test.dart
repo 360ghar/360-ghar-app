@@ -56,11 +56,13 @@ void main() {
 
   test('login, discover, like, and book preserve confirmed server results', () async {
     expect(session.state.status, AuthStatus.authenticated);
+    when(() => api.signedIn).thenReturn(true);
     when(
       () => api.get(
         ApiPaths.properties,
         queryParams: any(named: 'queryParams'),
         useCache: any(named: 'useCache'),
+        requireAuth: true,
       ),
     ).thenAnswer(
       (_) async =>

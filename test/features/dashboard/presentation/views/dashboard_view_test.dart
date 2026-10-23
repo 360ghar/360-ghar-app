@@ -41,6 +41,35 @@ void main() {
     final selected = tester.getSemantics(find.byKey(const ValueKey('qa.dashboard.nav.visits')));
     expect(selected.flagsCollection.isSelected, Tristate.isTrue);
   });
+  testWidgets('crossing 600 px keeps branch state (fold, split resize)', (tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(599, 900);
+    final built = <String>{};
+    final disposed = <String>{};
+    final router = shellRouter(built: built, disposed: disposed);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(shellApp(router));
+    await tester.pumpAndSettle();
+    expect(find.byType(CustomBottomNavigationBar), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('/discover.input')), 'kept');
+    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    final offset = tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels;
+    for (final width in [601.0, 599.0]) {
+      tester.view.physicalSize = Size(width, 900);
+      await tester.pumpAndSettle();
+      expect(find.byType(PaperNavigationRail).evaluate().isNotEmpty, width >= 600);
+      expect(built, {'/discover'}, reason: 'no branch rebuilt at $width');
+      expect(disposed, isEmpty, reason: 'no branch disposed at $width');
+      expect(
+        tester.widget<TextField>(find.byKey(const ValueKey('/discover.input'))).controller!.text,
+        'kept',
+      );
+      expect(tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels, offset);
+    }
+  });
   testWidgets('switching tabs retains local form and scroll state', (tester) async {
     usePhoneView(tester);
     final router = shellRouter();
@@ -111,4 +140,35 @@ void main() {
       },
     );
   }
+  group('guest', () {
+    for (final id in ['saved', 'visits', 'profile']) {
+      testWidgets('tapping $id shows the sign-in sheet and the tab does not change', (
+        tester,
+      ) async {
+        usePhoneView(tester);
+        final router = shellRouter();
+        addTearDown(router.dispose);
+        await tester.pumpWidget(shellApp(router, guest: true));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey('qa.dashboard.nav.$id')));
+        await tester.pumpAndSettle();
+        expect(find.text('Sign in to continue'), findsOneWidget);
+        expect(router.state.uri.path, '/discover');
+        await tester.tap(find.byKey(const ValueKey('qa.sign_in_gate.not_now')));
+        await tester.pumpAndSettle();
+        expect(router.state.uri.path, '/discover');
+      });
+    }
+    testWidgets('Explore stays open to a guest', (tester) async {
+      usePhoneView(tester);
+      final router = shellRouter();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(shellApp(router, guest: true));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('qa.dashboard.nav.explore_properties')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sign in to continue'), findsNothing);
+      expect(router.state.uri.path, '/explore');
+    });
+  });
 }

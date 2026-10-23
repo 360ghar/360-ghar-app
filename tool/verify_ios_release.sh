@@ -5,6 +5,8 @@
 # generated SwiftPM plugin manifest, which `flutter pub get` rewrites to
 # .iOS("13.0") every time (hardcoded in flutter_tools). Everything else is
 # checked only, never touched.
+#
+# VERIFY_SKIP_DART_DEFINES=1 skips the baked dart-defines check (CI has none).
 set -euo pipefail
 
 FIX_MODE=""
@@ -20,6 +22,11 @@ APP_FRAMEWORK_INFO="$ROOT_DIR/ios/Flutter/AppFrameworkInfo.plist"
 PROJECT_PBXPROJ="$ROOT_DIR/ios/Runner.xcodeproj/project.pbxproj"
 PUBSPEC="$ROOT_DIR/pubspec.yaml"
 GENERATED_PACKAGE="$ROOT_DIR/ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift"
+GENERATED_XCCONFIG="$ROOT_DIR/ios/Flutter/Generated.xcconfig"
+
+# Highest build number already uploaded to App Store Connect. Raise it after each upload.
+# The pubspec build number must be greater, or Transporter rejects the upload.
+LAST_SUBMITTED_BUILD=17
 
 # The canonical deployment target comes from project.pbxproj. AppFrameworkInfo.plist
 # and the generated SwiftPM plugin package must match it (Firebase requires iOS 15.0).
@@ -45,11 +52,14 @@ else
 fi
 
 
-python3 - "$SOURCE_PLIST" "$PRIVACY_MANIFEST" "$APP_FRAMEWORK_INFO" "$PROJECT_PBXPROJ" "$PUBSPEC" "$GENERATED_PACKAGE" "$EXPECTED_DEPLOYMENT_TARGET" "${1:-}" "$FIX_MODE" <<'PY'
+python3 - "$SOURCE_PLIST" "$PRIVACY_MANIFEST" "$APP_FRAMEWORK_INFO" "$PROJECT_PBXPROJ" "$PUBSPEC" "$GENERATED_PACKAGE" "$EXPECTED_DEPLOYMENT_TARGET" "${1:-}" "$FIX_MODE" "$GENERATED_XCCONFIG" "$LAST_SUBMITTED_BUILD" <<'PY'
+import base64
+import os
 import plistlib
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 args = sys.argv[1:]
 source_path = Path(args[0])
@@ -61,6 +71,8 @@ generated_package_path = Path(args[5])
 expected_deployment_target = args[6]
 built_app = Path(args[7]) if len(args) > 7 and args[7] else None
 fix_mode = len(args) > 8 and args[8] == "fix"
+generated_xcconfig_path = Path(args[9])
+last_submitted_build = int(args[10])
 
 ok = True
 
@@ -115,14 +127,16 @@ def check_info_plist(path: Path, label: str):
 
 # Deployment target consistency
 app_framework = load_plist(app_framework_path)
-if app_framework.get("MinimumOSVersion") != expected_deployment_target:
+# Flutter 3.47+ migrates this key out of the file (the target comes from project.pbxproj),
+# so a missing key is fine; a present key must match.
+if app_framework.get("MinimumOSVersion") not in (None, expected_deployment_target):
     fail(
         f"ios/Flutter/AppFrameworkInfo.plist MinimumOSVersion is "
         f"{app_framework.get('MinimumOSVersion')!r}, expected {expected_deployment_target!r} "
         f"(must match IPHONEOS_DEPLOYMENT_TARGET in project.pbxproj)"
     )
 else:
-    print(f"PASS [AppFrameworkInfo.plist]: MinimumOSVersion == {expected_deployment_target}")
+    print(f"PASS [AppFrameworkInfo.plist]: MinimumOSVersion absent or == {expected_deployment_target}")
 
 if pbxproj_path.exists():
     pbxproj_text = pbxproj_path.read_text()
@@ -178,10 +192,70 @@ version_match = re.search(
 if version_match:
     marketing_version, build_number = version_match.groups()
     print(f"INFO [pubspec.yaml]: version {marketing_version}+{build_number}")
+    if int(build_number) <= last_submitted_build:
+        fail(
+            f"pubspec build number {build_number} is not greater than LAST_SUBMITTED_BUILD "
+            f"({last_submitted_build}); App Store Connect rejects a reused build number"
+        )
+    else:
+        print(f"PASS [pubspec.yaml]: build {build_number} > LAST_SUBMITTED_BUILD {last_submitted_build}")
 else:
     fail(f"could not parse version from {pubspec_path}")
 
 ok = check_info_plist(source_path, "source Info.plist") and ok
+
+
+def check_dart_defines(path: Path):
+    """Decode DART_DEFINES from Generated.xcconfig. Never prints define values."""
+    if not path.exists():
+        fail(f"missing {path}. Run `flutter build ios --config-only --release --dart-define-from-file=...` first.")
+        return
+    match = re.search(r"^DART_DEFINES=(.*)$", path.read_text(), re.MULTILINE)
+    defines = {}
+    for entry in (match.group(1).split(",") if match else []):
+        try:
+            key, _, value = base64.b64decode(entry).decode().partition("=")
+        except Exception:
+            continue
+        defines[key] = value
+    if not defines:
+        fail(f"no DART_DEFINES in {path}; the build would use no production defines")
+        return
+    failures = []
+    for key in ("DEBUG_MODE", "LOG_API_CALLS", "FIREBASE_APPCHECK_DEBUG"):
+        if defines.get(key, "").lower() == "true":
+            failures.append(f"{key}=true")
+    for key in ("FIREBASE_ENABLED", "FIREBASE_CRASHLYTICS", "FIREBASE_APPCHECK"):
+        if defines.get(key, "").lower() == "false":
+            failures.append(f"{key}=false")
+    try:
+        api = urlparse(defines.get("API_BASE_URL", ""))
+        valid_api = (
+            api.scheme == "https"
+            and api.hostname == "api.360ghar.com"
+            and api.port in (None, 443)
+            and not api.username
+            and not api.password
+        )
+    except ValueError:  # a malformed port
+        valid_api = False
+    if not valid_api:
+        failures.append("API_BASE_URL must be an https URL on host api.360ghar.com")
+    for key in ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"):
+        if not defines.get(key, "").strip():
+            failures.append(f"{key} is missing or empty")
+    if failures:
+        for failure in failures:
+            fail(f"[DART_DEFINES in Generated.xcconfig] {failure}")
+    else:
+        print("PASS [DART_DEFINES]: production defines are set (no debug flags, Firebase on, prod API, Supabase present)")
+
+
+if os.environ.get("VERIFY_SKIP_DART_DEFINES") == "1":
+    # CI has no production defines; the owner's build machine runs this check.
+    print("SKIP [DART_DEFINES]: VERIFY_SKIP_DART_DEFINES=1")
+else:
+    check_dart_defines(generated_xcconfig_path)
 
 # Privacy manifest
 privacy = load_plist(privacy_path)

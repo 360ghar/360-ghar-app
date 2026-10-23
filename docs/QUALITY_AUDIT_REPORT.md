@@ -1,6 +1,6 @@
 # 360Ghar Flutter App — Comprehensive Quality Audit Report
 
-> Historical report from before the Riverpod migration. Its findings and test counts are retained as prior audit claims, not current verified results or contributor instructions. Use [the current architecture guide](../CLAUDE.md) and [migration verification checklist](migration/riverpod-checklist.md) for the implemented design and current evidence.
+> Historical report from before the Riverpod migration. Its findings and test counts are retained as prior audit claims, not current verified results or contributor instructions. Use [the current architecture guide](../AGENTS.md) and [migration verification checklist](migration/riverpod-checklist.md) for the implemented design and current evidence.
 
 ## Summary
 

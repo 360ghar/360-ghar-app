@@ -6,7 +6,14 @@ import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/presentation/property_labels.dart';
 import '../../helpers/provider_test_app.dart';
 
-PropertyModel _home({double? area, int? floor, int? total, int? age, double? km}) => PropertyModel(
+PropertyModel _home({
+  double? area,
+  int? floor,
+  int? total,
+  int? age,
+  double? km,
+  List<String>? features,
+}) => PropertyModel(
   id: 1,
   title: 'Home',
   basePrice: 8500000,
@@ -16,6 +23,7 @@ PropertyModel _home({double? area, int? floor, int? total, int? age, double? km}
   totalFloors: total,
   ageOfProperty: age,
   distanceKm: km,
+  features: features,
   isAvailable: true,
   viewCount: 0,
   likeCount: 0,
@@ -98,5 +106,45 @@ void main() {
       ),
       ['₹85 लाख', '1,450 वर्ग फीट', 'मंज़िल 4/12', '5 साल पुराना', '4.8 कि.मी. दूर'],
     );
+  });
+
+  testWidgets('highlights keep known feature keys as labels and drop internal metadata', (
+    tester,
+  ) async {
+    Future<List<String>> highlights(Locale locale, List<String>? features) async {
+      late List<String> out;
+      await tester.pumpProviderApp(
+        Builder(
+          builder: (context) {
+            out = _home(features: features).localizedHighlights(context);
+            return const SizedBox();
+          },
+        ),
+        locale: locale,
+      );
+      return out;
+    }
+
+    // The exact array prod sends for property 182.
+    const prod = [
+      'amenities',
+      'facing',
+      'listing_bucket',
+      'rera_registered',
+      'slug',
+      'society_name',
+      'vastu_compliant',
+    ];
+    const en = Locale('en', 'US');
+    expect(await highlights(en, prod), ['RERA registered', 'Vastu compliant']);
+    expect(await highlights(en, ['gym', 'Power Backup', 'slug', 'pool']), [
+      'Gym',
+      'Power backup',
+      'Swimming pool',
+    ]);
+    expect(await highlights(en, ['amenities', 'facing', 'slug', 'society_name']), isEmpty);
+    expect(await highlights(en, const []), isEmpty);
+    expect(await highlights(en, null), isEmpty);
+    expect(await highlights(const Locale('hi', 'IN'), ['pool', 'slug']), ['स्विमिंग पूल']);
   });
 }

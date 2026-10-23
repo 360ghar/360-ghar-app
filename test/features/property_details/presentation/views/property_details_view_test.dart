@@ -19,6 +19,7 @@ import 'package:ghar360/features/properties/application/swipe_history.dart';
 import 'package:ghar360/features/property_details/presentation/controllers/property_details_controller.dart';
 import 'package:ghar360/features/property_details/presentation/views/property_details_view.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/fullscreen_photo_gallery.dart';
+import 'package:ghar360/features/property_details/presentation/widgets/property_details_section_nav.dart';
 import 'package:ghar360/features/visits/presentation/controllers/visits_controller.dart';
 import '../../../../helpers/knife_finders.dart';
 import '../../../../helpers/provider_test_app.dart';
@@ -80,7 +81,7 @@ const fullProperty = PropertyModel(
   mainImageUrl: '',
   city: 'Bangalore',
   locality: 'Indiranagar',
-  features: ['Swimming Pool', 'Gym', 'Garden', 'Security'],
+  features: ['pool', 'gym', 'garden', 'security', 'slug'],
   amenities: [
     PropertyAmenity(id: 1, title: 'Swimming Pool'),
     PropertyAmenity(id: 2, title: 'Gym'),
@@ -292,6 +293,17 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+  testWidgets('the section tabs stop short of a right cut-out (the Duo status pill)', (
+    tester,
+  ) async {
+    tester.view.padding = const FakeViewPadding(right: 160);
+    tester.view.viewPadding = const FakeViewPadding(right: 160);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetViewPadding);
+    await pump(tester, size: const Size(466, 678));
+    expect(tester.getTopRight(find.byType(PropertyDetailsSectionNav)).dx, lessThanOrEqualTo(306));
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('agent row shows the name and Call only with a number', (tester) async {
     PropertyModel withAgent(String? number) => PropertyModel.fromJson({
       ...fullPropertyJson,
@@ -403,6 +415,28 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets('highlights show labels and never internal keys', (tester) async {
+    await pump(tester);
+    expect(find.text('Swimming pool'), findsOneWidget);
+    expect(find.text('Gym'), findsWidgets);
+    expect(find.text('slug'), findsNothing);
+  });
+  testWidgets('highlights are hidden when no feature is a known key', (tester) async {
+    detail = DetailController(
+      100,
+      PropertyDetailsState(
+        property: PropertyModel.fromJson({
+          ...fullPropertyJson,
+          'features': ['amenities', 'listing_bucket', 'slug', 'society_name'],
+        }),
+        phase: PropertyDetailPhase.content,
+      ),
+    );
+    await pump(tester);
+    expect(find.text('Highlights'), findsNothing);
+    expect(find.text('slug'), findsNothing);
+    expect(find.text('listing_bucket'), findsNothing);
+  });
   testWidgets('description expands and collapses', (tester) async {
     await pump(tester, size: const Size(430, 2200));
     await tester.tap(find.text('Read more'));

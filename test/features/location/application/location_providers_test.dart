@@ -206,12 +206,44 @@ void main() {
   test('newest stream position wins and manual selection stops stream', () async {
     final location = harness.location()..setVisible(true);
     await location.select(delhi, source: LocationSource.gps);
+    harness.device.geocode = (_) async =>
+        const LocationData(name: 'Noida', latitude: 28.5355, longitude: 77.391);
     harness.device.stream.add(testPosition());
     await flush();
-    expect(harness.state().location?.name, 'Mumbai');
+    expect(harness.state().location?.name, 'Noida');
     expect(harness.device.streamCalls, 1);
     await location.select(delhi);
     expect(harness.device.stream.hasListener, isFalse);
+  });
+  test(
+    'a stream position outside the service area moves to Gurugram and stops the stream',
+    () async {
+      final location = harness.location()..setVisible(true);
+      await location.select(delhi, source: LocationSource.gps);
+      harness.device.stream.add(testPosition());
+      await flush();
+      expect(harness.state().location?.name, 'Gurugram');
+      expect(harness.state().source, LocationSource.fallback);
+      expect(harness.device.stream.hasListener, isFalse);
+    },
+  );
+  test('a saved fallback is replaced by an in-area fix and kept when the read fails', () async {
+    harness.database.drafts['test:a:location:explore'] = {
+      'location': ServiceArea.center.toJson(),
+      'source': 'fallback',
+    };
+    harness.device.response = () async => throw LocationException('off', code: 'LOCATION_DISABLED');
+    final location = harness.location();
+    await location.ensureLocation();
+    await flush();
+    expect(harness.state().source, LocationSource.fallback);
+    expect(harness.state().load.hasError, isFalse);
+    expect(harness.device.currentCalls, 1);
+    harness.device.response = () async => const LocationResolution(delhi, LocationSource.ip);
+    await location.ensureLocation();
+    await flush();
+    expect(harness.state().source, LocationSource.ip);
+    expect(harness.state().location?.name, 'Delhi');
   });
   test('inactive page never automatically asks for GPS', () async {
     final location = harness.location()..setVisible(false);
@@ -289,15 +321,16 @@ void main() {
     final location = harness.location()..setVisible(true);
     await location.select(delhi, source: LocationSource.gps);
     final older = Completer<LocationData>();
-    harness.device.geocode = (position) =>
-        position.latitude == 1 ? older.future : Future.value(mumbai);
+    harness.device.geocode = (position) => position.latitude == 1
+        ? older.future
+        : Future.value(const LocationData(name: 'Noida', latitude: 28.5355, longitude: 77.391));
     harness.device.stream.add(testPosition(latitude: 1));
     await flush();
     harness.device.stream.add(testPosition(latitude: 2));
     await flush();
     older.complete(delhi);
     await flush();
-    expect(harness.state().location?.name, 'Mumbai');
+    expect(harness.state().location?.name, 'Noida');
   });
   test('disposed search and location reject pending completion', () async {
     final pendingSearch = Completer<List<PlaceSuggestion>>();

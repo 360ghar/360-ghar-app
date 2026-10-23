@@ -248,6 +248,15 @@ void main() {
     expect(harness.state(PageType.discover).location?.name, 'Delhi');
     await disposeWidget(tester);
   });
+  testWidgets('a skipped location prompt shows no error in the picker', (tester) async {
+    harness.device.response = () async =>
+        throw LocationException('not asked', code: 'LOCATION_NOT_ASKED');
+    await harness.location(PageType.discover).useCurrent(prompt: false);
+    await open(tester);
+    expect(find.text('Unable to get current location'), findsNothing);
+    expect(find.text('Use Current Location'), findsOneWidget);
+    await disposeWidget(tester);
+  });
   testWidgets('disk failure retains selected area and exposes retry before closing', (
     tester,
   ) async {

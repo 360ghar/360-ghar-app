@@ -22,6 +22,33 @@ class LocationResolution {
   final LocationSource source;
 }
 
+/// Where the listings are. A GPS or IP location outside it is replaced by
+/// [center], so a visitor from elsewhere (App Review, a traveller) sees homes.
+// ponytail: a static center and radius; move to a server-driven service area when the app expands.
+abstract final class ServiceArea {
+  /// Gurugram, the same point as the first popular city. The 80 prod listings
+  /// lie within 11.4 km of it and Delhi is 36 km away.
+  static const center = LocationData(name: 'Gurugram', latitude: 28.4595, longitude: 77.0266);
+  static const radiusKm = 60.0;
+
+  static bool contains(LocationData location) =>
+      Geolocator.distanceBetween(
+        center.latitude,
+        center.longitude,
+        location.latitude,
+        location.longitude,
+      ) <=
+      radiusKm * 1000;
+
+  /// Only automatic sources are replaced; a manual or saved place is the user's.
+  static LocationResolution apply(LocationResolution resolution) {
+    final automatic =
+        resolution.source == LocationSource.gps || resolution.source == LocationSource.ip;
+    if (!automatic || contains(resolution.location)) return resolution;
+    return const LocationResolution(center, LocationSource.fallback);
+  }
+}
+
 /// Owns the external location boundaries. Permission errors remain typed so
 /// the picker can offer manual selection and the correct settings action.
 class DeviceLocationSource {
@@ -95,12 +122,14 @@ class DeviceLocationSource {
     required bool prompt,
   }) async {
     try {
-      return await _gpsLocation(forceRefresh, prompt);
+      return ServiceArea.apply(await _gpsLocation(forceRefresh, prompt));
     } catch (error) {
       if (_disposed) throw NetworkException('Cancelled', code: 'CANCELLED');
       if (allowIpFallback) {
         final approximate = await ipLocation();
-        if (approximate != null) return LocationResolution(approximate, LocationSource.ip);
+        if (approximate != null) {
+          return ServiceArea.apply(LocationResolution(approximate, LocationSource.ip));
+        }
       }
       if (error is AppException) rethrow;
       throw LocationException('Location unavailable', code: 'LOCATION_UNAVAILABLE');

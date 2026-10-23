@@ -16,11 +16,13 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/features/discover/presentation/views/discover_view.dart';
 import 'package:ghar360/features/explore/presentation/views/explore_view.dart';
 import 'package:ghar360/features/likes/presentation/views/likes_view.dart';
+import 'package:ghar360/features/location/application/location_source.dart';
 import 'package:ghar360/features/properties/application/property_location.dart';
 import 'package:ghar360/features/properties/application/property_queries.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../helpers/fake_explore_map_platform.dart';
+import '../helpers/layout_variants.dart';
 import '../helpers/load_app_fonts.dart';
 import '../helpers/property_query_test_support.dart';
 import '../helpers/property_screen_harness.dart';
@@ -89,8 +91,15 @@ void main() {
   for (final screen in ['discover', 'saved', 'explore']) {
     for (final state in ['content', 'loading', 'partial_failure', 'empty', 'error']) {
       for (final dark in [false, true]) {
-        for (final size in ['390_en_1x', '320_hi_2x', if (state == 'content') '834_en_1x']) {
+        for (final size in [
+          '390_en_1x',
+          '320_hi_2x',
+          if (state == 'content') '834_en_1x',
+          // Wide and Duo windows: content, light only.
+          if (state == 'content' && !dark) ...[for (final v in layoutVariants) v.name],
+        ]) {
           final compact = size == '320_hi_2x';
+          final layout = layoutVariants.where((v) => v.name == size).firstOrNull;
           final name = '${screen}_${state}_${dark ? 'dark' : 'light'}_$size';
           testWidgets(name, (tester) async {
             final locale = compact ? const Locale('hi', 'IN') : const Locale('en', 'US');
@@ -151,8 +160,10 @@ void main() {
               size: switch (size) {
                 '834_en_1x' => const Size(834, 1112),
                 '320_hi_2x' => const Size(320, 844),
-                _ => const Size(390, 844),
+                '390_en_1x' => const Size(390, 844),
+                _ => layout!.size,
               },
+              padding: layout?.padding ?? EdgeInsets.zero,
               scale: compact ? 2 : 1,
               dark: dark,
               locale: locale,
@@ -186,5 +197,50 @@ void main() {
         }
       }
     }
+  }
+
+  // Discover while the Gurugram fallback applies: the quiet line under the bar.
+  for (final size in ['390_en_1x', '466x678_duo_outer']) {
+    testWidgets('discover_out_of_area_light_$size', (tester) async {
+      final layout = layoutVariants.where((v) => v.name == size).firstOrNull;
+      final data = (await tester.runAsync(PropertyQueryHarness.create))!;
+      final harness = PropertyScreenHarness(
+        data,
+        pages: {
+          PropertyFeed.discover: PropertyPageState(
+            phase: PropertyLoadPhase.content,
+            items: [_property(1), _property(2)],
+          ),
+        },
+      );
+      harness.images.response = (url) => Stream.value(
+        FileInfo(
+          const LocalFileSystem().file(
+            '${Directory.current.path}/test/fixtures/images/property_photo.jpg',
+          ),
+          FileSource.Cache,
+          DateTime(2030),
+          url,
+        ),
+      );
+      (harness.container.read(propertyLocationProvider(PageType.discover).notifier)
+              as QueryLocation)
+          .replace(ServiceArea.center, source: LocationSource.fallback);
+      const boundary = ValueKey('visual.screen');
+      await harness.pump(
+        tester,
+        const RepaintBoundary(key: boundary, child: DiscoverView()),
+        size: layout?.size ?? const Size(390, 844),
+        padding: layout?.padding ?? EdgeInsets.zero,
+      );
+      await settleFixturePhotos(tester);
+      expect(find.text('Homes are in Gurugram for now'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byKey(boundary),
+        matchesGoldenFile('goldens/discover_out_of_area_light_$size.png'),
+      );
+      await harness.close(tester);
+    });
   }
 }

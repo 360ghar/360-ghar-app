@@ -135,56 +135,53 @@ class PropertyDetailsAgentRow extends StatelessWidget {
       identifier: 'qa.property_details.agent',
       child: Align(
         alignment: AlignmentDirectional.centerStart,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Transform.rotate(
-            angle: -0.6 * math.pi / 180,
-            child: DecoratedBox(
-              decoration: ShapeDecoration(
-                color: design.slip,
-                shape: CutBorder(
-                  seed: 'agent-${agent.id}',
-                  amp: 1.5,
-                  shadows: paperShadows(PaperElevation.low, design.shadowOn(design.surface)),
-                ),
+        child: Transform.rotate(
+          angle: -0.6 * math.pi / 180,
+          child: DecoratedBox(
+            decoration: ShapeDecoration(
+              color: design.slip,
+              shape: CutBorder(
+                seed: 'agent-${agent.id}',
+                amp: 1.5,
+                shadows: paperShadows(PaperElevation.low, design.shadowOn(design.surface)),
               ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            l10n.text('listed_by'),
-                            style: text.labelSmall?.copyWith(color: design.textSecondary),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(agent.name, style: text.headlineSmall),
-                        ],
-                      ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.text('listed_by'),
+                          style: text.labelSmall?.copyWith(color: design.textSecondary),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(agent.name, style: text.headlineSmall),
+                      ],
                     ),
-                    if (number.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Semantics(
-                        identifier: 'qa.property_details.agent_call',
-                        child: TextButton(
-                          key: const ValueKey('qa.property_details.agent_call'),
-                          onPressed: () => _call(context, number),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const PaperIcon(KnifeIcon.phone, size: 18),
-                              const SizedBox(width: 6),
-                              Text(l10n.text('call')),
-                            ],
-                          ),
+                  ),
+                  if (number.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Semantics(
+                      identifier: 'qa.property_details.agent_call',
+                      child: TextButton(
+                        key: const ValueKey('qa.property_details.agent_call'),
+                        onPressed: () => _call(context, number),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const PaperIcon(KnifeIcon.phone, size: 18),
+                            const SizedBox(width: 6),
+                            Text(l10n.text('call')),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
           ),

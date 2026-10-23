@@ -249,6 +249,7 @@ class PushNotificationsService {
         DebugLogger.info('🔔 FCM permission: PROVISIONAL');
         break;
       case AuthorizationStatus.denied:
+      case AuthorizationStatus.deniedPermanently:
         DebugLogger.warning('🔔 FCM permission: DENIED - notifications will not work!');
         break;
       case AuthorizationStatus.notDetermined:

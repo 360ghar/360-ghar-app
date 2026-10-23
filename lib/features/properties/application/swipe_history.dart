@@ -228,6 +228,9 @@ class SwipeHistory extends Notifier<SwipeHistoryState> {
     final revision = ++_revision;
     final generation = _generation;
     final scope = ref.read(storageScopeProvider);
+    final guest = scope.accountId == null;
+    // A guest cannot like. The views ask for sign-in first; this is the backstop.
+    if (guest && isLiked && !restored) return Future.value(false);
     final repository = ref.read(swipesRepositoryProvider);
     final before = state.entries[property.id];
     final wasExcluded = state.excluded.contains(property.id);
@@ -248,7 +251,7 @@ class SwipeHistory extends Notifier<SwipeHistoryState> {
       property: property,
       isLiked: isLiked,
       revision: revision,
-      phase: SwipePhase.submitting,
+      phase: guest ? SwipePhase.confirmed : SwipePhase.submitting,
       restored: restored,
       queryIdentities: identities,
       discoverInputIdentity: discoverIdentity,
@@ -268,6 +271,8 @@ class SwipeHistory extends Notifier<SwipeHistoryState> {
       storageError: state.storageError,
       hydrated: state.hydrated,
     );
+    // ponytail: guest passes are session-only; persist under the guest scope if needed
+    if (guest) return Future.value(true);
     final result = Completer<bool>();
     final previous = _requests[property.id] ?? Future.value();
     final request = previous.then((_) async {

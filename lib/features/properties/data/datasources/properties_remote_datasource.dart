@@ -44,6 +44,7 @@ class PropertiesRemoteDatasource {
       ApiPaths.properties,
       queryParams: queryParams,
       useCache: useCache,
+      requireAuth: _apiClient.signedIn,
     );
 
     return _parsePropertiesResponse(response);
@@ -97,6 +98,7 @@ class PropertiesRemoteDatasource {
       ApiPaths.properties,
       queryParams: queryParams,
       useCache: useCache,
+      requireAuth: _apiClient.signedIn,
     );
     return _parsePropertiesResponse(response);
   }

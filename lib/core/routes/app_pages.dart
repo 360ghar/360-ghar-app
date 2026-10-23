@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghar360/core/controllers/auth_controller.dart';
+import 'package:ghar360/core/data/models/auth_status.dart';
 import 'package:ghar360/core/data/models/bug_report_model.dart';
 import 'package:ghar360/core/data/models/property_model.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
@@ -237,6 +238,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.capitalGains, builder: (_, _) => const CapitalGainsView()),
     ],
   );
+  // Sign-out, account deletion and a session-ending 401 land on guest Discover, not a wall.
+  ref.listen(authProvider.select((state) => state.status), (previous, next) {
+    const signedIn = {
+      AuthStatus.authenticated,
+      AuthStatus.requiresPasswordSetup,
+      AuthStatus.requiresProfileCompletion,
+    };
+    if (next == AuthStatus.unauthenticated && signedIn.contains(previous)) {
+      router.go(AppRoutes.discover);
+    }
+  });
   // Account identity, not token refresh or profile edits, refreshes keyed forms.
   ref.listen(storageScopeProvider.select((scope) => scope.accountId), (_, _) => refresh.changed());
   ref.onDispose(() {

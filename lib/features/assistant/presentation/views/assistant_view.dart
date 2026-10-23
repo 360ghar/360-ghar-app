@@ -13,6 +13,7 @@ import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/max_content_width.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/scene_header_sliver.dart';
 import 'package:ghar360/features/assistant/data/models/chat_message_model.dart';
@@ -104,13 +105,17 @@ class _AssistantViewState extends ConsumerState<AssistantView> with WidgetsBindi
     final id = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
+      constraints: sheetConstraints(context),
       builder: (_) => UncontrolledProviderScope(
         container: ProviderScope.containerOf(context),
-        child: _HistorySheet(
-          onDeleted: (id) {
-            if (ref.read(provider).conversationId == id && mounted) _newConversation();
-          },
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: _HistorySheet(
+            onDeleted: (id) {
+              if (ref.read(provider).conversationId == id && mounted) _newConversation();
+            },
+          ),
         ),
       ),
     );

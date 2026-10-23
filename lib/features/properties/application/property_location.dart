@@ -102,10 +102,42 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
   Future<void> ensureLocation() async {
     await _hydration;
     if (!ref.mounted || (_visibilityKnown && !_visible)) return;
-    if (_readFailed || state.location != null || state.load.isLoading) return;
+    if (_readFailed || state.load.isLoading) return;
+    if (state.source == LocationSource.fallback && state.location != null) {
+      // The saved fallback does not wait for the read: the page loads at once.
+      unawaited(_leaveFallback());
+      return;
+    }
+    if (state.location != null) return;
     // An automatic load never shows the OS prompt; the location explainer
     // or an explicit "use my location" does.
     await useCurrent(forceRefresh: false, prompt: false);
+    // Nothing resolved (prompt skipped or denied, services off, no GPS fix, IP
+    // lookup failed): start in Gurugram, where the homes are. An explicit
+    // "use my location" keeps its own error instead.
+    if (ref.mounted && state.location == null && !state.load.isLoading) {
+      await select(ServiceArea.center, source: LocationSource.fallback);
+    }
+  }
+
+  /// A silent read for a page that starts on the fallback. A fix inside the
+  /// area replaces it; anything else leaves it, with no error shown.
+  Future<void> _leaveFallback() async {
+    final generation = _generation;
+    try {
+      final resolution = await ref
+          .read(deviceLocationSourceProvider)
+          .current(forceRefresh: false, prompt: false);
+      if (!ref.mounted ||
+          generation != _generation ||
+          (_visibilityKnown && !_visible) ||
+          resolution.source == LocationSource.fallback) {
+        return;
+      }
+      await select(resolution.location, source: resolution.source);
+    } on Object {
+      // The fallback stays.
+    }
   }
 
   Future<void> useCurrent({bool forceRefresh = true, bool prompt = true}) async {
@@ -240,7 +272,8 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
                 state.source != LocationSource.gps) {
               return;
             }
-            await select(location, source: LocationSource.gps);
+            final resolved = ServiceArea.apply(LocationResolution(location, LocationSource.gps));
+            await select(resolved.location, source: resolved.source);
           } catch (error, stack) {
             if (ref.mounted &&
                 _visible &&

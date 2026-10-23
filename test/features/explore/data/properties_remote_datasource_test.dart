@@ -27,6 +27,7 @@ void main() {
 
   setUp(() {
     apiClient = MockApiClient();
+    when(() => apiClient.signedIn).thenReturn(true);
     datasource = PropertiesRemoteDatasource(apiClient);
   });
 
@@ -37,9 +38,44 @@ void main() {
         ApiPaths.properties,
         queryParams: any(named: 'queryParams'),
         useCache: any(named: 'useCache'),
+        requireAuth: any(named: 'requireAuth'),
       ),
     ).thenAnswer((_) async => ApiResponse(statusCode: 200, body: body, headers: {}));
   }
+
+  test('a guest lists and searches without requiring auth, a signed-in user requires it', () async {
+    stubPropertiesGet(testPropertyPage(count: 1));
+    Future<void> run() async {
+      await datasource.fetchProperties(
+        latitude: 28.6,
+        longitude: 77.2,
+        radiusKm: 10,
+        filters: const UnifiedFilterModel(),
+      );
+      await datasource.searchProperties(query: 'dlf');
+    }
+
+    when(() => apiClient.signedIn).thenReturn(false);
+    await run();
+    verify(
+      () => apiClient.get(
+        ApiPaths.properties,
+        queryParams: any(named: 'queryParams'),
+        useCache: any(named: 'useCache'),
+        requireAuth: false,
+      ),
+    ).called(2);
+    when(() => apiClient.signedIn).thenReturn(true);
+    await run();
+    verify(
+      () => apiClient.get(
+        ApiPaths.properties,
+        queryParams: any(named: 'queryParams'),
+        useCache: any(named: 'useCache'),
+        requireAuth: true,
+      ),
+    ).called(2);
+  });
 
   group('fetchProperties', () {
     test('returns parsed properties on success', () async {
@@ -82,6 +118,7 @@ void main() {
           ApiPaths.properties,
           queryParams: any(named: 'queryParams'),
           useCache: any(named: 'useCache'),
+          requireAuth: any(named: 'requireAuth'),
         ),
       ).thenThrow(ServerException('Server down', statusCode: 500));
 
@@ -224,6 +261,7 @@ void main() {
           ApiPaths.properties,
           queryParams: any(named: 'queryParams'),
           useCache: any(named: 'useCache'),
+          requireAuth: any(named: 'requireAuth'),
         ),
       ).thenAnswer(
         (_) async => ApiResponse(

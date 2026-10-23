@@ -12,6 +12,20 @@ import 'package:ghar360/features/splash/data/app_update_repository.dart';
 
 enum AppUpdateAction { update, remindLater }
 
+/// True when [candidate] is a numerically higher version than [installed].
+/// Reads the leading dotted digits (a `+build` suffix is ignored); null or unparseable is false.
+bool isVersionGreater(String? candidate, String installed) {
+  List<int>? parse(String? v) =>
+      RegExp(r'^\d+(\.\d+)*').stringMatch(v?.trim() ?? '')?.split('.').map(int.parse).toList();
+  final a = parse(candidate), b = parse(installed);
+  if (a == null || b == null) return false;
+  for (var i = 0; i < (a.length > b.length ? a.length : b.length); i++) {
+    final x = i < a.length ? a[i] : 0, y = i < b.length ? b[i] : 0;
+    if (x != y) return x > y;
+  }
+  return false;
+}
+
 final appUpdateRepositoryProvider = Provider<AppUpdateRepository>(
   (ref) => AppUpdateRepository(apiClient: ref.watch(apiClientProvider)),
   retry: noProviderRetry,
@@ -140,6 +154,12 @@ class AppUpdateController extends Notifier<AppUpdateState> {
           );
       if (!ref.mounted || generation != _generation) return;
       if (!response.updateAvailable) {
+        state = state.copyWith(check: const AsyncData(null));
+        return;
+      }
+      // Never prompt unless the server offers a newer version or raises the minimum above ours.
+      if (!isVersionGreater(response.latestVersion, version.version) &&
+          !isVersionGreater(response.minSupportedVersion, version.version)) {
         state = state.copyWith(check: const AsyncData(null));
         return;
       }

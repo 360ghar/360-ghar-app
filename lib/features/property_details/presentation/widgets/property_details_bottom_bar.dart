@@ -5,11 +5,10 @@ import 'package:ghar360/core/data/models/visit_model.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/presentation/property_labels.dart';
-import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/providers/pending_actions_provider.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
-import 'package:ghar360/core/routes/route_policy.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
+import 'package:ghar360/core/widgets/common/sign_in_gate.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_strip.dart';
 import 'package:ghar360/features/property_details/presentation/widgets/property_details_visit_dialog.dart';
@@ -126,12 +125,13 @@ class PropertyDetailsBottomBar extends ConsumerWidget {
                     ),
                     FilledButton(
                       key: const ValueKey('qa.property_details.schedule_visit'),
-                      onPressed: () {
-                        if (ref.read(storageScopeProvider).accountId == null) {
-                          context.push(
-                            routeWithReturn(AppRoutes.phoneEntry, '/property/${property.id}'),
-                          );
-                        } else {
+                      onPressed: () async {
+                        if (await requireAccount(
+                              context,
+                              ref,
+                              returnTo: '/property/${property.id}',
+                            ) &&
+                            context.mounted) {
                           showBookVisitDialog(context, property);
                         }
                       },

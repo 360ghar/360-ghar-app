@@ -74,7 +74,9 @@ class PropertySwipeStack extends StatefulWidget {
   ///
   /// Must stay synchronous: the exit path runs from gesture callbacks, and
   /// awaiting here would strand the card mid-air with gestures unlocked.
-  final bool Function(PropertyModel)? canSwipe;
+  /// [isRight] is the direction, so a guest can be refused a like and the card
+  /// snaps back.
+  final bool Function(PropertyModel property, bool isRight)? canSwipe;
 
   const PropertySwipeStack({
     super.key,
@@ -117,6 +119,9 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
 
   /// The next cards whose photos were last prefetched, with the deck height.
   String? _prefetched;
+
+  /// Width of the card area, set by the last layout.
+  double _cardWidth = 0;
 
   /// True while the stack must ignore pan gestures (exit, drag block, anim).
   bool get _gesturesLocked => _blockGestures || _isExiting || _swipeAnimationController.isAnimating;
@@ -297,8 +302,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
   /// width seed would place the card already off-screen at animValue=0.
   void _commitSwipe({required bool isRight}) {
     if (_properties.isEmpty || _gesturesLocked) return;
-    final width = MediaQuery.sizeOf(context).width;
-    final startX = width * 0.3;
+    final startX = (_cardWidth > 0 ? _cardWidth : MediaQuery.sizeOf(context).width) * 0.3;
     _dragNotifier.value = _SwipeDragState(
       position: Offset(isRight ? startX : -startX, 0),
       rotation: isRight ? 0.15 : -0.15,
@@ -315,7 +319,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
     // POST, no stats and no feedback, while the card flew off as a like.
     // Bounce it back instead — deliberately before any exit state is set, so
     // gestures stay unlocked and the user can swipe the actual top card.
-    if (widget.canSwipe?.call(card) == false) {
+    if (widget.canSwipe?.call(card, isRight) == false) {
       _rejectSwipe();
       return;
     }
@@ -399,7 +403,8 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
                 .clamp(1.0, 10000.0);
 
         final top = _properties[0];
-        _prefetchNext(deckHeight);
+        _cardWidth = cardWidth;
+        _prefetchNext(deckHeight, cardWidth);
         return Semantics(
           label: top.title,
           customSemanticsActions: {
@@ -544,14 +549,18 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
 
   /// Decodes the first photo of the next two cards at the size their hero
   /// will ask for, so a card that comes to the top shows its photo at once.
-  void _prefetchNext(double deckHeight) {
+  void _prefetchNext(double deckHeight, double cardWidth) {
     final next = _properties.skip(1).take(2).toList();
-    final key = '${next.map((p) => p.id).join(',')}@$deckHeight';
+    final key = '${next.map((p) => p.id).join(',')}@$deckHeight@$cardWidth';
     if (next.isEmpty || key == _prefetched) return;
     _prefetched = key;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final (width, height) = SwipeCardHeroSection.decodeSize(context, viewportHeight: deckHeight);
+      final (width, height) = SwipeCardHeroSection.decodeSize(
+        context,
+        viewportHeight: deckHeight,
+        cardWidth: cardWidth,
+      );
       final cache = ProviderScope.containerOf(
         context,
         listen: false,
@@ -580,6 +589,7 @@ class _PropertySwipeStackState extends State<PropertySwipeStack> with TickerProv
           child: PropertySwipeCard(
             property: _properties[0],
             viewportHeight: deckHeight,
+            cardWidth: cardWidth,
             onTap: _openDetails,
             onInteractionStart: () {
               setState(() => _blockGestures = true);

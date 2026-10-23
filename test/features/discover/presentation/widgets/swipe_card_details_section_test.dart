@@ -9,7 +9,12 @@ import 'package:ghar360/core/utils/image_cache_service.dart';
 import 'package:ghar360/features/discover/presentation/widgets/swipe_card_details_section.dart';
 import '../../../../helpers/image_test_cache.dart';
 
-PropertyModel _richProperty({int id = 100, String? virtualTourUrl, String? description}) {
+PropertyModel _richProperty({
+  int id = 100,
+  String? virtualTourUrl,
+  String? description,
+  List<String> features = const ['garden', 'parking', 'slug', 'listing_bucket'],
+}) {
   return PropertyModel(
     id: id,
     title: 'Sunshine Villa',
@@ -23,7 +28,7 @@ PropertyModel _richProperty({int id = 100, String? virtualTourUrl, String? descr
     city: 'New Delhi',
     state: 'Delhi',
     virtualTourUrl: virtualTourUrl,
-    features: const ['Garden', 'Garage'],
+    features: features,
     amenities: const [
       PropertyAmenity(id: 1, title: 'Swimming Pool'),
       PropertyAmenity(id: 2, title: 'Gym'),
@@ -96,7 +101,20 @@ void main() {
 
     expect(find.text('Highlights'), findsOneWidget);
     expect(find.text('Garden'), findsOneWidget);
-    expect(find.text('Garage'), findsOneWidget);
+    expect(find.text('Parking'), findsOneWidget);
+    // Internal metadata keys are never shown.
+    expect(find.text('slug'), findsNothing);
+    expect(find.text('listing_bucket'), findsNothing);
+  });
+
+  testWidgets('hides highlights when no feature is a known key', (tester) async {
+    await pumpWidget(
+      tester,
+      SwipeCardDetailsSection(property: _richProperty(features: const ['slug', 'society_name'])),
+    );
+
+    expect(find.text('Highlights'), findsNothing);
+    expect(find.text('slug'), findsNothing);
   });
 
   testWidgets('renders amenities chips', (tester) async {

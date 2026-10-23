@@ -360,7 +360,7 @@ void main() {
           onSwipeLeft: (p) => swipedLeft = p,
           onSwipeRight: (p) => swipedRight = p,
           onSwipeUp: (_) {},
-          canSwipe: (p) => p.id != 1,
+          canSwipe: (p, _) => p.id != 1,
         ),
       );
       await tester.pump();
@@ -421,7 +421,7 @@ void main() {
                 onSwipeLeft: (_) {},
                 onSwipeRight: (p) => swipedRight = p,
                 onSwipeUp: (_) {},
-                canSwipe: (p) => refreshed.any((e) => e.id == p.id),
+                canSwipe: (p, _) => refreshed.any((e) => e.id == p.id),
               ),
             ),
           ),
@@ -471,7 +471,7 @@ void main() {
           onSwipeLeft: (_) {},
           onSwipeRight: (p) => swipedRight = p,
           onSwipeUp: (_) {},
-          canSwipe: (_) => true,
+          canSwipe: (_, _) => true,
         ),
       );
       await tester.pump();

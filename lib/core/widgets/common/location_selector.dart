@@ -13,6 +13,7 @@ import 'package:ghar360/core/utils/app_exceptions.dart';
 import 'package:ghar360/core/utils/app_spacing.dart';
 import 'package:ghar360/core/utils/app_toast.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/features/location/application/location_search_controller.dart';
 import 'package:ghar360/features/location/application/location_source.dart';
@@ -25,10 +26,10 @@ Future<void> showLocationPicker(BuildContext context, {required PageType pageTyp
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
+    constraints: sheetConstraints(context),
     builder: (_) => UncontrolledProviderScope(
       container: container,
-      child: LocationPickerModal(pageType: pageType),
+      child: SafeArea(top: false, bottom: false, child: LocationPickerModal(pageType: pageType)),
     ),
   );
 }
@@ -137,9 +138,11 @@ class _LocationPickerModalState extends ConsumerState<LocationPickerModal> {
       return;
     }
     final title = context.l10n.text('location_updated');
-    final message = state.source == LocationSource.ip
-        ? context.l10n.text('using_approximate_location')
-        : context.l10n.text('using_current_location');
+    final message = switch (state.source) {
+      LocationSource.fallback => context.l10n.text('out_of_area_note'),
+      LocationSource.ip => context.l10n.text('using_approximate_location'),
+      _ => context.l10n.text('using_current_location'),
+    };
     Navigator.of(context).pop();
     AppToast.success(title, message);
   }
@@ -310,7 +313,8 @@ class _LocationPickerModalState extends ConsumerState<LocationPickerModal> {
                         onTap: busy ? null : _useCurrent,
                       ),
                     ),
-                    if (error != null)
+                    // Skipping the location prompt is not a failure; Use Current Location asks.
+                    if (error != null && code != 'LOCATION_NOT_ASKED')
                       _LocationRecovery(
                         messageKey: switch (code) {
                           'LOCATION_DENIED_FOREVER' => 'location_permission_permanently_denied',

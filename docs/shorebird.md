@@ -16,6 +16,8 @@ patch, and what CI does.
 - Shorebird only ships in **release** builds. Debug/profile builds use the
   stock Flutter engine.
 - App: [Shorebird Console](https://console.shorebird.dev/apps/aed0a9f9-699e-43b0-9da9-6ecab6db57b4)
+> Build 1.1.0+18 ships as a plain flutter build ipa; Shorebird patches cannot target it.
+
 - Releases: `1.0.9+16` registered for `android` and `ios` (Flutter 3.44.8).
 
 ## Prerequisites (local machine)

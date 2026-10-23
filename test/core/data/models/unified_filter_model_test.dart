@@ -30,7 +30,7 @@ void main() {
 
     test('normalizes legacy property type aliases', () {
       final filters = const UnifiedFilterModel(
-        purpose: 'pg',
+        purpose: 'rent',
         propertyType: ['flat', 'independent-house', 'plots', 'office-space', 'roommate'],
       );
 
@@ -344,8 +344,8 @@ void main() {
       expect(UnifiedFilterModel.normalizePurposeToken('rent'), 'rent');
       expect(UnifiedFilterModel.normalizePurposeToken('short_stay'), 'short_stay');
       expect(UnifiedFilterModel.normalizePurposeToken('shortstay'), 'short_stay');
-      expect(UnifiedFilterModel.normalizePurposeToken('pg'), 'rent');
-      expect(UnifiedFilterModel.normalizePurposeToken('investment'), 'buy');
+      expect(UnifiedFilterModel.normalizePurposeToken('pg'), isNull);
+      expect(UnifiedFilterModel.normalizePurposeToken('investment'), isNull);
       expect(UnifiedFilterModel.normalizePurposeToken(null), isNull);
       expect(UnifiedFilterModel.normalizePurposeToken(''), isNull);
       expect(UnifiedFilterModel.normalizePurposeToken('invalid'), isNull);

@@ -11,9 +11,9 @@ import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_art.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/presentation/property_labels.dart';
 import 'package:ghar360/core/providers/network_providers.dart';
 import 'package:ghar360/core/routes/app_routes.dart';
-import 'package:ghar360/core/routes/route_policy.dart';
 import 'package:ghar360/core/storage/app_database.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/app_exceptions.dart';
@@ -26,6 +26,8 @@ import 'package:ghar360/core/widgets/common/error_states.dart';
 import 'package:ghar360/core/widgets/common/inline_retry_banner.dart';
 import 'package:ghar360/core/widgets/common/loading_states.dart';
 import 'package:ghar360/core/widgets/common/property_list_card.dart';
+import 'package:ghar360/core/widgets/common/sign_in_gate.dart';
+import 'package:ghar360/core/widgets/common/symmetric_safe_area.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
 import 'package:ghar360/core/widgets/paper/paper_skyline.dart';
 import 'package:ghar360/core/widgets/paper/sheet_sliver.dart';
@@ -266,7 +268,7 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
       builder: (context, constraints) {
         final tabsHeight = PropertyDetailsSectionNav.heightFor(
           context,
-          constraints.maxWidth,
+          constraints.maxWidth - media.padding.horizontal,
           showMedia: property.hasAnyMedia,
           showLocation: property.hasLocation,
         );
@@ -344,13 +346,12 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
   Widget _buildTwoPaneBody(BuildContext context, PropertyModel property) {
     final design = context.design;
     final screen = MediaQuery.sizeOf(context);
-    final galleryHeight = math.min(screen.height * 0.7, 520.0);
     final leftPaneWidth = math.min(screen.width * 0.42, 460.0);
     final hasPhoto = PropertyDetailsImageGallery.imagesOf(property).isNotEmpty;
     final printShape = CutBorder(seed: 'details-print-${property.id}');
     _pinned = 0;
 
-    return SafeArea(
+    return SymmetricSafeArea(
       bottom: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
@@ -389,30 +390,41 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
                           ],
                         ),
                       ),
-                      // The photo is a print laid on the sky.
-                      DecoratedBox(
-                        decoration: ShapeDecoration(
-                          color: design.surface,
-                          shape: CutBorder(
-                            seed: printShape.seed,
-                            shadows: paperShadows(
-                              PaperElevation.low,
-                              design.shadowOn(design.background),
-                            ),
-                          ),
-                        ),
-                        child: ClipPath(
-                          clipper: ShapeBorderClipper(shape: printShape),
-                          child: hasPhoto
-                              ? PropertyDetailsImageGallery(
-                                  property: property,
-                                  maxHeight: galleryHeight,
-                                  heroTag: propertyPhotoHeroTag(property.id),
-                                )
-                              : SizedBox(
-                                  height: galleryHeight * 0.5,
-                                  child: const PaperSkylineStrip(),
+                      // The photo is a print laid on the sky. It takes the
+                      // pane's height up to a 2:3 print and sits in the middle
+                      // of what the buttons leave.
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, box) {
+                            final galleryHeight = math.min(box.maxHeight, leftPaneWidth * 1.5);
+                            return Align(
+                              child: DecoratedBox(
+                                decoration: ShapeDecoration(
+                                  color: design.surface,
+                                  shape: CutBorder(
+                                    seed: printShape.seed,
+                                    shadows: paperShadows(
+                                      PaperElevation.low,
+                                      design.shadowOn(design.background),
+                                    ),
+                                  ),
                                 ),
+                                child: ClipPath(
+                                  clipper: ShapeBorderClipper(shape: printShape),
+                                  child: hasPhoto
+                                      ? PropertyDetailsImageGallery(
+                                          property: property,
+                                          maxHeight: galleryHeight,
+                                          heroTag: propertyPhotoHeroTag(property.id),
+                                        )
+                                      : SizedBox(
+                                          height: galleryHeight * 0.5,
+                                          child: const PaperSkylineStrip(),
+                                        ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -470,7 +482,7 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
   Widget _buildDetailSections(BuildContext context, PropertyModel property) {
     final design = context.design;
     final text = Theme.of(context).textTheme;
-    final features = property.features ?? const <String>[];
+    final features = property.localizedHighlights(context);
     final agent = property.agent;
     final failure = widget.failure;
     const gap = SizedBox(height: AppSpacing.xl);
@@ -642,10 +654,10 @@ class _PropertyContentViewState extends ConsumerState<_PropertyContentView> {
           onPressed: phase == SwipePhase.submitting
               ? null
               : () async {
-                  if (ref.read(storageScopeProvider).accountId == null) {
-                    context.push(routeWithReturn(AppRoutes.phoneEntry, '/property/${property.id}'));
+                  if (!await requireAccount(context, ref, returnTo: '/property/${property.id}')) {
                     return;
                   }
+                  if (!context.mounted) return;
                   final ok = await ref.read(swipeHistoryProvider.notifier).record(property, !liked);
                   if (!context.mounted) return;
                   if (!ok) {
@@ -727,6 +739,8 @@ class _GalleryHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     final design = context.design;
+    // The bar's buttons stay clear of a side cut-out (the Duo's status pill).
+    final side = MediaQuery.paddingOf(context);
     final range = maxHeight - minHeight;
     final shrink = shrinkOffset.clamp(0.0, range);
     // The photo gives way over the last one and a half bars of the collapse.
@@ -765,18 +779,25 @@ class _GalleryHeaderDelegate extends SliverPersistentHeaderDelegate {
             height: 2,
             child: ColoredBox(color: design.surface),
           ),
-          Positioned(left: 0, right: 0, bottom: 0, height: tabsHeight, child: tabs),
+          // Collapsed, the tabs sit at the status pill's height: they stop short of it.
+          Positioned(
+            left: side.left,
+            right: side.right,
+            bottom: 0,
+            height: tabsHeight,
+            child: tabs,
+          ),
           if (lead != null)
             Positioned(
               top: top,
-              left: 4,
+              left: 4 + side.left,
               height: bar,
               child: Center(child: lead),
             ),
           Positioned(
             top: top,
-            left: lead == null ? 16 : 60,
-            right: 12 + 48.0 * buttons.length,
+            left: (lead == null ? 16 : 60) + side.left,
+            right: 12 + side.right + 48.0 * buttons.length,
             height: bar,
             // The name repeats the overview's title, so it is not read twice.
             child: IgnorePointer(
@@ -801,7 +822,7 @@ class _GalleryHeaderDelegate extends SliverPersistentHeaderDelegate {
           ),
           Positioned(
             top: top,
-            right: 4,
+            right: 4 + side.right,
             height: bar,
             child: Row(mainAxisSize: MainAxisSize.min, children: buttons),
           ),

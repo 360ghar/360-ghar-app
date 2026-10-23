@@ -33,6 +33,9 @@ jobs:
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
 
       - name: Verify iOS release privacy configuration
+        env:
+          # CI has no production dart-defines; the release machine checks them.
+          VERIFY_SKIP_DART_DEFINES: '1'
         run: ./tool/verify_ios_release.sh --fix
 
   verify:
