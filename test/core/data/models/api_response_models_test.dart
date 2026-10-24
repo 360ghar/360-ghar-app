@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ghar360/core/data/models/api_response_models.dart';
+import 'package:ghar360/core/data/models/wire_enums.dart';
 
 void main() {
   group('SortBy enum', () {
