@@ -179,6 +179,8 @@ class _RefreshBar extends ConsumerWidget {
   }
 }
 
+const _declinedCodes = {'LOCATION_NOT_ASKED', 'LOCATION_DENIED', 'LOCATION_DENIED_FOREVER'};
+
 class _DiscoverBanners extends ConsumerWidget {
   const _DiscoverBanners();
 
@@ -186,9 +188,14 @@ class _DiscoverBanners extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final hasCards = ref.watch(visiblePropertiesProvider(_feed).select((deck) => deck.isNotEmpty));
     final locationBusy = ref.watch(
-      propertyLocationProvider(
-        PageType.discover,
-      ).select((location) => location.load.hasError || location.load.isLoading),
+      propertyLocationProvider(PageType.discover).select((location) {
+        final error = location.load.error;
+        // A declined or unasked permission is a choice, not a failure: the
+        // Gurugram line and its Change action cover it. The location picker
+        // still explains a denial and offers Settings.
+        if (error is LocationException && _declinedCodes.contains(error.code)) return false;
+        return location.load.hasError || location.load.isLoading;
+      }),
     );
     final (paginationError, error, busy) = ref.watch(
       propertyQueryProvider(_feed).select(

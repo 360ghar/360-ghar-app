@@ -184,7 +184,20 @@ void main() {
       final state = container.read(propertyLocationProvider(feed.page));
       expect(state.source, LocationSource.fallback);
       expect(state.load.hasError, isTrue);
-      expect(find.text('Choose an area to see homes near you'), findsOneWidget);
+      if (feed == PropertyFeed.discover) {
+        // Discover: an unasked permission is a choice. Gurugram homes, the
+        // quiet line and its Change action, no recovery box.
+        expect(find.byType(PropertyLocationRecovery), findsNothing);
+        expect(find.text('Homes are in Gurugram for now'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('qa.discover.out_of_area.change')));
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<LocationPickerModal>(find.byType(LocationPickerModal)).pageType,
+          PageType.discover,
+        );
+      } else {
+        expect(find.text('Choose an area to see homes near you'), findsOneWidget);
+      }
       await unmount(tester);
     });
 
@@ -237,6 +250,14 @@ void main() {
       await tester.pumpAndSettle();
       expectContent(feed);
       expect(requestCount(feed), requests);
+      if (feed == PropertyFeed.discover) {
+        // Discover keeps its homes with no warning; the location picker
+        // explains a denial when the user asks for the current location there.
+        expect(find.byType(PropertyLocationRecovery), findsNothing);
+        expect(find.text('Location permission denied'), findsNothing);
+        await unmount(tester);
+        return;
+      }
       expect(find.text('Location permission denied'), findsOneWidget);
       expect(
         tester.widget<PropertyLocationRecovery>(find.byType(PropertyLocationRecovery)).inline,
@@ -264,6 +285,7 @@ void main() {
     expect(device.prompts.last, isTrue);
     expect(find.byType(PropertyLocationRecovery), findsNothing);
     expect(find.text('Location permission permanently denied'), findsNothing);
+    expect(find.byKey(const ValueKey('qa.discover.out_of_area.change')), findsOneWidget);
     expect(find.text('Choose an area to see homes near you'), findsNothing);
     expect(find.text('Unable to get current location'), findsNothing);
     expect(find.text('Homes are in Gurugram for now'), findsOneWidget);
