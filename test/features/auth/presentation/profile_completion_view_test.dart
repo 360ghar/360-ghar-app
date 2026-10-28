@@ -83,6 +83,31 @@ void main() {
       h.close();
     }
   });
+  testWidgets('fills the Apple name when it arrives after the form opened', (tester) async {
+    final updates = StreamController<User?>();
+    try {
+      h.session.initial = AuthState(user: profile('account-a', false));
+      when(() => h.repository.onAuthStateChange).thenAnswer((_) => updates.stream);
+      await h.pump(tester, const ProfileCompletionView());
+      final name = find.byKey(const ValueKey('qa.auth.profile_completion.full_name_input'));
+      expect(tester.widget<TextFormField>(name).controller!.text, isEmpty);
+      updates.add(
+        const User(
+          id: 'account-a',
+          appMetadata: {},
+          userMetadata: {'full_name': 'Asha Rao'},
+          aud: 'authenticated',
+          createdAt: '2024-01-01T00:00:00Z',
+        ),
+      );
+      await tester.pump();
+      expect(tester.widget<TextFormField>(name).controller!.text, 'Asha Rao');
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      unawaited(updates.close());
+      h.close();
+    }
+  });
   testWidgets('purpose step renders choices and Complete', (tester) async {
     try {
       await h.pump(tester, const ProfileCompletionView());

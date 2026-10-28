@@ -87,6 +87,7 @@ class AuthFormHarness {
   AuthFormHarness() {
     registerFallbackValue(AuthMethod.google);
     when(() => repository.currentUser).thenReturn(sdkUser());
+    when(() => repository.onAuthStateChange).thenAnswer((_) => const Stream.empty());
     when(() => repository.isAppleSignInSupported).thenReturn(false);
     when(() => repository.lastAuthMethodStore).thenReturn(LastAuthMethodStore(database: database));
     when(

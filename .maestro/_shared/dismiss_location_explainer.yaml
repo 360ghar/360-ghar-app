@@ -17,5 +17,6 @@ appId: com.the360ghar.ghar360
       - tapOn:
           id: qa.location.explainer.allow
       - tapOn:
-          text: "Don.t Allow"
+          # iOS: "Don't Allow". Android: "Don't allow" or "Deny".
+          text: "(?i)(Don.t allow|Deny)"
           optional: true

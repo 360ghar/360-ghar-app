@@ -41,6 +41,7 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
   bool _visible = false;
   bool _visibilityKnown = false;
   bool _readFailed = false;
+  bool _loadingPrompts = false;
 
   @override
   PropertyLocationState build() {
@@ -149,7 +150,10 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
     bool prompt = true,
     bool quiet = false,
   }) async {
-    if (state.load.isLoading) return;
+    // A read that may show the OS prompt replaces a silent one in flight. The
+    // explainer's Continue must always reach the prompt (App Review 5.1.1(iv)).
+    if (state.load.isLoading && (!prompt || _loadingPrompts)) return;
+    _loadingPrompts = prompt;
     final generation = ++_generation;
     final loadGeneration = ++_loadGeneration;
     final previous = state;

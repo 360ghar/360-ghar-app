@@ -260,6 +260,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('qa.location.explainer.allow')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('qa.location.explainer.allow')), findsNothing);
+    // Continue reached the OS prompt; the earlier silent read did not.
+    expect(device.prompts.last, isTrue);
     expect(find.byType(PropertyLocationRecovery), findsNothing);
     expect(find.text('Location permission permanently denied'), findsNothing);
     expect(find.text('Choose an area to see homes near you'), findsNothing);
