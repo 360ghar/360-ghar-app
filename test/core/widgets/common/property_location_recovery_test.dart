@@ -249,16 +249,21 @@ void main() {
     });
   }
 
-  testWidgets('a guest who skips the location explainer sees Gurugram homes and the line', (
+  testWidgets('a guest who declines the OS prompt sees Gurugram homes and the line', (
     tester,
   ) async {
     device
       ..undetermined = true
-      ..response = () async => throw LocationException('not asked', code: 'LOCATION_NOT_ASKED');
+      // iOS reports a declined prompt as denied forever.
+      ..response = () async => throw LocationException('blocked', code: 'LOCATION_DENIED_FOREVER');
     await pump(tester, PropertyFeed.discover);
-    await tester.tap(find.byKey(const ValueKey('qa.location.explainer.skip')));
+    await tester.tap(find.byKey(const ValueKey('qa.location.explainer.allow')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('qa.location.explainer.skip')), findsNothing);
+    expect(find.byKey(const ValueKey('qa.location.explainer.allow')), findsNothing);
+    // Continue reached the OS prompt; the earlier silent read did not.
+    expect(device.prompts.last, isTrue);
+    expect(find.byType(PropertyLocationRecovery), findsNothing);
+    expect(find.text('Location permission permanently denied'), findsNothing);
     expect(find.text('Choose an area to see homes near you'), findsNothing);
     expect(find.text('Unable to get current location'), findsNothing);
     expect(find.text('Homes are in Gurugram for now'), findsOneWidget);

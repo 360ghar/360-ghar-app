@@ -41,6 +41,7 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
   bool _visible = false;
   bool _visibilityKnown = false;
   bool _readFailed = false;
+  bool _loadingPrompts = false;
 
   @override
   PropertyLocationState build() {
@@ -140,8 +141,19 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
     }
   }
 
-  Future<void> useCurrent({bool forceRefresh = true, bool prompt = true}) async {
-    if (state.load.isLoading) return;
+  /// Reads the device location. With [quiet], a failure (the OS prompt
+  /// declined, no fix) is not an error: the page keeps its location, or starts
+  /// in Gurugram. The location explainer uses it, because a "Don't Allow"
+  /// right after it is a choice, not a failure.
+  Future<void> useCurrent({
+    bool forceRefresh = true,
+    bool prompt = true,
+    bool quiet = false,
+  }) async {
+    // A read that may show the OS prompt replaces a silent one in flight. The
+    // explainer's Continue must always reach the prompt (App Review 5.1.1(iv)).
+    if (state.load.isLoading && (!prompt || _loadingPrompts)) return;
+    _loadingPrompts = prompt;
     final generation = ++_generation;
     final loadGeneration = ++_loadGeneration;
     final previous = state;
@@ -162,9 +174,12 @@ class PropertyLocation extends Notifier<PropertyLocationState> {
       state = PropertyLocationState(
         location: previous.location,
         source: previous.source,
-        load: AsyncError(error, stack),
+        load: quiet ? const AsyncData(null) : AsyncError(error, stack),
         save: previous.save,
       );
+      if (quiet && previous.location == null) {
+        await select(ServiceArea.center, source: LocationSource.fallback);
+      }
     }
   }
 

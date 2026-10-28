@@ -298,6 +298,22 @@ class AuthRepository {
       nonce: rawNonce,
     );
 
+    // Apple sends the name only on the first sign-in. Keep it, so the profile
+    // form does not ask for it again (App Review rejects that).
+    final name = [
+      credential.givenName,
+      credential.familyName,
+    ].whereType<String>().map((part) => part.trim()).where((part) => part.isNotEmpty).join(' ');
+    final saved = response.user?.userMetadata?['full_name'];
+    if (name.isNotEmpty && (saved is! String || saved.trim().isEmpty)) {
+      try {
+        await _supabase.auth.updateUser(UserAttributes(data: {'full_name': name}));
+      } catch (error, stack) {
+        // The sign-in itself succeeded; the form still lets the user type a name.
+        DebugLogger.warning('Apple name not saved', error.runtimeType, stack);
+      }
+    }
+
     await recordLastMethod(AuthMethod.apple, identifier: response.user?.email);
     DebugLogger.success('Apple sign-in successful');
     return response;

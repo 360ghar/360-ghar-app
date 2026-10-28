@@ -1,11 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/providers/auth_providers.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
@@ -15,6 +16,7 @@ import 'package:ghar360/features/auth/presentation/controllers/profile_completio
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_premium_shell.dart';
 import 'package:ghar360/features/auth/presentation/widgets/otp_input_field.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 class ProfileCompletionView extends ConsumerStatefulWidget {
   const ProfileCompletionView({super.key});
@@ -31,18 +33,32 @@ class _ProfileCompletionViewState extends ConsumerState<ProfileCompletionView> {
   DateTime? _birthDate;
   String _purpose = 'buy';
   bool _detailsDeferred = false;
+  StreamSubscription<User?>? _userUpdates;
   @override
   void initState() {
     super.initState();
     final user = ref.read(authProvider).user;
-    _name.text = user?.fullName ?? '';
+    // An Apple sign-in keeps the name in the Supabase metadata only. The write
+    // can land after this form opens, so take it from the user update too.
+    final repository = ref.read(authRepositoryProvider);
+    _name.text = user?.fullName?.trim().isNotEmpty == true ? user!.fullName! : '';
+    _fillMetadataName(repository.currentUser);
+    _userUpdates = repository.onAuthStateChange.listen(_fillMetadataName);
     _email.text = user?.email ?? '';
     _birthDate = DateTime.tryParse(user?.dateOfBirth ?? '');
     if (_birthDate != null) _dob.text = formatDisplayDate(_birthDate!);
   }
 
+  void _fillMetadataName(User? user) {
+    final name = user?.userMetadata?['full_name'];
+    if (_name.text.trim().isEmpty && name is String && name.trim().isNotEmpty) {
+      _name.text = name.trim();
+    }
+  }
+
   @override
   void dispose() {
+    unawaited(_userUpdates?.cancel());
     for (final field in [_name, _email, _dob, _phone, _otp]) {
       field.dispose();
     }

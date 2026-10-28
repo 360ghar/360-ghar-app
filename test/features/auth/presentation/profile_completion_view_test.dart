@@ -10,6 +10,7 @@ import 'package:ghar360/features/auth/presentation/controllers/profile_completio
 import 'package:ghar360/features/auth/presentation/views/profile_completion_view.dart';
 import 'package:ghar360/features/auth/presentation/widgets/auth_form_fields.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 import '../../../helpers/auth_form_harness.dart';
 import '../../../helpers/auth_test_harness.dart' show profile, sdkUser;
@@ -52,6 +53,58 @@ void main() {
       );
     } finally {
       await tester.pumpWidget(const SizedBox());
+      h.close();
+    }
+  });
+  testWidgets('prefills the name an Apple sign-in saved to Supabase', (tester) async {
+    try {
+      h.session.initial = AuthState(user: profile('account-a', false));
+      when(() => h.repository.currentUser).thenReturn(
+        const User(
+          id: 'account-a',
+          appMetadata: {},
+          userMetadata: {'full_name': 'Asha Rao'},
+          aud: 'authenticated',
+          createdAt: '2024-01-01T00:00:00Z',
+        ),
+      );
+      await h.pump(tester, const ProfileCompletionView());
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('qa.auth.profile_completion.full_name_input')),
+            )
+            .controller!
+            .text,
+        'Asha Rao',
+      );
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      h.close();
+    }
+  });
+  testWidgets('fills the Apple name when it arrives after the form opened', (tester) async {
+    final updates = StreamController<User?>();
+    try {
+      h.session.initial = AuthState(user: profile('account-a', false));
+      when(() => h.repository.onAuthStateChange).thenAnswer((_) => updates.stream);
+      await h.pump(tester, const ProfileCompletionView());
+      final name = find.byKey(const ValueKey('qa.auth.profile_completion.full_name_input'));
+      expect(tester.widget<TextFormField>(name).controller!.text, isEmpty);
+      updates.add(
+        const User(
+          id: 'account-a',
+          appMetadata: {},
+          userMetadata: {'full_name': 'Asha Rao'},
+          aud: 'authenticated',
+          createdAt: '2024-01-01T00:00:00Z',
+        ),
+      );
+      await tester.pump();
+      expect(tester.widget<TextFormField>(name).controller!.text, 'Asha Rao');
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      unawaited(updates.close());
       h.close();
     }
   });

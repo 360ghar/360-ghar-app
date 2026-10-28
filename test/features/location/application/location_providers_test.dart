@@ -160,6 +160,32 @@ void main() {
     expect(harness.state().source, LocationSource.gps);
     expect(harness.state().load.hasError, isFalse);
   });
+  test('a quiet read keeps the location, or starts in Gurugram, with no error', () async {
+    final location = harness.location();
+    harness.device.response = () async =>
+        throw LocationException('blocked', code: 'LOCATION_DENIED_FOREVER');
+    await location.useCurrent(quiet: true);
+    expect(harness.state().load.hasError, isFalse);
+    expect(harness.state().source, LocationSource.fallback);
+    expect(harness.state().location?.latitude, ServiceArea.center.latitude);
+    await location.select(mumbai);
+    await location.useCurrent(quiet: true);
+    expect(harness.state().load.hasError, isFalse);
+    expect(harness.state().location?.name, 'Mumbai');
+  });
+  test('a prompting read is not dropped behind a silent read in flight', () async {
+    final location = harness.location();
+    final silent = Completer<LocationResolution>();
+    harness.device.response = () => silent.future;
+    final pending = location.useCurrent(forceRefresh: false, prompt: false);
+    harness.device.response = () async => const LocationResolution(delhi, LocationSource.gps);
+    await location.useCurrent(quiet: true);
+    expect(harness.device.prompts, [false, true]);
+    expect(harness.state().location?.name, 'Delhi');
+    silent.complete(const LocationResolution(mumbai, LocationSource.ip));
+    await pending;
+    expect(harness.state().location?.name, 'Delhi');
+  });
   test('IP fallback is explicit and does not subscribe to GPS updates', () async {
     final location = harness.location()..setVisible(true);
     harness.device.response = () async => const LocationResolution(delhi, LocationSource.ip);

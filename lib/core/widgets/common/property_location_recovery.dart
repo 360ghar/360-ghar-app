@@ -28,7 +28,9 @@ class PropertyLocationRecovery extends ConsumerWidget {
     final location = ref.watch(propertyLocationProvider(pageType));
     final error = location.load.error;
     final code = error is LocationException ? error.code : null;
+    // A read in progress has not failed yet.
     final message = context.l10n.text(switch (code) {
+      _ when error == null && location.load.isLoading => 'getting_location',
       'LOCATION_DENIED_FOREVER' => 'location_permission_permanently_denied',
       'LOCATION_DENIED' => 'location_permission_denied',
       'LOCATION_DISABLED' => 'location_services_disabled',
