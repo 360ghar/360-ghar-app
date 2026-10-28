@@ -47,22 +47,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Allow records the choice, then asks the OS once', (tester) async {
+  testWidgets('Continue is the only action, then the OS asks once', (tester) async {
     await pump(tester);
+    expect(find.text('See homes near you'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Not now'), findsNothing);
+    // App Review 5.1.1(iv): a tap outside the sheet must not skip the OS prompt.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
     expect(find.text('See homes near you'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('qa.location.explainer.allow')));
     await tester.pumpAndSettle();
     expect(location.prompts, [true]);
     expect(database.values['location_explainer_seen'], isTrue);
     expect(find.text('See homes near you'), findsNothing);
-  });
-
-  testWidgets('Not now records the choice and never asks', (tester) async {
-    await pump(tester);
-    await tester.tap(find.byKey(const ValueKey('qa.location.explainer.skip')));
-    await tester.pumpAndSettle();
-    expect(location.prompts, isEmpty);
-    expect(database.values['location_explainer_seen'], isTrue);
   });
 
   testWidgets('seen once, or already decided: nothing is shown', (tester) async {

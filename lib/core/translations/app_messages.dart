@@ -993,8 +993,7 @@ const appMessages = <String, Map<String, String>>{
     'location_explainer_title': 'See homes near you',
     'location_explainer_body':
         'We use your location only to show homes around you. You can change the area at any time.',
-    'location_explainer_allow': 'Allow location',
-    'location_explainer_skip': 'Not now',
+    'location_explainer_allow': 'Continue',
     'visit_property_fallback': 'Property #@id',
     'visits_no_agent': 'No relationship manager is assigned to you yet.',
     'liked_homes_count': '{count} liked homes',
@@ -2033,8 +2032,7 @@ const appMessages = <String, Map<String, String>>{
     'location_explainer_title': 'अपने पास के घर देखें',
     'location_explainer_body':
         'हम आपकी लोकेशन का उपयोग केवल आपके आस-पास के घर दिखाने के लिए करते हैं। आप कभी भी इलाका बदल सकते हैं।',
-    'location_explainer_allow': 'लोकेशन की अनुमति दें',
-    'location_explainer_skip': 'अभी नहीं',
+    'location_explainer_allow': 'जारी रखें',
     'visit_property_fallback': 'संपत्ति #@id',
     'visits_no_agent': 'अभी आपको कोई रिलेशनशिप मैनेजर नहीं दिया गया है।',
     'liked_homes_count': '{count} पसंदीदा घर',

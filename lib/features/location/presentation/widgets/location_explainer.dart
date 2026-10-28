@@ -15,7 +15,7 @@ import 'package:ghar360/features/splash/presentation/controllers/splash_controll
 
 /// Shows the location explainer once per device, on the first Discover visit
 /// while the location permission is still undecided. The OS prompt appears
-/// only after the user taps Allow.
+/// after the user taps Continue.
 class LocationExplainerGate extends ConsumerStatefulWidget {
   const LocationExplainerGate({super.key, required this.child});
 
@@ -47,24 +47,26 @@ class _LocationExplainerGateState extends ConsumerState<LocationExplainerGate> {
     }
     // Hidden shell tabs keep their state; only the visible tab may ask.
     if (!mounted || !undecided || !TickerMode.valuesOf(context).enabled) return;
-    final allow = await showModalBottomSheet<bool>(
+    // App Review 5.1.1(iv): the message has one Continue button, cannot be
+    // dismissed, and is always followed by the OS prompt.
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       builder: (_) => const LocationExplainerSheet(),
     );
     if (!mounted) return;
     await ref.read(onboardingProvider.notifier).markLocationExplained();
-    if (allow == true) {
-      await ref.read(propertyLocationProvider(PageType.discover).notifier).useCurrent();
-    }
+    await ref.read(propertyLocationProvider(PageType.discover).notifier).useCurrent();
   }
 
   @override
   Widget build(BuildContext context) => widget.child;
 }
 
-/// Why the app asks for location, before the OS asks. Pops `true` for
-/// Allow and `false` for Not now.
+/// Why the app asks for location, before the OS asks. Continue is the only
+/// way out, and the OS prompt always follows.
 class LocationExplainerSheet extends StatelessWidget {
   const LocationExplainerSheet({super.key});
 
@@ -101,7 +103,7 @@ class LocationExplainerSheet extends StatelessWidget {
                 identifier: 'qa.location.explainer.allow',
                 child: FilledButton(
                   key: const ValueKey('qa.location.explainer.allow'),
-                  onPressed: () => Navigator.of(context).pop(true),
+                  onPressed: () => Navigator.of(context).pop(),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -111,15 +113,6 @@ class LocationExplainerSheet extends StatelessWidget {
                     ],
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Semantics(
-              identifier: 'qa.location.explainer.skip',
-              child: TextButton(
-                key: const ValueKey('qa.location.explainer.skip'),
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(l10n.text('location_explainer_skip')),
               ),
             ),
           ],
