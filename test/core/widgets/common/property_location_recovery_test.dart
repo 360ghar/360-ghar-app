@@ -191,7 +191,10 @@ void main() {
         expect(find.text('Homes are in Gurugram for now'), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('qa.discover.out_of_area.change')));
         await tester.pumpAndSettle();
-        expect(find.byType(LocationPickerModal), findsOneWidget);
+        expect(
+          tester.widget<LocationPickerModal>(find.byType(LocationPickerModal)).pageType,
+          PageType.discover,
+        );
       } else {
         expect(find.text('Choose an area to see homes near you'), findsOneWidget);
       }
