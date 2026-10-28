@@ -26,7 +26,7 @@ GENERATED_XCCONFIG="$ROOT_DIR/ios/Flutter/Generated.xcconfig"
 
 # Highest build number already uploaded to App Store Connect. Raise it after each upload.
 # The pubspec build number must be greater, or Transporter rejects the upload.
-LAST_SUBMITTED_BUILD=18
+LAST_SUBMITTED_BUILD=19
 
 # The canonical deployment target comes from project.pbxproj. AppFrameworkInfo.plist
 # and the generated SwiftPM plugin package must match it (Firebase requires iOS 15.0).

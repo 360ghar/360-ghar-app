@@ -1,8 +1,8 @@
 # ghar360 - iOS App Store Submission Guide
 
-End-to-end checklist for shipping **ghar360** (`1.1.0+18`, bundle `com.the360ghar.ghar360`, iOS 15.0+, team `HMWGCVU4SV`) to the App Store. Work top-to-bottom. Items marked **[external]** must be done outside this repo (browser / console / backend).
+End-to-end checklist for shipping **ghar360** (`1.1.0+20`, bundle `com.the360ghar.ghar360`, iOS 15.0+, team `HMWGCVU4SV`) to the App Store. Work top-to-bottom. Items marked **[external]** must be done outside this repo (browser / console / backend).
 
-> Companion: `docs/app-store-release-checklist.md`. Build 1.1.0+18 is a plain `flutter build ipa` (no Shorebird). The owner builds, uploads and submits.
+> Companion: `docs/app-store-release-checklist.md`. Build 1.1.0+20 is a plain `flutter build ipa` (no Shorebird). The owner builds, uploads and submits.
 
 ---
 
@@ -95,7 +95,7 @@ Recommended shots: Discover swipe deck, Explore map, Property details + 360° to
 
 ## 6. Build & upload **[you, on a Mac with Xcode 27.1]**
 
-Build 1.1.0+18 is a plain `flutter build ipa`. Do not use Shorebird for this build.
+Build 1.1.0+20 is a plain `flutter build ipa`. Do not use Shorebird for this build.
 
 ```bash
 # 1. Convert the production env file to dart-defines (the JSON is gitignored)
@@ -152,4 +152,4 @@ Notes:
 - **Golden tests are macOS-only**: `test/visual/*_golden_test.dart` carries `@TestOn('mac-os')` because the baselines are rendered on macOS; Linux CI skips them. Run `flutter test test/visual` locally before a release.
 - **SwiftPM minimum-platform footgun**: `flutter pub get` (or `flutter clean` + `pub get`) regenerates `FlutterGeneratedPluginSwiftPackage/Package.swift` with `.iOS("13.0")` (Flutter's hardcoded default). Firebase plugins require `.iOS("15.0")`, so the next Xcode-only build/archive fails with "The package product 'firebase-*' requires minimum platform version 15.0 ... but this target supports 13.0" until you re-run `flutter build ios --config-only` (patches the generated package to the project's 15.0). `tool/verify_ios_release.sh` now fails fast if this regresses.
 - **Missing dSYMs for prebuilt SwiftPM frameworks**: App Store Connect reports "Upload Symbols Failed" for FirebaseAnalytics, GoogleAppMeasurement, GoogleAppMeasurementIdentitySupport, MapLibre, RecaptchaEnterpriseSDK or GoogleAdsOnDeviceConversion. Their binary artifacts ship without dSYMs, and `tool/generate_binary_dsyms.sh` (run by the Crashlytics build phase) generates them, so any such warning is a regression. Full RCA and tooling in `docs/dSYM_UPLOAD_RCA.md`; `tool/upload_ios_symbols.sh` uploads every dSYM that exists.
-- iOS CI: `.github/workflows/release-ios.yml` is a manual Shorebird release workflow (see `docs/shorebird.md`). There is no Fastlane. The 1.1.0+18 build is manual per §6.
+- iOS CI: `.github/workflows/release-ios.yml` is a manual Shorebird release workflow (see `docs/shorebird.md`). There is no Fastlane. The 1.1.0+20 build is manual per §6.
