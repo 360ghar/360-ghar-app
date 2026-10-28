@@ -27,7 +27,7 @@ Work top to bottom; every box should be checked before you hit **Submit for Revi
 | App name | **360 Ghar** |
 | Bundle ID | `com.the360ghar.ghar360` |
 | Apple Team ID | `HMWGCVU4SV` |
-| Current version | `1.1.0+18` (marketing `1.1.0`, build `18`) |
+| Current version | `1.1.0+20` (marketing `1.1.0`, build `20`) |
 | Minimum iOS | `15.0` |
 | Firebase project | `ghar-3c690` |
 | Universal Link domains | `360ghar.com`, `www.360ghar.com` |
@@ -168,12 +168,12 @@ in the manifest.
 
 - [ ] `flutter clean && flutter pub get`
 - [ ] Confirm iOS uses Swift Package Manager (no `pod install`; plugins resolve via SPM)
-- [ ] Confirm `pubspec.yaml` version is `1.1.0+18` (or bumped — see policy below).
+- [ ] Confirm `pubspec.yaml` version is `1.1.0+20` (or bumped — see policy below).
 
 ### Build the IPA
 
 Store binaries must normally be built with Shorebird so they can receive OTA
-patches (see [`shorebird.md`](./shorebird.md)). The iOS `1.1.0+18` build is an
+patches (see [`shorebird.md`](./shorebird.md)). The iOS `1.1.0+20` build is an
 explicit exception: build it as a plain Flutter IPA, as in `RELEASE_IOS.md` §6.
 Later store releases must use `shorebird release ios`.
 
