@@ -16,10 +16,13 @@ import '../../../../helpers/settings_test_database.dart';
 
 class _RecordingLocation extends QueryLocation {
   _RecordingLocation() : super(PageType.discover);
-  final prompts = <bool>[];
+  final prompts = <(bool, bool)>[];
   @override
-  Future<void> useCurrent({bool forceRefresh = true, bool prompt = true}) async =>
-      prompts.add(prompt);
+  Future<void> useCurrent({
+    bool forceRefresh = true,
+    bool prompt = true,
+    bool quiet = false,
+  }) async => prompts.add((prompt, quiet));
 }
 
 void main() {
@@ -58,7 +61,8 @@ void main() {
     expect(find.text('See homes near you'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('qa.location.explainer.allow')));
     await tester.pumpAndSettle();
-    expect(location.prompts, [true]);
+    // Prompt, and quiet: a "Don't Allow" right after the explainer is not an error.
+    expect(location.prompts, [(true, true)]);
     expect(database.values['location_explainer_seen'], isTrue);
     expect(find.text('See homes near you'), findsNothing);
   });

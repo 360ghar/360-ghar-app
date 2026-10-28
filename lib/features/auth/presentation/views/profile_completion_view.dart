@@ -6,6 +6,7 @@ import 'package:ghar360/core/controllers/auth_controller.dart';
 import 'package:ghar360/core/design/app_design_extensions.dart';
 import 'package:ghar360/core/design/paper/knife_icons.dart';
 import 'package:ghar360/core/design/paper/paper_chrome.dart';
+import 'package:ghar360/core/providers/auth_providers.dart';
 import 'package:ghar360/core/translations/app_localizations.dart';
 import 'package:ghar360/core/utils/api_date_time.dart';
 import 'package:ghar360/core/widgets/paper/paper_icon.dart';
@@ -35,7 +36,13 @@ class _ProfileCompletionViewState extends ConsumerState<ProfileCompletionView> {
   void initState() {
     super.initState();
     final user = ref.read(authProvider).user;
-    _name.text = user?.fullName ?? '';
+    // An Apple sign-in keeps the name in the Supabase metadata only.
+    final metadataName = ref.read(authRepositoryProvider).currentUser?.userMetadata?['full_name'];
+    _name.text = user?.fullName?.trim().isNotEmpty == true
+        ? user!.fullName!
+        : metadataName is String
+        ? metadataName
+        : '';
     _email.text = user?.email ?? '';
     _birthDate = DateTime.tryParse(user?.dateOfBirth ?? '');
     if (_birthDate != null) _dob.text = formatDisplayDate(_birthDate!);

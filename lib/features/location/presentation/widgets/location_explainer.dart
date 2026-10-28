@@ -58,7 +58,7 @@ class _LocationExplainerGateState extends ConsumerState<LocationExplainerGate> {
     );
     if (!mounted) return;
     await ref.read(onboardingProvider.notifier).markLocationExplained();
-    await ref.read(propertyLocationProvider(PageType.discover).notifier).useCurrent();
+    await ref.read(propertyLocationProvider(PageType.discover).notifier).useCurrent(quiet: true);
   }
 
   @override

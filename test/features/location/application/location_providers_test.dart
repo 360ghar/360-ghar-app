@@ -160,6 +160,19 @@ void main() {
     expect(harness.state().source, LocationSource.gps);
     expect(harness.state().load.hasError, isFalse);
   });
+  test('a quiet read keeps the location, or starts in Gurugram, with no error', () async {
+    final location = harness.location();
+    harness.device.response = () async =>
+        throw LocationException('blocked', code: 'LOCATION_DENIED_FOREVER');
+    await location.useCurrent(quiet: true);
+    expect(harness.state().load.hasError, isFalse);
+    expect(harness.state().source, LocationSource.fallback);
+    expect(harness.state().location?.latitude, ServiceArea.center.latitude);
+    await location.select(mumbai);
+    await location.useCurrent(quiet: true);
+    expect(harness.state().load.hasError, isFalse);
+    expect(harness.state().location?.name, 'Mumbai');
+  });
   test('IP fallback is explicit and does not subscribe to GPS updates', () async {
     final location = harness.location()..setVisible(true);
     harness.device.response = () async => const LocationResolution(delhi, LocationSource.ip);
